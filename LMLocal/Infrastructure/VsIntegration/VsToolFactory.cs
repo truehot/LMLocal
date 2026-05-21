@@ -54,6 +54,7 @@ namespace LMLocal.Infrastructure.Vs
         private readonly IFileLinesReaderTool _fileLinesReaderTool;
         private readonly IFindFilesByNameTool _findFilesByNameTool;
         private readonly IGetSolutionOverviewTool _solutionOverviewTool;
+        private readonly IFindSymbolReferencesTool _findSymbolReferencesTool;
 
         private readonly IReadOnlyList<ToolDefinition> _allToolDefinitions;
         private readonly Dictionary<string, IVsTool> _toolsByName;
@@ -63,13 +64,15 @@ namespace LMLocal.Infrastructure.Vs
             IActiveDocumentTool activeDocTool,
             IFileLinesReaderTool fileLinesReaderTool,
             IFindFilesByNameTool findFilesByNameTool,
-            IGetSolutionOverviewTool solutionOverviewTool)
+            IGetSolutionOverviewTool solutionOverviewTool,
+            IFindSymbolReferencesTool findSymbolReferencesTool)
         {
             _searchTool = searchTool ?? throw new ArgumentNullException(nameof(searchTool));
             _activeDocTool = activeDocTool ?? throw new ArgumentNullException(nameof(activeDocTool));
             _fileLinesReaderTool = fileLinesReaderTool ?? throw new ArgumentNullException(nameof(fileLinesReaderTool));
             _findFilesByNameTool = findFilesByNameTool ?? throw new ArgumentNullException(nameof(findFilesByNameTool));
             _solutionOverviewTool = solutionOverviewTool ?? throw new ArgumentNullException(nameof(solutionOverviewTool));
+            _findSymbolReferencesTool = findSymbolReferencesTool ?? throw new ArgumentNullException(nameof(findSymbolReferencesTool));
 
             _allToolDefinitions = new List<ToolDefinition>
             {
@@ -77,7 +80,8 @@ namespace LMLocal.Infrastructure.Vs
                 _activeDocTool.GetToolInfo(),
                 _fileLinesReaderTool.GetToolInfo(),
                 _findFilesByNameTool.GetToolInfo(),
-                _solutionOverviewTool.GetToolInfo()
+                _solutionOverviewTool.GetToolInfo(),
+                _findSymbolReferencesTool.GetToolInfo()
             }.AsReadOnly();
 
             _toolsByName = new Dictionary<string, IVsTool>(StringComparer.OrdinalIgnoreCase)
@@ -86,7 +90,8 @@ namespace LMLocal.Infrastructure.Vs
                 { _activeDocTool.ToolName, _activeDocTool },
                 { _fileLinesReaderTool.ToolName, _fileLinesReaderTool },
                 { _findFilesByNameTool.ToolName, _findFilesByNameTool },
-                { _solutionOverviewTool.ToolName, _solutionOverviewTool }
+                { _solutionOverviewTool.ToolName, _solutionOverviewTool },
+                { _findSymbolReferencesTool.ToolName, _findSymbolReferencesTool }
             };
         }
 
@@ -135,6 +140,8 @@ namespace LMLocal.Infrastructure.Vs
                 return await ExecuteFindFilesByNameAsync(sp, parameters, cancellationToken);
             else if (toolName == _solutionOverviewTool.ToolName)
                 return await ExecuteSolutionOverviewAsync(sp, cancellationToken);
+            else if (toolName == _findSymbolReferencesTool.ToolName)
+                return await ExecuteFindSymbolReferencesAsync(sp, parameters, cancellationToken);
             else
                 throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
         }
@@ -247,6 +254,28 @@ namespace LMLocal.Infrastructure.Vs
             }
         }
 
+        private async Task<object> ExecuteFindSymbolReferencesAsync(
+            IServiceProvider sp,
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken)
+        {
+            if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
+                throw new ArgumentException("Parameter 'symbol_name' is required and must be a string.", nameof(parameters));
+
+            string symbolName = (string)symbolNameObj;
+
+            try
+            {
+                var result = await _findSymbolReferencesTool.ExecuteAsync(sp, symbolName, cancellationToken);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error($"FindSymbolReferencesTool execution failed: {ex.Message}", ex);
+                throw;
+            }
+        }
+
         private bool TryParseInt(object value, out int result)
         {
             result = 0;
@@ -324,6 +353,12 @@ namespace LMLocal.Infrastructure.Vs
                 case var _ when toolName == _solutionOverviewTool.ToolName:
                     return "Loading solution overview... ";
 
+                case var _ when toolName == _findSymbolReferencesTool.ToolName:
+                    {
+                        var symbolName = parameters.TryGetValue("symbol_name", out var s) ? s.ToString() : "";
+                        return $"Finding all references for symbol '{symbolName}'... ";
+                    }
+
                 default:
                     return "Processing...";
             }
@@ -365,6 +400,13 @@ namespace LMLocal.Infrastructure.Vs
                     {
                         if (result is SolutionOverviewResponse solutionResult)
                             return $"Loaded solution with {solutionResult.TotalProjects} projects ({solutionResult.TotalFiles} files).";
+                        break;
+                    }
+
+                case var _ when toolName == _findSymbolReferencesTool.ToolName:
+                    {
+                        if (result is SymbolReferencesResponse symbolResult)
+                            return $"Found {symbolResult.TotalReferences} references to '{symbolResult.SymbolName}'.";
                         break;
                     }
             }

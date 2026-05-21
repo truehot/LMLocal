@@ -2,10 +2,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.WebView;
 using LMLocal.Infrastructure.Vs.Implementations;
+using LMLocal.Infrastructure.WebView;
 using LMLocal.Models;
 using LMLocal.Services;
 using LMLocal.Services.ChatSession;
@@ -47,7 +46,8 @@ namespace LMLocal.Tests.Unit
                 mockActiveModelContext.SetupGet(a => a.CurrentModelId).Returns("model1");
                 var mockHistoryManager = new Mock<IChatHistoryManager>();
 
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+                var mockInstructions = new Mock<IInstructionsManager>();
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -70,7 +70,8 @@ namespace LMLocal.Tests.Unit
                 mockModelsListService.Setup(o => o.ListModelsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("boom"));
 
                 var mockHistoryManager = new Mock<IChatHistoryManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, new Mock<IActiveDocumentTool>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object);
+                var mockInstructions = new Mock<IInstructionsManager>();
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, new Mock<IActiveDocumentTool>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -88,7 +89,8 @@ namespace LMLocal.Tests.Unit
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
 
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
             await bridge.ExecutePromptAsync(null).ConfigureAwait(false);
             await bridge.ExecutePromptAsync("").ConfigureAwait(false);
@@ -116,7 +118,8 @@ namespace LMLocal.Tests.Unit
                 .ReturnsAsync(true)
                 .Callback<GenerateStreamContext, Func<WebView2ScriptMessage, Task>, CancellationToken>((ctx, onMsg, ct) => capturedContext = ctx);
 
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
             var req = new LMLocal.Models.ExecutePromptRequest { Prompt = "hello", IncludeContent = true, AdditionalPrompt = "add", ModelId = "m1" };
             var json = req.ToJson();
@@ -144,7 +147,8 @@ namespace LMLocal.Tests.Unit
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
 
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
             var res1 = await bridge.SetActiveModelAsync(null, 0).ConfigureAwait(false);
             Assert.That(res1, Is.False);
@@ -171,7 +175,8 @@ namespace LMLocal.Tests.Unit
 
             mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
 
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
             var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
             Assert.That(reset, Is.True);
@@ -194,7 +199,8 @@ namespace LMLocal.Tests.Unit
 
             mockSession.SetupGet(s => s.IsSessionRunning).Returns(true);
 
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
 
             var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
             Assert.That(reset, Is.False);

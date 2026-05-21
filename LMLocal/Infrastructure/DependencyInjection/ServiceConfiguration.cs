@@ -64,6 +64,8 @@ namespace LMLocal.Infrastructure.DependencyInjection
         /// </summary>
         private static void RegisterSettings(IServiceCollection services)
         {
+            
+            services.AddSingleton<IInstructionsManager, InstructionsManager>();
             services.AddSingleton<ISettingsManager, SettingsManager>();
             services.AddSingleton<IPathResolver, PathResolver>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
@@ -75,6 +77,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IFileLinesReaderTool, FileLinesReaderTool>();
             services.AddTransient<IFindFilesByNameTool, FindFilesByNameTool>();
             services.AddTransient<IGetSolutionOverviewTool, GetSolutionOverviewTool>();
+            services.AddTransient<IFindSymbolReferencesTool, FindSymbolReferences>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();

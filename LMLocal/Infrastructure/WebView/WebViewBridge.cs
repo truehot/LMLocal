@@ -1,11 +1,8 @@
 using System;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Responses;
 using LMLocal.Infrastructure.Vs.Implementations;
 using LMLocal.Models;
 using LMLocal.Services;
@@ -39,17 +36,19 @@ namespace LMLocal.Infrastructure.WebView
     {
         private readonly IModelsListService _modelsListService;
         private readonly IWebViewScriptExecutor _scriptExecutor;
-        private readonly InstructionsManager _instructionsManager;
+        private readonly IInstructionsManager _instructionsManager;
         private readonly ISettingsManager _settingsManager;
         private readonly IActiveDocumentTool _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
 
+
         internal WebViewBridge(
             ISettingsManager settingsManager,
             IModelsListService modelsListService,
             IWebViewScriptExecutor scriptExecutor,
+            IInstructionsManager instructionsManager,
             IActiveDocumentTool activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
@@ -62,7 +61,7 @@ namespace LMLocal.Infrastructure.WebView
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
-            _instructionsManager = new InstructionsManager();
+            _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
         }
 
         /// <summary>
@@ -131,7 +130,8 @@ namespace LMLocal.Infrastructure.WebView
                     Prompt = request.Prompt,
                     ActiveDocumentContent = request.IncludeContent ? await _activeDocumentTool.GetContentAsync() : null,
                     AdditionalPrompt = request.AdditionalPrompt,
-                    ModelId = request.ModelId
+                    ModelId = request.ModelId,
+                    Temperature = request.Temperature
                 };
 
                 async Task OnMessageAsync(WebView2ScriptMessage message)

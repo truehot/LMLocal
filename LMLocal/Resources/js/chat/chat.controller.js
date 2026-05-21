@@ -98,6 +98,21 @@ class ChatController {
             e.stopPropagation();
             return;
         }
+
+        const codeToggleButton = e.target.closest('.code-toggle-btn');
+        if (codeToggleButton) {
+            const wrapper = codeToggleButton.closest('.code-block-container');
+            if (!wrapper) return;
+            const codeToggleIcon = wrapper.querySelector('.toggle-icon');
+            if (!codeToggleIcon) return;
+            const codeToggleText = wrapper.querySelector('.toggle-text');
+            if (!codeToggleText) return;
+
+            const isExpanded = wrapper.classList.toggle('is-expanded');
+            codeToggleText.textContent = isExpanded ? 'Collapse' : 'Expand';
+            codeToggleIcon.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
+            e.stopPropagation();
+        }
     };
 
     _renderMessageFlow(state, prev = {}) {

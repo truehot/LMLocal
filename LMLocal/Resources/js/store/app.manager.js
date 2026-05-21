@@ -49,29 +49,33 @@ class AppManager {
         await startupManager.initialize();
     }
 
-    async performSendMessage(text, hasContent, instructionsMode) {
+    async performSendMessage(text, hasContent) {
         const cleanText = (text || '').trim();
         if (!cleanText || !appSelectors.canSend(appStore.getState().status)) return;
 
         appStore.setState({ status: AppStatus.PROCESSING, accumulatedText: "", accumulatedThoughtText: "", error: null, userMessage: cleanText });
 
-        let activeInstructions = "";
-        const instructions = instructionsStore.getState().instructions?.tabs;
-
-        if (Array.isArray(instructions)) {
-            instructions.forEach(instr => {
-                if ((instr.isDefault || instr.name === instructionsMode) && instr.prompt) {
-                    activeInstructions += instr.prompt;
-                }
-            });
-        }
+        const instructionsState = instructionsStore.getState();
+        const selectedTabId = instructionsState.selectedTabId;
+        const instructions = instructionsState.instructions || [];
 
         const request = {
             prompt: cleanText,
             includeContent: hasContent,
-            additionalPrompt: activeInstructions || null,
             modelId: modelStore.getState().modelId || ""
         };
+
+        if (Array.isArray(instructions) && selectedTabId) {
+            const selectedTab = instructions.find(tab => tab.id == selectedTabId);
+            if (selectedTab && selectedTab.enabled) {
+                if (selectedTab.prompt !== undefined && selectedTab.prompt !== null) {
+                    request.additionalPrompt = selectedTab.prompt;
+                }
+                if (selectedTab.temperature !== undefined && selectedTab.temperature !== null) {
+                    request.temperature = selectedTab.temperature;
+                }
+            }
+        }
 
         bridgeClient.executePromptAsync(request).catch(e => {
             console.error("Async Bridge Error:", e);
@@ -138,19 +142,11 @@ class AppManager {
     }
 
     async getInstructions() {
-        return await appDataService.getInstructions();
-    }
-
-    async updateInstructions(json) {
-        return await appDataService.updateInstructions(json);
+        return await appDataService.getInstructionsAsync();
     }
 
     async getSettings() {
-        return await appDataService.getSettings();
-    }
-
-    async updateSettings(settings) {
-        return await appDataService.updateSettings(settings);
+        return await appDataService.getSettingsAsync();
     }
 }
 

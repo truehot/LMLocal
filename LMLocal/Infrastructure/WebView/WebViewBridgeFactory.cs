@@ -1,5 +1,4 @@
 using System;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Vs.Implementations;
 using LMLocal.Models;
 using LMLocal.Services;
@@ -19,6 +18,7 @@ namespace LMLocal.Infrastructure.WebView
     {
         private readonly ISettingsManager _settingsManager;
         private readonly IModelsListService _modelsListService;
+        private readonly IInstructionsManager _instructionsManager;
         private readonly IActiveDocumentTool _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
@@ -27,6 +27,7 @@ namespace LMLocal.Infrastructure.WebView
         public WebViewBridgeFactory(
             ISettingsManager settingsManager,
             IModelsListService modelsListService,
+            IInstructionsManager instructionsManager,
             IActiveDocumentTool activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
@@ -34,6 +35,7 @@ namespace LMLocal.Infrastructure.WebView
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _modelsListService = modelsListService ?? throw new ArgumentNullException(nameof(modelsListService));
+            _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
             _activeDocumentTool = activeDocumentTool ?? throw new ArgumentNullException(nameof(activeDocumentTool));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
@@ -47,7 +49,8 @@ namespace LMLocal.Infrastructure.WebView
 
             var scriptExecutor = new WebViewScriptExecutor(coreWebView2);
 
-            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager);
+
+            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager);
         }
     }
 }

@@ -80,7 +80,7 @@ namespace LMLocal.Services
                 var processor = _streamProcessorFactory.Create(linkedCts);
 
                 var messageContext = new MessageContext(messages);
-                var modelContext = new ModelContext(context.ModelId);
+                var modelContext = new ModelContext(context.ModelId, temperature: context.Temperature);
 
                 using (var streaming = await _openApiAdapter.SendChatStreamingAsync(
                     messageContext,
@@ -155,7 +155,7 @@ namespace LMLocal.Services
                 var processor = _streamProcessorFactory.Create(linkedCts);
 
                 var messageContext = new MessageContext(messages);
-                var modelContext = new ModelContext(context.ModelId);
+                var modelContext = new ModelContext(context.ModelId, temperature: context.Temperature);
 
                 using (var streaming = await _openApiAdapter.SendChatStreamingAsync(
                     messageContext,

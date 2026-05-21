@@ -3,6 +3,7 @@ import { BaseStoreClass } from "@app/store/base.store.js";
 class SettingsStoreClass extends BaseStoreClass {
     constructor() {
         super({
+            Provider: "",
             LmStudioBaseUrl: "http://localhost:1234",
             ApiKey: "",
             AutoLoadOnStartup: true,
@@ -11,7 +12,8 @@ class SettingsStoreClass extends BaseStoreClass {
             Theme: 0,
             StreamInactivityTimeoutSeconds: 20,
             EnableChatLogging: false,
-            EnableAiTools: false
+            EnableAiTools: false,
+            EnableCodeCollapse: false
         });
     }
 }

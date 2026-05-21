@@ -164,14 +164,13 @@ namespace LMLocal.Services
             {
                 messages.AddRange(_history);
 
-                if (!string.IsNullOrEmpty(_systemPrompt))
-                {
-                    messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(_systemPrompt) : _systemPrompt));
-                }
-
                 if (!string.IsNullOrEmpty(additionalSystemPrompt))
                 {
                     messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt));
+                }
+                else if (!string.IsNullOrEmpty(_systemPrompt))
+                {
+                    messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(_systemPrompt) : _systemPrompt));
                 }
 
                 if (!string.IsNullOrEmpty(includedContent))

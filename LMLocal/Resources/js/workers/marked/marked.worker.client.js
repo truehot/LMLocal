@@ -10,14 +10,22 @@ export class MarkedWorkerClient {
     }
 
     _getWorkerCode() {
+
         let workerCode = `
-            importScripts('https://app.local/js/workers/marked/marked.udm.js');
+            importScripts('https://app.local/js/workers/marked/marked.udm.js', 'https://app.local/js/workers/marked/marked.shared.js');
             if (typeof marked === 'undefined') {
                 throw new Error('marked library not loaded');
             }
+
+            const renderer = new marked.Renderer();
+            renderer.code = function(data) {
+                return renderCodeBlock(data);
+            };
+
             marked.setOptions({
                 gfm: true,
-                breaks: true
+                breaks: true,
+                renderer: renderer
             });
             self.onmessage = function(e) {
                 const { id, markdown, options } = e.data;

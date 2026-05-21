@@ -213,6 +213,49 @@ namespace LMLocal.Tests.E2E.VSIX
             }
         }
 
+        [TestMethod]
+        public async Task RunTool_FindSymbolReferences_ReturnsMatchesAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
+            {
+                System.Diagnostics.Process vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var solutionPath = GetSolutionPath();
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        string response = await client.SendCommandAsync($"OpenSolution|{solutionPath}", cts.Token);
+                        Assert.AreEqual("OK", response);
+
+                        await Task.Delay(2000);
+
+                        response = await client.SendCommandAsync("RunTool|Find_Symbol_References|Dispose", cts.Token);
+                        Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
+                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
+
+                        var obj = JObject.Parse(response);
+                        Assert.IsTrue(obj.ContainsKey("symbol_name"), "Response should contain 'symbol_name' key");
+                        Assert.IsTrue(obj.ContainsKey("total_references"), "Response should contain 'total_references' key");
+                        Assert.IsTrue(obj.ContainsKey("results"), "Response should contain 'results' key");
+                        Assert.IsTrue(obj.ContainsKey("has_more_results"), "Response should contain 'has_more_results' key");
+
+                        Assert.AreEqual("Dispose", (string)obj["symbol_name"], "Symbol name should match");
+
+                        var results = obj["results"] as JArray;
+                        Assert.IsNotNull(results, "'results' should be an array");
+                        Assert.IsTrue(results.Count > 0, "Expected at least one reference for 'Dispose'");
+                        Assert.IsTrue(results[0]["file"] != null, "Each result should have 'file' key");
+                        Assert.IsTrue(results[0]["matches"] != null, "Each result should have 'matches' key");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
         private string GetSolutionPath()
         {
             var solutionPath = Path.GetFullPath(

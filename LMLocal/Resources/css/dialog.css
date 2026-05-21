@@ -413,276 +413,6 @@
     #settings-dialog .btn-secondary.error .btn-icon {
         color: var(--error-color, #e74c3c);
     }
-
-/* ====== Instructions dialog styles ====== */
-#instructions-dialog {
-    background: var(--surface-bg);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0;
-    width: 700px;
-    max-width: 95vw;
-    height: 550px;
-    box-shadow: 0 8px 24px var(--overlay-shadow);
-    overflow: hidden;
-}
-
-    #instructions-dialog::backdrop {
-        background: var(--overlay-shadow);
-        backdrop-filter: blur(1px);
-    }
-
-    #instructions-dialog .modal-header {
-        padding: 12px 16px;
-        background: var(--top-bar-bg);
-        border-bottom: 1px solid var(--border-color);
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text-color);
-    }
-
-    #instructions-dialog .modal-container {
-        display: flex;
-        height: calc(100% - 94px);
-    }
-
-    #instructions-dialog .settings-sidebar {
-        width: 120px;
-        background: var(--panel-bg);
-        border-right: 1px solid var(--border-color);
-        display: flex;
-        flex-direction: column;
-        padding: 8px 0;
-        flex-shrink: 0;
-    }
-
-    #instructions-dialog .tab-btn {
-        background: transparent;
-        border: none;
-        color: var(--muted-color);
-        padding: 8px 16px;
-        text-align: left;
-        font-size: 12px;
-        cursor: pointer;
-        border-left: 2px solid transparent;
-        outline: none;
-        transition: background 0.1s, color 0.1s;
-    }
-
-        #instructions-dialog .tab-btn:hover {
-            background: var(--hover-bg-alpha);
-            color: var(--text-color);
-        }
-
-        #instructions-dialog .tab-btn.active {
-            background: var(--active-bg-alpha);
-            color: var(--text-color);
-            border-left: 2px solid var(--accent-color);
-        }
-
-    #instructions-dialog .modal-body {
-        flex: 1;
-        padding: 20px;
-        overflow-y: auto;
-        background: var(--bg-color);
-    }
-
-    #instructions-dialog .tab-content.active {
-        display: block;
-    }
-
-    #instructions-dialog .settings-group {
-        margin-bottom: 24px;
-    }
-
-    #instructions-dialog .settings-label {
-        display: block;
-        color: var(--accent-color);
-        font-size: 13px;
-        text-transform: uppercase;
-        font-weight: 600;
-        margin-bottom: 16px;
-        letter-spacing: 0.6px;
-    }
-
-    #instructions-dialog .checkbox-group, #instructions-dialog .radio-group {
-        display: flex;
-        flex-direction: column;
-        gap: 14px;
-    }
-
-    #instructions-dialog .rules-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 16px;
-    }
-
-@media (min-width: 600px) {
-    .rules-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-}
-
-#instructions-dialog .checkbox-container {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    cursor: pointer;
-}
-
-    #instructions-dialog .checkbox-container input[type="checkbox"],
-    #instructions-dialog .checkbox-container input[type="radio"] {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 14px;
-        height: 14px;
-        border: 1px solid var(--separator-color);
-        background: var(--input-bg);
-        margin-top: 2px;
-        flex-shrink: 0;
-        cursor: pointer;
-        display: grid;
-        place-content: center;
-    }
-
-    #instructions-dialog .checkbox-container input[type="checkbox"] {
-        border-radius: 2px;
-    }
-
-    #instructions-dialog .checkbox-container input[type="radio"] {
-        border-radius: 50%;
-    }
-
-    #instructions-dialog .checkbox-container input:checked {
-        background-color: var(--accent-color);
-        border-color: var(--accent-color);
-    }
-
-    #instructions-dialog .checkbox-container input[type="checkbox"]:checked::before {
-        content: "✔";
-        color: var(--text-color);
-        font-size: 9px;
-    }
-
-    #instructions-dialog .checkbox-container input[type="radio"]::before {
-        content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--text-color);
-        transform: scale(0);
-        transition: 0.1s transform ease-in-out;
-    }
-
-    #instructions-dialog .checkbox-container input[type="radio"]:checked::before {
-        transform: scale(1);
-    }
-
-#instructions-dialog .checkbox-content-wrapper {
-    display: flex;
-    flex-direction: column;
-}
-
-#instructions-dialog .checkbox-title {
-    font-size: 15px;
-    color: var(--text-color);
-    line-height: 1.3;
-    font-weight: 500;
-}
-
-#instructions-dialog .checkbox-description {
-    font-size: 13px;
-    color: var(--muted-color);
-    line-height: 1.4;
-    margin-top: 3px;
-}
-
-#instructions-dialog .modal-footer {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    background: var(--status-bar-bg);
-}
-
-    #instructions-dialog .modal-footer button {
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        color: var(--white);
-        border: none;
-        min-width: 90px;
-        transition: background 0.1s;
-    }
-
-#instructions-dialog #dialog-cancel {
-    background: var(--input-bg);
-    color: var(--text-color);
-}
-
-    #instructions-dialog #dialog-cancel:hover {
-        background: var(--border-color);
-    }
-
-#instructions-dialog .btn-main {
-    background: var(--accent-color);
-    color: var(--text-color);
-}
-
-    #instructions-dialog .btn-main:hover {
-        filter: brightness(1.1);
-    }
-
-#instructions-dialog .modal-body::-webkit-scrollbar {
-    width: 10px;
-}
-
-#instructions-dialog .modal-body::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#instructions-dialog .modal-body::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 10px;
-    border: 2px solid var(--bg-color);
-}
-
-    #instructions-dialog .modal-body::-webkit-scrollbar-thumb:hover {
-        filter: brightness(1.2);
-    }
-
-#instructions-dialog .settings-group.collapsible-group {
-    margin-bottom: 24px;
-}
-
-#instructions-dialog .checkbox-container.group-header {
-    margin-bottom: 12px;
-}
-
-#instructions-dialog .group-header-row {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    cursor: pointer;
-    margin-bottom: 16px;
-}
-
-    #instructions-dialog .group-header-row .settings-label {
-        margin-bottom: 0;
-        pointer-events: none;
-    }
-
-#instructions-dialog .settings-group.collapsible-group:has(input:checked) .settings-label {
-    color: var(--accent-color);
-}
-
-#instructions-dialog .settings-group.collapsible-group:not(:has(input:checked)) .settings-label {
-    color: var(--muted-color);
-}
-
 /* ====== Models selection dialog styles ====== */
 #model-selector-dialog.model-modal {
     background-color: var(--panel-bg);
@@ -1021,3 +751,356 @@
         transform: translateX(12px);
         background-color: var(--accent-color);
     }
+/* ====== Instructions dialog styles ====== */
+#instructions-dialog {
+    background: var(--surface-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0;
+    width: 700px;
+    max-width: 95vw;
+    height: 550px;
+    box-shadow: 0 8px 24px var(--overlay-shadow);
+    overflow: hidden;
+    color-scheme: light dark;
+}
+
+    #instructions-dialog::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+    #instructions-dialog .modal-header {
+        padding: 12px 16px;
+        background: var(--top-bar-bg);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-color);
+    }
+
+    #instructions-dialog .modal-container {
+        display: flex;
+        height: calc(100% - 94px);
+    }
+
+    #instructions-dialog .settings-sidebar {
+        width: 120px;
+        background: var(--panel-bg);
+        border-right: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        padding: 8px 0;
+        flex-shrink: 0;
+    }
+
+    #instructions-dialog .tab-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted-color);
+        padding: 8px 16px;
+        text-align: left;
+        font-size: 12px;
+        cursor: pointer;
+        border-left: 2px solid transparent;
+        outline: none;
+        transition: background 0.1s, color 0.1s;
+    }
+
+        #instructions-dialog .tab-btn:hover {
+            background: var(--hover-bg-alpha);
+            color: var(--text-color);
+        }
+
+        #instructions-dialog .tab-btn.active {
+            background: var(--active-bg-alpha);
+            color: var(--text-color);
+            border-left: 2px solid var(--accent-color);
+        }
+
+    #instructions-dialog .modal-body {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: var(--bg-color);
+    }
+
+    #instructions-dialog .tab-content.active {
+        display: block;
+    }
+
+    #instructions-dialog .settings-group {
+        margin-bottom: 24px;
+    }
+
+    #instructions-dialog .settings-label {
+        display: block;
+        color: var(--accent-color);
+        font-size: 13px;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 16px;
+        letter-spacing: 0.6px;
+    }
+
+    #instructions-dialog .checkbox-group,
+    #instructions-dialog .radio-group {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    #instructions-dialog .rules-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+@media (min-width: 600px) {
+    #instructions-dialog .rules-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+#instructions-dialog .checkbox-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+
+    #instructions-dialog .checkbox-container input[type="checkbox"],
+    #instructions-dialog .checkbox-container input[type="radio"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border: 1px solid var(--separator-color);
+        background: var(--input-bg);
+        margin-top: 2px;
+        flex-shrink: 0;
+        cursor: pointer;
+        display: grid;
+        place-content: center;
+    }
+
+    #instructions-dialog .checkbox-container input[type="checkbox"] {
+        border-radius: 2px;
+    }
+
+    #instructions-dialog .checkbox-container input[type="radio"] {
+        border-radius: 50%;
+    }
+
+    #instructions-dialog .checkbox-container input:checked {
+        background-color: var(--accent-color);
+        border-color: var(--accent-color);
+    }
+
+    #instructions-dialog .checkbox-container input[type="checkbox"]:checked::before {
+        content: "✔";
+        color: var(--text-color);
+        font-size: 9px;
+    }
+
+    #instructions-dialog .checkbox-container input[type="radio"]::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--text-color);
+        transform: scale(0);
+        transition: 0.1s transform ease-in-out;
+    }
+
+    #instructions-dialog .checkbox-container input[type="radio"]:checked::before {
+        transform: scale(1);
+    }
+
+#instructions-dialog .checkbox-content-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+#instructions-dialog .checkbox-title {
+    font-size: 15px;
+    color: var(--text-color);
+    line-height: 1.3;
+    font-weight: 500;
+}
+
+#instructions-dialog .checkbox-description {
+    font-size: 13px;
+    color: var(--muted-color);
+    line-height: 1.4;
+    margin-top: 3px;
+}
+
+    #instructions-dialog .checkbox-description.header-desc {
+        margin-top: -8px;
+        margin-bottom: 20px;
+    }
+
+#instructions-dialog .modal-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    background: var(--status-bar-bg);
+}
+
+    #instructions-dialog .modal-footer button {
+        padding: 8px 16px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        color: var(--white);
+        border: none;
+        min-width: 90px;
+        transition: background 0.1s;
+    }
+
+#instructions-dialog #dialog-cancel {
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+    #instructions-dialog #dialog-cancel:hover {
+        background: var(--border-color);
+    }
+
+#instructions-dialog .btn-main {
+    background: var(--accent-color);
+    color: var(--text-color);
+}
+
+    #instructions-dialog .btn-main:hover {
+        filter: brightness(1.1);
+    }
+
+#instructions-dialog *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+#instructions-dialog .modal-body::-webkit-scrollbar,
+#instructions-dialog .prompt-textarea::-webkit-scrollbar {
+    width: 10px;
+}
+
+#instructions-dialog .modal-body::-webkit-scrollbar-track,
+#instructions-dialog .prompt-textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#instructions-dialog .modal-body::-webkit-scrollbar-thumb,
+#instructions-dialog .prompt-textarea::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 4px solid transparent;
+    background-clip: padding-box;
+}
+
+
+#instructions-dialog .settings-group.collapsible-group {
+    margin-bottom: 24px;
+}
+
+#instructions-dialog .checkbox-container.group-header {
+    margin-bottom: 12px;
+}
+
+#instructions-dialog .group-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    margin-bottom: 12px;
+}
+
+    #instructions-dialog .group-header-row .settings-label {
+        margin-bottom: 0;
+        pointer-events: none;
+    }
+
+    #instructions-dialog .group-header-row input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--border-color);
+        background: var(--input-bg);
+        border-radius: 3px;
+        cursor: pointer;
+        display: grid;
+        place-content: center;
+    }
+
+        #instructions-dialog .group-header-row input[type="checkbox"]:checked {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+            #instructions-dialog .group-header-row input[type="checkbox"]:checked::before {
+                content: "✔";
+                color: #fff;
+                font-size: 10px;
+            }
+
+#instructions-dialog .settings-group.collapsible-group:has(input:checked) .settings-label {
+    color: var(--accent-color);
+}
+
+#instructions-dialog .settings-group.collapsible-group:not(:has(input:checked)) .settings-label {
+    color: var(--muted-color);
+}
+
+#instructions-dialog .prompt-textarea {
+    width: 100%;
+    min-height: 180px;
+    padding: 10px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+    #instructions-dialog .prompt-textarea:focus,
+    #instructions-dialog .temperature-input:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+#instructions-dialog .temperature-input {
+    width: 120px;
+    padding: 6px 10px;
+    margin-top: 10px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 13px;
+    box-sizing: border-box;
+    resize: none;
+}
+
+#instructions-dialog .modal-body::-webkit-scrollbar-corner,
+#instructions-dialog .prompt-textarea::-webkit-scrollbar-corner {
+    width: 14px;
+}
+
+#instructions-dialog .prompt-textarea::-webkit-resizer {
+    background: var(--input-bg);
+}
+
+#instructions-dialog input[type="number"]::-webkit-outer-spin-button, #instructions-dialog input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+}

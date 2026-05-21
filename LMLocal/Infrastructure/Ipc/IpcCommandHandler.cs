@@ -134,6 +134,23 @@ internal static class IpcCommandHandler
                     var res = await factory.ExecuteAsync("Find_Files_By_Name", package, parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
+                else if (string.Equals(cmd, "Find_Symbol_References", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (parts.Length < 3)
+                    {
+                        await writer.WriteLineAsync("MissingSymbolName");
+                        return;
+                    }
+
+                    var symbolName = parts[2];
+                    var parameters = new Dictionary<string, object>
+                    {
+                        { "symbol_name", symbolName }
+                    };
+
+                    var res = await factory.ExecuteAsync("Find_Symbol_References", package, parameters, token);
+                    await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
+                }
                 else
                 {
                     await writer.WriteLineAsync("UnknownToolCommand");

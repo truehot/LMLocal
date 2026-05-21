@@ -60,7 +60,7 @@ class BridgeClient {
         return JSON.parse(res);
     }
 
-    async updateInstructions(instructions) {
+    async updateInstructionsAsync(instructions) {
         const payload = JSON.stringify(instructions);
         return await this._callHost("UpdateInstructionsAsync", payload);
     }

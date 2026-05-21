@@ -35,13 +35,13 @@ class AppDataService {
         return result;
     }
 
-    async getSettings() {
+    async getSettingsAsync() {
         const settings = await bridgeClient.getSettingsAsync();
         settingsStore.setState(settings);
         return settings;
     }
 
-    async updateSettings(newSettings) {
+    async updateSettingsAsync(newSettings) {
         const result = await bridgeClient.updateSettingsAsync(newSettings);
 
         if (result) {
@@ -51,20 +51,24 @@ class AppDataService {
         return result;
     }
 
-    async getInstructions() {
+    async getInstructionsAsync() {
         instructionsStore.setState({
             loading: true,
             error: null
         });
 
         try {
-            const instructions = await bridgeClient.getInstructionsAsync();
+            const result = await bridgeClient.getInstructionsAsync();
+            const tabs = result.tabs || result;
+            const selectedTabId = result.selectedTabId || null;
+
             instructionsStore.setState({
-                instructions,
+                instructions: tabs,
+                selectedTabId: selectedTabId,
                 loading: false,
                 error: null
             });
-            return instructions;
+            return result;
         } catch (error) {
             console.error('Failed to load instructions:', error);
             instructionsStore.setState({
@@ -75,7 +79,7 @@ class AppDataService {
         }
     }
 
-    async updateInstructions(json) {
+    async updateInstructionsAsync(json) {
         instructionsStore.setState({
             loading: true,
             error: null
@@ -84,7 +88,8 @@ class AppDataService {
         try {
             const result = await bridgeClient.updateInstructionsAsync(json);
             instructionsStore.setState({
-                instructions: json,
+                instructions: json.tabs,
+                selectedTabId: json.selectedTabId || null,
                 loading: false,
                 error: null
             });
@@ -99,7 +104,7 @@ class AppDataService {
         }
     }
 
-    async testConnection(details) {
+    async testConnectionAsync(details) {
         return await bridgeClient.testConnection(details);
     }
 }

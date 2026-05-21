@@ -90,6 +90,7 @@
     <Compile Include="Infrastructure\VsIntegration\Implementations\ActiveDocumentTool.cs" />
     <Compile Include="Infrastructure\VsIntegration\Implementations\FileLinesReaderTool.cs" />
     <Compile Include="Infrastructure\VsIntegration\Implementations\FindFilesByNameTool.cs" />
+    <Compile Include="Infrastructure\VsIntegration\Implementations\FindSymbolReferences.cs" />
     <Compile Include="Infrastructure\VsIntegration\Implementations\GetSolutionOverviewTool.cs" />
     <Compile Include="Infrastructure\VsIntegration\Implementations\SolutionSearchTool.cs" />
     <Compile Include="Infrastructure\VsIntegration\ToolDefinition.cs" />
@@ -103,9 +104,17 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\css\codeblock.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\css\toolbar.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\components\chat.component.js">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\js\components\toolbar.component.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -235,10 +244,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\chat\attach.copy.button.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
     <Content Include="Resources\js\dialogs\instructions.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -268,6 +273,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\workers\highlight.parser.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\workers\marked\marked.shared.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -335,7 +344,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\instructions\tabs.json">
+    <Content Include="Resources\json\tabs.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -372,14 +381,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\instructions\instructions.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
-    <Content Include="Resources\js\instructions\shared.instructions.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
     <None Include="jsconfig.json" />
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
@@ -402,8 +403,17 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis">
+      <Version>4.14.0</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp">
+      <Version>4.14.0</Version>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="6.0.0" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServices">
+      <Version>4.14.0</Version>
+    </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" NoWarn="NU1604">
       <IncludeAssets>compile; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -441,9 +451,7 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Resources\json\" />
-  </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets" Condition="'$(VSToolsPath)' != ''" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.

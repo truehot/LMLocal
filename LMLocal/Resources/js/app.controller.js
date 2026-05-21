@@ -3,6 +3,8 @@ import { menuComponent } from '@app/components/menu.component.js';
 import { inputComponent } from '@app/components/input.component.js';
 import { themeComponent } from '@app/components/theme.component.js';
 import { toolbarComponent } from '@app/components/toolbar.component.js';
+import { chatComponent } from '@app/components/chat.component.js';
+
 import chatController from '@app/chat/chat.controller.js';
 import appManager from '@app/store/app.manager.js';
 import { bridgeMessageHandler } from '@app/store/bridge.message.handler.js';
@@ -45,6 +47,7 @@ class AppController {
         inputComponent.setup();
         chatController.setup();
         menuComponent.setup();
+        chatComponent.setup();
 
         this._attachEvents();
 
@@ -64,6 +67,7 @@ class AppController {
         inputComponent.reset();
         chatController.reset();
         menuComponent.reset();
+        chatComponent.reset();
 
         this._initialized = false;
     }
@@ -89,29 +93,36 @@ class AppController {
 
         this._settingsListener = (state, prev) => {
             themeComponent.updateTheme(state, prev);
+            chatComponent.update(state, prev);
         };
         settingsStore.subscribe(this._settingsListener);
 
         themeComponent.setup();
 
-        inputComponent.onClick.on(async (text, hasActiveContent, instructionsMode) => {
+        inputComponent.onClick.on(async (text, hasActiveContent) => {
             const isGenerating = appSelectors.isBusy(appStore.getState().status);
             if (isGenerating) {
                 await appManager.performStop(text);
                 return false;
             } else if (text && text.trim()) {
-                await appManager.performSendMessage(text, hasActiveContent, instructionsMode);
+                await appManager.performSendMessage(text, hasActiveContent);
                 return true;
             }
             return false;
         });
 
-        inputComponent.onEnter.on(async (text, hasActiveContent, instructionsMode) => {
+        inputComponent.onEnter.on(async (text, hasActiveContent) => {
             if (text && text.trim()) {
-                await appManager.performSendMessage(text, hasActiveContent, instructionsMode);
+                await appManager.performSendMessage(text, hasActiveContent);
                 return true;
             }
             return false;
+        });
+
+        inputComponent.onTabChanged.on((tabId) => {
+            instructionsStore.setState({
+                selectedTabId: tabId
+            });
         });
 
         chatController.onCopyCode.on(async (text) => {
@@ -129,23 +140,23 @@ class AppController {
                 case 'open-settings':
                     const settingsDialog = new SettingsDialog();
                     settingsDialog.onLoad.on(async () => {
-                        return await appManager.getSettings();
+                        return await appDataService.getSettingsAsync();
                     });
                     settingsDialog.onTestConnection.on(async (settings) => {
-                        return await appDataService.testConnection(settings);
+                        return await appDataService.testConnectionAsync(settings);
                     });
                     settingsDialog.onSave.on(async (settings) => {
-                        return await appManager.updateSettings(settings);
+                        return await appDataService.updateSettingsAsync(settings);
                     });
                     await settingsDialog.show();
                     return true;
                 case 'open-instructions':
                     const instructionsDialog = new InstructionsDialog();
                     instructionsDialog.onLoad.on(async () => {
-                        return await appManager.getInstructionsAsync();
+                        return await appDataService.getInstructionsAsync();
                     });
                     instructionsDialog.onSave.on(async (json) => {
-                        return await appManager.updateInstructions(json);
+                        return await appDataService.updateInstructionsAsync(json);
                     });
                     await instructionsDialog.show();
                     return true;
@@ -214,6 +225,7 @@ class AppController {
 
         inputComponent.onClick.off();
         inputComponent.onEnter.off();
+        inputComponent.onTabChanged.off();
         chatController.onCopyCode.off();
         menuComponent.onClick.off();
         statusComponent.onRetry.off();

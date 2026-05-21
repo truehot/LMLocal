@@ -3,7 +3,7 @@ namespace LMLocal.Models
     internal class ChatMessage
     {
         /// <summary>
-        /// Role of the message sender. Common values: "user", "assistant", "system", "tool".
+        /// Role of the message sender. Common values: "user", "assistant", "system" (or developer?), "tool".
         /// </summary>
         public string Role { get; }
 

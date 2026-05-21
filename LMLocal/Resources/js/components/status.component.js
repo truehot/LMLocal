@@ -139,12 +139,13 @@ class StatusComponent {
                     } else {
                         this.elements.statusText.classList.add('offline');
                     }
-                    
+
                 }
                 break;
             case AppStatus.INITIALIZING:
             case AppStatus.CONNECTING:
-                this.elements.statusText.textContent = '';
+                this.elements.statusText.classList.add('offline');
+                this.elements.statusText.textContent = UIText[`TEXT_NOT_READY`] || UIText.STATUS_UNKNOWN;
                 break;
             case AppStatus.CLEARING:
                 this.elements.statusText.textContent = UIText.STATUS_CLEARING;

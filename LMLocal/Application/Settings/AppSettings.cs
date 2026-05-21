@@ -57,6 +57,11 @@ namespace LMLocal.Models
         public bool EnableAiTools { get; set; } = false;
 
         /// <summary>
+        /// When true, large code blocks are collapsed to limit height and keep chat history clean.
+        /// </summary>
+        public bool EnableCodeCollapse { get; set; } = false;
+
+        /// <summary>
         /// AI provider backend: "lmstudio" (local), "ollama" (local), or "openai" (custom compatible).
         /// </summary>
         [Required(ErrorMessage = "Provider is required.")]
@@ -74,6 +79,7 @@ namespace LMLocal.Models
                 && StreamInactivityTimeoutSeconds == other.StreamInactivityTimeoutSeconds
                 && EnableChatLogging == other.EnableChatLogging
                 && EnableAiTools == other.EnableAiTools
+                && EnableCodeCollapse == other.EnableCodeCollapse
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase);
         }
@@ -93,6 +99,7 @@ namespace LMLocal.Models
                 hash = hash * 23 + StreamInactivityTimeoutSeconds.GetHashCode();
                 hash = hash * 23 + EnableChatLogging.GetHashCode();
                 hash = hash * 23 + EnableAiTools.GetHashCode();
+                hash = hash * 23 + EnableCodeCollapse.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
                 return hash;

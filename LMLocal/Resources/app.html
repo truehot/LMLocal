@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://app.local/css/app.css">
     <link rel="stylesheet" href="https://app.local/css/dialog.css">
     <link rel="stylesheet" href="https://app.local/css/toolbar.css">
+    <link rel="stylesheet" href="https://app.local/css/codeblock.css">
 </head>
 <body>
 
@@ -31,7 +32,7 @@
             </button>
 
             <div id="dropdown-menu" class="dropdown-content">
-                <button data-action="open-instructions" style="display:none">
+                <button data-action="open-instructions">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
                         <path fill-rule="evenodd" d="M2.667 4h10.666C14.066 4 15 4.934 15 6.083v5.834c0 1.15-.934 2.083-2.667 2.083H7.5L4.167 16v-2H2.667C1.534 14 .667 13.067.667 11.917V6.083C.667 4.934 1.6 4 2.667 4zm0 1c-.367 0-.667.3-.667.667v5.833c0 .367.3.667.667.667H5v2l2.5-2h5.833c.367 0 .667-.3.667-.667V5.667c0-.367-.3-.667-.667-.667H2.667z" />
                     </svg>
@@ -69,7 +70,7 @@
             <textarea id="userInput" placeholder="Ask LMLocal..." rows="1" autofocus></textarea>
             <div class="input-footer">
                 <div class="input-footer-left">
-                    <div class="dropdown" id="actionDropdown" style="display:none">
+                    <div class="dropdown" id="actionDropdown">
                         <button type="button" class="btn-action dropdown-trigger" title="AI instructions mode">
                             <span id="selectedOption">None</span>
                             <span class="arrow">▾</span>
@@ -198,6 +199,15 @@
                         <span class="checkbox-content-wrapper">
                             <span class="checkbox-title">Enable chat logging</span>
                             <span class="checkbox-description">Saves all conversations to disk. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code></span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="EnableCodeCollapse">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Collapse large code blocks</span>
+                            <span class="checkbox-description">Limit the height of long code snippets to keep the chat history clean.</span>
                         </span>
                     </label>
                 </div>

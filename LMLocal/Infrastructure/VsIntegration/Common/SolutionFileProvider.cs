@@ -36,22 +36,14 @@ namespace LMLocal.Infrastructure.Vs.Common
             if (_solution.GetProjectEnum((uint)__VSENUMPROJFLAGS.EPF_LOADEDINSOLUTION, ref guid, out IEnumHierarchies enumHier) != VSConstants.S_OK)
                 return result;
 
-            try
-            {
-                IVsHierarchy[] hier = new IVsHierarchy[1];
+            IVsHierarchy[] hier = new IVsHierarchy[1];
 
-                while (enumHier.Next(1, hier, out uint fetched) == VSConstants.S_OK && fetched == 1)
-                {
-                    var h = hier[0];
-                    if (h == null) continue;
-
-                    result.AddRange(EnumerateHierarchyItems(h, VSConstants.VSITEMID_ROOT));
-                }
-            }
-            finally
+            while (enumHier.Next(1, hier, out uint fetched) == VSConstants.S_OK && fetched == 1)
             {
-                if (enumHier != null && Marshal.IsComObject(enumHier))
-                    Marshal.ReleaseComObject(enumHier);
+                var h = hier[0];
+                if (h == null) continue;
+
+                result.AddRange(EnumerateHierarchyItems(h, VSConstants.VSITEMID_ROOT));
             }
 
             return result;

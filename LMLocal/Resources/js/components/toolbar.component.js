@@ -1,6 +1,9 @@
 import { createCallback } from '@app/lib/callback.js';
 import { AppStatus } from '@app/store/app.status.js';
 
+/**
+ * ToolbarComponent - manages the toolbar UI: displays model name, token usage and connection status.
+ */
 class ToolbarComponent {
     constructor() {
         this.elements = {};
@@ -16,7 +19,7 @@ class ToolbarComponent {
             separator: document.getElementById('status-separator'),
             tokenBarFill: document.getElementById('token-bar-fill'),
             barInfoTooltip: document.getElementById('info-tooltip'),
-            modelInfo : document.getElementById('model-info')
+            modelInfo: document.getElementById('model-info')
         };
     }
 

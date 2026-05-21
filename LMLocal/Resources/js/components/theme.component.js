@@ -12,6 +12,10 @@ const themeMap = {
     1: 'hljs.light.css'
 };
 
+/**
+ * ThemeComponent - manages the page theme and highlight.js stylesheet.
+ */
+
 class ThemeComponent {
     setup() {
         const currentSettings = { Theme: 0 };

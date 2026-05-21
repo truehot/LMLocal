@@ -1,5 +1,4 @@
-﻿import { attachCopyButton } from '@app/chat/attach.copy.button.js';
-/**
+﻿/**
  * Factory that creates an message DOM element, caches its internal blocks,
  * and returns an API to manipulate the message.
  */
@@ -96,7 +95,6 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
                     }
 
                     if (responseContainer?.isConnected) {
-                        attachCopyButton(responseContainer);
                         elements.responseContainer.classList.remove('is-generating');
                     }
 

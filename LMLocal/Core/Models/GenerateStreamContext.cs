@@ -21,5 +21,10 @@ namespace LMLocal.Models
         /// Id of the model to execute the prompt on.
         /// </summary>
         public string ModelId { get; set; }
+
+        /// <summary>
+        /// Temperature setting for the model. Controls randomness of output. Optional.
+        /// </summary>
+        public double? Temperature { get; set; }
     }
 }

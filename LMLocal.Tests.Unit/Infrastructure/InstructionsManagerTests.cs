@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure;
 using LMLocal.Services;
+using LMLocal.Models;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure
@@ -15,8 +16,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public async Task GetAsync_ReturnsEmptyObject_WhenFileMissing()
         {
             var fs = new InMemoryFileSystem();
-            var path = "instructions.json";
-            var manager = new InstructionsManager(path, fs);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var manager = new InstructionsManager(fs, settings);
+            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
             var result = await manager.GetAsync();
             Assert.That(result, Is.EqualTo("{}"));
         }
@@ -25,10 +27,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public async Task GetAsync_ReturnsContent_WhenFileExists()
         {
             var fs = new InMemoryFileSystem();
-            var path = "instructions.json";
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
             var content = "{\"k\":\"v\"}";
-            await fs.WriteAllBytesAsync(path, Encoding.UTF8.GetBytes(content));
-            var manager = new InstructionsManager(path, fs);
+            await fs.WriteAllBytesAsync(expectedPath, Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
             var result = await manager.GetAsync();
             Assert.That(result, Is.EqualTo(content));
         }
@@ -37,9 +40,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public async Task GetAsync_ReturnsEmptyObject_OnReadError()
         {
             var fs = new ThrowingReadFileSystem();
-            var path = "instructions.json";
-            await fs.WriteAllBytesAsync(path, Encoding.UTF8.GetBytes("{}"));
-            var manager = new InstructionsManager(path, fs);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, Encoding.UTF8.GetBytes("{}"));
+            var manager = new InstructionsManager(fs, settings);
             var result = await manager.GetAsync();
             Assert.That(result, Is.EqualTo("{}"));
         }
@@ -48,11 +52,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public async Task UpdateAsync_WritesContent_WhenValidJson()
         {
             var fs = new InMemoryFileSystem();
-            var path = "instructions.json";
-            var manager = new InstructionsManager(path, fs);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            var manager = new InstructionsManager(fs, settings);
             var json = "{\"a\":1}";
             await manager.UpdateAsync(json);
-            var stored = fs.ReadAllText(path);
+            var stored = fs.ReadAllText(expectedPath);
             Assert.That(stored, Is.EqualTo(json));
         }
 
@@ -60,13 +65,14 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public async Task UpdateAsync_WritesEmptyObject_WhenInputNullOrWhitespace()
         {
             var fs = new InMemoryFileSystem();
-            var path = "instructions.json";
-            var manager = new InstructionsManager(path, fs);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            var manager = new InstructionsManager(fs, settings);
             await manager.UpdateAsync(null);
-            var stored = fs.ReadAllText(path);
+            var stored = fs.ReadAllText(expectedPath);
             Assert.That(stored, Is.EqualTo("{}"));
             await manager.UpdateAsync("   ");
-            stored = fs.ReadAllText(path);
+            stored = fs.ReadAllText(expectedPath);
             Assert.That(stored, Is.EqualTo("{}"));
         }
 
@@ -74,8 +80,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void UpdateAsync_ThrowsInvalidOperationException_OnInvalidJson()
         {
             var fs = new InMemoryFileSystem();
-            var path = "instructions.json";
-            var manager = new InstructionsManager(path, fs);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var manager = new InstructionsManager(fs, settings);
             Assert.That(async () => await manager.UpdateAsync("not json"), Throws.InstanceOf<InvalidOperationException>());
         }
 
@@ -83,10 +89,35 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void Constructor_ValidatesPath_And_EnsuresDirectory()
         {
             var spy = new SpyFileSystem();
-            var path = "instructions.json";
-            var _ = new InstructionsManager(path, spy);
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var _ = new InstructionsManager(spy, settings);
             Assert.That(spy.ValidateCalled, Is.True);
             Assert.That(spy.EnsureDirectoryCalled, Is.True);
+        }
+
+        private class TestSettingsManager : ISettingsManager
+        {
+            public AppSettings Current => new AppSettings();
+            public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+            public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            #pragma warning disable 0067 // event required by interface but not used in tests
+            public event Action<AppSettings> SettingsChanged;
+            #pragma warning restore 0067
+
+            public string ApplicationName => "LMLocalChat";
+            public string SettingsFileName => "settings.json";
+            public string LocalAppDataFolder { get; set; } = "LMLocalChat";
+            public string LocalAppSettingFileName => "settings.json";
+            public string LocalAppInstructionsFileName { get; set; } = "instructions.json";
+            public string WebViewUserDataFolder => "WebViewData";
+            public string ChatHistoryFolder => "ChatHistory";
+            public string ChatHistoryFilePrefix => "chat_";
+            public string HtmlResourcePath => "Resources/app.html";
+            public string VirtualHostName => "app.local";
+            public string SystemPrompt => string.Empty;
+            public int BatchIntervalMs => 100;
+            public int WindowSeconds => 5;
+            public int RequestTimeoutSeconds => 15;
         }
 
         private class ThrowingReadFileSystem : IFileSystem

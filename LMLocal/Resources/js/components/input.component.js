@@ -15,6 +15,7 @@ class InputComponent {
 
         this.onClick = createCallback();
         this.onEnter = createCallback();
+        this.onTabChanged = createCallback();
     }
 
     _getElements() {
@@ -46,8 +47,7 @@ class InputComponent {
             e.preventDefault();
             const value = this.elements.userInput?.value;
             const hasActiveContent = this.elements.contextToggleBtn.classList.contains('active');
-            const instructionsMode = this.elements.selectedOption?.getAttribute('data-selected');
-            if (await this.onEnter.emit(value, hasActiveContent, instructionsMode)) {
+            if (await this.onEnter.emit(value, hasActiveContent)) {
                 this.clearInput();
             }
         }
@@ -56,8 +56,7 @@ class InputComponent {
     _handleClick = async () => {
         const value = this.elements.userInput?.value;
         const hasActiveContent = this.elements.contextToggleBtn.classList.contains('active');
-        const instructionsMode = this.elements.selectedOption?.getAttribute('data-selected');
-        if (await this.onClick.emit(value, hasActiveContent, instructionsMode)) {
+        if (await this.onClick.emit(value, hasActiveContent)) {
             this.clearInput();
         }
     };
@@ -76,16 +75,20 @@ class InputComponent {
     _handleDropdownItemClick = (e) => {
         const item = e.target.closest && e.target.closest('.dropdown-item');
         if (!item) return;
-        const value = item.textContent || '';
+
+        const tabId = item.getAttribute('data-value');
+        const displayName = item.textContent || '';
         const selected = this.elements.selectedOption;
         const dropdown = this.elements.dropdown;
+
         if (selected) {
-            selected.textContent = value;
-            selected.setAttribute('data-selected', item.getAttribute('data-value'));
+            selected.textContent = displayName;
         }
         if (dropdown) {
             dropdown.classList.remove('active');
         }
+
+        this.onTabChanged.emit(tabId);
     };
 
     _attachEvents() {
@@ -190,47 +193,46 @@ class InputComponent {
     updateInstructionsState(state, prev) {
         if (!this.elements.dropdownMenu || !this.elements.selectedOption) return;
 
-        if (state.instructions === prev?.instructions) return;
+        if (state.instructions === prev?.instructions && state.selectedTabId === prev?.selectedTabId) return;
 
-        const instructions = state.instructions || {};
-        const tabs = instructions.tabs || [];
+        const instructions = state.instructions || [];
+        const selectedTabId = state.selectedTabId;
 
-        if (tabs.length === 0) {
+        if (!instructions || instructions.length === 0) {
             return;
         }
 
-        const enabledTabs = tabs.filter(tab => tab.enabled === true);
-        const currentItems = this.elements.dropdownMenu.querySelectorAll('.dropdown-item');
+        this.elements.dropdownMenu.innerHTML = '';
 
-        if (currentItems.length !== enabledTabs.length) {
-            this.elements.dropdownMenu.innerHTML = '';
+        let defaultTab = null;
+        let tabToSelect = null;
 
-            enabledTabs.forEach(tab => {
+        for (const tab of instructions) {
+            if (tab.enabled) {
                 const item = document.createElement('div');
                 item.className = 'dropdown-item';
-                item.setAttribute('data-value', tab.name);
+                item.setAttribute('data-value', tab.id);
                 item.textContent = tab.displayName;
                 this.elements.dropdownMenu.appendChild(item);
-            });
-        } else {
-            currentItems.forEach(item => {
-                const dataValue = item.getAttribute('data-value');
-                item.style.display = enabledTabs.some(t => t.name === dataValue) ? 'block' : 'none';
-            });
+
+                if (selectedTabId && tab.id == selectedTabId) {
+                    tabToSelect = tab;
+                }
+                if (!defaultTab) {
+                    defaultTab = tab;
+                }
+            }
         }
 
-        const currentSelected = this.elements.selectedOption.getAttribute('data-selected');
-        const defaultTab = tabs.find(t => t.isDefault === true);
-        const firstEnabledTab = enabledTabs[0];
+        if (!tabToSelect && defaultTab) {
+            tabToSelect = defaultTab;
+        }
 
-        if (!currentSelected || !tabs.some(t => t.name === currentSelected)) {
-            if (defaultTab && enabledTabs.some(t => t.name === defaultTab.name)) {
-                this.elements.selectedOption.textContent = defaultTab.displayName;
-                this.elements.selectedOption.setAttribute('data-selected', defaultTab.name);
-            } else if (firstEnabledTab) {
-                this.elements.selectedOption.textContent = firstEnabledTab.displayName;
-                this.elements.selectedOption.setAttribute('data-selected', firstEnabledTab.name);
-            }
+        if (tabToSelect) {
+            this.elements.selectedOption.textContent = tabToSelect.displayName;
+            this.elements.dropdown.style.display = "block";
+        } else {
+            this.elements.dropdown.style.display = "none";
         }
     }
 };
