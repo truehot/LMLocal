@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@app/dialogs/confirm.dialog.js';
 import { SettingsDialog } from '@app/dialogs/settings.dialog.js';
 import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
+import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { UIText } from '@app/store/app.globals.js';
 
 /**
@@ -159,6 +160,19 @@ class AppController {
                         return await appDataService.updateInstructionsAsync(json);
                     });
                     await instructionsDialog.show();
+                    return true;
+                case 'mcp-settings':
+                    const mcpDialog = new McpSettingsDialog();
+                    mcpDialog.onLoad.on(async () => {
+                        return await appDataService.getMcpConfigAsync();
+                    });
+                    mcpDialog.onTestConnection.on(async (payload) => {
+                        return await appDataService.testMcpConnectionAsync(payload);
+                    });
+                    mcpDialog.onSave.on(async (config) => {
+                        return await appDataService.updateMcpConfigAsync(config);
+                    });
+                    await mcpDialog.show();
                     return true;
                 default:
                     return false;

@@ -6,7 +6,7 @@ class InstructionsModeManager {
     }
 
     async load() {
-        const response = await fetch('https://app.local/json/tabs.json');
+        const response = await fetch('https://app.local/json/instruction-tabs.json');
         const data = await response.json();
         this.modes = data.tabs || [];
     }

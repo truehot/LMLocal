@@ -107,6 +107,18 @@ class AppDataService {
     async testConnectionAsync(details) {
         return await bridgeClient.testConnection(details);
     }
+
+    async getMcpConfigAsync() {
+        return await bridgeClient.getMcpConfigAsync();
+    }
+
+    async updateMcpConfigAsync(config) {
+        return await bridgeClient.updateMcpConfigAsync(config);
+    }
+
+    async testMcpConnectionAsync(payload) {
+        return await bridgeClient.testMcpConnectionAsync(payload);
+    }
 }
 
 const appDataService = new AppDataService();

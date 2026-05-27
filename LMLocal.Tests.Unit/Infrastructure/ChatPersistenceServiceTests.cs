@@ -1,9 +1,10 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
 using Moq;
 using NUnit.Framework;
 

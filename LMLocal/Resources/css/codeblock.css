@@ -117,6 +117,10 @@ pre {
 }
 
 .layout-collapsed-code .code-block-container .code-toggle-btn {
+    display: none;
+}
+
+.layout-collapsed-code .code-block-container.has-overflow .code-toggle-btn {
     display: flex;
 }
 

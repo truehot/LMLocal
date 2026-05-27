@@ -68,11 +68,12 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\JanModelsResponse.cs" />
     <Compile Include="Infrastructure\DependencyInjection\ServiceConfiguration.cs" />
-    <Compile Include="Infrastructure\LlmApi\HttpClientWrapper.cs" />
+    <Compile Include="Infrastructure\Http\HttpClientWrapper.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ModelProvider.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ModelResponseConverter.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\ListModelsResponse.cs" />
@@ -80,23 +81,37 @@
     <Compile Include="Infrastructure\LlmApi\Responses\OllamaPsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Abstractions\IVsTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\SolutionFileProvider.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\PathResolver.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\SolutionInspector.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\VsSolutionFilesScanner.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\VsDependencies.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Common\VsUiThreadGuard.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\ActiveDocumentTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\FileLinesReaderTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\FindFilesByNameTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\FindSymbolReferences.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\GetSolutionOverviewTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\Implementations\SolutionSearchTool.cs" />
-    <Compile Include="Infrastructure\VsIntegration\ToolDefinition.cs" />
-    <Compile Include="Infrastructure\VsIntegration\VsToolFactory.cs" />
-    <Compile Include="Infrastructure\LlmApi\ModelContext.cs" />
-    <Compile Include="Infrastructure\LlmApi\MessageContext.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByNameTool.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Models\McpServerStatus.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Models\McpToolDefinition.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Client\HttpMcpClient.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Abstractions\IMcpClient.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Abstractions\IMcpToolManager.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Client\McpClientBase.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Client\SseStreamParser.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Client\StdioMcpClient.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\McpDynamicTool.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\McpConfigManager.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Models\McpToolInfo.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\McpToolManager.cs" />
+    <Compile Include="Infrastructure\Tooling\Mcp\Models\JsonRpcModels.cs" />
+    <Compile Include="Infrastructure\Tooling\Abstractions\ITool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\BuiltInVsToolProvider.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionFileProvider.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PathResolver.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionInspector.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsSolutionFilesScanner.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsDependencies.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsUiThreadGuard.cs" />
+    <Compile Include="Infrastructure\Tooling\CompositeToolFactory.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ActiveDocumentTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileLinesReaderTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindSymbolReferences.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSolutionOverviewTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SolutionSearchTool.cs" />
+    <Compile Include="Infrastructure\Tooling\Abstractions\ToolDefinition.cs" />
+    <Compile Include="Core\Models\ModelContext.cs" />
+    <Compile Include="Core\Models\MessageContext.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\SendChatResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Requests\SendChatRequest.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\StreamingResponse.cs" />
@@ -120,6 +135,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\dialogs\mcp.settings.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\dialogs\models.list.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -132,6 +151,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2MessageType.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ScriptMessage.cs" />
@@ -147,19 +167,19 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Compile Include="Application\Chat\ChatPersistenceService.cs" />
+    <Compile Include="Infrastructure\Persistence\ChatPersistenceService.cs" />
     <Compile Include="Infrastructure\Persistence\DefaultFileSystem.cs" />
     <Compile Include="Application\ChatSession\ChatSessionOrchestrator.cs" />
     <Compile Include="Application\ChatSession\ChatSessionOrchestratorFactory.cs" />
     <Compile Include="Application\ChatSession\ChatSessionState.cs" />
     <Compile Include="Application\ChatSession\SessionManager.cs" />
     <Compile Include="Application\ChatSession\SessionStateContext.cs" />
-    <Compile Include="Application\Instructions\InstructionsManager.cs" />
+    <Compile Include="Infrastructure\Instructions\InstructionsManager.cs" />
     <Compile Include="Core\Common\JsonExtensions.cs" />
-    <Compile Include="Application\Models\ModelsListService.cs" />
-    <Compile Include="Application\Settings\AppSettings.cs" />
-    <Compile Include="Application\Settings\AppTheme.cs" />
-    <Compile Include="Application\Settings\SettingsManager.cs" />
+    <Compile Include="Application\ModelsList\ModelsListService.cs" />
+    <Compile Include="Core\Models\AppSettings.cs" />
+    <Compile Include="Core\Models\AppTheme.cs" />
+    <Compile Include="Infrastructure\Settings\SettingsManager.cs" />
     <Compile Include="Core\Models\ActiveModelContext.cs" />
     <Compile Include="Application\ChatSessionStream\ChatStreamService.cs" />
     <Compile Include="Application\Chat\ChatHistoryManager.cs" />
@@ -169,16 +189,16 @@
     <Compile Include="Core\Models\StreamChunk.cs" />
     <Compile Include="Application\Chat\HistoryCompactor.cs" />
     <Compile Include="Core\Common\InternalLogger.cs" />
-    <Compile Include="Application\ChatSessionStream\LlmSseParser.cs" />
+    <Compile Include="Infrastructure\Streaming\LlmSseParser.cs" />
     <Compile Include="Infrastructure\LlmApi\OpenApiAdapter.cs" />
     <Compile Include="Core\Common\MarkdownStripper.cs" />
     <Compile Include="Core\Models\StreamCompletionResult.cs" />
-    <Compile Include="Application\ChatSessionStream\StreamInactivityWatcher.cs" />
+    <Compile Include="Infrastructure\Streaming\StreamInactivityWatcher.cs" />
     <Compile Include="Application\ChatSessionStream\StreamProcessor.cs" />
     <Compile Include="Infrastructure\Time\SystemTimeProvider.cs" />
     <Compile Include="Core\Models\TokenGenerationStats.cs" />
     <Compile Include="Application\ChatSessionStream\StreamProcessorFactory.cs" />
-    <Compile Include="Application\ChatSessionStream\TokenSpeedCalculator.cs" />
+    <Compile Include="Infrastructure\Streaming\TokenSpeedCalculator.cs" />
     <Compile Include="Infrastructure\WebView\WebViewScriptExecutor.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridge.cs" />
     <Compile Include="MainWindow.cs" />
@@ -280,14 +300,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\workers\md4x\md4x.bundle.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
-    <Content Include="Resources\js\workers\md4x\md4x.worker.client.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
     <Content Include="Resources\js\workers\highlight\highlight.min.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -344,7 +356,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\json\tabs.json">
+    <Content Include="Resources\json\instruction-tabs.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -377,10 +389,6 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Resources\js\workers\md4x\md4x.wasm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
     <None Include="jsconfig.json" />
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>

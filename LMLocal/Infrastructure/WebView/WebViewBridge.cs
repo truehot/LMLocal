@@ -1,12 +1,20 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSession;
+using LMLocal.Application.ModelsList;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Vs.Implementations;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Instructions;
+using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
-using LMLocal.Services;
-using LMLocal.Services.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Infrastructure.WebView
@@ -27,6 +35,9 @@ namespace LMLocal.Infrastructure.WebView
         Task<string> GetInstructionsAsync();
         Task<bool> UpdateInstructionsAsync(string newInstructionsJson);
         Task<string> TestConnectionAsync(string payload);
+        Task<string> GetMcpConfigAsync();
+        Task<bool> UpdateMcpConfigAsync(string newMcpConfigJson);
+        Task<string> TestMcpConnectionAsync(string payload);
     }
 
 
@@ -37,18 +48,21 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IModelsListService _modelsListService;
         private readonly IWebViewScriptExecutor _scriptExecutor;
         private readonly IInstructionsManager _instructionsManager;
+        private readonly IMcpConfigManager _mcpConfigManager;
+        private readonly IMcpToolManager _mcpToolManager;
         private readonly ISettingsManager _settingsManager;
         private readonly IActiveDocumentTool _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
 
-
         internal WebViewBridge(
             ISettingsManager settingsManager,
             IModelsListService modelsListService,
             IWebViewScriptExecutor scriptExecutor,
             IInstructionsManager instructionsManager,
+            IMcpConfigManager mcpConfigManager,
+            IMcpToolManager mcpToolManager,
             IActiveDocumentTool activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
@@ -62,6 +76,8 @@ namespace LMLocal.Infrastructure.WebView
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
             _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
+            _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
+            _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
         }
 
         /// <summary>
@@ -289,9 +305,9 @@ namespace LMLocal.Infrastructure.WebView
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(requestTimeout)))
                 {
                     bool success = await _modelsListService.TestConnectionAsync(
-                        request.Url, 
-                        request.Provider, 
-                        request.ApiKey ?? string.Empty, 
+                        request.Url,
+                        request.Provider,
+                        request.ApiKey ?? string.Empty,
                         cts.Token
                     ).ConfigureAwait(false);
 
@@ -303,6 +319,135 @@ namespace LMLocal.Infrastructure.WebView
                 InternalLogger.Error("TestConnectionAsync failed", ex);
                 return new { success = false, error = ex.Message }.ToJson();
             }
+        }
+
+        public async Task<string> GetMcpConfigAsync()
+        {
+            try
+            {
+                var config = await _mcpConfigManager.GetAsync().ConfigureAwait(false);
+                return config?.ToJson() ?? "{}";
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetMcpConfigAsync failed", ex);
+                return "{}";
+            }
+        }
+
+        public async Task<bool> UpdateMcpConfigAsync(string newMcpConfigJson)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(newMcpConfigJson))
+                {
+                    return false;
+                }
+
+                var config = newMcpConfigJson.FromJson<McpConfigFile>();
+                if (config == null)
+                {
+                    return false;
+                }
+
+                await _mcpConfigManager.UpdateAsync(config).ConfigureAwait(false);
+
+                try
+                {
+                    await _mcpToolManager.RefreshServersAsync(config, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    InternalLogger.Info("MCP servers refreshed after configuration update");
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"Failed to refresh MCP servers after config update: {ex.Message}");
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("UpdateMcpConfigAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<string> TestMcpConnectionAsync(string payload)
+        {
+            var response = new McpTestConnectionResponse();
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(payload))
+                {
+                    response.Error = "Payload is required";
+                    return response.ToJson();
+                }
+
+                var config = payload.FromJson<McpConfigFile>();
+                if (config == null)
+                {
+                    response.Error = "Invalid MCP configuration format";
+                    return response.ToJson();
+                }
+
+                var serversConfig = config.GetServersConfig();
+                if (serversConfig?.Servers == null || serversConfig.Servers.Count == 0)
+                {
+                    response.Error = "No servers configured in MCP config";
+                    return response.ToJson();
+                }
+
+                var requestTimeout = _settingsManager.RequestTimeoutSeconds;
+
+                foreach (var serverEntry in serversConfig.Servers)
+                {
+                    var serverName = serverEntry.Key;
+                    var serverConfig = serverEntry.Value;
+                    var result = new McpServerTestResult { ServerName = serverName };
+
+                    try
+                    {
+                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(requestTimeout)))
+                        {
+                            var tools = await _mcpToolManager.TestConnectionAsync(serverConfig, cts.Token)
+                                .ConfigureAwait(false);
+
+                            result.Tools = new List<DiscoveredTool>();
+                            foreach (var t in tools)
+                            {
+                                result.Tools.Add(new DiscoveredTool
+                                {
+                                    Name = t.Name,
+                                    Description = t.Description
+                                });
+                            }
+                            response.HasSuccesses = true;
+                        }
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        InternalLogger.Error($"TestMcpConnectionAsync timed out for server '{serverName}'", ex);
+                        result.Error = $"Connection timed out after {requestTimeout} seconds";
+                        response.HasErrors = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        InternalLogger.Error($"TestMcpConnectionAsync failed for server '{serverName}'", ex);
+                        result.Error = ex.Message;
+                        response.HasErrors = true;
+                    }
+
+                    response.Servers.Add(result);
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("TestMcpConnectionAsync failed with unexpected error", ex);
+                response.Error = $"Unexpected error: {ex.Message}";
+            }
+
+            return response.ToJson();
         }
     }
 }

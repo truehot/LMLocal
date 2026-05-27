@@ -79,6 +79,8 @@
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
     <Compile Include="Infrastructure\InstructionsManagerTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientTests.cs" />
+    <Compile Include="Infrastructure\Mcp\HttpMcpClientTests.cs" />
+    <Compile Include="Infrastructure\Mcp\SseStreamParserTests.cs" />
     <Compile Include="Infrastructure\ModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\OpenApiAdapterHighPriorityTests.cs" />
     <Compile Include="Infrastructure\PathHelperTests.cs" />
@@ -90,6 +92,7 @@
     <Compile Include="Infrastructure\SystemTimeProviderTests.cs" />
     <Compile Include="Infrastructure\TestHttpClientWrapper.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
+    <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
     <Compile Include="Infrastructure\Vs\VsToolFactoryTests.cs" />
@@ -132,6 +135,7 @@
       <Name>LMLocal</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

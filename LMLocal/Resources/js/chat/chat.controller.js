@@ -211,6 +211,13 @@ class ChatController {
                 this.setup(); // Re-setup to reinitialize everything after clearing.
 
                 break;
+
+            case AppStatus.IDLE:
+                if (this.currentAi && prev.status !== AppStatus.IDLE) {
+                    this.currentAi.stopLoadingIndicator();
+                }
+                break;
+
         }
     }
 

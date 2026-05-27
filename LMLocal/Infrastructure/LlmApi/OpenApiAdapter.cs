@@ -5,10 +5,12 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api.Requests;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -30,13 +32,13 @@ namespace LMLocal.Infrastructure.Api
     {
         private readonly IHttpClientWrapper _httpClientWrapper;
         private readonly ISettingsManager _settingsManager;
-        private readonly IVsToolFactory _toolFactory;
+        private readonly ICompositeToolFactory _toolFactory;
         private const string DefaultBaseUrl = "http://localhost:1234";
 
         public OpenApiAdapter(
             IHttpClientWrapper httpClientWrapper,
             ISettingsManager settingsManager,
-            IVsToolFactory toolFactory)
+            ICompositeToolFactory toolFactory)
         {
             _httpClientWrapper = httpClientWrapper ?? throw new ArgumentNullException(nameof(httpClientWrapper));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
@@ -57,9 +59,13 @@ namespace LMLocal.Infrastructure.Api
         public async Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(baseUrl))
+            {
                 baseUrl = GetBaseUrl();
+            }
             else
+            {
                 baseUrl = baseUrl.TrimEnd('/');
+            }
 
             if (string.IsNullOrEmpty(apiKey))
                 apiKey = _settingsManager.Current?.ApiKey;

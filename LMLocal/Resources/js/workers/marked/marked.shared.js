@@ -27,6 +27,14 @@ function escapeHtml(str) {
     return result;
 }
 
+function countLines(str) {
+    let count = 1; 
+    for (let i = 0; i < str.length; i++) {
+        if (str[i] === '\n') count++;
+    }
+    return count;
+}
+
 
 const COPY_LABEL = 'Copy';
 const COPY_BUTTON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -37,10 +45,11 @@ function renderCodeBlock(block) {
     let lang = block.lang || 'text';
     if (['undefined', 'null', 'unknown'].includes(lang)) lang = 'text';
     const code = block.text;
+    const hasOverflowClass = countLines(code) > 18 ? 'has-overflow' : '';
     const finalCode = escapeHtml(code);
 
     return `
-        <div class="code-block-container">
+        <div class="code-block-container ${hasOverflowClass}">
             <div class="code-header">
                 <span class="code-lang">${escapeHtml(lang)}</span>
                 <button class="header-copy-btn">

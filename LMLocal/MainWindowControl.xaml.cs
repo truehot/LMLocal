@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Threading;
@@ -8,10 +7,8 @@ using System.Windows;
 using System.Windows.Controls;
 using LMLocal.Common;
 using LMLocal.Infrastructure.DependencyInjection;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Abstractions;
+using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Services;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.Web.WebView2.Core;
 
@@ -52,8 +49,6 @@ namespace LMLocal
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-
-
             try
             {
 
@@ -83,7 +78,6 @@ namespace LMLocal
                     resourcesPath,
                     CoreWebView2HostResourceAccessKind.Allow
                 );
-
 
                 var bridge = webViewBridgeFactory.CreateBridge(chatBrowser.CoreWebView2);
                 chatBrowser.CoreWebView2.AddHostObjectToScript("bridge", bridge);
@@ -131,7 +125,7 @@ namespace LMLocal
         private string GetHtmlFromResource(string resourceName)
         {
             var uri = new Uri($"/{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name};component/{resourceName}", UriKind.Relative);
-            var streamInfo = Application.GetResourceStream(uri) ?? throw new InvalidOperationException("Resource not found: " + resourceName);
+            var streamInfo = System.Windows.Application.GetResourceStream(uri) ?? throw new InvalidOperationException("Resource not found: " + resourceName);
             using (var reader = new System.IO.StreamReader(streamInfo.Stream))
             {
                 return reader.ReadToEnd();
@@ -206,11 +200,8 @@ namespace LMLocal
         }}
     }})();
 ";
-
             _ = chatBrowser.CoreWebView2.ExecuteScriptAsync(script);
         }
-
-
 
         private string GetKeyName(int keyCode)
         {

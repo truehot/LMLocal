@@ -1,7 +1,6 @@
-using System;
 using System.Collections.Generic;
 
-namespace LMLocal.Models
+namespace LMLocal.Core.Models
 {
     /// <summary>
     /// Complete result of a stream processing operation.

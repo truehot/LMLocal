@@ -70,6 +70,22 @@ class BridgeClient {
         var result = await this._callHost("TestConnectionAsync", payload);
         return JSON.parse(result);
     }
+
+    async getMcpConfigAsync() {
+        const res = await this._callHost("GetMcpConfigAsync");
+        return JSON.parse(res);
+    }
+
+    async updateMcpConfigAsync(mcpConfig) {
+        const payload = JSON.stringify(mcpConfig);
+        return await this._callHost("UpdateMcpConfigAsync", payload);
+    }
+
+    async testMcpConnectionAsync(payload) {
+        const payloadJson = JSON.stringify(payload);
+        const result = await this._callHost("TestMcpConnectionAsync", payloadJson);
+        return JSON.parse(result);
+    }
 }
 
 const bridgeClient = new BridgeClient();

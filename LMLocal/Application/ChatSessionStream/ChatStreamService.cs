@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
 using LMLocal.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
-using LMLocal.Models;
+using LMLocal.Infrastructure.Settings;
 
-namespace LMLocal.Services
+namespace LMLocal.Application.ChatSessionStream
 {
     /// <summary>
     /// Manages streaming generation of chat responses from the LM backend.

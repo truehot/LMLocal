@@ -1,0 +1,93 @@
+using System;
+using System.IO;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using LMLocal.Infrastructure.Settings;
+using Newtonsoft.Json.Linq;
+
+
+namespace LMLocal.Infrastructure.Instructions
+{
+    /// <summary>
+    /// Simple manager for instructions stored in a local JSON file.
+    /// </summary>
+    public interface IInstructionsManager
+    {
+        Task<string> GetAsync(CancellationToken cancellationToken = default);
+        Task UpdateAsync(string jsonInstructions, CancellationToken cancellationToken = default);
+    }
+
+    internal class InstructionsManager : IInstructionsManager
+    {
+        private readonly string _filePath;
+        private readonly IFileSystem _fileSystem;
+        private readonly ISettingsManager _settingsManager;
+        private readonly SemaphoreSlim _fileLock = new SemaphoreSlim(1, 1);
+
+        public InstructionsManager(IFileSystem fileSystem, ISettingsManager settingsManager)
+        {
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
+
+            var filePath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    _settingsManager?.LocalAppDataFolder ?? "LMLocalChat",
+                    _settingsManager?.LocalAppInstructionsFileName ?? "instructions.json"
+                );
+
+
+            _fileSystem.ValidateFilePath(filePath);
+            _fileSystem.EnsureDirectoryExistsForFile(filePath);
+            _filePath = filePath;
+        }
+
+        public async Task<string> GetAsync(CancellationToken cancellationToken = default)
+        {
+            await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (!_fileSystem.FileExists(_filePath))
+                    return "{}";
+
+                return await _fileSystem.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error reading instructions: {ex}");
+                return "{}";
+            }
+            finally
+            {
+                _fileLock.Release();
+            }
+        }
+
+        public async Task UpdateAsync(string jsonInstructions, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(jsonInstructions))
+                jsonInstructions = "{}";
+
+            try
+            {
+                JObject.Parse(jsonInstructions);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Invalid JSON format: {ex.Message}", ex);
+            }
+
+            byte[] data = Encoding.UTF8.GetBytes(jsonInstructions);
+
+            await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _fileSystem.WriteAllBytesAsync(_filePath, data, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _fileLock.Release();
+            }
+        }
+    }
+}

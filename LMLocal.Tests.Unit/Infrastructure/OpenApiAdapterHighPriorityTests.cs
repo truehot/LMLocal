@@ -5,11 +5,12 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -76,11 +77,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
             var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
 
-            var messageContext = new MessageContext(new Models.ChatMessage[0]);
+            var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
 
             using (var streaming = await adapter.SendChatStreamingAsync(messageContext, modelContext, CancellationToken.None))
@@ -109,11 +110,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
             var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
 
-            var messageContext = new MessageContext(new Models.ChatMessage[0]);
+            var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
 
             Assert.ThrowsAsync<HttpRequestException>(async () => await adapter.SendChatStreamingAsync(messageContext, modelContext, CancellationToken.None));
@@ -137,11 +138,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { LmStudioBaseUrl = "http://example.com:8080/" });
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
             var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, toolFactory);
 
-            var messageContext = new MessageContext(new Models.ChatMessage[0]);
+            var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");
 
             await adapter.SendChatAsync(messageContext, modelContext, CancellationToken.None);
@@ -237,12 +238,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 Parameters = new ToolParameters { Type = "object" }
             };
 
-            var mockToolFactory = new Mock<IVsToolFactory>();
+            var mockToolFactory = new Mock<ICompositeToolFactory>();
             mockToolFactory.Setup(t => t.GetAllToolDefinitions()).Returns(new System.Collections.Generic.List<ToolDefinition> { toolDef });
 
             var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, mockToolFactory.Object);
 
-            var messageContext = new MessageContext(new Models.ChatMessage[0]);
+            var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");
 
             // use streaming call which passes useTools = true in BuildRequest

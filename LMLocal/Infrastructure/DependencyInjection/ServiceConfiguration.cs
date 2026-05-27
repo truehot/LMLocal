@@ -1,13 +1,21 @@
 using System;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSession;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Application.ModelsList;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Common;
-using LMLocal.Infrastructure.Vs.Implementations;
+using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.Instructions;
+using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Models;
-using LMLocal.Services;
-using LMLocal.Services.ChatSession;
 using LMLocal.Services.Tool;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -35,7 +43,25 @@ namespace LMLocal.Infrastructure.DependencyInjection
                 if (_serviceProvider != null) return;
                 RegisterServices();
             }
-            await Task.CompletedTask;
+
+            // Load MCP configuration and initialize servers
+            try
+            {
+                var mcpConfigManager = GetService<IMcpConfigManager>();
+                var mcpToolManager = GetService<IMcpToolManager>();
+
+                var config = await mcpConfigManager.GetAsync().ConfigureAwait(false);
+                if (config != null)
+                {
+                    await mcpToolManager.RefreshServersAsync(config, System.Threading.CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log but don't throw - MCP initialization failure shouldn't block app startup
+                LMLocal.Common.InternalLogger.Warn($"MCP initialization failed: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -64,8 +90,41 @@ namespace LMLocal.Infrastructure.DependencyInjection
         /// </summary>
         private static void RegisterSettings(IServiceCollection services)
         {
-            
+
             services.AddSingleton<IInstructionsManager, InstructionsManager>();
+            services.AddSingleton<IMcpConfigManager, McpConfigManager>();
+
+            // MCP Tool Manager - lazy initialization wrapper to load config on first access
+            services.AddSingleton<IMcpToolManager>(sp =>
+            {
+                var mcpManager = new McpToolManager(
+                    sp.GetRequiredService<IMcpConfigManager>(),
+                    sp.GetRequiredService<IFileSystem>(),
+                    sp.GetRequiredService<IHttpClientWrapper>(),
+                    sp.GetRequiredService<ISettingsManager>());
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var configManager = sp.GetRequiredService<IMcpConfigManager>();
+                        var config = await configManager.GetAsync(System.Threading.CancellationToken.None)
+                            .ConfigureAwait(false);
+                        if (config != null)
+                        {
+                            await mcpManager.RefreshServersAsync(config, System.Threading.CancellationToken.None)
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LMLocal.Common.InternalLogger.Warn($"MCP lazy initialization failed: {ex.Message}");
+                    }
+                });
+
+                return mcpManager;
+            });
+
             services.AddSingleton<ISettingsManager, SettingsManager>();
             services.AddSingleton<IPathResolver, PathResolver>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
@@ -85,7 +144,16 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
-            services.AddTransient<IVsToolFactory, VsToolFactory>();
+            // Built-in tool factory
+            services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
+
+            // Composite tool factory combines built-in and MCP tools
+            services.AddSingleton<ICompositeToolFactory>(sp =>
+                new CompositeToolFactory(
+                    sp.GetRequiredService<IBuiltInVsToolProvider>(),
+                    sp.GetRequiredService<IMcpToolManager>(),
+                    sp.GetRequiredService<ISettingsManager>()));
+
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
             services.AddSingleton<IModelsListService, ModelsListService>();
 

@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Models;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Services.Tool
@@ -30,10 +30,10 @@ namespace LMLocal.Services.Tool
 
     internal class ToolExecutionManager : IToolExecutionManager
     {
-        private readonly IVsToolFactory _vsToolFactory;
+        private readonly ICompositeToolFactory _vsToolFactory;
         private readonly IServiceProvider _serviceProvider;
 
-        public ToolExecutionManager(IVsToolFactory vsToolFactory, IServiceProvider serviceProvider)
+        public ToolExecutionManager(ICompositeToolFactory vsToolFactory, IServiceProvider serviceProvider)
         {
             _vsToolFactory = vsToolFactory ?? throw new ArgumentNullException(nameof(vsToolFactory));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));

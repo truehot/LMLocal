@@ -1,9 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.ChatSession;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Models;
-using LMLocal.Services.ChatSession;
 using Moq;
 using NUnit.Framework;
 

@@ -1,6 +1,8 @@
 using System.Threading;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Streaming;
 
-namespace LMLocal.Services
+namespace LMLocal.Application.ChatSessionStream
 {
     /// <summary>
     /// Creates instances of IStreamProcessor, which handle the processing of streaming responses from the LM backend.

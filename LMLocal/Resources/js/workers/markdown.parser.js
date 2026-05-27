@@ -1,5 +1,5 @@
 import { MarkedWorkerClient } from '@app/workers/marked/marked.worker.client.js';
-import { Md4xWorkerClient } from '@app/workers/md4x/md4x.worker.client.js';
+
 /**
  * SimpleParser
  *
@@ -30,9 +30,7 @@ export const ParserType = {
     /** Offloads markdown parsing to a Web Worker using the `marked` library.*/
     MARKED_WORKER: 'marked-worker',
     /** Simple parser that only handles basic paragraphs and line breaks, without any advanced markdown features. */
-    SIMPLE: 'simple',
-    /** Offloads markdown parsing to a Web Worker using the `md4x` library.*/
-    MD4X: 'md4x'
+    SIMPLE: 'simple'
 };
 
 /**
@@ -45,8 +43,6 @@ export function createMarkDownParser(type) {
             return new SimpleParser();
         case ParserType.MARKED_WORKER:
             return new MarkedWorkerClient();
-        case ParserType.MD4X:
-            return new Md4xWorkerClient();
         default:
             throw new Error(`Unknown parser type: ${type}`);
     }

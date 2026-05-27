@@ -1,4 +1,4 @@
-namespace LMLocal.Services.ChatSession
+namespace LMLocal.Application.ChatSession
 {
     /// <summary>
     /// Defines possible states in the chat session lifecycle.

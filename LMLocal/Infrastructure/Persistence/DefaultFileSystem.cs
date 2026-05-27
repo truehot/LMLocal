@@ -27,7 +27,6 @@ namespace LMLocal.Infrastructure
         void Delete(string path);
     }
 
-
     internal class DefaultFileSystem : IFileSystem
     {
         public void CreateDirectory(string path)

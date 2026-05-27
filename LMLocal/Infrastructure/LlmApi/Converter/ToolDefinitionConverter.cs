@@ -1,50 +1,48 @@
 using System.Collections.Generic;
 using System.Linq;
 using LMLocal.Infrastructure.Api.Requests;
-using VsToolDefinition = LMLocal.Infrastructure.Vs.ToolDefinition;
-using VsToolDetails = LMLocal.Infrastructure.Vs.ToolDetails;
-using VsToolParameters = LMLocal.Infrastructure.Vs.ToolParameters;
+using LMLocal.Infrastructure.Tooling;
 
 namespace LMLocal.Infrastructure.Api
 {
     /// <summary>
-    /// Converts tool definitions from VS internal format to OpenAI Chat Completions API format.
+    /// Converts tool definitions from internal MCP format to OpenAI Chat Completions API format.
     /// </summary>
     internal static class ToolDefinitionConverter
     {
         /// <summary>
-        /// Converts a list of VS tool definitions to OpenAI tool definitions format.
+        /// Converts a list of internal tool definitions to OpenAI tool definitions format.
         /// </summary>
-        public static List<ToolDefinition> ConvertToOpenAiFormat(
-            IReadOnlyList<VsToolDefinition> vsTools)
+        public static List<OpenAiToolDefinition> ConvertToOpenAiFormat(
+            IReadOnlyList<ToolDefinition> internalTools)
         {
-            if (vsTools == null || vsTools.Count == 0)
-                return new List<ToolDefinition>();
+            if (internalTools == null || internalTools.Count == 0)
+                return new List<OpenAiToolDefinition>();
 
-            return vsTools
+            return internalTools
                 .Select(ConvertSingleTool)
                 .ToList();
         }
 
-        private static ToolDefinition ConvertSingleTool(VsToolDefinition vsTool)
+        private static OpenAiToolDefinition ConvertSingleTool(ToolDefinition internalTool)
         {
             var functionDef = new FunctionDefinition
             {
-                Name = vsTool.Name,
-                Description = vsTool.Description,
-                Parameters = ConvertParameters(vsTool.Parameters)
+                Name = internalTool.Name,
+                Description = internalTool.Description,
+                Parameters = ConvertParameters(internalTool.Parameters)
             };
 
-            return new ToolDefinition
+            return new OpenAiToolDefinition
             {
                 Type = "function",
                 Function = functionDef
             };
         }
 
-        private static FunctionParameters ConvertParameters(VsToolParameters vsParams)
+        private static FunctionParameters ConvertParameters(ToolParameters internalParams)
         {
-            if (vsParams == null)
+            if (internalParams == null)
             {
                 return new FunctionParameters
                 {
@@ -54,25 +52,25 @@ namespace LMLocal.Infrastructure.Api
                 };
             }
 
-            var properties = ConvertProperties(vsParams.Properties);
+            var properties = ConvertProperties(internalParams.Properties);
 
             return new FunctionParameters
             {
-                Type = vsParams.Type ?? "object",
+                Type = internalParams.Type ?? "object",
                 Properties = properties,
-                Required = vsParams.Required
+                Required = internalParams.Required
             };
         }
 
         private static Dictionary<string, object> ConvertProperties(
-            Dictionary<string, VsToolDetails> vsProperties)
+            Dictionary<string, ToolDetails> internalProperties)
         {
-            if (vsProperties == null || vsProperties.Count == 0)
+            if (internalProperties == null || internalProperties.Count == 0)
                 return new Dictionary<string, object>();
 
             var result = new Dictionary<string, object>();
 
-            foreach (var kvp in vsProperties)
+            foreach (var kvp in internalProperties)
             {
                 var toolDetail = kvp.Value;
                 var propertyObj = new Dictionary<string, object>

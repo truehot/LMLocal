@@ -2,8 +2,8 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Settings;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

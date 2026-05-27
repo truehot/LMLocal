@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.VisualStudio.Shell;
 
 /**
- * Implements a simple IPC server using named pipes to allow external processes (like our test suite) to send commands to the VS instance.
+ * Implements a simple IPC server using named pipes to allow external processes to send commands to the VS instance.
  * It uses a cancellation token to allow graceful shutdown when the package is unloaded.
  */
 internal static class VsIpcServer
@@ -56,7 +56,6 @@ internal static class VsIpcServer
                         {
                             try
                             {
-
                                 await server.WaitForConnectionAsync(token);
                             }
                             catch (OperationCanceledException)
@@ -70,13 +69,11 @@ internal static class VsIpcServer
                                 continue;
                             }
 
-
                             using (var reader = new StreamReader(server, Encoding.UTF8, false, 1024, true))
                             using (var writer = new StreamWriter(server, Encoding.UTF8, 1024, true))
                             {
                                 writer.AutoFlush = true;
 
-                                // Keep the connection open and process multiple commands until the client disconnects
                                 while (!token.IsCancellationRequested && server.IsConnected)
                                 {
                                     string command = null;
@@ -170,9 +167,13 @@ internal static class VsIpcServer
             {
                 var completed = await Task.WhenAny(taskToWait, Task.Delay(25000));
                 if (completed != taskToWait)
+                {
                     Debug.WriteLine("IPC Server stop timeout");
+                }
                 else
+                {
                     await taskToWait;
+                }
             }
             catch (Exception ex)
             {

@@ -2,9 +2,10 @@ using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure;
-using LMLocal.Services;
-using LMLocal.Models;
+using LMLocal.Infrastructure.Instructions;
+using LMLocal.Infrastructure.Settings;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure
@@ -109,6 +110,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string LocalAppDataFolder { get; set; } = "LMLocalChat";
             public string LocalAppSettingFileName => "settings.json";
             public string LocalAppInstructionsFileName { get; set; } = "instructions.json";
+            public string LocalAppMcpFileName => "mcp.json";
             public string WebViewUserDataFolder => "WebViewData";
             public string ChatHistoryFolder => "ChatHistory";
             public string ChatHistoryFilePrefix => "chat_";

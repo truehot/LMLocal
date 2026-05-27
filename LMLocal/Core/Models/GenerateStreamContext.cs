@@ -1,4 +1,4 @@
-namespace LMLocal.Models
+namespace LMLocal.Core.Models
 {
     public class GenerateStreamContext
     {

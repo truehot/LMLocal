@@ -1,6 +1,5 @@
 using System.Threading;
-
-using LMLocal.Services;
+using LMLocal.Infrastructure.Streaming;
 
 using NUnit.Framework;
 

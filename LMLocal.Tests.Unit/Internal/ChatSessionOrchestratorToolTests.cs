@@ -4,12 +4,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Models;
-using LMLocal.Services.ChatSession;
-using LMLocal.Services;
 using LMLocal.Services.Tool;
 using Moq;
 using NUnit.Framework;
+using LMLocal.Core.Models;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSession;
 
 namespace LMLocal.Tests.Unit.Internal
 {
@@ -140,7 +141,7 @@ namespace LMLocal.Tests.Unit.Internal
 
             // When tool executed, return error
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ToolExecutionResult { Error = "failed" , CompletionMessage = null});
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", CompletionMessage = null });
 
             // Second generation should finish normally
             _chatServiceMock.Setup(s => s.GenerateWithToolResultsAsync(

@@ -1,14 +1,12 @@
-using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Abstractions;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
 
@@ -37,7 +35,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
@@ -57,7 +55,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);

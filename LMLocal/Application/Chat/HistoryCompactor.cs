@@ -5,12 +5,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Models;
+using LMLocal.Infrastructure.Settings;
 
 
-namespace LMLocal.Services
+namespace LMLocal.Application.Chat
 {
     /// <summary>
     /// Responsible for compacting (summarizing) conversation history when it exceeds a certain size threshold.
@@ -51,7 +52,7 @@ namespace LMLocal.Services
                 return false;
 
             int chars = _history.GetHistoryCopy().Sum(m => m.Content?.ToString()?.Length ?? 0); ;
-            return (chars / 4) >= (int)(GetMaxContext() * CompactionThresholdRatio);
+            return chars / 4 >= (int)(GetMaxContext() * CompactionThresholdRatio);
         }
 
         public async Task CompactIfNeededAsync(string modelId, CancellationToken cancellationToken)

@@ -2,10 +2,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Models;
 
-namespace LMLocal.Services.ChatSession
+namespace LMLocal.Application.ChatSession
 {
     /// <summary>
     /// Manages single active chat session lifecycle.

@@ -1,6 +1,5 @@
-using System;
 using System.IO;
-using LMLocal.Infrastructure.Vs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

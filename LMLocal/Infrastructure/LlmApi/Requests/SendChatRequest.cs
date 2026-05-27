@@ -90,7 +90,7 @@ namespace LMLocal.Infrastructure.Api.Requests
 
         /// <summary>List of tools that the model can call.</summary>
         [JsonProperty("tools", NullValueHandling = NullValueHandling.Ignore)]
-        public List<ToolDefinition> Tools { get; set; }
+        public List<OpenAiToolDefinition> Tools { get; set; }
 
         /// <summary>Controll if tool can call function, 
         /// none means the model will not call any tool and instead generates a message. 
@@ -104,7 +104,6 @@ namespace LMLocal.Infrastructure.Api.Requests
         public bool? ParallelToolCalls { get; set; }
     }
 
-
     public class FunctionParameters
     {
         [JsonProperty("type")] public string Type { get; set; } = "object";
@@ -113,10 +112,9 @@ namespace LMLocal.Infrastructure.Api.Requests
         public List<string> Required { get; set; }
     }
 
-
     public class FunctionDefinition
     {
-        [JsonProperty("name")] 
+        [JsonProperty("name")]
         public string Name { get; set; }
         [JsonProperty("description", NullValueHandling = NullValueHandling.Ignore)]
         public string Description { get; set; }
@@ -124,12 +122,15 @@ namespace LMLocal.Infrastructure.Api.Requests
         public FunctionParameters Parameters { get; set; }
     }
 
-    public class ToolDefinition
+    /// <summary>
+    /// OpenAI Chat Completions API tool definition format.
+    /// Wraps a function definition with type information.
+    /// </summary>
+    public class OpenAiToolDefinition
     {
         [JsonProperty("type")] public string Type { get; set; } = "function";
         [JsonProperty("function")] public FunctionDefinition Function { get; set; }
     }
-
 
     /// <summary>
     /// Options for streaming response. Set only when stream is true.

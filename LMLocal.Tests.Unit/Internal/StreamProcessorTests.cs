@@ -3,8 +3,8 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Services;
-using LMLocal.Models;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit
@@ -20,8 +20,14 @@ namespace LMLocal.Tests.Unit
             {
                 return Task.CompletedTask;
             }
-            public void SignalCompletion()
+
+            public void SignalCompletion() { }
+
+            public void SignalActivity() { }
+
+            public Task WatchAsync(CancellationToken cancellationToken)
             {
+                return Task.CompletedTask;
             }
         }
 
@@ -193,26 +199,32 @@ namespace LMLocal.Tests.Unit
             }
         }
 
-            private class CustomStreamInactivityWatcher : IStreamInactivityWatcher
+        private class CustomStreamInactivityWatcher : IStreamInactivityWatcher
+        {
+            private readonly Action _onWatchCalled;
+
+            public CustomStreamInactivityWatcher(Action onWatchCalled)
             {
-                private readonly Action _onWatchCalled;
-
-                public CustomStreamInactivityWatcher(Action onWatchCalled)
-                {
-                    _onWatchCalled = onWatchCalled;
-                }
-
-                public bool IsTimeout => false;
-
-                public Task WatchAsync(Func<long> isActive, CancellationToken cancellationToken)
-                {
-                    _onWatchCalled();
-                    return Task.CompletedTask;
-                }
-
-                public void SignalCompletion()
-                {
-                }
+                _onWatchCalled = onWatchCalled;
             }
+
+            public bool IsTimeout => false;
+
+            public Task WatchAsync(Func<long> isActive, CancellationToken cancellationToken)
+            {
+                _onWatchCalled();
+                return Task.CompletedTask;
+            }
+
+            public void SignalCompletion() { }
+
+            public void SignalActivity() { }
+
+            public Task WatchAsync(CancellationToken cancellationToken)
+            {
+                _onWatchCalled();
+                return Task.CompletedTask;
+            }
+        }
     }
 }

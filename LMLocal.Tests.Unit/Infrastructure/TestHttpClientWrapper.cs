@@ -2,7 +2,7 @@ using System;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.Http;
 
 namespace LMLocal.Tests.Unit.Infrastructure
 {

@@ -5,7 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.DependencyInjection;
-using LMLocal.Infrastructure.Vs;
+using LMLocal.Infrastructure.Tooling;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
@@ -34,9 +34,7 @@ internal static class IpcCommandHandler
 
         else if (command.StartsWith("RunTool"))
         {
-
-
-            var factory = ServiceConfiguration.GetService<IVsToolFactory>();
+            var factory = ServiceConfiguration.GetService<ICompositeToolFactory>();
             if (factory == null)
             {
                 await writer.WriteLineAsync("NoFactory");

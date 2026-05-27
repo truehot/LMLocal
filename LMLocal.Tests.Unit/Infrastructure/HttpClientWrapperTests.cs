@@ -1,7 +1,6 @@
 using System;
 using System.Net.Http;
-using System.Threading.Tasks;
-using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.Http;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

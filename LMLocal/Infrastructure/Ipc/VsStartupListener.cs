@@ -39,7 +39,6 @@ namespace LMLocal.Ipc
                 return;
             }
 
-
             shell.AdviseShellPropertyChanges(this, out cookie);
             Debug.WriteLine($"VsStartupListener: subscribed, cookie={cookie}");
 

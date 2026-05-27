@@ -1,4 +1,4 @@
-namespace LMLocal.Models
+namespace LMLocal.Core.Models
 {
     /// <summary>
     /// Represents a tool execution result to be sent to the model.

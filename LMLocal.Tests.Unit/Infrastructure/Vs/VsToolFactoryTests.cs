@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Implementations;
+using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using Moq;
 using NUnit.Framework;
 
@@ -40,7 +41,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             findSymbolReferencesTool.Setup(s => s.GetToolInfo()).Returns(new ToolDefinition { Name = "find_symbol_references" });
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
 
-            var factory = new VsToolFactory(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
 
             var defs = factory.GetAllToolDefinitions();
 
@@ -71,7 +72,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             solutionOverviewTool.SetupGet(s => s.ToolName).Returns("get_solution_overview");
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
 
-            var factory = new VsToolFactory(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
 
             var t1 = factory.GetTool("search_in_files");
             Assert.That(t1, Is.SameAs(searchTool.Object));
@@ -111,32 +112,32 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             solutionOverviewTool.SetupGet(s => s.ToolName).Returns("get_solution_overview");
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
 
-            var expectedSearchResult = new List<LMLocal.Infrastructure.Vs.Implementations.SearchResult> { new LMLocal.Infrastructure.Vs.Implementations.SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<LMLocal.Infrastructure.Vs.Implementations.SearchMatch> { new LMLocal.Infrastructure.Vs.Implementations.SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } };
+            var expectedSearchResult = new List<SearchResult> { new SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<SearchMatch> { new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } };
             searchTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "needle", ".cs", It.IsAny<CancellationToken>(), null)).ReturnsAsync(expectedSearchResult);
 
-            var expectedActive = new LMLocal.Infrastructure.Vs.Implementations.ActiveDocumentResponse { FilePath = "a.cs", Content = "content" };
+            var expectedActive = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocumentResponse { FilePath = "a.cs", Content = "content" };
             activeTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedActive);
 
-            var expectedLines = new LMLocal.Infrastructure.Vs.Implementations.FileLinesResponse { FilePath = "a.cs", Lines = new System.Collections.Generic.List<LMLocal.Infrastructure.Vs.Implementations.FileLineInfo>() };
+            var expectedLines = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileLinesResponse { FilePath = "a.cs", Lines = new System.Collections.Generic.List<FileLineInfo>() };
             linesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "a.cs", 1, 2, It.IsAny<CancellationToken>())).ReturnsAsync(expectedLines);
 
-            var expectedFindFilesResult = new List<LMLocal.Infrastructure.Vs.Implementations.FileSearchResult> { new LMLocal.Infrastructure.Vs.Implementations.FileSearchResult { FilePath = "config.cs" } };
+            var expectedFindFilesResult = new List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileSearchResult> { new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileSearchResult { FilePath = "config.cs" } };
             findFilesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "config", ".cs", It.IsAny<CancellationToken>(), null)).ReturnsAsync(expectedFindFilesResult);
 
-            var expectedSolutionResult = new LMLocal.Infrastructure.Vs.Implementations.SolutionOverviewResponse { SolutionName = "Test", TotalProjects = 2, TotalFiles = 100 };
+            var expectedSolutionResult = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionOverviewResponse { SolutionName = "Test", TotalProjects = 2, TotalFiles = 100 };
             solutionOverviewTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedSolutionResult);
 
-            var expectedSymbolResult = new LMLocal.Infrastructure.Vs.Implementations.SymbolReferencesResponse 
+            var expectedSymbolResult = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SymbolReferencesResponse 
             { 
                 SymbolName = "TestSymbol", 
-                Results = new System.Collections.Generic.List<LMLocal.Infrastructure.Vs.Implementations.FileReferencesGroup>
+                Results = new System.Collections.Generic.List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileReferencesGroup>
                 {
-                    new LMLocal.Infrastructure.Vs.Implementations.FileReferencesGroup
+                    new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileReferencesGroup
                     {
                         FilePath = "test.cs",
-                        Matches = new System.Collections.Generic.List<LMLocal.Infrastructure.Vs.Implementations.ReferenceItem>
+                        Matches = new System.Collections.Generic.List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ReferenceItem>
                         {
-                            new LMLocal.Infrastructure.Vs.Implementations.ReferenceItem { LineNumber = 10, LineText = "var test = TestSymbol;" }
+                            new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ReferenceItem { LineNumber = 10, LineText = "var test = TestSymbol;" }
                         }
                     }
                 },
@@ -145,7 +146,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             };
             findSymbolReferencesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "TestSymbol", It.IsAny<CancellationToken>())).ReturnsAsync(expectedSymbolResult);
 
-            var factory = new VsToolFactory(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
 
             var searchParams = new Dictionary<string, object> { { "query", "needle" }, { "extension_filter", ".cs" } };
             var searchRes = await factory.ExecuteAsync("search_in_files", null, searchParams, CancellationToken.None);

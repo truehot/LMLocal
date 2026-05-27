@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Vs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Vs

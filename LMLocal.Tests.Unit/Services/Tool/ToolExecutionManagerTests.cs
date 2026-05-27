@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Models;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling;
 using LMLocal.Services.Tool;
 using Moq;
 using NUnit.Framework;
@@ -13,13 +13,13 @@ namespace LMLocal.Tests.Unit.Services.Tool
     [TestFixture]
     public class ToolExecutionManagerTests
     {
-        private Mock<IVsToolFactory> _vsToolFactory;
+        private Mock<ICompositeToolFactory> _vsToolFactory;
         private Mock<IServiceProvider> _serviceProvider;
 
         [SetUp]
         public void SetUp()
         {
-            _vsToolFactory = new Mock<IVsToolFactory>();
+            _vsToolFactory = new Mock<ICompositeToolFactory>();
             _serviceProvider = new Mock<IServiceProvider>();
         }
 

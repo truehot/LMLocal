@@ -1,6 +1,7 @@
 using System.Threading;
-using LMLocal.Services;
-using LMLocal.Models;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Settings;
 using Moq;
 using NUnit.Framework;
 

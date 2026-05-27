@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit
@@ -24,7 +24,7 @@ namespace LMLocal.Tests.Unit
             var watcher = new StreamInactivityWatcher(cts, 1, 10);
 
             // Start watching; activity time always zero. SignalCompletion should make it exit quickly.
-            var watchTask = watcher.WatchAsync(() => 0L, CancellationToken.None);
+            var watchTask = watcher.WatchAsync(CancellationToken.None);
             watcher.SignalCompletion();
 
             // Should complete without throwing
@@ -37,7 +37,7 @@ namespace LMLocal.Tests.Unit
             var cts = new CancellationTokenSource();
             var watcher = new StreamInactivityWatcher(cts, 1, 10);
 
-            var watchTask = watcher.WatchAsync(() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), CancellationToken.None);
+            var watchTask = watcher.WatchAsync(CancellationToken.None);
             watcher.SignalCompletion();
 
             await watchTask.ConfigureAwait(false);
@@ -50,7 +50,7 @@ namespace LMLocal.Tests.Unit
             var internalCts = new CancellationTokenSource();
             var watcher = new StreamInactivityWatcher(internalCts, 1, 10);
 
-            await watcher.WatchAsync(() => 0L, CancellationToken.None).ConfigureAwait(false);
+            await watcher.WatchAsync(CancellationToken.None).ConfigureAwait(false);
 
             Assert.That(watcher.IsTimeout, Is.True);
         }
@@ -62,21 +62,16 @@ namespace LMLocal.Tests.Unit
             var watcher = new StreamInactivityWatcher(internalCts, 10, 100);
             var cts = new CancellationTokenSource();
 
-            var watchTask = watcher.WatchAsync(() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), cts.Token);
+            var watchTask = watcher.WatchAsync(cts.Token);
 
-            // Cancel the token; the watcher should observe this and complete with a cancellation exception.
+            // Cancel the token; the watcher should observe this and exit gracefully.
             cts.Cancel();
 
-            try
-            {
-                await watchTask.ConfigureAwait(false);
-                Assert.Fail("Expected OperationCanceledException or TaskCanceledException due to cancellation.");
-            }
-            catch (System.Exception ex)
-            {
-                // Accept either TaskCanceledException or OperationCanceledException (TaskCanceledException derives from OperationCanceledException)
-                Assert.That(ex, Is.InstanceOf<System.OperationCanceledException>());
-            }
+            // Should complete without throwing
+            await watchTask.ConfigureAwait(false);
+
+            // Cancellation should not be treated as inactivity timeout
+            Assert.That(watcher.IsTimeout, Is.False);
         }
     }
 }

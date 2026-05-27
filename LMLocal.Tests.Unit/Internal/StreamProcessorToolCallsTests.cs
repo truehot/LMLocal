@@ -1,10 +1,9 @@
-using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit
@@ -22,7 +21,9 @@ namespace LMLocal.Tests.Unit
         {
             public bool IsTimeout => false;
             public void SignalCompletion() { }
+            public void SignalActivity() { }
             public Task WatchAsync(System.Func<long> activityTimeMs, CancellationToken cancellationToken) => Task.CompletedTask;
+            public Task WatchAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         }
 
         [Test]

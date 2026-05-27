@@ -1,11 +1,12 @@
 using System;
 using System.Net.Http;
+using LMLocal.Application.Chat;
 using LMLocal.Infrastructure;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.DependencyInjection;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Abstractions;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
 
@@ -50,7 +51,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var httpClient = new HttpClient();
             var httpClientWrapper = new TestHttpClientWrapper(httpClient);
             var fileSystem = new Mock<IFileSystem>().Object;
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
             // Act - Create the complete service chain
             var persistence = new ChatPersistenceService(settingsManager, fileSystem);

@@ -6,9 +6,10 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Models;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Streaming;
 
-namespace LMLocal.Services
+namespace LMLocal.Application.ChatSessionStream
 {
     internal interface IStreamProcessor
     {
@@ -54,21 +55,11 @@ namespace LMLocal.Services
             var syncLock = new object();
             bool isReading = true;
 
-            long lastLineMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
             var cancelRegistration = cancellationToken.Register(() => stream.Close());
 
             try
             {
-                var inactivityWatcherTask = _inactivityWatcher.WatchAsync(
-                    () =>
-                    {
-                        lock (syncLock)
-                        {
-                            return lastLineMs;
-                        }
-                    },
-                    cancellationToken);
+                var inactivityWatcherTask = _inactivityWatcher.WatchAsync(cancellationToken);
 
                 var consumerTask = Task.Run(async () =>
                 {
@@ -127,10 +118,8 @@ namespace LMLocal.Services
                         while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            lock (syncLock)
-                            {
-                                lastLineMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                            }
+
+                            _inactivityWatcher.SignalActivity();
 
                             if (string.IsNullOrWhiteSpace(line))
                                 continue;

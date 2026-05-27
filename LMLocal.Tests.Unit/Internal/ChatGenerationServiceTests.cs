@@ -3,10 +3,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSessionStream;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Settings;
 using Moq;
 using NUnit.Framework;
 

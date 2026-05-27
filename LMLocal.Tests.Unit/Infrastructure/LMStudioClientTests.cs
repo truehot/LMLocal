@@ -1,8 +1,7 @@
 using System.Net.Http;
 using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Vs.Abstractions;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using LMLocal.Tests.Unit.Infrastructure;
 using Moq;
 using NUnit.Framework;
@@ -36,7 +35,7 @@ namespace LMLocal.Tests.Unit.Internal
             var mockSettingsManager = new Mock<ISettingsManager>();
             mockSettingsManager.Setup(s => s.SystemPrompt).Returns("Test prompt");
             mockSettingsManager.Setup(s => s.VirtualHostName).Returns("app.local");
-            var mockToolFactory = new Mock<IVsToolFactory>();
+            var mockToolFactory = new Mock<ICompositeToolFactory>();
 
             // Act
             var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, mockToolFactory.Object);

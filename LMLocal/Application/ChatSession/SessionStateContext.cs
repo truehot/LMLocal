@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using LMLocal.Models;
+using LMLocal.Core.Models;
 
-namespace LMLocal.Services.ChatSession
+namespace LMLocal.Application.ChatSession
 {
     /// <summary>
     /// Mutable context for current chat session state.

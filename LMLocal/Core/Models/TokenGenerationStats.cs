@@ -1,4 +1,4 @@
-namespace LMLocal.Models
+namespace LMLocal.Core.Models
 {
     /// <summary>
     /// Contains token generation statistics for a single streaming chunk.

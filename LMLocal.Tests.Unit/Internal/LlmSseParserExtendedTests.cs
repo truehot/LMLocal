@@ -1,5 +1,5 @@
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit

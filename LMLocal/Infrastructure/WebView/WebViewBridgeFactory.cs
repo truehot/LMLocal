@@ -1,8 +1,12 @@
 using System;
-using LMLocal.Infrastructure.Vs.Implementations;
-using LMLocal.Models;
-using LMLocal.Services;
-using LMLocal.Services.ChatSession;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSession;
+using LMLocal.Application.ModelsList;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Instructions;
+using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 
 namespace LMLocal.Infrastructure.WebView
 {
@@ -19,6 +23,8 @@ namespace LMLocal.Infrastructure.WebView
         private readonly ISettingsManager _settingsManager;
         private readonly IModelsListService _modelsListService;
         private readonly IInstructionsManager _instructionsManager;
+        private readonly IMcpConfigManager _mcpConfigManager;
+        private readonly IMcpToolManager _mcpToolManager;
         private readonly IActiveDocumentTool _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
@@ -28,6 +34,8 @@ namespace LMLocal.Infrastructure.WebView
             ISettingsManager settingsManager,
             IModelsListService modelsListService,
             IInstructionsManager instructionsManager,
+            IMcpConfigManager mcpConfigManager,
+            IMcpToolManager mcpToolManager,
             IActiveDocumentTool activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
@@ -36,6 +44,8 @@ namespace LMLocal.Infrastructure.WebView
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _modelsListService = modelsListService ?? throw new ArgumentNullException(nameof(modelsListService));
             _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
+            _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
+            _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
             _activeDocumentTool = activeDocumentTool ?? throw new ArgumentNullException(nameof(activeDocumentTool));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
@@ -49,8 +59,7 @@ namespace LMLocal.Infrastructure.WebView
 
             var scriptExecutor = new WebViewScriptExecutor(coreWebView2);
 
-
-            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager);
+            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _mcpConfigManager, _mcpToolManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager);
         }
     }
 }

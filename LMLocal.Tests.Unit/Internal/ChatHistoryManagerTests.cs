@@ -1,5 +1,7 @@
-using LMLocal.Models;
-using LMLocal.Services;
+using LMLocal.Application.Chat;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
 using Moq;
 using NUnit.Framework;
 
@@ -32,9 +34,9 @@ namespace LMLocal.Tests.Unit
 
             var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
 
-            var toolCalls = new System.Collections.Generic.List<LMLocal.Models.ToolCallRecord>
+            var toolCalls = new System.Collections.Generic.List<ToolCallRecord>
             {
-                new LMLocal.Models.ToolCallRecord { CallId = "c1", FunctionName = "f1", ArgumentsJson = "{}" }
+                new ToolCallRecord { CallId = "c1", FunctionName = "f1", ArgumentsJson = "{}" }
             };
 
             manager.AddAssistantToolRequestMessage(toolCalls);
@@ -44,7 +46,7 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[0].Role, Is.EqualTo("assistant"));
             Assert.That(history[0].ToolCalls, Is.Not.Null);
 
-            mockPersistence.Verify(p => p.SaveLastMessageAsync(It.IsAny<LMLocal.Models.ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()), Times.Once);
+            mockPersistence.Verify(p => p.SaveLastMessageAsync(It.IsAny<ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()), Times.Once);
         }
 
         [Test]
@@ -106,7 +108,7 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
 
-            mockPersistence.Verify(p => p.SaveLastMessageAsync(It.IsAny<LMLocal.Models.ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()), Times.Exactly(2));
+            mockPersistence.Verify(p => p.SaveLastMessageAsync(It.IsAny<ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()), Times.Exactly(2));
         }
 
         [Test]

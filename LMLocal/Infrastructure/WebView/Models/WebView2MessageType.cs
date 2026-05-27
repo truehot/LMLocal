@@ -25,12 +25,12 @@ namespace LMLocal.Infrastructure.WebView
         StreamEnd,
 
         /// <summary>
-        /// History compaction (KV-cache optimization) started.
+        /// History compaction(summarization)  started.
         /// </summary>
         CompactionStart,
 
         /// <summary>
-        /// History compaction completed.
+        /// History compaction(summarization)  completed.
         /// </summary>
         CompactionEnd,
 

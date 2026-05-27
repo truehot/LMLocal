@@ -1,7 +1,9 @@
 using System;
+using LMLocal.Application.Chat;
+using LMLocal.Application.ChatSessionStream;
 using LMLocal.Services.Tool;
 
-namespace LMLocal.Services.ChatSession
+namespace LMLocal.Application.ChatSession
 {
     /// <summary>
     /// Factory for creating ChatSessionOrchestrator instances.

@@ -1,4 +1,4 @@
-namespace LMLocal.Models
+namespace LMLocal.Core.Models
 {
     /// <summary>
     /// Represents the type of content in a streamed chunk from LLM.

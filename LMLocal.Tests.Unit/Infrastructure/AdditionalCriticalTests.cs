@@ -6,15 +6,16 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure;
-using LMLocal.Infrastructure.Vs.Abstractions;
-using LMLocal.Services;
-using LMLocal.Models;
+using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
-using LMLocal.Infrastructure.Vs;
-using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.Api;
 
 namespace LMLocal.Tests.Unit.Infrastructure
 {
@@ -214,7 +215,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(json) };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
@@ -231,7 +232,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
             var client = new HttpClient(new DelayedHandler(response, 500));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<IVsToolFactory>().Object;
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
