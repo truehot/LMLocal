@@ -256,6 +256,49 @@ namespace LMLocal.Tests.E2E.VSIX
             }
         }
 
+        [TestMethod]
+        public async Task RunTool_ListDirectoryContents_ReturnsDirEntriesAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2)))
+            {
+                System.Diagnostics.Process vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var solutionPath = GetSolutionPath();
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        string response = await client.SendCommandAsync($"OpenSolution|{solutionPath}", cts.Token);
+                        Assert.AreEqual("OK", response);
+
+                        // Wait a bit for solution to fully load
+                        await Task.Delay(2000);
+
+                        // List the root directory of the solution
+                        response = await client.SendCommandAsync("RunTool|ListDirectoryContents|.", cts.Token);
+                        Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
+                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
+
+                        var obj = JObject.Parse(response);
+                        Assert.IsTrue(obj.ContainsKey("directory"), "Response should contain 'directory' key");
+                        Assert.IsTrue(obj.ContainsKey("entries"), "Response should contain 'entries' key");
+                        Assert.IsTrue(obj.ContainsKey("has_more_entries"), "Response should contain 'has_more_entries' key");
+
+                        var entries = obj["entries"] as JArray;
+                        Assert.IsNotNull(entries, "'entries' should be an array");
+                        Assert.IsTrue(entries.Count > 0, "Expected at least one entry in root directory");
+                        Assert.IsTrue(entries[0]["name"] != null, "Each entry should have 'name' key");
+                        Assert.IsTrue(entries[0]["path"] != null, "Each entry should have 'path' key");
+                        Assert.IsTrue(entries[0]["type"] != null, "Each entry should have 'type' key");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
         private string GetSolutionPath()
         {
             var solutionPath = Path.GetFullPath(

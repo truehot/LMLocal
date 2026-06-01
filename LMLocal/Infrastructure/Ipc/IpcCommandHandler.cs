@@ -4,8 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Common;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
@@ -34,8 +36,8 @@ internal static class IpcCommandHandler
 
         else if (command.StartsWith("RunTool"))
         {
-            var factory = ServiceConfiguration.GetService<ICompositeToolFactory>();
-            if (factory == null)
+            var builtInVsToolProvider = ServiceConfiguration.GetService<IBuiltInVsToolProvider>();
+            if (builtInVsToolProvider == null)
             {
                 await writer.WriteLineAsync("NoFactory");
                 return;
@@ -56,7 +58,7 @@ internal static class IpcCommandHandler
                 if (string.Equals(cmd, "GetActiveDocument", StringComparison.OrdinalIgnoreCase))
                 {
                     var parameters = new Dictionary<string, object>();
-                    var res = await factory.ExecuteAsync("Get_Active_Document_Content", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Get_Active_Document_Content", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "SearchInFiles", StringComparison.OrdinalIgnoreCase))
@@ -75,7 +77,7 @@ internal static class IpcCommandHandler
                         { "extension_filter", extension }
                     };
 
-                    var res = await factory.ExecuteAsync("Search_Local_Solution_Files", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Search_Local_Solution_Files", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "ReadFileLines", StringComparison.OrdinalIgnoreCase))
@@ -100,13 +102,13 @@ internal static class IpcCommandHandler
                         { "end_line", endLine }
                     };
 
-                    var res = await factory.ExecuteAsync("Read_Solution_File_Lines", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Read_Solution_File_Lines", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "GetSolutionOverview", StringComparison.OrdinalIgnoreCase))
                 {
                     var parameters = new Dictionary<string, object>();
-                    var res = await factory.ExecuteAsync("Get_Solution_Overview", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Get_Solution_Overview", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "FindFilesByName", StringComparison.OrdinalIgnoreCase))
@@ -129,7 +131,7 @@ internal static class IpcCommandHandler
                         parameters["file_extension"] = extension;
                     }
 
-                    var res = await factory.ExecuteAsync("Find_Files_By_Name", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Find_Files_By_Name", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "Find_Symbol_References", StringComparison.OrdinalIgnoreCase))
@@ -146,7 +148,18 @@ internal static class IpcCommandHandler
                         { "symbol_name", symbolName }
                     };
 
-                    var res = await factory.ExecuteAsync("Find_Symbol_References", package, parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("Find_Symbol_References", parameters, token);
+                    await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
+                }
+                else if (string.Equals(cmd, "ListDirectoryContents", StringComparison.OrdinalIgnoreCase))
+                {
+                    var directoryPath = parts.Length >= 3 ? parts[2] : ".";
+                    var parameters = new Dictionary<string, object>
+                    {
+                        { "directory_path", directoryPath }
+                    };
+
+                    var res = await builtInVsToolProvider.ExecuteAsync("List_Directory_Contents", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else
@@ -160,8 +173,9 @@ internal static class IpcCommandHandler
             }
             catch (Exception ex)
             {
+                InternalLogger.Error($"IPC: RunTool error: {ex.Message}", ex);
                 Debug.WriteLine($"IPC: RunTool error: {ex.Message}");
-                try { await writer.WriteLineAsync("ERROR"); } catch { }
+                try { await writer.WriteLineAsync($"ERROR {ex.Message}"); } catch { }
             }
 
             return;

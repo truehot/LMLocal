@@ -1,4 +1,4 @@
-import { UIText } from '@app/store/app.globals.js';
+import { UIText } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';

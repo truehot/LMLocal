@@ -1,9 +1,10 @@
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
 using LMLocal.Infrastructure.Tooling.Abstractions;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs
@@ -34,7 +35,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
         /// </summary>
         Task<object> ExecuteAsync(
             string toolName,
-            IServiceProvider sp,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken);
 
@@ -54,49 +54,54 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
     /// </summary>
     internal class BuiltInVsToolProvider : IBuiltInVsToolProvider
     {
-        private readonly ISolutionSearchTool _searchTool;
-        private readonly IActiveDocumentTool _activeDocTool;
-        private readonly IFileLinesReaderTool _fileLinesReaderTool;
-        private readonly IFindFilesByNameTool _findFilesByNameTool;
-        private readonly IGetSolutionOverviewTool _solutionOverviewTool;
-        private readonly IFindSymbolReferencesTool _findSymbolReferencesTool;
+        private readonly ISolutionSearch _solutionSearch;
+        private readonly IActiveDocument _activeDocument;
+        private readonly IFileLinesReader _fileLinesReader;
+        private readonly IFindFilesByName _findFilesByName;
+        private readonly IGetSolutionOverview _getSolutionOverview;
+        private readonly IFindSymbolReferences _findSymbolReferences;
+        private readonly IListDirectoryContents _listDirectoryContents;
 
         private readonly IReadOnlyList<ToolDefinition> _allToolDefinitions;
-        private readonly Dictionary<string, ITool> _toolsByName;
+        private readonly Dictionary<string, IBuiltInTool> _toolsByName;
 
         public BuiltInVsToolProvider(
-            ISolutionSearchTool searchTool,
-            IActiveDocumentTool activeDocTool,
-            IFileLinesReaderTool fileLinesReaderTool,
-            IFindFilesByNameTool findFilesByNameTool,
-            IGetSolutionOverviewTool solutionOverviewTool,
-            IFindSymbolReferencesTool findSymbolReferencesTool)
+            ISolutionSearch solutionSearch,
+            IActiveDocument activeDocument,
+            IFileLinesReader fileLinesReader,
+            IFindFilesByName findFilesByName,
+            IGetSolutionOverview getSolutionOverview,
+            IFindSymbolReferences findSymbolReferences,
+            IListDirectoryContents listDirectoryContents)
         {
-            _searchTool = searchTool ?? throw new ArgumentNullException(nameof(searchTool));
-            _activeDocTool = activeDocTool ?? throw new ArgumentNullException(nameof(activeDocTool));
-            _fileLinesReaderTool = fileLinesReaderTool ?? throw new ArgumentNullException(nameof(fileLinesReaderTool));
-            _findFilesByNameTool = findFilesByNameTool ?? throw new ArgumentNullException(nameof(findFilesByNameTool));
-            _solutionOverviewTool = solutionOverviewTool ?? throw new ArgumentNullException(nameof(solutionOverviewTool));
-            _findSymbolReferencesTool = findSymbolReferencesTool ?? throw new ArgumentNullException(nameof(findSymbolReferencesTool));
+            _solutionSearch = solutionSearch ?? throw new ArgumentNullException(nameof(solutionSearch));
+            _activeDocument = activeDocument ?? throw new ArgumentNullException(nameof(activeDocument));
+            _fileLinesReader = fileLinesReader ?? throw new ArgumentNullException(nameof(fileLinesReader));
+            _findFilesByName = findFilesByName ?? throw new ArgumentNullException(nameof(findFilesByName));
+            _getSolutionOverview = getSolutionOverview ?? throw new ArgumentNullException(nameof(getSolutionOverview));
+            _findSymbolReferences = findSymbolReferences ?? throw new ArgumentNullException(nameof(findSymbolReferences));
+            _listDirectoryContents = listDirectoryContents ?? throw new ArgumentNullException(nameof(listDirectoryContents));
 
             _allToolDefinitions = new List<ToolDefinition>
             {
-                _searchTool.GetToolInfo(),
-                _activeDocTool.GetToolInfo(),
-                _fileLinesReaderTool.GetToolInfo(),
-                _findFilesByNameTool.GetToolInfo(),
-                _solutionOverviewTool.GetToolInfo(),
-                _findSymbolReferencesTool.GetToolInfo()
+                _solutionSearch.GetToolInfo(),
+                _activeDocument.GetToolInfo(),
+                _fileLinesReader.GetToolInfo(),
+                _findFilesByName.GetToolInfo(),
+                _getSolutionOverview.GetToolInfo(),
+                _findSymbolReferences.GetToolInfo(),
+                _listDirectoryContents.GetToolInfo()
             }.AsReadOnly();
 
-            _toolsByName = new Dictionary<string, ITool>(StringComparer.OrdinalIgnoreCase)
+            _toolsByName = new Dictionary<string, IBuiltInTool>(StringComparer.OrdinalIgnoreCase)
             {
-                { _searchTool.ToolName, _searchTool },
-                { _activeDocTool.ToolName, _activeDocTool },
-                { _fileLinesReaderTool.ToolName, _fileLinesReaderTool },
-                { _findFilesByNameTool.ToolName, _findFilesByNameTool },
-                { _solutionOverviewTool.ToolName, _solutionOverviewTool },
-                { _findSymbolReferencesTool.ToolName, _findSymbolReferencesTool }
+                { _solutionSearch.ToolName, _solutionSearch },
+                { _activeDocument.ToolName, _activeDocument },
+                { _fileLinesReader.ToolName, _fileLinesReader },
+                { _findFilesByName.ToolName, _findFilesByName },
+                { _getSolutionOverview.ToolName, _getSolutionOverview },
+                { _findSymbolReferences.ToolName, _findSymbolReferences },
+                { _listDirectoryContents.ToolName, _listDirectoryContents }
             };
         }
 
@@ -126,7 +131,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
 
         public async Task<object> ExecuteAsync(
             string toolName,
-            IServiceProvider sp,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken)
         {
@@ -135,295 +139,49 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             if (parameters == null)
                 throw new ArgumentNullException(nameof(parameters));
 
-            if (toolName == _activeDocTool.ToolName)
-                return await ExecuteActiveDocAsync(sp, cancellationToken);
-            else if (toolName == _searchTool.ToolName)
-                return await ExecuteSearchAsync(sp, parameters, cancellationToken);
-            else if (toolName == _fileLinesReaderTool.ToolName)
-                return await ExecuteFileLinesAsync(sp, parameters, cancellationToken);
-            else if (toolName == _findFilesByNameTool.ToolName)
-                return await ExecuteFindFilesByNameAsync(sp, parameters, cancellationToken);
-            else if (toolName == _solutionOverviewTool.ToolName)
-                return await ExecuteSolutionOverviewAsync(sp, cancellationToken);
-            else if (toolName == _findSymbolReferencesTool.ToolName)
-                return await ExecuteFindSymbolReferencesAsync(sp, parameters, cancellationToken);
-            else
+
+            if (!_toolsByName.TryGetValue(toolName, out var tool))
                 throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
+
+            switch (tool)
+            {
+                case IActiveDocument activeDocument:
+                    return await activeDocument.ExecuteAsync(cancellationToken);
+                case IGetSolutionOverview solutionOverview:
+                    return await solutionOverview.ExecuteAsync(cancellationToken);
+                case ISolutionSearch solutionSearch:
+                    return await solutionSearch.ExecuteAsync(parameters, cancellationToken);
+                case IFileLinesReader fileLinesReader:
+                    return await fileLinesReader.ExecuteAsync(parameters, cancellationToken);
+                case IFindFilesByName findFilesByName:
+                    return await findFilesByName.ExecuteAsync(parameters, cancellationToken);
+                case IFindSymbolReferences findSymbolReferences:
+                    return await findSymbolReferences.ExecuteAsync(parameters, cancellationToken);
+                case IListDirectoryContents listDirectoryContents:
+                    return await listDirectoryContents.ExecuteAsync(parameters, cancellationToken);
+                default:
+                    throw new NotSupportedException($"Tool type '{tool.GetType().Name}' is not supported.");
+            }
         }
 
         public string GetProcessingMessage(string toolName, Dictionary<string, object> parameters)
         {
-            switch (toolName)
+            if (!string.IsNullOrEmpty(toolName) && _toolsByName.TryGetValue(toolName, out var tool))
             {
-                case var _ when toolName == _searchTool.ToolName:
-                    {
-                        var query = parameters.TryGetValue("query", out var q) ? q.ToString() : "";
-                        var ext = parameters.TryGetValue("extension_filter", out var e) ? e.ToString() : null;
-                        var project = parameters.TryGetValue("project_filter", out var p) ? p.ToString() : null;
-
-                        var message = $"Searching for '{query}'";
-                        if (!string.IsNullOrEmpty(project))
-                            message += $" in '{project}'";
-
-                        if (!string.IsNullOrEmpty(ext))
-                        {
-                            message += $", with extension '{ext}'";
-                        }
-                        else
-                        {
-                            message += " in all files";
-                        }
-
-                        message += "... ";
-
-                        return message;
-                    }
-
-                case var _ when toolName == _findFilesByNameTool.ToolName:
-                    {
-                        var fileName = parameters.TryGetValue("file_name", out var fn) ? fn.ToString() : "";
-                        var ext = parameters.TryGetValue("file_extension", out var fe) ? fe.ToString() : null;
-                        var project = parameters.TryGetValue("project_filter", out var pf) ? pf.ToString() : null;
-
-                        var message = $"Locating '{fileName}'";
-                        if (!string.IsNullOrEmpty(project))
-                            message += $" in project '{project}'";
-                        if (!string.IsNullOrEmpty(ext))
-                            message += $", with extension '{ext}'";
-
-                        message += "... ";
-
-                        return message;
-                    }
-
-                case var _ when toolName == _fileLinesReaderTool.ToolName:
-                    {
-                        var file = parameters.TryGetValue("file_path", out var f) ? f.ToString() : "";
-                        var start = parameters.TryGetValue("start_line", out var s) && int.TryParse(s.ToString(), out var si) ? si : 1;
-                        var end = parameters.TryGetValue("end_line", out var en) && int.TryParse(en.ToString(), out var ei) ? ei : 1;
-                        return $"Reading lines {start}-{end} of '{file}'... ";
-                    }
-
-                case var _ when toolName == _activeDocTool.ToolName:
-                    return "Reading active document... ";
-
-                case var _ when toolName == _solutionOverviewTool.ToolName:
-                    return "Analyzing solution structure... ";
-
-                case var _ when toolName == _findSymbolReferencesTool.ToolName:
-                    {
-                        var symbolName = parameters.TryGetValue("symbol_name", out var s) ? s.ToString() : "";
-                        return $"Finding references to '{symbolName}'... ";
-                    }
-
-                default:
-                    return "Processing...";
+                return tool.GetProcessingMessage(parameters);
             }
+
+            return "Processing...";
         }
 
         public string GetCompletionMessage(string toolName, object result)
         {
-            switch (toolName)
+            if (!string.IsNullOrEmpty(toolName) && _toolsByName.TryGetValue(toolName, out var tool))
             {
-                case var _ when toolName == _searchTool.ToolName:
-                    {
-                        if (result is SearchResultsResponse searchResults)
-                            return $"Found {searchResults.Results.Count} matches.";
-                        break;
-                    }
-
-                case var _ when toolName == _findFilesByNameTool.ToolName:
-                    {
-                        if (result is FileSearchResultsResponse fileResults)
-                            return $"Found {fileResults.Results.Count} files.";
-                        break;
-                    }
-
-                case var _ when toolName == _fileLinesReaderTool.ToolName:
-                    {
-                        if (result is FileLinesResponse fileResult)
-                            return $"Read {fileResult.Lines.Count} lines.";
-                        break;
-                    }
-
-                case var _ when toolName == _activeDocTool.ToolName:
-                    {
-                        if (result is ActiveDocumentResponse docResult)
-                            return $"Loaded '{System.IO.Path.GetFileName(docResult.FilePath)}'.";
-                        break;
-                    }
-
-                case var _ when toolName == _solutionOverviewTool.ToolName:
-                    {
-                        if (result is SolutionOverviewResponse solutionResult)
-                            return $"Loaded {solutionResult.TotalProjects} projects, {solutionResult.TotalFiles} files.";
-                        break;
-                    }
-
-                case var _ when toolName == _findSymbolReferencesTool.ToolName:
-                    {
-                        if (result is SymbolReferencesResponse symbolResult)
-                            return $"Found {symbolResult.TotalReferences} references.";
-                        break;
-                    }
+                return tool.GetCompletionMessage(result);
             }
 
             return "Completed";
-        }
-
-        private async Task<object> ExecuteSearchAsync(
-            IServiceProvider sp,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
-        {
-            if (!parameters.TryGetValue("query", out object queryObj) || !(queryObj is string))
-                throw new ArgumentException("Parameter 'query' is required and must be a string.", "query");
-
-            string query = (string)queryObj;
-            string extensionFilter = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
-            string projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
-
-            try
-            {
-                var result = await _searchTool.ExecuteAsync(sp, query, extensionFilter, cancellationToken, projectFilter);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"SolutionSearchTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private async Task<object> ExecuteActiveDocAsync(
-            IServiceProvider sp,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                var result = await _activeDocTool.ExecuteAsync(sp, cancellationToken);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"ActiveDocumentTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private async Task<object> ExecuteFileLinesAsync(
-            IServiceProvider sp,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
-        {
-            if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string))
-                throw new ArgumentException("Parameter 'file_path' is required and must be a string.", nameof(parameters));
-
-            if (!parameters.TryGetValue("start_line", out object startLineObj) || !TryParseInt(startLineObj, out int startLine))
-                throw new ArgumentException("Parameter 'start_line' is required and must be an integer.", nameof(parameters));
-
-            if (!parameters.TryGetValue("end_line", out object endLineObj) || !TryParseInt(endLineObj, out int endLine))
-                throw new ArgumentException("Parameter 'end_line' is required and must be an integer.", nameof(parameters));
-
-            string filePath = (string)filePathObj;
-
-            try
-            {
-                var result = await _fileLinesReaderTool.ExecuteAsync(sp, filePath, startLine, endLine, cancellationToken);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"FileLinesReaderTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private async Task<object> ExecuteFindFilesByNameAsync(
-            IServiceProvider sp,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
-        {
-            if (!parameters.TryGetValue("file_name", out object fileNameObj) || !(fileNameObj is string))
-                throw new ArgumentException("Parameter 'file_name' is required and must be a string.", nameof(parameters));
-
-            string fileName = (string)fileNameObj;
-            string fileExtension = parameters.TryGetValue("file_extension", out object extObj) ? extObj as string : null;
-            string projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
-
-            try
-            {
-                var result = await _findFilesByNameTool.ExecuteAsync(sp, fileName, fileExtension, cancellationToken, projectFilter);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"FindFilesByNameTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private async Task<object> ExecuteSolutionOverviewAsync(
-            IServiceProvider sp,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                var result = await _solutionOverviewTool.ExecuteAsync(sp, cancellationToken);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"GetSolutionOverviewTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private async Task<object> ExecuteFindSymbolReferencesAsync(
-            IServiceProvider sp,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
-        {
-            if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
-                throw new ArgumentException("Parameter 'symbol_name' is required and must be a string.", nameof(parameters));
-
-            string symbolName = (string)symbolNameObj;
-
-            try
-            {
-                var result = await _findSymbolReferencesTool.ExecuteAsync(sp, symbolName, cancellationToken);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"FindSymbolReferencesTool execution failed: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        private bool TryParseInt(object value, out int result)
-        {
-            result = 0;
-            if (value is int intVal)
-            {
-                result = intVal;
-                return true;
-            }
-            if (value is long longVal)
-            {
-                if (longVal >= int.MinValue && longVal <= int.MaxValue)
-                {
-                    result = (int)longVal;
-                    return true;
-                }
-                return false;
-            }
-            if (value is string strVal && int.TryParse(strVal, out int parsed))
-            {
-                result = parsed;
-                return true;
-            }
-            return false;
         }
     }
 }

@@ -31,12 +31,10 @@ namespace LMLocal.Services.Tool
     internal class ToolExecutionManager : IToolExecutionManager
     {
         private readonly ICompositeToolFactory _vsToolFactory;
-        private readonly IServiceProvider _serviceProvider;
 
-        public ToolExecutionManager(ICompositeToolFactory vsToolFactory, IServiceProvider serviceProvider)
+        public ToolExecutionManager(ICompositeToolFactory vsToolFactory)
         {
             _vsToolFactory = vsToolFactory ?? throw new ArgumentNullException(nameof(vsToolFactory));
-            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
 
         public async Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct)
@@ -76,7 +74,6 @@ namespace LMLocal.Services.Tool
                 InternalLogger.Info($"ToolExecutionManager: Executing {toolCall.FunctionName}");
                 var result = await _vsToolFactory.ExecuteAsync(
                     toolCall.FunctionName,
-                    _serviceProvider,
                     parameters,
                     ct).ConfigureAwait(false);
 

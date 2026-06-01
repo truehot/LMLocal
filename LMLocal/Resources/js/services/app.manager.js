@@ -4,7 +4,7 @@ import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import appDataService from '@app/services/app.data.service.js';
-import { startupManager } from '@app/store/startup.manager.js';
+import { startupManager } from '@app/services/startup.manager.js';
 import bridgeClient from '@app/api/bridge.client.js';
 
 /**

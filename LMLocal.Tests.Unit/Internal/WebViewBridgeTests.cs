@@ -44,7 +44,7 @@ namespace LMLocal.Tests.Unit
                     });
 
                 var mockScript = new Mock<IWebViewScriptExecutor>();
-                var mockActiveDoc = new Mock<IActiveDocumentTool>();
+                var mockActiveDoc = new Mock<IActiveDocument>();
                 var mockSession = new Mock<ISessionManager>();
                 var mockActiveModelContext = new Mock<IActiveModelContext>();
                 mockActiveModelContext.SetupGet(a => a.CurrentModelId).Returns("model1");
@@ -79,7 +79,7 @@ namespace LMLocal.Tests.Unit
                 var mockInstructions = new Mock<IInstructionsManager>();
                 var mockMcp = new Mock<IMcpConfigManager>();
                 var mockMcpToolManager = new Mock<IMcpToolManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, new Mock<IActiveDocumentTool>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object);
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, new Mock<IActiveDocument>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -92,7 +92,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
             var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IActiveDocumentTool>();
+            var mockActiveDoc = new Mock<IActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
@@ -116,7 +116,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
             var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IActiveDocumentTool>();
+            var mockActiveDoc = new Mock<IActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
@@ -154,7 +154,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
             var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IActiveDocumentTool>();
+            var mockActiveDoc = new Mock<IActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
@@ -182,7 +182,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
             var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IActiveDocumentTool>();
+            var mockActiveDoc = new Mock<IActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
@@ -208,7 +208,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
             var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IActiveDocumentTool>();
+            var mockActiveDoc = new Mock<IActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();

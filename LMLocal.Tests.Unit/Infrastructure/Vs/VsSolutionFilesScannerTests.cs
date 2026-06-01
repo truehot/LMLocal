@@ -27,7 +27,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         }
 
         [Test]
-        public void EnumerateSolutionFiles_WithProjectFilter_ReturnsOnlyFilesFromMatchingProject()
+        public async Task EnumerateSolutionFiles_WithProjectFilter_ReturnsOnlyFilesFromMatchingProject()
         {
             // Arrange
             var fileA = Path.Combine(_root, "ProjectA", "a.cs");
@@ -46,16 +46,15 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard);
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
 
             // Act - Filter by ProjectB (case-insensitive substring match)
             var filter = new EnumerateSolutionFilesFilter
             {
                 ExtensionFilter = ".cs",
                 ProjectFilter = "ProjectB",
-                ExcludeTemporaryDirectories = false
             };
-            var results = scanner.EnumerateSolutionFiles(filter).ToList();
+            var results = (await scanner.EnumerateSolutionFilesAsync(filter)).ToList();
 
             // Assert
             Assert.That(results.Count, Is.EqualTo(1));
@@ -63,7 +62,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         }
 
         [Test]
-        public void EnumerateSolutionFiles_WithProjectFilter_CaseInsensitive()
+        public async Task EnumerateSolutionFiles_WithProjectFilter_CaseInsensitive()
         {
             // Arrange
             var fileA = Path.Combine(_root, "ProjectA", "a.cs");
@@ -76,55 +75,90 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard);
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
 
             // Act - Use lowercase filter for "MyProject"
             var filter = new EnumerateSolutionFilesFilter
             {
                 ExtensionFilter = ".cs",
                 ProjectFilter = "myproject",
-                ExcludeTemporaryDirectories = false
             };
-            var results = scanner.EnumerateSolutionFiles(filter).ToList();
+            var results = (await scanner.EnumerateSolutionFilesAsync(filter)).ToList();
 
             // Assert
             Assert.That(results.Count, Is.EqualTo(1));
             Assert.That(results[0], Does.Contain("MyProject"));
         }
 
-        //[Test]
-        //public void EnumerateSolutionFiles_UsesInjectedProvider_FiltersAndLimitsAndReturnsRelative()
-        //{
-        //    // Arrange
-        //    var fileA = Path.Combine(_root, "ProjectA", "a.cs");
-        //    var fileB = Path.Combine(_root, "ProjectA", "b.txt");
-        //    var fileC = Path.Combine(_root, "ProjectB", "sub", "c.cs");
-        //    Directory.CreateDirectory(Path.GetDirectoryName(fileA));
-        //    Directory.CreateDirectory(Path.GetDirectoryName(fileB));
-        //    Directory.CreateDirectory(Path.GetDirectoryName(fileC));
-        //    File.WriteAllText(fileA, "a");
-        //    File.WriteAllText(fileB, "b");
-        //    File.WriteAllText(fileC, "c");
+        [Test]
+        public async Task EnumerateSolutionFilesAsync_ExtensionFilter_ReturnsOnlyCsFiles()
+        {
+            // Arrange
+            var fileA = Path.Combine(_root, "Folder1", "a.cs");
+            var fileB = Path.Combine(_root, "Folder1", "b.txt");
+            var fileC = Path.Combine(_root, "Folder2", "c.cs");
+            var fileD = Path.Combine(_root, "Folder3", "d.cs");
+            Directory.CreateDirectory(Path.GetDirectoryName(fileA));
+            Directory.CreateDirectory(Path.GetDirectoryName(fileB));
+            Directory.CreateDirectory(Path.GetDirectoryName(fileC));
+            Directory.CreateDirectory(Path.GetDirectoryName(fileD));
+            File.WriteAllText(fileA, "a");
+            File.WriteAllText(fileB, "b");
+            File.WriteAllText(fileC, "c");
+            File.WriteAllText(fileD, "d");
 
-        //    // Fake provider returns absolute file paths
-        //    var provider = new TestFileProvider(_root);
+            var provider = new TestFileProvider(_root);
+            var dependencies = new TestVsDependencies(_root, provider);
+            var uiThreadGuard = new TestUiThreadGuard();
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
 
-        //    var scanner = new VsSolutionFilesScanner(_root, provider);
+            // Act
+            var filter = new EnumerateSolutionFilesFilter
+            {
+                ExtensionFilter = ".cs",
+            };
+            var results = (await scanner.EnumerateSolutionFilesAsync(filter)).ToList();
 
-        //    // Act
-        //    var results = scanner.EnumerateSolutionFiles(".cs", 2).ToList();
+            // Assert
+            Assert.That(results.Count, Is.EqualTo(3));
+            Assert.That(results.All(r => r.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)));
+        }
 
-        //    // Assert
-        //    Assert.That(results.Count, Is.EqualTo(2));
-        //    Assert.That(results.Any(r => r.EndsWith(Path.Combine("ProjectA", "a.cs"))), Is.True);
-        //    Assert.That(results.Any(r => r.EndsWith(Path.Combine("ProjectB", "sub", "c.cs"))), Is.True);
-        //}
+        [Test]
+        public async Task EnumerateSolutionFilesAsync_LimitRespected()
+        {
+            // Arrange
+            for (int i = 1; i <= 5; i++)
+            {
+                var f = Path.Combine(_root, $"P", $"file{i}.cs");
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var provider = new TestFileProvider(_root);
+            var dependencies = new TestVsDependencies(_root, provider);
+            var uiThreadGuard = new TestUiThreadGuard();
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
+
+            // Act
+            var filter = new EnumerateSolutionFilesFilter
+            {
+                ExtensionFilter = ".cs",
+                Limit = 3
+            };
+            var results = (await scanner.EnumerateSolutionFilesAsync(filter)).ToList();
+
+            // Assert
+            Assert.That(results.Count, Is.EqualTo(3));
+        }
+
+
 
         private class TestFileProvider : ISolutionFileProvider
         {
             private readonly string _root;
             public TestFileProvider(string root) { _root = root; }
-            public IEnumerable<string> GetFiles() => Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories);
+            public IEnumerable<string> GetFiles(bool includeProjects = false) => Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories);
         }
 
         private class TestVsDependencies : IVsDependencies

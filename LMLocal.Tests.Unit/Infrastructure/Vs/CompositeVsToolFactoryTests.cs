@@ -127,11 +127,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         {
             var expectedResult = "built_in_result";
             _builtInFactoryMock.Setup(f => f.ToolExists("search_in_files")).Returns(true);
-            _builtInFactoryMock.Setup(f => f.ExecuteAsync("search_in_files", It.IsAny<IServiceProvider>(), 
+            _builtInFactoryMock.Setup(f => f.ExecuteAsync("search_in_files", 
                 It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(expectedResult);
 
-            var result = await _compositeFactory.ExecuteAsync("search_in_files", null, new Dictionary<string, object>(), CancellationToken.None);
+            var result = await _compositeFactory.ExecuteAsync("search_in_files", new Dictionary<string, object>(), CancellationToken.None);
 
             Assert.That(result, Is.EqualTo(expectedResult));
         }
@@ -151,7 +151,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             _mcpToolManagerMock.Setup(m => m.GetTool("external_tool"))
                 .Returns(expectedMcpTool);
 
-            var result = await _compositeFactory.ExecuteAsync("external_tool", null, new Dictionary<string, object>(), CancellationToken.None);
+            var result = await _compositeFactory.ExecuteAsync("external_tool", new Dictionary<string, object>(), CancellationToken.None);
 
             Assert.That(result, Is.EqualTo(expectedResult));
         }
@@ -278,7 +278,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             _mcpToolManagerMock.Setup(m => m.ToolExists("search_in_files")).Returns(false);
 
             Assert.ThrowsAsync<ArgumentException>(
-                () => _compositeFactory.ExecuteAsync("search_in_files", null, new Dictionary<string, object>(), CancellationToken.None));
+                () => _compositeFactory.ExecuteAsync("search_in_files", new Dictionary<string, object>(), CancellationToken.None));
         }
     }
 }

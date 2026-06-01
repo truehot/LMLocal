@@ -1,8 +1,8 @@
-import { Config } from '@app/store/app.globals.js';
+import { Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js'
-import { ChunkBuffer } from '@app/store/chunk.buffer.js';
+import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
 
 class BridgeMessageHandler {
     constructor() {

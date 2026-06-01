@@ -6,8 +6,8 @@ import { toolbarComponent } from '@app/components/toolbar.component.js';
 import { chatComponent } from '@app/components/chat.component.js';
 
 import chatController from '@app/chat/chat.controller.js';
-import appManager from '@app/store/app.manager.js';
-import { bridgeMessageHandler } from '@app/store/bridge.message.handler.js';
+import appManager from '@app/services/app.manager.js';
+import { bridgeMessageHandler } from '@app/api/bridge.message.handler.js';
 import appStore from '@app/store/app.store.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import modelStore from '@app/store/model.store.js';
@@ -21,7 +21,7 @@ import { SettingsDialog } from '@app/dialogs/settings.dialog.js';
 import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
-import { UIText } from '@app/store/app.globals.js';
+import { UIText } from '@app/constants/app.globals.js';
 
 /**
  * AppController - central initializer and event router.

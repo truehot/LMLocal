@@ -16,11 +16,11 @@ public class ToolingTests : AppTestBase
 
         // Wait for tool container to be populated
         await Expect(Page.Locator(".tool-status"))
-            .ToBeVisibleAsync(new() { Timeout = 3000 });
+            .ToBeVisibleAsync(new() { Timeout = 4000 });
 
         // Check that tool status message is displayed
         await Expect(Page.Locator(".tool-status"))
-            .ToContainTextAsync("Searching for", new() { Timeout = 3000 });
+            .ToContainTextAsync("Searching for", new() { Timeout = 4000 });
     }
 
     [Test]

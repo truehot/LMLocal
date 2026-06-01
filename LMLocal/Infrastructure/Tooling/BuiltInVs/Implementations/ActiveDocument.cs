@@ -1,41 +1,37 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Tooling.Abstractions;
+using LMLocal.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocument;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    public class ActiveDocumentResponse
+    /// <summary>
+    /// Tool interface to retrieve the currently active text document in Visual Studio.
+    /// </summary>
+    internal interface IActiveDocument : IBuiltInTool
     {
-        [JsonProperty("file")]
-        public string FilePath { get; set; }
-
-        [JsonProperty("content")]
-        public string Content { get; set; }
-    }
-
-    internal interface IActiveDocumentTool : ITool
-    {
-        Task<ActiveDocumentResponse> ExecuteAsync(IServiceProvider sp, CancellationToken cancellationToken = default);
-
+        Task<ActiveDocumentResponse> ExecuteAsync(CancellationToken cancellationToken = default);
         Task<string> GetContentAsync();
     }
 
-    internal class ActiveDocumentTool : IActiveDocumentTool
+    internal class ActiveDocument : IActiveDocument
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
 
         public string ToolName => "Get_Active_Document_Content";
 
-        public ActiveDocumentTool(IVsDependencies vsDependencies, IPathResolver pathResolver)
+        public ActiveDocument(IVsDependencies vsDependencies, IPathResolver pathResolver)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -56,23 +52,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<ActiveDocumentResponse> ExecuteAsync(
-            IServiceProvider sp,
-            CancellationToken cancellationToken = default)
+        public async Task<ActiveDocumentResponse> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             await _vsDependencies.InitializeAsync();
-            
+
             string solutionDir = _vsDependencies.GetSolutionDirectory();
 
-            var (filePath, content) = await GetActiveTextDocumentAsync();
+            var (filePath, content) = await GetActiveTextDocumentAsync(cancellationToken);
             if (string.IsNullOrEmpty(filePath))
                 return new ActiveDocumentResponse { FilePath = null, Content = content };
 
-            
             if (string.IsNullOrEmpty(solutionDir) || !_pathResolver.TryGetRelativePath(filePath, solutionDir, out string relativePath))
                 relativePath = filePath;
+
             return new ActiveDocumentResponse
             {
                 FilePath = relativePath,
@@ -86,9 +80,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return text;
         }
 
-        private async Task<(string filePath, string content)> GetActiveTextDocumentAsync()
+        private async Task<(string filePath, string content)> GetActiveTextDocumentAsync(CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             if (!(await ServiceProvider.GetGlobalServiceAsync(typeof(SVsShellMonitorSelection)) is IVsMonitorSelection monitor))
                 return (null, string.Empty);
@@ -108,13 +102,72 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                string content = File.ReadAllText(filePath);
+                string content = await ReadFileContentAsync(filePath, cancellationToken).ConfigureAwait(false);
                 return (filePath, content);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
                 return (filePath, string.Empty);
             }
+        }
+
+        private static async Task<string> ReadFileContentAsync(string filePath, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return string.Empty;
+
+            try
+            {
+                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true))
+                using (var sr = new StreamReader(fs))
+                {
+                    var sb = new StringBuilder();
+                    char[] buffer = new char[8192];
+                    int charsRead;
+                    while ((charsRead = await sr.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        sb.Append(buffer, 0, charsRead);
+                    }
+                    return sb.ToString();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                InternalLogger.Warn($"File read operation for '{filePath}' was canceled.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error($"Error reading file '{filePath}': {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        public string GetProcessingMessage(Dictionary<string, object> parameters)
+        {
+            return "Reading active document... ";
+        }
+
+        public string GetCompletionMessage(object result)
+        {
+            var docResult = (ActiveDocumentResponse)result;
+            if(string.IsNullOrEmpty(docResult.FilePath))
+                return "";
+            return $"Read '{docResult.FilePath}'.";
+        }
+
+        public class ActiveDocumentResponse
+        {
+            [JsonProperty("file")]
+            public string FilePath { get; set; }
+
+            [JsonProperty("content")]
+            public string Content { get; set; }
         }
     }
 }

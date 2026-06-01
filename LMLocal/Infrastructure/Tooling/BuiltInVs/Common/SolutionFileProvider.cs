@@ -11,7 +11,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
     internal interface ISolutionFileProvider
     {
-        IEnumerable<string> GetFiles();
+        IEnumerable<string> GetFiles(bool includeProjects = false);
     }
 
     internal class SolutionFileProvider : ISolutionFileProvider
@@ -23,7 +23,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             _solution = solution;
         }
 
-        public IEnumerable<string> GetFiles()
+        public IEnumerable<string> GetFiles(bool includeProjects = false)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             var result = new List<string>();
@@ -41,6 +41,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 var h = hier[0];
                 if (h == null) continue;
+
+                if (includeProjects && h is IVsProject vsProject)
+                {
+                    if (vsProject.GetMkDocument(VSConstants.VSITEMID_ROOT, out string projectPath) == VSConstants.S_OK &&
+                        !string.IsNullOrEmpty(projectPath) && File.Exists(projectPath))
+                    {
+                        result.Add(projectPath);
+                    }
+                }
 
                 result.AddRange(EnumerateHierarchyItems(h, VSConstants.VSITEMID_ROOT));
             }

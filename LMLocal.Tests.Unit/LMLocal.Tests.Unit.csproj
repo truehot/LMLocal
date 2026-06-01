@@ -92,6 +92,7 @@
     <Compile Include="Infrastructure\SystemTimeProviderTests.cs" />
     <Compile Include="Infrastructure\TestHttpClientWrapper.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
     <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />

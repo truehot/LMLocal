@@ -131,12 +131,13 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
             services.AddTransient<IVsSolutionFilesScanner, VsSolutionFilesScanner>();
 
-            services.AddTransient<ISolutionSearchTool, SolutionSearchTool>();
-            services.AddTransient<IActiveDocumentTool, ActiveDocumentTool>();
-            services.AddTransient<IFileLinesReaderTool, FileLinesReaderTool>();
-            services.AddTransient<IFindFilesByNameTool, FindFilesByNameTool>();
-            services.AddTransient<IGetSolutionOverviewTool, GetSolutionOverviewTool>();
-            services.AddTransient<IFindSymbolReferencesTool, FindSymbolReferences>();
+            services.AddTransient<ISolutionSearch, SolutionSearch>();
+            services.AddTransient<IActiveDocument, ActiveDocument>();
+            services.AddTransient<IFileLinesReader, FileLinesReader>();
+            services.AddTransient<IFindFilesByName, FindFilesByName>();
+            services.AddTransient<IGetSolutionOverview, GetSolutionOverview>();
+            services.AddTransient<IFindSymbolReferences, FindSymbolReferences>();
+            services.AddTransient<IListDirectoryContents, ListDirectoryContents>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();

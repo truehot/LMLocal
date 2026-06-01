@@ -7,6 +7,13 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using Moq;
 using NUnit.Framework;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileLinesReader;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocument;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindFilesByName;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindSymbolReferences;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.GetSolutionOverview;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionSearch;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ListDirectoryContents;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Vs
 {
@@ -16,12 +23,13 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         [Test]
         public void GetAllToolDefinitions_ReturnsDefinitionsFromTools()
         {
-            var searchTool = new Mock<ISolutionSearchTool>();
-            var activeTool = new Mock<IActiveDocumentTool>();
-            var linesTool = new Mock<IFileLinesReaderTool>();
-            var findFilesTool = new Mock<IFindFilesByNameTool>();
-            var solutionOverviewTool = new Mock<IGetSolutionOverviewTool>();
-            var findSymbolReferencesTool = new Mock<IFindSymbolReferencesTool>();
+            var searchTool = new Mock<ISolutionSearch>();
+            var activeTool = new Mock<IActiveDocument>();
+            var linesTool = new Mock<IFileLinesReader>();
+            var findFilesTool = new Mock<IFindFilesByName>();
+            var solutionOverviewTool = new Mock<IGetSolutionOverview>();
+            var findSymbolReferencesTool = new Mock<IFindSymbolReferences>();
+            var listDirTool = new Mock<IListDirectoryContents>();
 
             searchTool.Setup(s => s.GetToolInfo()).Returns(new ToolDefinition { Name = "search_in_files" });
             searchTool.SetupGet(s => s.ToolName).Returns("search_in_files");
@@ -41,29 +49,34 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             findSymbolReferencesTool.Setup(s => s.GetToolInfo()).Returns(new ToolDefinition { Name = "find_symbol_references" });
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
 
-            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            listDirTool.Setup(s => s.GetToolInfo()).Returns(new ToolDefinition { Name = "list_directory_contents" });
+            listDirTool.SetupGet(s => s.ToolName).Returns("list_directory_contents");
+
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object, listDirTool.Object);
 
             var defs = factory.GetAllToolDefinitions();
 
             Assert.That(defs, Is.Not.Null);
-            Assert.That(defs.Count, Is.EqualTo(6));
+            Assert.That(defs.Count, Is.EqualTo(7));
             Assert.That(defs[0].Name, Is.EqualTo("search_in_files"));
             Assert.That(defs[1].Name, Is.EqualTo("get_active_document"));
             Assert.That(defs[2].Name, Is.EqualTo("read_file_lines"));
             Assert.That(defs[3].Name, Is.EqualTo("find_files_by_name"));
             Assert.That(defs[4].Name, Is.EqualTo("get_solution_overview"));
             Assert.That(defs[5].Name, Is.EqualTo("find_symbol_references"));
+            Assert.That(defs[6].Name, Is.EqualTo("list_directory_contents"));
         }
 
         [Test]
         public void GetTool_ReturnsCorrectToolOrThrows()
         {
-            var searchTool = new Mock<ISolutionSearchTool>();
-            var activeTool = new Mock<IActiveDocumentTool>();
-            var linesTool = new Mock<IFileLinesReaderTool>();
-            var findFilesTool = new Mock<IFindFilesByNameTool>();
-            var solutionOverviewTool = new Mock<IGetSolutionOverviewTool>();
-            var findSymbolReferencesTool = new Mock<IFindSymbolReferencesTool>();
+            var searchTool = new Mock<ISolutionSearch>();
+            var activeTool = new Mock<IActiveDocument>();
+            var linesTool = new Mock<IFileLinesReader>();
+            var findFilesTool = new Mock<IFindFilesByName>();
+            var solutionOverviewTool = new Mock<IGetSolutionOverview>();
+            var findSymbolReferencesTool = new Mock<IFindSymbolReferences>();
+            var listDirTool = new Mock<IListDirectoryContents>();
 
             searchTool.SetupGet(s => s.ToolName).Returns("search_in_files");
             activeTool.SetupGet(s => s.ToolName).Returns("get_active_document");
@@ -71,8 +84,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             findFilesTool.SetupGet(s => s.ToolName).Returns("find_files_by_name");
             solutionOverviewTool.SetupGet(s => s.ToolName).Returns("get_solution_overview");
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
+            listDirTool.SetupGet(s => s.ToolName).Returns("list_directory_contents");
 
-            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object, listDirTool.Object);
 
             var t1 = factory.GetTool("search_in_files");
             Assert.That(t1, Is.SameAs(searchTool.Object));
@@ -92,18 +106,22 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var t6 = factory.GetTool("find_symbol_references");
             Assert.That(t6, Is.SameAs(findSymbolReferencesTool.Object));
 
+            var t7 = factory.GetTool("list_directory_contents");
+            Assert.That(t7, Is.SameAs(listDirTool.Object));
+
             Assert.Throws<ArgumentException>(() => factory.GetTool("nonexistent_tool"));
         }
 
         [Test]
         public async Task ExecuteAsync_DispatchesToCorrectTool()
         {
-            var searchTool = new Mock<ISolutionSearchTool>();
-            var activeTool = new Mock<IActiveDocumentTool>();
-            var linesTool = new Mock<IFileLinesReaderTool>();
-            var findFilesTool = new Mock<IFindFilesByNameTool>();
-            var solutionOverviewTool = new Mock<IGetSolutionOverviewTool>();
-            var findSymbolReferencesTool = new Mock<IFindSymbolReferencesTool>();
+            var searchTool = new Mock<ISolutionSearch>();
+            var activeTool = new Mock<IActiveDocument>();
+            var linesTool = new Mock<IFileLinesReader>();
+            var findFilesTool = new Mock<IFindFilesByName>();
+            var solutionOverviewTool = new Mock<IGetSolutionOverview>();
+            var findSymbolReferencesTool = new Mock<IFindSymbolReferences>();
+            var listDirTool = new Mock<IListDirectoryContents>();
 
             searchTool.SetupGet(s => s.ToolName).Returns("search_in_files");
             activeTool.SetupGet(s => s.ToolName).Returns("get_active_document");
@@ -111,63 +129,64 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             findFilesTool.SetupGet(s => s.ToolName).Returns("find_files_by_name");
             solutionOverviewTool.SetupGet(s => s.ToolName).Returns("get_solution_overview");
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
+            listDirTool.SetupGet(s => s.ToolName).Returns("list_directory_contents");
 
-            var expectedSearchResult = new List<SearchResult> { new SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<SearchMatch> { new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } };
-            searchTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "needle", ".cs", It.IsAny<CancellationToken>(), null)).ReturnsAsync(expectedSearchResult);
+            var expectedSearchResult = new List<SearchResult> { new SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<SearchMatch> { new SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } };
+            searchTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedSearchResult);
 
-            var expectedActive = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocumentResponse { FilePath = "a.cs", Content = "content" };
-            activeTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedActive);
+            var expectedActive = new ActiveDocumentResponse { FilePath = "a.cs", Content = "content" };
+            activeTool.Setup(s => s.ExecuteAsync(It.IsAny<CancellationToken>())).ReturnsAsync(expectedActive);
 
-            var expectedLines = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileLinesResponse { FilePath = "a.cs", Lines = new System.Collections.Generic.List<FileLineInfo>() };
-            linesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "a.cs", 1, 2, It.IsAny<CancellationToken>())).ReturnsAsync(expectedLines);
+            var expectedLines = new FileLinesResponse { FilePath = "a.cs", Lines = new System.Collections.Generic.List<FileLineInfo>() };
+            linesTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedLines);
 
-            var expectedFindFilesResult = new List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileSearchResult> { new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileSearchResult { FilePath = "config.cs" } };
-            findFilesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "config", ".cs", It.IsAny<CancellationToken>(), null)).ReturnsAsync(expectedFindFilesResult);
+            var expectedFindFilesResult = new List<FileSearchResult> { new FileSearchResult { FilePath = "config.cs" } };
+            findFilesTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedFindFilesResult);
 
-            var expectedSolutionResult = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionOverviewResponse { SolutionName = "Test", TotalProjects = 2, TotalFiles = 100 };
-            solutionOverviewTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedSolutionResult);
+            var expectedSolutionResult = new SolutionOverviewResponse { SolutionName = "Test", TotalProjects = 2, TotalFiles = 100 };
+            solutionOverviewTool.Setup(s => s.ExecuteAsync(It.IsAny<CancellationToken>())).ReturnsAsync(expectedSolutionResult);
 
-            var expectedSymbolResult = new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SymbolReferencesResponse 
+            var expectedSymbolResult = new SymbolReferencesResponse 
             { 
                 SymbolName = "TestSymbol", 
-                Results = new System.Collections.Generic.List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileReferencesGroup>
+                Results = new System.Collections.Generic.List<FileReferencesGroup>
                 {
-                    new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileReferencesGroup
+                    new FileReferencesGroup
                     {
                         FilePath = "test.cs",
-                        Matches = new System.Collections.Generic.List<LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ReferenceItem>
+                        Matches = new System.Collections.Generic.List<ReferenceItem>
                         {
-                            new LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ReferenceItem { LineNumber = 10, LineText = "var test = TestSymbol;" }
+                            new ReferenceItem { LineNumber = 10, LineText = "var test = TestSymbol;" }
                         }
                     }
                 },
                 TotalReferences = 1,
                 HasMoreResults = false
             };
-            findSymbolReferencesTool.Setup(s => s.ExecuteAsync(It.IsAny<IServiceProvider>(), "TestSymbol", It.IsAny<CancellationToken>())).ReturnsAsync(expectedSymbolResult);
+            findSymbolReferencesTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedSymbolResult);
 
-            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object);
+            var factory = new BuiltInVsToolProvider(searchTool.Object, activeTool.Object, linesTool.Object, findFilesTool.Object, solutionOverviewTool.Object, findSymbolReferencesTool.Object, listDirTool.Object);
 
             var searchParams = new Dictionary<string, object> { { "query", "needle" }, { "extension_filter", ".cs" } };
-            var searchRes = await factory.ExecuteAsync("search_in_files", null, searchParams, CancellationToken.None);
+            var searchRes = await factory.ExecuteAsync("search_in_files", searchParams, CancellationToken.None);
             Assert.That(searchRes, Is.SameAs(expectedSearchResult));
 
-            var activeRes = await factory.ExecuteAsync("get_active_document", null, new Dictionary<string, object>(), CancellationToken.None);
+            var activeRes = await factory.ExecuteAsync("get_active_document", new Dictionary<string, object>(), CancellationToken.None);
             Assert.That(activeRes, Is.SameAs(expectedActive));
 
             var linesParams = new Dictionary<string, object> { { "file_path", "a.cs" }, { "start_line", 1 }, { "end_line", 2 } };
-            var linesRes = await factory.ExecuteAsync("read_file_lines", null, linesParams, CancellationToken.None);
+            var linesRes = await factory.ExecuteAsync("read_file_lines", linesParams, CancellationToken.None);
             Assert.That(linesRes, Is.SameAs(expectedLines));
 
             var findFilesParams = new Dictionary<string, object> { { "file_name", "config" }, { "file_extension", ".cs" } };
-            var findFilesRes = await factory.ExecuteAsync("find_files_by_name", null, findFilesParams, CancellationToken.None);
+            var findFilesRes = await factory.ExecuteAsync("find_files_by_name", findFilesParams, CancellationToken.None);
             Assert.That(findFilesRes, Is.SameAs(expectedFindFilesResult));
 
-            var solutionRes = await factory.ExecuteAsync("get_solution_overview", null, new Dictionary<string, object>(), CancellationToken.None);
+            var solutionRes = await factory.ExecuteAsync("get_solution_overview", new Dictionary<string, object>(), CancellationToken.None);
             Assert.That(solutionRes, Is.SameAs(expectedSolutionResult));
 
             var symbolParams = new Dictionary<string, object> { { "symbol_name", "TestSymbol" } };
-            var symbolRes = await factory.ExecuteAsync("find_symbol_references", null, symbolParams, CancellationToken.None);
+            var symbolRes = await factory.ExecuteAsync("find_symbol_references", symbolParams, CancellationToken.None);
             Assert.That(symbolRes, Is.SameAs(expectedSymbolResult));
         }
     }

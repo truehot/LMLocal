@@ -11,59 +11,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
     /// <summary>
     /// High-level solution structure inspector.
     /// Provides cached solution overview: projects, file counts, languages, test project detection (by name only).
-    /// Works only with loaded projects (unloaded are ignored).
-    /// File counts are approximate (counts files in project hierarchy, not on disk).
     /// </summary>
     internal static class SolutionInspector
     {
-        /// <summary>
-        /// Project information for solution overview.
-        /// </summary>
-        public class ProjectInfo
-        {
-            public string Name { get; set; }
-            public string Language { get; set; }
-            public string Path { get; set; }
-            public int FileCount { get; set; }
-            public bool IsTestProject { get; set; }
-
-            public ProjectInfo(string name, string language, string path, int fileCount, bool isTestProject)
-            {
-                Name = name;
-                Language = language;
-                Path = path;
-                FileCount = fileCount;
-                IsTestProject = isTestProject;
-            }
-        }
-
-        /// <summary>
-        /// Solution structure summary.
-        /// </summary>
-        public class SolutionInfo
-        {
-            public string SolutionName { get; set; }
-            public string SolutionPath { get; set; }
-            public int TotalProjects { get; set; }
-            public int TotalFiles { get; set; }
-            public List<ProjectInfo> Projects { get; set; }
-            public bool Truncated { get; set; }
-            public List<string> SolutionFolders { get; set; }
-
-            public SolutionInfo(string solutionName, string solutionPath, int totalProjects, int totalFiles,
-                List<ProjectInfo> projects, bool truncated, List<string> solutionFolders)
-            {
-                SolutionName = solutionName;
-                SolutionPath = solutionPath;
-                TotalProjects = totalProjects;
-                TotalFiles = totalFiles;
-                Projects = projects;
-                Truncated = truncated;
-                SolutionFolders = solutionFolders;
-            }
-        }
-
-        private static (SolutionInfo overview, DateTime timestamp)? _cache;
+        private static (string solutionPath, DateTime timestamp, SolutionInfo overview)? _cache;
 
         /// <summary>
         /// Gets a high-level overview of the solution structure (loaded projects only).
@@ -93,13 +44,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 InternalLogger.Warn($"SolutionInspector: Failed to get last write time for {solutionFile}: {ex.Message}");
             }
 
-            if (_cache.HasValue && _cache.Value.timestamp >= lastWrite)
+            bool cacheValid = _cache.HasValue &&
+                              _cache.Value.solutionPath.Equals(solutionFile, StringComparison.OrdinalIgnoreCase) &&
+                              _cache.Value.timestamp >= lastWrite;
+
+            if (cacheValid)
+            {
                 return _cache.Value.overview;
+            }
+            else
+            {
+                ProjectMetadataProvider.ClearAll(); // Clear project metadata cache when solution changes
+            }
 
             var projectsList = new List<ProjectInfo>();
             var solutionFolders = new List<string>();
+
             int totalFilesCount = 0;
             int projectsAddedCount = 0;
+
             bool limitExceeded = false;
 
             uint flags = (uint)__VSENUMPROJFLAGS.EPF_LOADEDINSOLUTION;
@@ -138,9 +101,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     string relativePath = GetRelativePath(solutionDirectory, projectFilePath);
                     int fileCount = CountSourceFilesInProject(projectHierarchy);
                     bool isTest = IsTestProject(projectName);
-                    string language = GetLanguageFromProjectPath(projectFilePath);
+                    (string language, string framework) = ProjectMetadataProvider.GetMetadata(projectFilePath);
 
-                    projectsList.Add(new ProjectInfo(projectName, language, relativePath, fileCount, isTest));
+                    projectsList.Add(new ProjectInfo(projectName, language, relativePath, fileCount, isTest, framework));
                     totalFilesCount += fileCount;
                     projectsAddedCount++;
                 }
@@ -163,7 +126,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 solutionFolders
             );
 
-            _cache = (result, DateTime.Now);
+            _cache = (solutionFile, DateTime.Now, result);
             return result;
         }
 
@@ -188,14 +151,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private static string GetProjectName(IVsHierarchy hierarchy)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
+            string name = null;
             if (hierarchy.GetProperty(VSConstants.VSITEMID_ROOT, (int)__VSHPROPID.VSHPROPID_Name, out object nameObj) == VSConstants.S_OK)
-                return nameObj as string ?? "Unknown";
-            return "Unknown";
+                name = nameObj as string;
+            if (string.IsNullOrEmpty(name))
+            {
+                if (hierarchy.GetProperty(VSConstants.VSITEMID_ROOT, (int)__VSHPROPID.VSHPROPID_Caption, out object captionObj) == VSConstants.S_OK)
+                    name = captionObj as string;
+            }
+            return name ?? "Unknown";
         }
 
         /// <summary>
         /// Gets the project file path from hierarchy.
-        /// Attempts to get the actual .csproj/.vbproj file, falls back to project directory.
         /// </summary>
         private static string GetProjectFilePath(IVsHierarchy hierarchy)
         {
@@ -240,7 +208,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
         /// <summary>
         /// Counts source files recursively in a project hierarchy.
-        /// Counts .cs, .vb, .fs, .xaml, .resx files.
         /// </summary>
         private static int CountSourceFilesInProject(IVsHierarchy hierarchy)
         {
@@ -341,99 +308,53 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         }
 
         /// <summary>
-        /// Detects the programming language from the project file extension or project file content.
+        /// Project information for solution overview.
         /// </summary>
-        private static string GetLanguageFromProjectPath(string projectPath)
+        public class ProjectInfo
         {
-            if (string.IsNullOrEmpty(projectPath))
-                return "Unknown";
+            public string Name { get; set; }
+            public string Language { get; set; }
+            public string Path { get; set; }
+            public int FileCount { get; set; }
+            public bool IsTestProject { get; set; }
+            public string TargetFramework { get; set; }
 
-            if (Directory.Exists(projectPath) && !File.Exists(projectPath))
+            public ProjectInfo(string name, string language, string path, int fileCount, bool isTestProject, string targetFramework)
             {
-                try
-                {
-                    string[] projectFiles = Directory.GetFiles(projectPath, "*proj", SearchOption.TopDirectoryOnly);
-                    if (projectFiles.Length > 0)
-                        projectPath = projectFiles[0];
-                    else
-                        return "Unknown";
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"SolutionInspector: Failed to enumerate project files in {projectPath}: {ex.Message}");
-                    return "Unknown";
-                }
-            }
-
-            string ext = Path.GetExtension(projectPath).ToLower();
-            switch (ext)
-            {
-                case ".csproj":
-                    return "C#";
-                case ".vbproj":
-                    return "VB.NET";
-                case ".fsproj":
-                    return "F#";
-                case ".vcxproj":
-                case ".cppproj":
-                    return "C++";
-                case ".jsproj":
-                    return "JavaScript";
-                case ".pyproj":
-                    return "Python";
-                case ".ts":
-                case ".tsx":
-                    return "TypeScript";
-                case ".jsx":
-                    return "JavaScript";
-                default:
-                    if (File.Exists(projectPath))
-                    {
-                        try
-                        {
-                            string content = File.ReadAllText(projectPath, System.Text.Encoding.UTF8);
-
-                            if (content.Contains("<Language>"))
-                                return ExtractLanguageFromXml(content);
-
-                            if (content.IndexOf("csharp", StringComparison.OrdinalIgnoreCase) >= 0)
-                                return "C#";
-                            if (content.IndexOf("vbnet", StringComparison.OrdinalIgnoreCase) >= 0)
-                                return "VB.NET";
-                            if (content.IndexOf("fsharp", StringComparison.OrdinalIgnoreCase) >= 0)
-                                return "F#";
-                        }
-                        catch (Exception ex)
-                        {
-                            InternalLogger.Warn($"SolutionInspector: Failed to read project file {projectPath}: {ex.Message}");
-                        }
-                    }
-                    return "Unknown";
+                Name = name;
+                Language = language;
+                Path = path;
+                FileCount = fileCount;
+                IsTestProject = isTestProject;
+                TargetFramework = targetFramework;
             }
         }
 
-        private static string ExtractLanguageFromXml(string projectContent)
+        /// <summary>
+        /// Solution structure summary.
+        /// </summary>
+        public class SolutionInfo
         {
-            try
+            public string SolutionName { get; set; }
+            public string SolutionPath { get; set; }
+            public int TotalProjects { get; set; }
+            public int TotalFiles { get; set; }
+            public List<ProjectInfo> Projects { get; set; }
+            public bool Truncated { get; set; }
+            public List<string> SolutionFolders { get; set; }
+
+            public SolutionInfo(string solutionName, string solutionPath, int totalProjects, int totalFiles,
+                List<ProjectInfo> projects, bool truncated, List<string> solutionFolders)
             {
-                int langStart = projectContent.IndexOf("<Language>", StringComparison.OrdinalIgnoreCase);
-                if (langStart >= 0)
-                {
-                    int valueStart = langStart + "<Language>".Length;
-                    int langEnd = projectContent.IndexOf("</Language>", valueStart, StringComparison.OrdinalIgnoreCase);
-                    if (langEnd > valueStart)
-                    {
-                        string lang = projectContent.Substring(valueStart, langEnd - valueStart).Trim();
-                        if (!string.IsNullOrEmpty(lang))
-                            return lang;
-                    }
-                }
+                SolutionName = solutionName;
+                SolutionPath = solutionPath;
+                TotalProjects = totalProjects;
+                TotalFiles = totalFiles;
+                Projects = projects;
+                Truncated = truncated;
+                SolutionFolders = solutionFolders;
             }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"SolutionInspector: Failed to extract language from XML: {ex.Message}");
-            }
-            return "Unknown";
         }
+
     }
 }

@@ -5,72 +5,34 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Tooling.Abstractions;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    public class SearchMatch
-    {
-        [JsonProperty("line")]
-        public int LineNumber { get; set; }
-
-        [JsonProperty("text")]
-        public string LineText { get; set; }
-    }
-
-    public class SearchResult
-    {
-        [JsonProperty("file")]
-        public string FilePath { get; set; }
-
-        [JsonProperty("matches")]
-        public List<SearchMatch> Matches { get; set; }
-
-        [JsonProperty("match_count")]
-        public int MatchCount { get; set; }
-    }
-
-    public class SearchResultsResponse
-    {
-        [JsonProperty("results")]
-        public List<SearchResult> Results { get; set; }
-
-        [JsonProperty("has_more_results")]
-        public bool HasMoreResults { get; set; }
-
-        [JsonProperty("search_files_limit")]
-        public int SearchFilesLimit { get; set; }
-    }
-
-
     /// <summary>
     /// Searches for text across Visual Studio solution files.
     /// Performs a case-insensitive substring match on file contents.
     /// </summary>
-
-    internal interface ISolutionSearchTool : ITool
+    internal interface ISolutionSearch : IBuiltInTool
     {
         Task<object> ExecuteAsync(
-            IServiceProvider sp,
-            string searchText,
-            string fileExtensions = ".cs",
-            CancellationToken cancellationToken = default,
-            string projectFilter = null);
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken = default);
     }
 
-    internal class SolutionSearchTool : ISolutionSearchTool
+    internal class SolutionSearch : ISolutionSearch
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
         private const int MaxSearchResults = 50;
-        private const int MaxFilesToScan = 500;
+        private const int MaxFilesToScan = 1500;
         public string ToolName => "Search_Local_Solution_Files";
 
-        public SolutionSearchTool(IVsDependencies vsDependencies, IPathResolver pathResolver, IVsSolutionFilesScanner solutionFilesScanner)
+        public SolutionSearch(IVsDependencies vsDependencies, IPathResolver pathResolver, IVsSolutionFilesScanner solutionFilesScanner)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -82,7 +44,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Performs a text search across Visual Studio solution files. Returns matching lines with file path, line number, column, and text. Search is limited to the first {MaxSearchResults} files. Results include has_more_results flag indicating if more matches exist beyond the limit.",
+                Description = $"Performs a text search across Visual Studio solution files. Returns matching lines with file path, line number, column, and text. Search is limited to the first {MaxSearchResults} files that contain matches. Results include has_more_results flag indicating if more matches exist beyond the limit.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -98,15 +60,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         public async Task<object> ExecuteAsync(
-            IServiceProvider sp,
-            string searchText,
-            string fileExtensions = null,
-            CancellationToken cancellationToken = default,
-            string projectFilter = null)
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrEmpty(searchText))
-                return new SearchResultsResponse { Results = new List<SearchResult>(), HasMoreResults = false, SearchFilesLimit = MaxSearchResults };
+            var (searchText, fileExtensions, projectFilter) = ExtractAndValidateParametersFromDict(parameters);
+            return await ExecuteCoreAsync(searchText, fileExtensions, projectFilter, cancellationToken);
+        }
 
+        private async Task<object> ExecuteCoreAsync(
+            string searchText,
+            string fileExtensions,
+            string projectFilter,
+            CancellationToken cancellationToken)
+        {
             var fileMatches = new Dictionary<string, List<SearchMatch>>();
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
@@ -120,9 +86,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 ExtensionFilter = fileExtensions,
                 ReturnRelative = false,
                 ProjectFilter = projectFilter,
-                Limit = MaxFilesToScan
+                Limit = MaxFilesToScan,
+                IncludeProjects = false
             };
-            var allFiles = _solutionFilesScanner.EnumerateSolutionFiles(filter).ToList();
+            var allFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter)).ToList();
 
             await Task.Run(() =>
             {
@@ -185,6 +152,83 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 HasMoreResults = groupedResults.Count >= MaxSearchResults,
                 SearchFilesLimit = MaxSearchResults
             };
+        }
+
+        public string GetProcessingMessage(Dictionary<string, object> parameters)
+        {
+            if (parameters == null) return "Searching... ";
+
+            var query = parameters.TryGetValue("query", out var q) ? q?.ToString() : "";
+            var ext = parameters.TryGetValue("extension_filter", out var e) ? e?.ToString() : null;
+            var project = parameters.TryGetValue("project_filter", out var p) ? p?.ToString() : null;
+
+            var message = $"Searching for '{query}'";
+            if (!string.IsNullOrEmpty(project))
+                message += $" in '{project}'";
+
+            if (!string.IsNullOrEmpty(ext))
+            {
+                message += $", with extension '{ext}'";
+            }
+            else
+            {
+                message += " in all files";
+            }
+
+            message += "... ";
+            return message;
+        }
+
+        public string GetCompletionMessage(object result)
+        {
+            var searchResults = (SearchResultsResponse)result;
+            return $"Found {searchResults.Results.Count} matches.";
+        }
+
+        private (string searchText, string fileExtensions, string projectFilter) ExtractAndValidateParametersFromDict(
+            Dictionary<string, object> parameters)
+        {
+            if (!parameters.TryGetValue("query", out object queryObj) || !(queryObj is string))
+                throw new ArgumentException("Parameter 'query' is required and must be a string.", nameof(parameters));
+
+            var searchText = (string)queryObj;
+            var fileExtensions = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
+            var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
+
+            return (searchText, fileExtensions, projectFilter);
+        }
+
+        public class SearchMatch
+        {
+            [JsonProperty("line")]
+            public int LineNumber { get; set; }
+
+            [JsonProperty("text")]
+            public string LineText { get; set; }
+        }
+
+        public class SearchResult
+        {
+            [JsonProperty("file")]
+            public string FilePath { get; set; }
+
+            [JsonProperty("matches")]
+            public List<SearchMatch> Matches { get; set; }
+
+            [JsonProperty("match_count")]
+            public int MatchCount { get; set; }
+        }
+
+        public class SearchResultsResponse
+        {
+            [JsonProperty("results")]
+            public List<SearchResult> Results { get; set; }
+
+            [JsonProperty("has_more_results")]
+            public bool HasMoreResults { get; set; }
+
+            [JsonProperty("search_files_limit")]
+            public int SearchFilesLimit { get; set; }
         }
     }
 }

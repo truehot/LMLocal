@@ -51,7 +51,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IMcpConfigManager _mcpConfigManager;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly ISettingsManager _settingsManager;
-        private readonly IActiveDocumentTool _activeDocumentTool;
+        private readonly IActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
@@ -63,7 +63,7 @@ namespace LMLocal.Infrastructure.WebView
             IInstructionsManager instructionsManager,
             IMcpConfigManager mcpConfigManager,
             IMcpToolManager mcpToolManager,
-            IActiveDocumentTool activeDocumentTool,
+            IActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
             IChatHistoryManager chatHistoryManager)

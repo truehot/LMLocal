@@ -74,5 +74,139 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(resolver.TryGetRelativePath(other, basePath, out string rel2), Is.False);
             Assert.That(rel2, Is.Null);
         }
+
+        [Test]
+        public void TryGetRelativePath_ReturnsFalseForSiblingFolder()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "Folder"));
+            var siblingFile = Path.GetFullPath(Path.Combine(temp, "Folder2", "file.txt"));
+
+            Assert.That(resolver.TryGetRelativePath(siblingFile, basePath, out string rel), Is.False);
+            Assert.That(rel, Is.Null);
+        }
+
+        [Test]
+        public void TryGetRelativePath_SamePath_ReturnsDot()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "FolderSame"));
+            var samePath = Path.GetFullPath(basePath);
+
+            Assert.That(resolver.TryGetRelativePath(samePath, basePath, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo("."));
+        }
+
+        [Test]
+        public void TryGetRelativeNormalizedPath_ReturnsRelativeForChild()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "BaseDirNorm"));
+            var filePath = Path.GetFullPath(Path.Combine(basePath, "sub", "file.txt"));
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(filePath, basePath, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo(Path.Combine("sub", "file.txt")));
+        }
+
+        [Test]
+        public void TryGetRelativeNormalizedPath_SamePath_ReturnsDot()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "BaseSame"));
+            var samePath = Path.GetFullPath(basePath);
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(samePath, basePath, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo("."));
+        }
+
+        [Test]
+        public void TryGetRelativeNormalizedPath_FailsForSiblingPrefix()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "MyFolder"));
+            var sibling = Path.GetFullPath(Path.Combine(temp, "MyFolder2", "file.txt"));
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(sibling, basePath, out string rel), Is.False);
+            Assert.That(rel, Is.Null);
+        }
+
+        [Test]
+        public void TryGetRelativeNormalizedPath_TrailingSlash_Normalizes()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "BaseTrail"));
+            var baseWithSlash = basePath + Path.DirectorySeparatorChar;
+            var file = Path.GetFullPath(Path.Combine(basePath, "file.txt"));
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(file, baseWithSlash, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo("file.txt"));
+        }
+
+        [Test]
+        public void IsPathInsideDirectory_SamePath_ReturnsTrue()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var dir = Path.GetFullPath(Path.Combine(temp, "SameFolderTest"));
+            var same = Path.GetFullPath(dir);
+
+            Assert.That(resolver.IsPathInsideDirectory(same, dir), Is.True);
+        }
+
+        [Test]
+        public void TryGetRelativeNormalizedPath_ReturnsFalseForNullOrEmpty()
+        {
+            var resolver = new PathResolver();
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(null, Path.GetFullPath(Path.GetTempPath()), out string r1), Is.False);
+            Assert.That(r1, Is.Null);
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(Path.GetFullPath(Path.GetTempPath()), null, out string r2), Is.False);
+            Assert.That(r2, Is.Null);
+
+            Assert.That(resolver.TryGetRelativeNormalizedPath(string.Empty, string.Empty, out string r3), Is.False);
+            Assert.That(r3, Is.Null);
+        }
+
+        [Test]
+        public void TryGetRelativePath_TrailingSlash_Normalizes()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "FolderTrail"));
+            var baseWithSlash = basePath + Path.DirectorySeparatorChar;
+            var file = Path.GetFullPath(Path.Combine(basePath, "file.txt"));
+
+            Assert.That(resolver.TryGetRelativePath(file, baseWithSlash, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo("file.txt"));
+        }
+
+        [Test]
+        public void TryGetRelativePath_NormalizesParentSegments()
+        {
+            var resolver = new PathResolver();
+
+            var temp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var basePath = Path.GetFullPath(Path.Combine(temp, "FolderNorm"));
+            // construct a path with parent segments that resolves to FolderNorm\file.txt
+            var fileWithParents = Path.GetFullPath(Path.Combine(basePath, "..", "FolderNorm", "file.txt"));
+
+            Assert.That(resolver.TryGetRelativePath(fileWithParents, basePath, out string rel), Is.True);
+            Assert.That(rel, Is.EqualTo("file.txt"));
+        }
     }
 }

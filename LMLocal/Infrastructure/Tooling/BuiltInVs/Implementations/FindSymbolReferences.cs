@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Tooling.Abstractions;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.VisualStudio.ComponentModelHost;
@@ -13,48 +13,17 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    public class ReferenceItem
-    {
-        [JsonProperty("line")]
-        public int LineNumber { get; set; }
-
-        [JsonProperty("text")]
-        public string LineText { get; set; }
-    }
-
-    public class FileReferencesGroup
-    {
-        [JsonProperty("file")]
-        public string FilePath { get; set; }
-
-        [JsonProperty("matches")]
-        public List<ReferenceItem> Matches { get; set; }
-    }
-
-    public class SymbolReferencesResponse
-    {
-        [JsonProperty("symbol_name")]
-        public string SymbolName { get; set; }
-
-        [JsonProperty("total_references")]
-        public int TotalReferences { get; set; }
-
-        [JsonProperty("results")]
-        public List<FileReferencesGroup> Results { get; set; }
-
-        [JsonProperty("has_more_results")]
-        public bool HasMoreResults { get; set; }
-    }
-
-    internal interface IFindSymbolReferencesTool : ITool
+    /// <summary>
+    /// Tool interface for finding references to a code symbol across the current Visual Studio solution.
+    /// </summary>
+    internal interface IFindSymbolReferences : IBuiltInTool
     {
         Task<object> ExecuteAsync(
-            IServiceProvider sp,
-            string symbolName,
+            Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default);
     }
 
-    internal class FindSymbolReferences : IFindSymbolReferencesTool
+    internal class FindSymbolReferences : IFindSymbolReferences
     {
         private readonly IPathResolver _pathResolver;
         private const int MaxSymbolsToProcess = 5;
@@ -68,18 +37,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         public async Task<object> ExecuteAsync(
-            IServiceProvider sp,
             string symbolName,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrEmpty(symbolName))
-                return new SymbolReferencesResponse
-                {
-                    Results = new List<FileReferencesGroup>(),
-                    SymbolName = symbolName,
-                    TotalReferences = 0,
-                    HasMoreResults = false
-                };
+            symbolName = ExtractAndValidateParameters(symbolName);
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
@@ -91,121 +52,136 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (workspace == null)
                 throw new InvalidOperationException("Visual Studio workspace is not available");
 
-            var solution = workspace.CurrentSolution;
-            if (solution == null)
+            var solutionSnapshot = workspace.CurrentSolution;
+            if (solutionSnapshot == null)
                 throw new InvalidOperationException("No solution is currently open");
 
-            var fileGroupsDict = new Dictionary<string, FileReferencesGroup>(StringComparer.OrdinalIgnoreCase);
-            var solutionDir = System.IO.Path.GetDirectoryName(solution.FilePath);
-            int totalReferenceCount = 0;
-            int symbolsProcessed = 0;
-            bool hasMoreResults = false;
-            var seenLocations = new HashSet<string>(StringComparer.Ordinal);
+            var projects = solutionSnapshot.Projects.ToList();
+            var solutionDir = System.IO.Path.GetDirectoryName(solutionSnapshot.FilePath);
 
-            foreach (var project in solution.Projects)
+            var result = await Task.Run(async () =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!project.SupportsCompilation) continue;
+                var fileGroupsDict = new Dictionary<string, FileReferencesGroup>(StringComparer.OrdinalIgnoreCase);
+                int totalReferenceCount = 0;
+                int symbolsProcessed = 0;
+                bool hasMoreResults = false;
+                var seenLocations = new HashSet<string>(StringComparer.Ordinal);
 
-                var symbols = await SymbolFinder.FindDeclarationsAsync(
-                    project,
-                    symbolName,
-                    ignoreCase: false,
-                    cancellationToken: cancellationToken
-                );
-
-                foreach (var symbol in symbols)
+                foreach (var project in projects)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (symbolsProcessed >= MaxSymbolsToProcess)
-                    {
-                        hasMoreResults = true;
-                        break;
-                    }
+                    if (!project.SupportsCompilation) continue;
 
-                    symbolsProcessed++;
-
-                    var references = await SymbolFinder.FindReferencesAsync(
-                        symbol,
-                        solution,
+                    var symbols = await SymbolFinder.FindDeclarationsAsync(
+                        project,
+                        symbolName,
+                        ignoreCase: false,
                         cancellationToken: cancellationToken
-                    ).ConfigureAwait(true);
+                    ).ConfigureAwait(false);
 
-                    foreach (var reference in references)
+                    foreach (var symbol in symbols)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        foreach (var location in reference.Locations)
+                        if (symbolsProcessed >= MaxSymbolsToProcess)
                         {
-                            var document = location.Document;
-                            var filePath = document.FilePath;
-                            if (string.IsNullOrEmpty(filePath))
-                                continue;
+                            hasMoreResults = true;
+                            break;
+                        }
 
-                            var textSpan = location.Location.SourceSpan;
-                            var locationKey = $"{document.Id}:{textSpan.Start}:{textSpan.Length}";
+                        symbolsProcessed++;
 
-                            if (!seenLocations.Add(locationKey))
-                                continue;
+                        var references = await SymbolFinder.FindReferencesAsync(
+                            symbol,
+                            solutionSnapshot,
+                            cancellationToken: cancellationToken
+                        ).ConfigureAwait(false);
 
-                            string relativePath = filePath;
-                            if (!string.IsNullOrEmpty(solutionDir))
+                        foreach (var reference in references)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            foreach (var location in reference.Locations)
                             {
-                                if (_pathResolver.TryGetRelativePath(filePath, solutionDir, out var relPath))
+                                var document = location.Document;
+                                var filePath = document.FilePath;
+                                if (string.IsNullOrEmpty(filePath))
+                                    continue;
+
+                                var textSpan = location.Location.SourceSpan;
+                                var locationKey = $"{document.Id}:{textSpan.Start}:{textSpan.Length}";
+
+                                if (!seenLocations.Add(locationKey))
+                                    continue;
+
+                                string relativePath = filePath;
+                                if (!string.IsNullOrEmpty(solutionDir))
                                 {
-                                    relativePath = relPath;
+                                    if (_pathResolver.TryGetRelativePath(filePath, solutionDir, out var relPath))
+                                    {
+                                        relativePath = relPath;
+                                    }
+                                }
+
+                                var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                                var lineSpan = sourceText.Lines.GetLinePositionSpan(textSpan);
+
+                                int lineNumber = lineSpan.Start.Line;
+                                string lineText = sourceText.Lines[lineNumber].ToString().Trim();
+
+                                if (!fileGroupsDict.TryGetValue(relativePath, out var fileGroup))
+                                {
+                                    fileGroup = new FileReferencesGroup
+                                    {
+                                        FilePath = relativePath,
+                                        Matches = new List<ReferenceItem>()
+                                    };
+                                    fileGroupsDict[relativePath] = fileGroup;
+                                }
+
+                                fileGroup.Matches.Add(new ReferenceItem
+                                {
+                                    LineNumber = lineNumber,
+                                    LineText = lineText
+                                });
+
+                                totalReferenceCount++;
+                                if (totalReferenceCount >= MaxTotalReferences)
+                                {
+                                    hasMoreResults = true;
+                                    break;
                                 }
                             }
 
-                            var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(true);
-                            var lineSpan = sourceText.Lines.GetLinePositionSpan(textSpan);
-
-                            int lineNumber = lineSpan.Start.Line;
-                            string lineText = sourceText.Lines[lineNumber].ToString().Trim();
-
-                            if (!fileGroupsDict.TryGetValue(relativePath, out var fileGroup))
-                            {
-                                fileGroup = new FileReferencesGroup
-                                {
-                                    FilePath = relativePath,
-                                    Matches = new List<ReferenceItem>()
-                                };
-                                fileGroupsDict[relativePath] = fileGroup;
-                            }
-
-                            fileGroup.Matches.Add(new ReferenceItem
-                            {
-                                LineNumber = lineNumber,
-                                LineText = lineText
-                            });
-
-                            totalReferenceCount++;
-                            if (totalReferenceCount >= MaxTotalReferences)
-                            {
-                                hasMoreResults = true;
+                            if (hasMoreResults)
                                 break;
-                            }
                         }
-
-                        if (hasMoreResults)
-                            break;
                     }
+
+                    if (hasMoreResults)
+                        break;
                 }
 
-                if (hasMoreResults)
-                    break;
-            }
+                var sortedResults = fileGroupsDict.Values
+                    .OrderBy(r => r.FilePath)
+                    .ToList();
 
-            var sortedResults = fileGroupsDict.Values
-                .OrderBy(r => r.FilePath)
-                .ToList();
+                return new SymbolReferencesResponse
+                {
+                    Results = sortedResults,
+                    SymbolName = symbolName,
+                    TotalReferences = totalReferenceCount,
+                    HasMoreResults = hasMoreResults
+                };
+            }, cancellationToken).ConfigureAwait(false);
 
-            return new SymbolReferencesResponse
-            {
-                Results = sortedResults,
-                SymbolName = symbolName,
-                TotalReferences = totalReferenceCount,
-                HasMoreResults = hasMoreResults
-            };
+            return result;
+        }
+
+        public async Task<object> ExecuteAsync(
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken = default)
+        {
+            var symbolName = ExtractAndValidateParametersFromDict(parameters);
+            return await ExecuteAsync(symbolName, cancellationToken);
         }
 
         public ToolDefinition GetToolInfo()
@@ -224,6 +200,74 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Required = new List<string> { "symbol_name" }
                 }
             };
+        }
+
+        public string GetProcessingMessage(Dictionary<string, object> parameters)
+        {
+            if (parameters == null) return "Finding references... ";
+
+            var symbolName = parameters.TryGetValue("symbol_name", out var s) ? s?.ToString() : "";
+            return $"Finding references to '{symbolName}'... ";
+        }
+
+        public string GetCompletionMessage(object result)
+        {
+            var symbolResult = (SymbolReferencesResponse)result;
+            return $"Found {symbolResult.TotalReferences} references.";
+        }
+
+        private string ExtractAndValidateParameters(string symbolName)
+        {
+            if (string.IsNullOrEmpty(symbolName))
+                throw new ArgumentException("Parameter 'symbol_name' cannot be empty.", nameof(symbolName));
+
+            return symbolName;
+        }
+
+        private string ExtractAndValidateParametersFromDict(Dictionary<string, object> parameters)
+        {
+            if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
+                throw new ArgumentException("Parameter 'symbol_name' is required and must be a string.", nameof(parameters));
+
+            var symbolName = (string)symbolNameObj;
+
+            if (string.IsNullOrEmpty(symbolName))
+                throw new ArgumentException("Parameter 'symbol_name' cannot be empty.", nameof(symbolName));
+
+            return symbolName;
+        }
+
+        public class ReferenceItem
+        {
+            [JsonProperty("line")]
+            public int LineNumber { get; set; }
+
+            [JsonProperty("text")]
+            public string LineText { get; set; }
+        }
+
+        public class FileReferencesGroup
+        {
+            [JsonProperty("file")]
+            public string FilePath { get; set; }
+
+            [JsonProperty("matches")]
+            public List<ReferenceItem> Matches { get; set; }
+        }
+
+        public class SymbolReferencesResponse
+        {
+            [JsonProperty("symbol_name")]
+            public string SymbolName { get; set; }
+
+            [JsonProperty("total_references")]
+            public int TotalReferences { get; set; }
+
+            [JsonProperty("results")]
+            public List<FileReferencesGroup> Results { get; set; }
+
+            [JsonProperty("has_more_results")]
+            public bool HasMoreResults { get; set; }
         }
     }
 }

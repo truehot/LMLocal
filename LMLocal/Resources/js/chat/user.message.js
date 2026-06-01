@@ -1,4 +1,4 @@
-﻿import { Config } from '@app/store/app.globals.js';
+﻿import { Config } from '@app/constants/app.globals.js';
 
 /**
  * Create and append a user message element into the provided container.

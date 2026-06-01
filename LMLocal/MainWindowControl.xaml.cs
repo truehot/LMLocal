@@ -92,7 +92,7 @@ namespace LMLocal
 
                 chatBrowser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
-                string html = GetHtmlFromResource(settingsManager.HtmlResourcePath);
+                string html = await GetHtmlFromResourceAsync(settingsManager.HtmlResourcePath);
 
                 chatBrowser.NavigateToString(html);
 
@@ -122,13 +122,13 @@ namespace LMLocal
             }
         }
 
-        private string GetHtmlFromResource(string resourceName)
+        private async Task<string> GetHtmlFromResourceAsync(string resourceName)
         {
             var uri = new Uri($"/{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name};component/{resourceName}", UriKind.Relative);
             var streamInfo = System.Windows.Application.GetResourceStream(uri) ?? throw new InvalidOperationException("Resource not found: " + resourceName);
             using (var reader = new System.IO.StreamReader(streamInfo.Stream))
             {
-                return reader.ReadToEnd();
+                return await reader.ReadToEndAsync();
             }
         }
 

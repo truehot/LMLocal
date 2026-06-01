@@ -1,4 +1,4 @@
-﻿import { UIText, Config } from '@app/store/app.globals.js';
+﻿import { UIText, Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { createCallback } from '@app/lib/callback.js';
 import { createScrollManager } from '@app/lib/scroll.manager.js';

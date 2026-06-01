@@ -14,19 +14,17 @@ namespace LMLocal.Tests.Unit.Services.Tool
     public class ToolExecutionManagerTests
     {
         private Mock<ICompositeToolFactory> _vsToolFactory;
-        private Mock<IServiceProvider> _serviceProvider;
 
         [SetUp]
         public void SetUp()
         {
             _vsToolFactory = new Mock<ICompositeToolFactory>();
-            _serviceProvider = new Mock<IServiceProvider>();
         }
 
         [Test]
         public async Task ExecuteToolAsync_NullToolCall_ReturnsError()
         {
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(null, CancellationToken.None);
             Assert.That(res, Is.Not.Null);
             Assert.That(res.Error, Is.EqualTo("Tool call is null"));
@@ -38,7 +36,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var call = new ToolCallRecord { CallId = "id1", FunctionName = "nonexist", ArgumentsJson = null };
             _vsToolFactory.Setup(f => f.ToolExists("nonexist")).Returns(false);
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
 
             Assert.That(res.ToolId, Is.EqualTo("id1"));
@@ -54,10 +52,10 @@ namespace LMLocal.Tests.Unit.Services.Tool
             _vsToolFactory.Setup(f => f.ToolExists("mytool")).Returns(true);
 
             var expectedResult = new { Value = 123 };
-            _vsToolFactory.Setup(f => f.ExecuteAsync("mytool", It.IsAny<IServiceProvider>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedResult);
+            _vsToolFactory.Setup(f => f.ExecuteAsync("mytool", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedResult);
             _vsToolFactory.Setup(f => f.GetCompletionMessage("mytool", expectedResult)).Returns("done");
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
 
             Assert.That(res.ToolId, Is.EqualTo("id2"));
@@ -72,9 +70,9 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id3", FunctionName = "cancel", ArgumentsJson = null };
             _vsToolFactory.Setup(f => f.ToolExists("cancel")).Returns(true);
-            _vsToolFactory.Setup(f => f.ExecuteAsync("cancel", It.IsAny<IServiceProvider>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OperationCanceledException());
+            _vsToolFactory.Setup(f => f.ExecuteAsync("cancel", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OperationCanceledException());
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
 
             Assert.That(res.Error, Does.Contain("cancelled"));
@@ -86,9 +84,9 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id4", FunctionName = "arg", ArgumentsJson = null };
             _vsToolFactory.Setup(f => f.ToolExists("arg")).Returns(true);
-            _vsToolFactory.Setup(f => f.ExecuteAsync("arg", It.IsAny<IServiceProvider>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ArgumentException("bad"));
+            _vsToolFactory.Setup(f => f.ExecuteAsync("arg", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ArgumentException("bad"));
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
 
             Assert.That(res.Error, Does.Contain("Invalid parameters"));
@@ -100,9 +98,9 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id5", FunctionName = "boom", ArgumentsJson = null };
             _vsToolFactory.Setup(f => f.ToolExists("boom")).Returns(true);
-            _vsToolFactory.Setup(f => f.ExecuteAsync("boom", It.IsAny<IServiceProvider>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("boom"));
+            _vsToolFactory.Setup(f => f.ExecuteAsync("boom", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("boom"));
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
 
             Assert.That(res.Error, Does.Contain("Execution error"));
@@ -112,7 +110,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
         [Test]
         public void GetProcessingMessage_NullOrInvalidJson_ReturnsDefault()
         {
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             Assert.That(mgr.GetProcessingMessage(null), Is.EqualTo("Processing..."));
 
             var callBad = new ToolCallRecord { FunctionName = "f", ArgumentsJson = "{bad" };
@@ -125,7 +123,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var call = new ToolCallRecord { FunctionName = "pf", ArgumentsJson = "{\"x\":1}" };
             _vsToolFactory.Setup(f => f.GetProcessingMessage("pf", It.IsAny<Dictionary<string, object>>())).Returns("working");
 
-            var mgr = new ToolExecutionManager(_vsToolFactory.Object, _serviceProvider.Object);
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
             var msg = mgr.GetProcessingMessage(call);
 
             Assert.That(msg, Is.EqualTo("working"));

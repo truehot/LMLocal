@@ -1,4 +1,4 @@
-﻿using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.ComponentModel.Design;
@@ -55,17 +55,6 @@ namespace LMLocal
         }
 
         /// <summary>
-        /// Gets the service provider from the owner package.
-        /// </summary>
-        private Microsoft.VisualStudio.Shell.IAsyncServiceProvider ServiceProvider
-        {
-            get
-            {
-                return this.package;
-            }
-        }
-
-        /// <summary>
         /// Initializes the singleton instance of the command.
         /// </summary>
         /// <param name="package">Owner package, not null.</param>
@@ -89,17 +78,31 @@ namespace LMLocal
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            string message = string.Format(CultureInfo.CurrentCulture, "Inside {0}.MenuItemCallback()", this.GetType().FullName);
-            string title = "ShowMainWindow";
 
-            // Show a message box to prove we were here
-            VsShellUtilities.ShowMessageBox(
-                this.package,
-                message,
-                title,
-                OLEMSGICON.OLEMSGICON_INFO,
-                OLEMSGBUTTON.OLEMSGBUTTON_OK,
-                OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
+            ToolWindowPane window = this.package.FindToolWindow(typeof(MainWindow), 0, false);
+
+            if (window == null || window.Frame == null)
+            {
+                ToolWindowPane created = this.package.FindToolWindow(typeof(MainWindow), 0, true);
+                if (created?.Frame is IVsWindowFrame createdFrame)
+                {
+                    Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(createdFrame.Show());
+                }
+
+                return;
+            }
+
+            var windowFrame = window.Frame as IVsWindowFrame;
+            if (windowFrame == null)
+                return;
+
+            int vis = windowFrame.IsVisible();
+            bool isVisible = (vis == Microsoft.VisualStudio.VSConstants.S_OK);
+
+            if (!isVisible)
+            {
+                Microsoft.VisualStudio.ErrorHandler.ThrowOnFailure(windowFrame.Show());
+            }
         }
     }
 }

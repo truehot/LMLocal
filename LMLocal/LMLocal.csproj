@@ -81,7 +81,10 @@
     <Compile Include="Infrastructure\LlmApi\Responses\OllamaPsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByNameTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByName.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ListDirectoryContents.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpServerStatus.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpToolDefinition.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Client\HttpMcpClient.cs" />
@@ -104,11 +107,11 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsDependencies.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Tooling\CompositeToolFactory.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ActiveDocumentTool.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileLinesReaderTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ActiveDocument.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileLinesReader.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindSymbolReferences.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSolutionOverviewTool.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SolutionSearchTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSolutionOverview.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SolutionSearch.cs" />
     <Compile Include="Infrastructure\Tooling\Abstractions\ToolDefinition.cs" />
     <Compile Include="Core\Models\ModelContext.cs" />
     <Compile Include="Core\Models\MessageContext.cs" />
@@ -232,11 +235,11 @@
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\js\store\app.globals.js">
+    <Content Include="Resources\js\constants\app.globals.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\store\app.manager.js">
+    <Content Include="Resources\js\services\app.manager.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -272,7 +275,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\store\bridge.message.handler.js">
+    <Content Include="Resources\js\api\bridge.message.handler.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -288,7 +291,7 @@
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Resources\js\store\startup.manager.js">
+    <Content Include="Resources\js\services\startup.manager.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -324,7 +327,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\store\chunk.buffer.js">
+    <Content Include="Resources\js\lib\chunk.buffer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

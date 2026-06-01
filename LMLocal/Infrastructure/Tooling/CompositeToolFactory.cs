@@ -36,7 +36,6 @@ namespace LMLocal.Infrastructure.Tooling
         /// </summary>
         Task<object> ExecuteAsync(
             string toolName,
-            IServiceProvider sp,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken);
 
@@ -121,7 +120,6 @@ namespace LMLocal.Infrastructure.Tooling
 
         public async Task<object> ExecuteAsync(
             string toolName,
-            IServiceProvider sp,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken)
         {
@@ -131,7 +129,7 @@ namespace LMLocal.Infrastructure.Tooling
                 throw new ArgumentNullException(nameof(parameters));
 
             if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
-                return await _builtInFactory.ExecuteAsync(toolName, sp, parameters, cancellationToken);
+                return await _builtInFactory.ExecuteAsync(toolName, parameters, cancellationToken);
 
             if (_mcpToolManager.ToolExists(toolName))
             {

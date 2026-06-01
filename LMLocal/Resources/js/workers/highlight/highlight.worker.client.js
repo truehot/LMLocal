@@ -3,6 +3,8 @@
  * It provides methods to start/stop the worker and to highlight code blocks in a given container.
  * The worker processes code blocks in batches and returns highlighted HTML, which is then applied to the DOM.
  */
+import { createStreamingRenderer, StreamingMode } from '@app/streaming/streaming.renderer.js';
+
 export class HighlightWorkerClient {
     constructor() {
         this.worker = null;
@@ -74,11 +76,17 @@ export class HighlightWorkerClient {
         if (!cb) return;
         const { resolve, reject, codeBlocks } = cb;
         try {
+            let streamingRenderer = createStreamingRenderer({
+                mode: StreamingMode.DIFF
+            });
             codeBlocks.forEach((block, idx) => {
                 if (!block.isConnected) return;
                 const res = results[idx];
                 if (res?.success) {
-                    block.innerHTML = res.html;
+                    streamingRenderer.start(block);
+                    streamingRenderer.write(idx, res.html);
+                    streamingRenderer.stop();
+
                     block.classList.add('hljs');
                 } else {
                     const errorInfo = res?.error;

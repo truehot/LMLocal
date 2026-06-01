@@ -252,9 +252,14 @@ export class ModelSelectorDialog {
         this.el = this._getElements();
         if (!this.el.dialog) throw new Error('Dialog #model-selector-dialog not found');
 
+        if (this.el.activeToggle) {
+            this.showOnlyActive = !!this.el.activeToggle.checked;
+        }
+
         this._attachEvents();
 
         if (this.modelsList.length) {
+
             this._renderModels();
         } else {
             await this._loadModels();

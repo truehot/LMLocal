@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using LMLocal.Common;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
@@ -35,157 +37,134 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         public string ProjectFilter { get; set; }
 
         /// <summary>
-        /// If true, automatically excludes files in temporary directories (%TEMP%, %LOCALAPPDATA%\Temp) and build directories (bin, obj, .vs, .git, CopilotBaseline).
-        /// Also excludes minified files (*.min.js, *.min.css, *.udm.js). Default is true.
-        /// Set to false in test scenarios where temporary directories should be included.
+        /// If true, includes the project files themselves (e.g., .csproj, .vbproj) in the result.
+        /// Default is false (only source/document files are returned).
         /// </summary>
-        public bool ExcludeTemporaryDirectories { get; set; } = true;
+        public bool IncludeProjects { get; set; } = false;
     }
 
     internal interface IVsSolutionFilesScanner
     {
+
         /// <summary>
-        /// Enumerates files from the Visual Studio solution by traversing project hierarchies.
-        /// Automatically filters out temporary and build directories (bin, obj, .vs, .git, CopilotBaseline),
-        /// system temp directories (%TEMP%, %LOCALAPPDATA%\Temp), and minified files (*.min.js, *.min.css, *.udm.js).
-        /// </summary>
-        /// <param name="filter">Filter configuration for file enumeration.</param>
-        /// <returns>Enumerable of file paths (relative or absolute based on returnRelative parameter). Limited by the limit parameter.</returns>
-        IEnumerable<string> EnumerateSolutionFiles(EnumerateSolutionFilesFilter filter);
+        /// Asynchronously enumerates files from the Visual Studio solution. 
+        Task<IList<string>> EnumerateSolutionFilesAsync(EnumerateSolutionFilesFilter filter, CancellationToken cancellationToken = default);
     }
 
     internal class VsSolutionFilesScanner : IVsSolutionFilesScanner
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IUiThreadGuard _uiThreadGuard;
+        private readonly IPathResolver _pathResolver;
 
-        private static readonly string _tempPath = Environment.GetEnvironmentVariable("TEMP") ?? Path.GetTempPath();
-        private static readonly string _localAppDataTemp = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        private static readonly HashSet<string> _imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff" };
+        private static readonly string[] _minifiedSuffixes = { ".min.js", ".min.css", ".udm.js" };
+        private static readonly string[] _excludedDirectories = { "bin", "obj", ".vs", ".git", "CopilotBaseline" };
 
-        public VsSolutionFilesScanner(IVsDependencies vsDependencies, IUiThreadGuard uiThreadGuard)
+        public VsSolutionFilesScanner(IVsDependencies vsDependencies, IUiThreadGuard uiThreadGuard, IPathResolver pathResolver)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _uiThreadGuard = uiThreadGuard ?? throw new ArgumentNullException(nameof(uiThreadGuard));
+            _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
         }
 
-        public IEnumerable<string> EnumerateSolutionFiles(EnumerateSolutionFilesFilter filter)
+        public async Task<IList<string>> EnumerateSolutionFilesAsync(EnumerateSolutionFilesFilter filter, CancellationToken cancellationToken = default)
         {
             if (filter == null)
                 throw new ArgumentNullException(nameof(filter));
 
             _uiThreadGuard.EnsureOnUIThread();
 
-            return EnumerateSolutionFilesIterator(filter);
-        }
-
-        private IEnumerable<string> EnumerateSolutionFilesIterator(EnumerateSolutionFilesFilter filter)
-        {
-            string solutionDir = _vsDependencies.GetSolutionDirectory();
-
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            var extensions = ParseExtensions(filter.ExtensionFilter);
-            int yielded = 0;
-
             var provider = _vsDependencies.GetFileProvider();
-            var files = provider.GetFiles();
+            var filesList = provider.GetFiles(filter.IncludeProjects).ToList();
 
-            foreach (var file in files)
+            var normalizedSolutionDir = NormalizeDir(_vsDependencies.GetSolutionDirectory());
+            var extensions = ParseExtensions(filter.ExtensionFilter);
+            var returnRelative = filter.ReturnRelative;
+            var fileNameFilter = filter.FileName;
+            var projectFilter = filter.ProjectFilter;
+            var limit = filter.Limit;
+
+            return await Task.Run(() =>
             {
-                if (!IsMatch(file, extensions, filter.FileName, filter.ProjectFilter, solutionDir, filter.ExcludeTemporaryDirectories))
-                    continue;
+                var result = new List<string>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                int yielded = 0;
 
-                if (seen.Contains(file))
-                    continue;
-
-                if (seen.Add(file))
+                foreach (var file in filesList)
                 {
-                    var output = TryMakeRelative(file, solutionDir, filter.ReturnRelative);
-                    yield return output;
-                    yielded++;
-                    if (filter.Limit > 0 && yielded >= filter.Limit)
-                        yield break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    string normalizedFilePath = Path.IsPathRooted(file)
+                                        ? file.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+                                        : Path.GetFullPath(file).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+
+                    if (!IsMatch(normalizedFilePath, extensions, fileNameFilter, projectFilter, normalizedSolutionDir))
+                        continue;
+
+                    if (seen.Add(normalizedFilePath))
+                    {
+                        string output = normalizedFilePath;
+
+                        if (returnRelative && !string.IsNullOrEmpty(normalizedSolutionDir))
+                        {
+                            if (_pathResolver.TryGetRelativeNormalizedPath(normalizedFilePath, normalizedSolutionDir.TrimEnd(Path.DirectorySeparatorChar), out var rel))
+                                output = rel;
+                        }
+
+                        result.Add(output);
+                        yielded++;
+                        if (limit > 0 && yielded >= limit)
+                            break;
+                    }
                 }
-            }
+
+                return (IList<string>)result;
+            }, cancellationToken).ConfigureAwait(false);
         }
 
-        private static string TryMakeRelative(string absolutePath, string solutionDir, bool makeRelative)
+        private static string NormalizeDir(string path)
         {
-            if (!makeRelative || string.IsNullOrEmpty(solutionDir) || string.IsNullOrEmpty(absolutePath))
-                return absolutePath;
-
-            try
+            string normalizedSolutionDir = null;
+            if (!string.IsNullOrEmpty(path))
             {
-
-                var fullFile = Path.GetFullPath(absolutePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                var fullSol = Path.GetFullPath(solutionDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                if (!fullFile.StartsWith(fullSol, StringComparison.OrdinalIgnoreCase))
-                    return absolutePath;
-
-                if (fullFile.Equals(fullSol, StringComparison.OrdinalIgnoreCase))
-                    return ".";
-
-                int skipLength = fullSol.Length;
-
-                string[] absoluteParts = absolutePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                string[] solParts = solutionDir.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-
-                int commonCount = 0;
-                for (int i = 0; i < Math.Min(absoluteParts.Length, solParts.Length); i++)
-                {
-                    if (string.Equals(absoluteParts[i], solParts[i], StringComparison.OrdinalIgnoreCase))
-                        commonCount++;
-                    else
-                        break;
-                }
-
-                var relParts = new List<string>();
-                for (int i = commonCount; i < absoluteParts.Length; i++)
-                {
-                    if (!string.IsNullOrEmpty(absoluteParts[i]))
-                        relParts.Add(absoluteParts[i]);
-                }
-
-                if (relParts.Count == 0)
-                    return ".";
-
-                return string.Join(Path.DirectorySeparatorChar.ToString(), relParts);
+                normalizedSolutionDir = Path.GetFullPath(path);
+                normalizedSolutionDir = normalizedSolutionDir.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+                if (!normalizedSolutionDir.EndsWith(Path.DirectorySeparatorChar.ToString()))
+                    normalizedSolutionDir += Path.DirectorySeparatorChar;
             }
-            catch (Exception ex)
-            {
-                InternalLogger.Debug($"TryMakeRelative failed for file='{absolutePath}', solutionDir='{solutionDir}': {ex.Message}");
-                return absolutePath;
-            }
+            return normalizedSolutionDir;
         }
 
-        private static bool IsMatch(string filePath, HashSet<string> extensions, string fileName, string projectFilter, string solutionDir, bool excludeTemporaryDirectories)
+        private static bool IsMatch(string normalizedFilePath, HashSet<string> extensions, string fileName, string projectFilter, string normalizedSolutionDir)
         {
-            if (string.IsNullOrEmpty(filePath))
+            if (string.IsNullOrEmpty(normalizedFilePath))
                 return false;
 
-            if (ShouldExcludePath(filePath, excludeTemporaryDirectories))
+            if (ShouldExcludePath(normalizedFilePath))
                 return false;
 
-            if (!string.IsNullOrEmpty(fileName))
+            var fname = Path.GetFileName(normalizedFilePath);
+            if (!string.IsNullOrEmpty(fileName) && (string.IsNullOrEmpty(fname) || fname.IndexOf(fileName, StringComparison.OrdinalIgnoreCase) < 0))
             {
-                var name = Path.GetFileName(filePath);
-                if (string.IsNullOrEmpty(name) || name.IndexOf(fileName, StringComparison.OrdinalIgnoreCase) < 0)
-                    return false;
+                return false;
             }
+
+            if (IsMinifiedFile(fname))
+                return false;
+
+            if (IsImageFile(fname))
+                return false;
 
             if (extensions != null && extensions.Count > 0)
             {
-                var ext = Path.GetExtension(filePath);
+                var ext = Path.GetExtension(normalizedFilePath);
                 if (!extensions.Contains(ext))
                     return false;
             }
 
-            if (!string.IsNullOrEmpty(projectFilter) && !string.IsNullOrEmpty(solutionDir))
+            if (!string.IsNullOrEmpty(projectFilter) && !string.IsNullOrEmpty(normalizedSolutionDir))
             {
-                string normalizedFilePath = Path.GetFullPath(filePath).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-                string normalizedSolutionDir = Path.GetFullPath(solutionDir).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-
                 if (normalizedFilePath.StartsWith(normalizedSolutionDir, StringComparison.OrdinalIgnoreCase))
                 {
                     string relativePath = normalizedFilePath.Substring(normalizedSolutionDir.Length).TrimStart(Path.DirectorySeparatorChar);
@@ -214,52 +193,26 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             return true;
         }
 
-        private static bool ShouldExcludePath(string filePath, bool excludeTemporaryDirectories = true)
+        private static bool ShouldExcludePath(string normalizedFilePath)
         {
-            string normalizedPath = filePath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-            string fileName = Path.GetFileName(filePath);
-
-            if (IsMinifiedFile(fileName))
-                return true;
-
-            string[] excludedDirectories = { "bin", "obj", ".vs", ".git", "CopilotBaseline" };
-            foreach (var dir in excludedDirectories)
+            foreach (var dir in _excludedDirectories)
             {
-                if (normalizedPath.IndexOf(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (normalizedFilePath.IndexOf(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
                     return true;
-                if (normalizedPath.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                if (normalizedFilePath.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
-
-            if (excludeTemporaryDirectories && IsInTemporaryDirectory(normalizedPath))
-                return true;
 
             return false;
         }
-
+        private static bool IsImageFile(string fileName) => _imageExtensions.Contains(Path.GetExtension(fileName));
         private static bool IsMinifiedFile(string fileName)
         {
-            return fileName.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase) ||
-                   fileName.EndsWith(".min.css", StringComparison.OrdinalIgnoreCase) ||
-                   fileName.EndsWith(".udm.js", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsInTemporaryDirectory(string normalizedPath)
-        {
-            if (!string.IsNullOrEmpty(_tempPath))
+            foreach (var suffix in _minifiedSuffixes)
             {
-                string tempPath = _tempPath.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-                if (normalizedPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase))
+                if (fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
-
-            if (!string.IsNullOrEmpty(_localAppDataTemp))
-            {
-                string localAppDataTemp = Path.Combine(_localAppDataTemp, "Temp").Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-                if (normalizedPath.StartsWith(localAppDataTemp, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
             return false;
         }
 
