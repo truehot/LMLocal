@@ -1,10 +1,20 @@
-LMLocal - Getting Started
+﻿LMLocal - Getting Started
 
 1. Open Visual Studio.
-2. Open the LMLocal tool window from the extension command installed in Visual Studio.
-3. Make sure LM Studio is running, the local server is enabled, and a model is loaded.
-4. Wait for the extension to connect to LM Studio.
-5. Confirm that the model name appears in the header.
-6. Type a prompt and press Enter or click Send.
-7. Use Stop to cancel generation if needed.
-8. Use the trash button to clear the current chat history.
+2. Open the "LM Local Chat" tool window using one of the following methods:
+   - Method A: Open it directly from the top Extensions menu.
+   - Method B: In the top menu, go to View ➔ hover over Other Windows ➔ click on LM Local Chat.
+3. Make sure your local backend (LM Studio, Ollama, or Jan) is running and a model is loaded.
+4. Click the hamburger menu icon (☰) and open "Settings..." to select your preferred AI Provider, then click the "Test" button to verify the connection.
+5. Type your message in the chat box and press Enter or click "Send".
+6. (Optional) Click the "+" button to include the entire content of the active document into the conversation.
+7. Use the "Stop" button to cancel an active generation if needed.
+8. Click the hamburger menu icon (☰) and select "Clear chat..." to wipe the current session history and start fresh.
+
+--------------------------------------------------------------------------------
+INTERFACE TIPS:
+--------------------------------------------------------------------------------
+* Use Ctrl+C to copy text and Ctrl+V to paste messages inside the chat window (right-click is disabled).
+* Click the "Copy" button in the top-right corner of any AI-generated code block to instantly grab the code.
+* Click the collapsible "Thoughts" block at the top of a response to view the AI's internal reasoning process.
+* Hover over the top connection/model header to see a tooltip tracking your current token usage and context window limits (supported by providers like LM Studio).

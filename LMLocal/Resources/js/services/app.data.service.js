@@ -2,6 +2,7 @@ import bridgeClient from '@app/api/bridge.client.js';
 import modelStore from '@app/store/model.store.js';
 import settingsStore from '@app/store/settings.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
+import providersStore from '@app/store/providers.store.js';
 import appStore from '@app/store/app.store.js';
 import { AppStatus } from '@app/store/app.status.js';
 
@@ -118,6 +119,63 @@ class AppDataService {
 
     async testMcpConnectionAsync(payload) {
         return await bridgeClient.testMcpConnectionAsync(payload);
+    }
+
+    async getProvidersAsync() {
+        providersStore.setState({
+            loading: true,
+            error: null
+        });
+
+        try {
+            const result = await bridgeClient.getProvidersAsync();
+            const config = result.defaultProviders || result.providers ? result : { defaultProviders: [], providers: [] };
+            providersStore.setState({
+                defaultProviders: config.defaultProviders || [],
+                providers: config.providers || [],
+                loading: false,
+                loaded: true,
+                error: null
+            });
+            return result;
+        } catch (error) {
+            console.error('Failed to load providers:', error);
+            providersStore.setState({
+                loading: false,
+                loaded: true,
+                error: 'Failed to load providers'
+            });
+            throw error;
+        }
+    }
+
+    async updateProvidersAsync(config) {
+        providersStore.setState({
+            loading: true,
+            error: null
+        });
+
+        try {
+            const result = await bridgeClient.updateProvidersAsync(config);
+            if (result) {
+                const currentState = providersStore.getState();
+                providersStore.setState({
+                    defaultProviders: currentState.defaultProviders,
+                    providers: config.providers || [],
+                    loading: false,
+                    loaded: true,
+                    error: null
+                });
+            }
+            return result;
+        } catch (error) {
+            console.error('Failed to update providers:', error);
+            providersStore.setState({
+                loading: false,
+                error: 'Failed to update providers'
+            });
+            throw error;
+        }
     }
 }
 

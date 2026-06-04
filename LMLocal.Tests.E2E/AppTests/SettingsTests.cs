@@ -52,7 +52,7 @@ public class SettingsTests : AppTestBase
         // Set theme radio to value 1
         await Page.Locator("#settings-dialog input[type='radio'][data-setting='Theme'][value='1']").CheckAsync();
 
-        await Page.Locator("#settings-dialog .modal-footer button.btn-main").ClickAsync();
+        await Page.Locator("#settings-dialog .modal-footer button.btn-primary").ClickAsync();
 
         // Wait for dialog to close
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
@@ -106,7 +106,7 @@ public class SettingsTests : AppTestBase
         await Expect(dialog).ToBeVisibleAsync();
 
         await Page.Locator("#settings-dialog input[data-setting='LmStudioBaseUrl']").FillAsync("not-a-url");
-        await Page.Locator("#settings-dialog .modal-footer button.btn-main").ClickAsync();
+        await Page.Locator("#settings-dialog .modal-footer button.btn-primary").ClickAsync();
 
         // Dialog should remain open due to validation failure
         await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 1000 });

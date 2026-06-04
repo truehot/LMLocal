@@ -74,6 +74,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
+    <Compile Include="Infrastructure\AzureModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ChatPersistenceServiceTests.cs" />
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
@@ -86,6 +87,7 @@
     <Compile Include="Infrastructure\PathHelperTests.cs" />
     <Compile Include="Infrastructure\PathResolverTests.cs" />
     <Compile Include="Infrastructure\ProviderResolverTests.cs" />
+    <Compile Include="Infrastructure\ProvidersConfigManagerTests.cs" />
     <Compile Include="Infrastructure\ServiceLifetimeTests.cs" />
     <Compile Include="Infrastructure\SettingsManagerTests.cs" />
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />

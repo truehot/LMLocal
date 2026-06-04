@@ -734,7 +734,7 @@ body {
     right: 0;
     top: 100%;
     background-color: var(--dropdown-bg);
-    min-width: 160px;
+    min-width: 170px;
     box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.4);
     z-index: 1000;
     border: 1px solid var(--border-color);

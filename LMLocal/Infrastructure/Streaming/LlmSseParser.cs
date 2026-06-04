@@ -33,7 +33,6 @@ namespace LMLocal.Infrastructure.Streaming
             }
 
             var dataJson = line.Substring(DataPrefix.Length).Trim();
-
             if (string.IsNullOrEmpty(dataJson))
             {
                 return null;
@@ -49,11 +48,20 @@ namespace LMLocal.Infrastructure.Streaming
                 return null;
             }
 
+            // First try to extract content or tool call data, which is more common in streaming responses
+            var contentChunk = ExtractStreamContent(json);
+            if (contentChunk != null) {
+                return contentChunk;
+            }
+            
+
+            // If no content or tool call data, check for usage info or finish reason, which may come in a final chunk without choices
             if (json["usage"] != null && (!(json["choices"] is JArray choices) || choices.Count == 0))
             {
                 return ExtractUsage(json);
             }
 
+            // If there are choices, check for finish reason or refusal, which may indicate the end of the stream or a refusal to answer
             if (json["choices"] is JArray choicesToken && choicesToken.Count > 0)
             {
                 var firstChoice = choicesToken[0] as JObject;
@@ -70,7 +78,7 @@ namespace LMLocal.Infrastructure.Streaming
                 }
             }
 
-            return ExtractStreamContent(json);
+            return null;
         }
 
         private static CompletionStreamChunk ExtractUsage(JObject json)

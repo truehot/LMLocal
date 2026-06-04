@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using LMLocal.Common;
 using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Infrastructure.Mcp;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.WebView;
 using Microsoft.VisualStudio.Shell;
@@ -42,8 +43,28 @@ namespace LMLocal
 
             _webViewInitializing = true;
 
+            //load settings first
             var settingsManager = ServiceConfiguration.GetService<ISettingsManager>();
             await settingsManager.LoadAsync();
+
+            //init MCP in background 
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var mcpToolManager = ServiceConfiguration.GetService<IMcpToolManager>();
+                    var configManager = ServiceConfiguration.GetService<IMcpConfigManager>();
+                    var config = await configManager.GetAsync(CancellationToken.None);
+                    if (config != null)
+                    {
+                        await mcpToolManager.RefreshServersAsync(config, CancellationToken.None);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"MCP background init failed: {ex.Message}");
+                }
+            });
 
             var webViewBridgeFactory = ServiceConfiguration.GetService<IWebViewBridgeFactory>();
 

@@ -86,6 +86,16 @@ class BridgeClient {
         const result = await this._callHost("TestMcpConnectionAsync", payloadJson);
         return JSON.parse(result);
     }
+
+    async getProvidersAsync() {
+        const res = await this._callHost("GetProvidersAsync");
+        return JSON.parse(res);
+    }
+
+    async updateProvidersAsync(providersConfig) {
+        const payload = JSON.stringify(providersConfig);
+        return await this._callHost("UpdateProvidersAsync", payload);
+    }
 }
 
 const bridgeClient = new BridgeClient();

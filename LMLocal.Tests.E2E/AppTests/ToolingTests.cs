@@ -76,8 +76,13 @@ public class ToolingTests : AppTestBase
         await Page.Locator("#userInput").FillAsync("Search and find");
         await Page.Locator("#mainBtn").ClickAsync();
 
-        // Wait for all tool statuses to be rendered
-        await Page.WaitForFunctionAsync("() => document.querySelectorAll('.tool-status, .tool-status-completed, .tool-status-error').length >= 2");
+        // Wait for first completed tool to appear
+        await Expect(Page.Locator(".tool-status-completed"))
+            .ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        // Wait for error tool to appear
+        await Expect(Page.Locator(".tool-status-error"))
+            .ToBeVisibleAsync(new() { Timeout = 3000 });
 
         // Verify both tools are present
         var toolCount = await Page.Locator(".tool-status, .tool-status-completed, .tool-status-error").CountAsync();

@@ -11,7 +11,7 @@ namespace LMLocal.Infrastructure.Api
         LmStudio,
 
         /// <summary>
-        /// OpenAI-compatible backend 
+        /// OpenAI-compatible backend or cloud
         /// </summary>
         OpenAi,
 
@@ -23,6 +23,21 @@ namespace LMLocal.Infrastructure.Api
         /// <summary>
         /// Jan backend
         /// </summary>
-        Jan
+        Jan,
+
+        /// <summary>
+        /// DeepSeek cloud
+        /// </summary>
+        DeepSeek,
+
+        /// <summary>
+        /// Google Gemini cloud
+        /// </summary>
+        Gemini,
+
+        /// <summary>
+        /// Github Models cloud
+        /// </summary>
+        GithubModelsAzure
     }
 }

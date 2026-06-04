@@ -31,6 +31,8 @@ namespace LMLocal.Infrastructure.Api
                     return ConvertOllamaResponseToUnified(json);
                 else if (provider == ModelProvider.Jan)
                     return ConvertJanResponseToUnified(json);
+                else if (provider == ModelProvider.GithubModelsAzure)
+                    return ConvertAzureResponseToUnified(json);
                 else
                     return ConvertOpenAiResponseToUnified(json);
             }
@@ -252,6 +254,54 @@ namespace LMLocal.Infrastructure.Api
             {
                 InternalLogger.Warn($"ConvertJanModels: failed to parse Jan response: {ex.Message}");
                 return new UnifiedListModelsResponse { Error = "Failed to parse Jan response" };
+            }
+        }
+
+        /// <summary>
+        /// Converts Azure/Github Models API response to unified format.
+        /// Filters models by task type (only "chat-completion" models are included).
+        /// </summary>
+        public static UnifiedListModelsResponse ConvertAzureResponseToUnified(string json)
+        {
+            try
+            {
+                var azureModels = json.FromJson<List<AzureModelInfo>>();
+                if (azureModels == null || azureModels.Count == 0)
+                {
+                    return new UnifiedListModelsResponse { Error = "No models returned from Azure" };
+                }
+
+                var result = new UnifiedListModelsResponse { Models = new List<UnifiedModelInfo>() };
+
+                var chatModels = azureModels
+                    .Where(m => m.Task == "chat-completion")
+                    .ToList();
+
+                foreach (var model in chatModels)
+                {
+                    var unifiedModel = new UnifiedModelInfo
+                    {
+                        Id = model.Name,
+                        Name = !string.IsNullOrEmpty(model.FriendlyName) ? model.FriendlyName : model.Name,
+                        MaxTokens = null,
+                        SupportsMaxTokens = false,
+                        IsLoaded = false
+                    };
+
+                    result.Models.Add(unifiedModel);
+                }
+
+                if (result.Models.Count == 0)
+                {
+                    return new UnifiedListModelsResponse { Error = "No chat-completion models available in Azure" };
+                }
+
+                return result;
+            }
+            catch (JsonException ex)
+            {
+                InternalLogger.Warn($"ConvertAzureResponseToUnified: failed to parse Azure response: {ex.Message}");
+                return new UnifiedListModelsResponse { Error = "Failed to parse Azure response" };
             }
         }
     }

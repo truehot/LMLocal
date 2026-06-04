@@ -1,181 +1,21 @@
 ﻿/* ====== Dialog styles ====== */
 #confirm-dialog {
-    background: var(--panel-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0;
     width: 320px;
-    color: var(--text-color);
-    box-shadow: 0 10px 25px var(--overlay-shadow);
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
-    overflow: hidden;
 }
 
-    #confirm-dialog::backdrop {
-        background: var(--overlay-shadow);
-        backdrop-filter: blur(1px);
-    }
-
-    #confirm-dialog .modal-header {
-        padding: 10px 12px;
-        font-size: 13px;
-        font-weight: bold;
-        color: var(--text-color);
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-        border-bottom: 1px solid var(--border-color);
-        background: var(--hover-bg-alpha);
-    }
-
-    #confirm-dialog .modal-body {
-        padding: 24px 16px;
-        font-size: 15px;
-        line-height: 1.5;
-        background: var(--bg-color);
-        font-weight: 500;
-    }
-
-    #confirm-dialog .modal-footer {
-        padding: 12px;
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        border-top: 1px solid var(--border-color);
-        background: var(--surface-bg);
-    }
-
-        #confirm-dialog .modal-footer button {
-            height: 32px;
-            padding: 0 16px;
-            font-size: 14px;
-            border-radius: 4px;
-            color: var(--white);
-            cursor: pointer;
-            border: 1px solid transparent;
-            transition: all 0.2s ease;
-        }
-
-    #confirm-dialog .btn-main {
-        background: var(--accent-color);
-        color: var(--text-color);
-    }
-
-        #confirm-dialog .btn-main:hover {
-            filter: brightness(1.1);
-        }
-
-    #confirm-dialog #dialog-cancel {
-        background: var(--input-bg);
-        color: var(--text-color);
-        border: 1px solid var(--border-color);
-    }
-
-        #confirm-dialog #dialog-cancel:hover {
-            background: var(--border-color);
-            color: var(--text-color);
-        }
 /* ====== Setting dialog styles ====== */
+
 #settings-dialog {
-    background: var(--panel-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0;
     width: 380px;
-    color: var(--text-color);
-    box-shadow: 0 10px 25px var(--overlay-shadow);
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    margin: 0;
-    overflow: hidden;
 }
-
-    #settings-dialog::backdrop {
-        background: var(--overlay-shadow);
-        backdrop-filter: blur(1px);
-    }
-
-    #settings-dialog .modal-header {
-        padding: 12px 16px;
-        background: var(--top-bar-bg);
-        border-bottom: 1px solid var(--border-color);
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--text-color);
-    }
-
-    #settings-dialog .modal-body {
-        padding: 20px;
-        max-height: 70vh;
-        overflow-y: auto;
-        background: var(--bg-color);
-    }
-
-    #settings-dialog .settings-group {
-        display: flex;
-        flex-direction: column;
-        margin-bottom: 20px;
-    }
-
-    #settings-dialog .settings-label {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--strong-text);
-        margin-bottom: 4px;
-    }
-
-    #settings-dialog .settings-description, #settings-dialog .checkbox-description {
-        font-size: 13px;
-        color: var(--muted-color);
-        line-height: 1.5;
-        margin-bottom: 8px;
-    }
-
-    #settings-dialog input[type="text"], #settings-dialog input[type="number"], #settings-dialog input[type="url"], #settings-dialog input[type="password"] {
-        background-color: var(--input-bg);
-        border: 1px solid var(--border-color);
-        color: var(--text-color);
-        padding: 10px 12px;
-        border-radius: 4px;
-        outline: none;
-        font-size: 14px;
-    }
 
     #settings-dialog input[type="number"] {
         max-width: 80px;
     }
 
-        #settings-dialog input[type="text"]:focus, #settings-dialog input[type="number"]:focus, #settings-dialog input[type="url"], #settings-dialog input[type="password"]:focus {
-            border-color: var(--accent-color);
-        }
-
-        #settings-dialog input[type="number"]::-webkit-outer-spin-button, #settings-dialog input[type="number"]::-webkit-inner-spin-button {
+        #settings-dialog input[type="number"]::-webkit-outer-spin-button,
+        #settings-dialog input[type="number"]::-webkit-inner-spin-button {
             appearance: none;
-        }
-
-    #settings-dialog .checkbox-container {
-        display: flex;
-        flex-direction: row;
-        align-items: flex-start;
-        gap: 10px;
-        cursor: pointer;
-        margin-bottom: 4px;
-    }
-
-        #settings-dialog .checkbox-container input[type="checkbox"] {
-            margin: 0;
-            padding: 0;
-            flex-shrink: 0;
-            width: 14px;
-            height: 14px;
-            cursor: pointer;
-            accent-color: var(--accent-color);
-            margin-top: 2px;
         }
 
     #settings-dialog .checkbox-content-wrapper {
@@ -188,6 +28,13 @@
         color: var(--text-color);
         font-weight: 500;
         line-height: 1.3;
+    }
+
+    #settings-dialog .checkbox-description {
+        font-size: 13px;
+        color: var(--muted-color);
+        line-height: 1.5;
+        margin-top: 2px;
     }
 
     #settings-dialog .theme-picker {
@@ -216,68 +63,27 @@
         color: var(--text-color);
     }
 
-    #settings-dialog .modal-footer {
-        padding: 12px 16px;
-        background: var(--status-bar-bg);
-        border-top: 1px solid var(--border-color);
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-    }
-
-    #settings-dialog button {
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        border: none;
-        min-width: 90px;
-        transition: filter 0.1s;
-    }
-
-    #settings-dialog #dialog-cancel {
-        background: var(--input-bg);
+    #settings-dialog .settings-select option {
+        background-color: var(--panel-bg);
         color: var(--text-color);
     }
 
-        #settings-dialog #dialog-cancel:hover {
-            background: var(--border-color);
-        }
-
-    #settings-dialog .btn-main {
-        background: var(--accent-color);
-        color: var(--white);
-    }
-
-        #settings-dialog .btn-main:hover {
-            filter: brightness(1.1);
-        }
-
-    #settings-dialog .modal-body::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    #settings-dialog .modal-body::-webkit-scrollbar-thumb {
-        background: var(--scrollbar-thumb);
-        border-radius: 4px;
-    }
-
+    #settings-dialog .input-with-button,
     #settings-dialog .password-input-container {
         display: flex;
-        gap: 4px;
+        gap: 8px;
         align-items: stretch;
         width: 100%;
         margin-top: 4px;
     }
 
+        #settings-dialog .input-with-button input,
         #settings-dialog .password-input-container input {
             flex: 1;
             min-width: 0;
         }
 
     #settings-dialog .password-toggle {
-        position: static;
-        transform: none;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -290,12 +96,12 @@
         cursor: pointer;
         color: var(--muted-color);
         padding: 0;
-        transition: all 0.2s ease;
+        transition: all 0.15s ease;
     }
 
         #settings-dialog .password-toggle:hover {
-            background-color: var(--hover-bg-alpha);
-            border-color: var(--accent-color);
+            background-color: var(--border-color);
+            border-color: var(--border-color);
             color: var(--strong-text);
         }
 
@@ -305,114 +111,41 @@
             pointer-events: none;
         }
 
-    #settings-dialog .password-input-container input::-ms-reveal {
-        display: none !important;
-    }
-
-    #settings-dialog .settings-select {
-        background-color: var(--input-bg);
-        border: 1px solid var(--border-color);
-        color: var(--text-color);
-        padding: 10px 12px;
-        border-radius: 4px;
-        outline: none;
-        font-size: 14px;
-        cursor: pointer;
-        width: 100%;
-    }
-
-        #settings-dialog .settings-select:focus {
-            border-color: var(--accent-color);
-        }
-
-        #settings-dialog .settings-select option {
-            background-color: var(--panel-bg);
-            color: var(--text-color);
-        }
-
-    #settings-dialog .input-with-button {
-        display: flex;
-        gap: 8px;
-        align-items: stretch;
-        width: 100%;
-    }
-
-        #settings-dialog .input-with-button input {
-            flex: 1;
-            min-width: 0;
-        }
-
-    #settings-dialog .btn-secondary {
-        background: var(--input-bg);
-        color: var(--text-color);
-        border: 1px solid var(--border-color);
-        border-radius: 4px;
+    #settings-dialog .input-with-button .btn-secondary {
         padding: 0 14px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        height: auto;
         min-width: 45px;
+        height: auto;
     }
 
-        #settings-dialog .btn-secondary:hover {
-            background-color: var(--hover-bg-alpha);
-            border-color: var(--accent-color);
-            color: var(--strong-text);
-        }
-
-        #settings-dialog .btn-secondary .btn-icon {
-            display: inline-block;
-            flex-shrink: 0;
-            color: var(--muted-color);
-            transition: color 0.2s ease;
-        }
-
-        #settings-dialog .btn-secondary:hover .btn-icon {
-            color: var(--accent-color);
-        }
-
-    #settings-dialog .btn-spinner {
-        width: 14px;
-        height: 14px;
-        border: 2px solid transparent;
-        border-top-color: currentColor;
-        border-radius: 50%;
-        animation: btn-spin 0.6s linear infinite;
+    #settings-dialog .btn-secondary .btn-icon {
         display: inline-block;
         flex-shrink: 0;
+        color: var(--muted-color);
+        transition: color 0.15s ease;
     }
 
-@keyframes btn-spin {
-    to {
-        transform: rotate(360deg);
+    #settings-dialog .btn-secondary:hover .btn-icon {
+        color: var(--strong-text);
     }
-}
 
-
-#settings-dialog .btn-secondary.success {
-    border-color: var(--success-color, #2ecc71);
-    color: var(--success-color, #2ecc71);
-}
-
-    #settings-dialog .btn-secondary.success .btn-icon {
+    #settings-dialog .btn-secondary.success {
+        border-color: var(--success-color, #2ecc71);
         color: var(--success-color, #2ecc71);
     }
 
+        #settings-dialog .btn-secondary.success .btn-icon {
+            color: var(--success-color, #2ecc71);
+        }
 
-#settings-dialog .btn-secondary.error {
-    border-color: var(--error-color, #e74c3c);
-    color: var(--error-color, #e74c3c);
-}
-
-    #settings-dialog .btn-secondary.error .btn-icon {
-        color: var(--error-color, #e74c3c);
+    #settings-dialog .btn-secondary.error {
+        border-color: var(--danger-color, #c75050);
+        color: var(--danger-color, #c75050);
     }
+
+        #settings-dialog .btn-secondary.error .btn-icon {
+            color: var(--danger-color, #c75050);
+        }
+
 /* ====== Models selection dialog styles ====== */
 #model-selector-dialog.model-modal {
     background-color: var(--panel-bg);
@@ -481,39 +214,6 @@
 
     #model-selector-dialog #model-filter-input:focus {
         border-color: var(--accent-color);
-    }
-
-#model-selector-dialog .ui-icon-btn {
-    background-color: var(--input-bg);
-    color: var(--btn-icon-color);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-    #model-selector-dialog .ui-icon-btn:hover {
-        color: var(--btn-icon-hover);
-        background-color: var(--hover-bg-alpha);
-        border-color: var(--muted-color);
-    }
-
-    #model-selector-dialog .ui-icon-btn svg {
-        display: block;
-        fill: currentColor;
-        width: 14px;
-        height: 14px;
-    }
-
-    #model-selector-dialog .ui-icon-btn.spinning svg {
-        animation: spin 0.8s linear infinite;
     }
 
 #model-selector-dialog .modal-container {
@@ -640,23 +340,6 @@
     opacity: 0.9;
 }
 
-#model-selector-dialog .modal-footer {
-    padding: 10px 16px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
-    background-color: var(--top-bar-bg);
-}
-
-#model-selector-dialog #model-selector-close {
-    background: var(--input-bg);
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
-    padding: 5px 15px;
-    border-radius: 3px;
-    cursor: pointer;
-}
-
 #model-selector-dialog .loading-placeholder,
 #model-selector-dialog .empty-placeholder {
     flex: 1;
@@ -752,16 +435,19 @@
         background-color: var(--accent-color);
     }
 /* ====== Instructions dialog styles ====== */
+
+#instructions-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
 #instructions-dialog {
     background: var(--surface-bg);
     color: var(--text-color);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 0;
     width: 700px;
     max-width: 95vw;
     height: 550px;
-    box-shadow: 0 8px 24px var(--overlay-shadow);
+    max-height: 90vh;
     overflow: hidden;
     color-scheme: light dark;
 }
@@ -772,17 +458,19 @@
     }
 
     #instructions-dialog .modal-header {
-        padding: 12px 16px;
-        background: var(--top-bar-bg);
-        border-bottom: 1px solid var(--border-color);
         font-size: 13px;
-        font-weight: 600;
         color: var(--text-color);
+        flex-shrink: 0;
     }
 
     #instructions-dialog .modal-container {
         display: flex;
-        height: calc(100% - 94px);
+        flex-direction: row;
+        flex: 1;
+        padding: 0 !important;
+        background: transparent !important;
+        max-height: none !important;
+        overflow: hidden !important;
     }
 
     #instructions-dialog .settings-sidebar {
@@ -793,6 +481,7 @@
         flex-direction: column;
         padding: 8px 0;
         flex-shrink: 0;
+        height: 100%;
     }
 
     #instructions-dialog .tab-btn {
@@ -821,9 +510,12 @@
 
     #instructions-dialog .modal-body {
         flex: 1;
-        padding: 20px;
-        overflow-y: auto;
+        padding: 20px !important;
         background: var(--bg-color);
+        overflow-y: auto !important;
+        max-height: none !important;
+        height: 100%;
+        box-sizing: border-box;
     }
 
     #instructions-dialog .tab-content.active {
@@ -832,6 +524,7 @@
 
     #instructions-dialog .settings-group {
         margin-bottom: 24px;
+        gap: 0;
     }
 
     #instructions-dialog .settings-label {
@@ -840,7 +533,6 @@
         font-size: 13px;
         text-transform: uppercase;
         font-weight: 600;
-        margin-bottom: 16px;
         letter-spacing: 0.6px;
     }
 
@@ -868,17 +560,18 @@
     align-items: flex-start;
     gap: 10px;
     cursor: pointer;
+    width: 100%;
 }
 
     #instructions-dialog .checkbox-container input[type="checkbox"],
     #instructions-dialog .checkbox-container input[type="radio"] {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 14px;
-        height: 14px;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        width: 14px !important;
+        height: 14px !important;
         border: 1px solid var(--separator-color);
         background: var(--input-bg);
-        margin-top: 2px;
+        margin: 2px 0 0 0 !important;
         flex-shrink: 0;
         cursor: pointer;
         display: grid;
@@ -894,8 +587,8 @@
     }
 
     #instructions-dialog .checkbox-container input:checked {
-        background-color: var(--accent-color);
-        border-color: var(--accent-color);
+        background-color: var(--accent-color) !important;
+        border-color: var(--accent-color) !important;
     }
 
     #instructions-dialog .checkbox-container input[type="checkbox"]:checked::before {
@@ -943,12 +636,7 @@
     }
 
 #instructions-dialog .modal-footer {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    background: var(--status-bar-bg);
+    flex-shrink: 0;
 }
 
     #instructions-dialog .modal-footer button {
@@ -956,24 +644,25 @@
         border-radius: 4px;
         font-size: 14px;
         cursor: pointer;
-        color: var(--white);
-        border: none;
         min-width: 90px;
+        border: 1px solid transparent;
         transition: background 0.1s;
     }
 
 #instructions-dialog #dialog-cancel {
     background: var(--input-bg);
     color: var(--text-color);
+    border-color: var(--border-color);
 }
 
     #instructions-dialog #dialog-cancel:hover {
         background: var(--border-color);
+        color: var(--strong-text);
     }
 
 #instructions-dialog .btn-main {
     background: var(--accent-color);
-    color: var(--text-color);
+    color: var(--white);
 }
 
     #instructions-dialog .btn-main:hover {
@@ -985,25 +674,6 @@
     width: 0;
     height: 0;
 }
-
-#instructions-dialog .modal-body::-webkit-scrollbar,
-#instructions-dialog .prompt-textarea::-webkit-scrollbar {
-    width: 10px;
-}
-
-#instructions-dialog .modal-body::-webkit-scrollbar-track,
-#instructions-dialog .prompt-textarea::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#instructions-dialog .modal-body::-webkit-scrollbar-thumb,
-#instructions-dialog .prompt-textarea::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 10px;
-    border: 4px solid transparent;
-    background-clip: padding-box;
-}
-
 
 #instructions-dialog .settings-group.collapsible-group {
     margin-bottom: 24px;
@@ -1027,10 +697,10 @@
     }
 
     #instructions-dialog .group-header-row input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
-        width: 16px;
-        height: 16px;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        width: 16px !important;
+        height: 16px !important;
         border: 1px solid var(--border-color);
         background: var(--input-bg);
         border-radius: 3px;
@@ -1040,8 +710,8 @@
     }
 
         #instructions-dialog .group-header-row input[type="checkbox"]:checked {
-            background-color: var(--accent-color);
-            border-color: var(--accent-color);
+            background-color: var(--accent-color) !important;
+            border-color: var(--accent-color) !important;
         }
 
             #instructions-dialog .group-header-row input[type="checkbox"]:checked::before {
@@ -1073,8 +743,7 @@
     box-sizing: border-box;
 }
 
-    #instructions-dialog .prompt-textarea:focus,
-    #instructions-dialog .temperature-input:focus {
+    #instructions-dialog .prompt-textarea:focus, #instructions-dialog .temperature-input:focus {
         outline: none;
         border-color: var(--accent-color);
     }
@@ -1092,8 +761,7 @@
     resize: none;
 }
 
-#instructions-dialog .modal-body::-webkit-scrollbar-corner,
-#instructions-dialog .prompt-textarea::-webkit-scrollbar-corner {
+#instructions-dialog .modal-body::-webkit-scrollbar-corner, #instructions-dialog .prompt-textarea::-webkit-scrollbar-corner {
     width: 14px;
 }
 
@@ -1104,6 +772,8 @@
 #instructions-dialog input[type="number"]::-webkit-outer-spin-button, #instructions-dialog input[type="number"]::-webkit-inner-spin-button {
     appearance: none;
 }
+
+
 /* ====== MCP settings dialog styles ====== */
 
 #mcp-settings-dialog {
@@ -1123,14 +793,12 @@
     overflow: hidden;
     height: 650px;
 }
+
     #mcp-settings-dialog[open] {
         display: flex;
         flex-direction: column;
     }
-    #mcp-settings-dialog::backdrop {
-        background: var(--overlay-shadow);
-        backdrop-filter: blur(1px);
-    }
+
 
     #mcp-settings-dialog .modal-header {
         padding: 12px 16px;
@@ -1146,8 +814,8 @@
         max-height: 70vh;
         overflow-y: auto;
         background: var(--bg-color);
-        flex-grow: 1; 
-        max-height: none; 
+        flex-grow: 1;
+        max-height: none;
     }
 
     #mcp-settings-dialog .modal-footer {
@@ -1159,24 +827,15 @@
         gap: 8px;
     }
 
-    #mcp-settings-dialog .modal-body::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    #mcp-settings-dialog .modal-body::-webkit-scrollbar-thumb {
-        background: var(--scrollbar-thumb);
-        border-radius: 4px;
-    }
-
-    #mcp-settings-dialog .modal-footer button {
-        padding: 8px 16px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        border: none;
-        min-width: 90px;
-        transition: filter 0.1s;
-    }
+        #mcp-settings-dialog .modal-footer button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            min-width: 90px;
+            transition: filter 0.1s;
+        }
 
     #mcp-settings-dialog #mcp-dialog-cancel {
         background: var(--input-bg);
@@ -1407,7 +1066,7 @@
 
     #mcp-settings-dialog .mcp-test-action {
         display: flex;
-        justify-content: flex-end; 
+        justify-content: flex-end;
         margin-top: 8px;
     }
 
@@ -1430,6 +1089,406 @@
 
     #mcp-settings-dialog button:disabled {
         opacity: 0.5;
-        cursor: not-allowed !important; 
-        pointer-events: none; 
+        cursor: not-allowed !important;
+        pointer-events: none;
     }
+
+/* ====== Providers dialog styles ====== */
+#providers-dialog {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 500px;
+    height: 600px;
+    max-height: 90vh;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    overflow: hidden;
+    margin: auto;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+    #providers-dialog[open] {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #providers-dialog::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+    #providers-dialog .modal-header {
+        padding: 12px 16px;
+        background-color: var(--top-bar-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--strong-text);
+        font-size: 14px;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+
+    #providers-dialog .modal-body {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    #providers-dialog #providers-list-view,
+    #providers-dialog #provider-form-view {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    #providers-dialog #provider-crud-form {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    #providers-dialog .modal-footer {
+        padding: 12px 16px;
+        border-top: 1px solid var(--border-color);
+        background-color: var(--panel-bg);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+        #providers-dialog .modal-footer > div {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+    #providers-dialog .modal-toolbar {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 8px 12px !important;
+        background-color: var(--bg-color) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        gap: 10px !important;
+        flex-shrink: 0;
+    }
+
+    #providers-dialog .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-grow: 1;
+    }
+
+    #providers-dialog #provider-filter-input {
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        outline: none;
+        flex-grow: 1;
+        max-width: 200px;
+        box-sizing: border-box;
+        height: 28px;
+        transition: border-color 0.2s;
+    }
+
+        #providers-dialog #provider-filter-input:focus {
+            border-color: var(--accent-color);
+        }
+
+    #providers-dialog #provider-add-btn.btn-secondary {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 28px !important; 
+        padding: 0 12px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        min-width: auto !important;
+    }
+
+    #providers-dialog .modal-container {
+        padding: 8px;
+        flex: 1;
+        overflow-y: auto;
+        background-color: var(--bg-color);
+        display: flex;
+        flex-direction: column;
+    }
+
+    #providers-dialog .models-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px;
+    }
+
+    #providers-dialog .provider-card {
+        background-color: var(--surface-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+        padding: 12px !important;
+        transition: background 0.2s, border-color 0.2s;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 10px;
+        position: relative;
+        box-sizing: border-box;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+        #providers-dialog .provider-card:hover {
+            background-color: var(--hover-bg-alpha) !important;
+            border-color: var(--muted-color) !important;
+        }
+
+            #providers-dialog .provider-card:hover::before {
+                content: "";
+                position: absolute;
+                left: -1px;
+                top: -1px;
+                bottom: -1px;
+                width: 3px;
+                background-color: var(--accent-color);
+                border-radius: 4px 0 0 4px;
+            }
+
+    #providers-dialog .provider-info-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    #providers-dialog .provider-card-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--strong-text);
+        word-break: break-all;
+    }
+
+    #providers-dialog .provider-card-type {
+        font-size: 11px;
+        color: var(--muted-color);
+        opacity: 0.6;
+        word-break: break-all;
+    }
+
+    #providers-dialog .provider-card-meta {
+        font-size: 11px;
+        color: var(--muted-color);
+        word-break: break-all;
+        display: flex;
+        align-items: center;
+    }
+
+        #providers-dialog .provider-card-meta::before {
+            margin-right: 8px;
+            opacity: 0.3;
+            color: var(--muted-color);
+        }
+
+    #providers-dialog .provider-card-actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    #providers-dialog .provider-card-btn {
+        background: var(--input-bg) !important;
+        color: var(--text-color) !important;
+        border: 1px solid var(--border-color) !important;
+        padding: 4px 12px !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        border-radius: 3px !important;
+        height: 24px !important;
+        min-width: 55px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s ease;
+    }
+
+        #providers-dialog .provider-card-btn:hover {
+            color: var(--btn-icon-hover) !important;
+            background-color: var(--hover-bg-alpha) !important;
+            border-color: var(--muted-color) !important;
+        }
+
+        #providers-dialog .provider-card-btn.btn-danger-text:hover {
+            border-color: var(--stop-border, rgba(199, 80, 80, 0.3)) !important;
+            color: var(--stop-text, #e07a7a) !important;
+            background-color: var(--stop-bg, rgba(199, 80, 80, 0.08)) !important;
+        }
+
+    #providers-dialog .settings-group {
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    #providers-dialog .settings-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--strong-text);
+    }
+
+    #providers-dialog .settings-description {
+        font-size: 11px;
+        color: var(--muted-color);
+        opacity: 0.7;
+        line-height: 1.4;
+    }
+
+    #providers-dialog input[type="text"],
+    #providers-dialog input[type="url"],
+    #providers-dialog input[type="password"],
+    #providers-dialog .settings-select {
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        outline: none;
+        box-sizing: border-box;
+        width: 100%;
+        transition: border-color 0.2s;
+    }
+
+        #providers-dialog input:focus,
+        #providers-dialog .settings-select:focus {
+            border-color: var(--accent-color);
+        }
+
+    #providers-dialog .input-with-button,
+    #providers-dialog .password-input-container {
+        display: flex;
+        gap: 6px;
+        align-items: stretch;
+        width: 100%;
+    }
+
+        #providers-dialog .input-with-button input,
+        #providers-dialog .password-input-container input {
+            flex: 1;
+            min-width: 0;
+        }
+
+    #providers-dialog .password-toggle,
+    #providers-dialog .test-connection-btn {
+        background-color: var(--input-bg);
+        color: var(--btn-icon-color);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        padding: 0;
+        box-sizing: border-box;
+        flex-shrink: 0;
+    }
+
+        #providers-dialog .password-toggle:hover,
+        #providers-dialog .test-connection-btn:hover {
+            color: var(--btn-icon-hover);
+            background-color: var(--hover-bg-alpha);
+            border-color: var(--muted-color);
+        }
+
+        #providers-dialog .password-toggle svg,
+        #providers-dialog .test-connection-btn svg {
+            display: block;
+            fill: currentColor;
+            width: 14px;
+            height: 14px;
+        }
+
+    #providers-dialog .hidden {
+        display: none !important;
+    }
+
+    #providers-dialog .loading-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: var(--muted-color);
+        gap: 12px;
+        text-align: center;
+        font-size: 12px;
+    }
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#providers-dialog .test-connection-btn.success {
+    background-color: transparent !important;
+    color: var(--success-color) !important;
+    border: 1px solid var(--success-color) !important;
+}
+
+#providers-dialog .test-connection-btn.error {
+    background-color: transparent !important;
+    color: var(--danger-color) !important;
+    border: 1px solid var(--danger-color) !important;
+}
+
+#providers-dialog .btn-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--accent-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}

@@ -23,6 +23,12 @@ namespace LMLocal.Infrastructure.Api
                     return ModelProvider.OpenAi;
                 case "jan":
                     return ModelProvider.Jan;
+                case "deepseek":
+                    return ModelProvider.DeepSeek;
+                case "gemini":
+                    return ModelProvider.Gemini;
+                case "githubmodelsazure":
+                    return ModelProvider.GithubModelsAzure;
                 default:
                     return ModelProvider.LmStudio;
             }
@@ -39,8 +45,29 @@ namespace LMLocal.Infrastructure.Api
                 return ApiEndpoints.OllamaRunningModels;
             else if (provider == ModelProvider.Jan)
                 return ApiEndpoints.ListModels;
+            else if (provider == ModelProvider.DeepSeek)
+                return ApiEndpoints.DeepSeekListModels;
+            else if (provider == ModelProvider.Gemini)
+                return ApiEndpoints.GeminiListModels;
+            else if (provider == ModelProvider.GithubModelsAzure)
+                return ApiEndpoints.GithubModelsAzureListModels;
             else
                 return ApiEndpoints.ListModels;
+        }
+
+        /// <summary>
+        /// Gets the API endpoint for chat completions based on the provider type.
+        /// </summary>
+        public static string GetChatCompletionsEndpoint(ModelProvider provider)
+        {
+            if (provider == ModelProvider.DeepSeek)
+                return ApiEndpoints.DeepSeekCompletions;
+            else if (provider == ModelProvider.Gemini)
+                return ApiEndpoints.GeminiCompletions;
+            else if (provider == ModelProvider.GithubModelsAzure)
+                return ApiEndpoints.GithubModelsAzureCompletions;
+            else
+                return ApiEndpoints.ChatCompletions;
         }
     }
 }

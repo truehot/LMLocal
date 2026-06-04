@@ -69,8 +69,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Core\Models\McpConfig.cs" />
+    <Compile Include="Core\Models\ProvidersConfig.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
+    <Compile Include="Infrastructure\LlmApi\Responses\AzureModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\JanModelsResponse.cs" />
     <Compile Include="Infrastructure\DependencyInjection\ServiceConfiguration.cs" />
     <Compile Include="Infrastructure\Http\HttpClientWrapper.cs" />
@@ -81,6 +83,7 @@
     <Compile Include="Infrastructure\LlmApi\Responses\OllamaPsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
+    <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByName.cs" />
@@ -118,6 +121,10 @@
     <Compile Include="Infrastructure\LlmApi\Responses\SendChatResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Requests\SendChatRequest.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\StreamingResponse.cs" />
+    <Content Include="Resources\css\dialog.base.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\css\dialog.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -143,6 +150,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\dialogs\models.list.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\dialogs\providers.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -284,6 +295,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\store\model.store.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\store\providers.store.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

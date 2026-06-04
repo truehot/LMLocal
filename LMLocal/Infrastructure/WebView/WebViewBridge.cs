@@ -11,6 +11,7 @@ using LMLocal.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.WebView.Models;
@@ -38,6 +39,8 @@ namespace LMLocal.Infrastructure.WebView
         Task<string> GetMcpConfigAsync();
         Task<bool> UpdateMcpConfigAsync(string newMcpConfigJson);
         Task<string> TestMcpConnectionAsync(string payload);
+        Task<string> GetProvidersAsync();
+        Task<bool> UpdateProvidersAsync(string providersConfigJson);
     }
 
 
@@ -55,6 +58,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
+        private readonly IProvidersConfigManager _providersConfigManager;
 
         internal WebViewBridge(
             ISettingsManager settingsManager,
@@ -63,6 +67,7 @@ namespace LMLocal.Infrastructure.WebView
             IInstructionsManager instructionsManager,
             IMcpConfigManager mcpConfigManager,
             IMcpToolManager mcpToolManager,
+            IProvidersConfigManager providersConfigManager,
             IActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
@@ -78,6 +83,7 @@ namespace LMLocal.Infrastructure.WebView
             _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
             _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
+            _providersConfigManager = providersConfigManager ?? throw new ArgumentNullException(nameof(providersConfigManager));
         }
 
         /// <summary>
@@ -448,6 +454,45 @@ namespace LMLocal.Infrastructure.WebView
             }
 
             return response.ToJson();
+        }
+
+        public async Task<string> GetProvidersAsync()
+        {
+            try
+            {
+                var config = await _providersConfigManager.GetAsync().ConfigureAwait(false);
+                return config?.ToJson() ?? "{}";
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetProvidersAsync failed", ex);
+                return "{}";
+            }
+        }
+
+        public async Task<bool> UpdateProvidersAsync(string providersConfigJson)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(providersConfigJson))
+                {
+                    return false;
+                }
+
+                var config = providersConfigJson.FromJson<ProvidersConfigFile>();
+                if (config == null)
+                {
+                    return false;
+                }
+
+                await _providersConfigManager.UpdateAsync(config).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("UpdateProvidersAsync failed", ex);
+                return false;
+            }
         }
     }
 }

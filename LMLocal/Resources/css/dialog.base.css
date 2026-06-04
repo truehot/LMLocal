@@ -1,0 +1,225 @@
+/* ======Base dialog styles ====== */
+
+dialog {
+    background: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0;
+    color: var(--text-color);
+    box-shadow: 0 10px 25px var(--overlay-shadow);
+    box-sizing: border-box;
+}
+
+    dialog::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+    dialog .modal-header {
+        padding: 12px 16px;
+        background: var(--top-bar-bg);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--strong-text);
+    }
+
+    dialog .modal-body,
+    dialog .modal-container {
+        padding: 20px;
+        background: var(--bg-color);
+        max-height: 70vh;
+        overflow-y: auto;
+        box-sizing: border-box;
+    }
+
+    dialog .modal-footer {
+        padding: 12px 16px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        border-top: 1px solid var(--border-color);
+        background: var(--status-bar-bg);
+        align-items: center;
+    }
+
+    dialog *::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    dialog *::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 3px;
+    }
+
+/* ======Base buttons styles ====== */
+
+.btn-primary,
+.btn-secondary {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 90px;
+    height: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
+}
+
+
+.btn-primary {
+    background: var(--accent-color);
+    color: var(--white);
+    border-color: transparent;
+}
+
+    .btn-primary:hover {
+        filter: brightness(1.1);
+    }
+
+.btn-secondary {
+    background: var(--input-bg);
+    color: var(--text-color);
+    border-color: var(--border-color);
+}
+
+    .btn-secondary:hover {
+        background: var(--border-color);
+        border-color: var(--border-color);
+        color: var(--strong-text);
+    }
+
+    dialog button:disabled,
+    .btn-primary:disabled,
+    .btn-secondary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed !important;
+        pointer-events: none;
+    }
+
+/* ====== Base input and forms styles ====== */
+
+dialog .settings-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 20px;
+    gap: 6px;
+}
+
+dialog .settings-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--strong-text);
+}
+
+dialog .settings-description {
+    font-size: 13px;
+    color: var(--muted-color);
+    line-height: 1.5;
+}
+
+dialog input[type="text"],
+dialog input[type="number"],
+dialog input[type="url"],
+dialog input[type="password"],
+dialog .settings-select {
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 10px 12px;
+    border-radius: 4px;
+    outline: none;
+    font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease;
+}
+
+    dialog input[type="password"]::-ms-reveal {
+        display: none !important;
+    }
+
+    dialog input:focus,
+    dialog .settings-select:focus {
+        border-color: var(--accent-color);
+    }
+
+dialog .checkbox-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+    dialog .checkbox-container input[type="checkbox"] {
+        margin: 0;
+        flex-shrink: 0;
+        width: 14px;
+        height: 14px;
+        cursor: pointer;
+        accent-color: var(--accent-color);
+        margin-top: 2px;
+    }
+
+.btn-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+    border-top-color: currentColor;
+    animation: btn-spin-rotation 0.6s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+@keyframes btn-spin-rotation {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.hidden {
+    display: none !important;
+}
+
+
+.ui-icon-btn {
+    background-color: var(--input-bg);
+    color: var(--btn-icon-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+    .ui-icon-btn:hover {
+        color: var(--btn-icon-hover);
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--muted-color);
+    }
+
+    .ui-icon-btn svg {
+        display: block;
+        fill: currentColor;
+        width: 14px;
+        height: 14px;
+    }
+
+    .ui-icon-btn.spinning svg {
+        animation: spin 0.8s linear infinite;
+    }

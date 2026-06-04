@@ -53,6 +53,12 @@ namespace LMLocal.Infrastructure.Api
             return DefaultBaseUrl;
         }
 
+        private string GetChatCompletionsEndpoint()
+        {
+            var provider = ProviderResolver.ResolveProvider(_settingsManager.Current?.Provider);
+            return ProviderResolver.GetChatCompletionsEndpoint(provider);
+        }
+
         /// <summary>
         /// Retrieves raw JSON response for models list from a specific backend with explicit credentials.
         /// </summary>
@@ -120,7 +126,7 @@ namespace LMLocal.Infrastructure.Api
 
             try
             {
-                request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + ApiEndpoints.ChatCompletions) { Content = content };
+                request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content };
                 if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
                 {
                     request.Headers.Add("Authorization", $"Bearer {_settingsManager.Current.ApiKey}");
@@ -163,7 +169,7 @@ namespace LMLocal.Infrastructure.Api
             var openAiRequest = BuildRequest(messageContext, modelContext, stream: false, store: false, useTools: false);
 
             using (var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json"))
-            using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + ApiEndpoints.ChatCompletions) { Content = content })
+            using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content })
             {
                 if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
                 {
@@ -211,13 +217,12 @@ namespace LMLocal.Infrastructure.Api
 
                 messages.Add(apiMessage);
             }
-
+            // Google Gemini and Mistral do not support the 'store' parameter.
             var request = new SendChatRequest
             {
                 Model = modelContext.ModelId,
                 Messages = messages,
                 Stream = stream,
-                Store = store,
                 Temperature = modelContext.Temperature,
                 TopP = modelContext.TopP,
                 MaxCompletionTokens = modelContext.MaxOutputTokens,
@@ -282,7 +287,7 @@ namespace LMLocal.Infrastructure.Api
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"TryExtractErrorMessage: invalid JSON response: {ex.Message}");
+                InternalLogger.Warn($"TryExtractErrorMessage: invalid JSON response: {rawResponse} {ex.Message}");
                 return string.IsNullOrWhiteSpace(rawResponse) ? null : rawResponse.Trim();
             }
         }

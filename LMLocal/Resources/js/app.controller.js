@@ -13,6 +13,7 @@ import { appSelectors } from '@app/store/app.selectors.js';
 import modelStore from '@app/store/model.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import settingsStore from '@app/store/settings.store.js';
+import providersStore from '@app/store/providers.store.js';
 import bridgeMessageDispatcher from '@app/api/bridge.message.dispatcher.js';
 import appDataService from '@app/services/app.data.service.js';
 
@@ -21,6 +22,7 @@ import { SettingsDialog } from '@app/dialogs/settings.dialog.js';
 import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
+import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
 import { UIText } from '@app/constants/app.globals.js';
 
 /**
@@ -133,6 +135,7 @@ class AppController {
         menuComponent.onClick.on(async (action) => {
             switch (action) {
                 case 'clear-chat':
+                    menuComponent.hideMenu();
                     const confirmDialog = new ConfirmDialog();
                     const isConfirmed = await confirmDialog.confirm(UIText.CONFIRM_CLEAR_CONVERSATION);
                     if (!isConfirmed) return false;
@@ -141,7 +144,24 @@ class AppController {
                 case 'open-settings':
                     const settingsDialog = new SettingsDialog();
                     settingsDialog.onLoad.on(async () => {
-                        return await appDataService.getSettingsAsync();
+                        const settings = await appDataService.getSettingsAsync();
+
+                        let providers;
+                        const storeState = providersStore.getState();
+                        if (storeState.loaded) {
+                            providers = {
+                                defaultProviders: storeState.defaultProviders,
+                                providers: storeState.providers
+                            };
+                        } else {
+                            providers = await appDataService.getProvidersAsync();
+                        }
+
+                        return {
+                            ...settings,
+                            defaultProviders: providers.defaultProviders,
+                            providers: providers.providers
+                        };
                     });
                     settingsDialog.onTestConnection.on(async (settings) => {
                         return await appDataService.testConnectionAsync(settings);
@@ -149,6 +169,7 @@ class AppController {
                     settingsDialog.onSave.on(async (settings) => {
                         return await appDataService.updateSettingsAsync(settings);
                     });
+                    menuComponent.hideMenu();
                     await settingsDialog.show();
                     return true;
                 case 'open-instructions':
@@ -159,6 +180,7 @@ class AppController {
                     instructionsDialog.onSave.on(async (json) => {
                         return await appDataService.updateInstructionsAsync(json);
                     });
+                    menuComponent.hideMenu();
                     await instructionsDialog.show();
                     return true;
                 case 'mcp-settings':
@@ -172,7 +194,22 @@ class AppController {
                     mcpDialog.onSave.on(async (config) => {
                         return await appDataService.updateMcpConfigAsync(config);
                     });
+                    menuComponent.hideMenu();
                     await mcpDialog.show();
+                    return true;
+                case 'open-providers':
+                    const providersDialog = new ProvidersDialog();
+                    providersDialog.onLoad.on(async () => {
+                        return await appDataService.getProvidersAsync();
+                    });
+                    providersDialog.onTestConnection.on(async (provider) => {
+                        return await appDataService.testConnectionAsync(provider);
+                    });
+                    providersDialog.onSave.on(async (config) => {
+                        return await appDataService.updateProvidersAsync(config);
+                    });
+                    menuComponent.hideMenu();
+                    await providersDialog.show();
                     return true;
                 default:
                     return false;

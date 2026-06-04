@@ -106,12 +106,15 @@ namespace LMLocal.Infrastructure.Mcp
             var resultJson = response.Result.ToJson();
             var toolResponse = resultJson.FromJson<ToolCallResponse>();
 
-            if (toolResponse?.IsError == true)
-                throw new InvalidOperationException($"Tool execution failed");
-
             var textContent = toolResponse?.Content
                 ?.FirstOrDefault(c => c.Type == "text")
                 ?.Text;
+
+            if (toolResponse?.IsError == true)
+            {
+                var errorMessage = !string.IsNullOrEmpty(textContent) ? $"Tool execution failed: {textContent}" : "Tool execution failed.";
+                throw new InvalidOperationException(errorMessage);
+            }
 
             return textContent ?? (object)toolResponse;
         }

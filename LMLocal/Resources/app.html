@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link id="hljs-theme" rel="stylesheet" href="https://app.local/css/hljs.dark.css">
     <link rel="stylesheet" href="https://app.local/css/app.css">
+    <link rel="stylesheet" href="https://app.local/css/dialog.base.css">
     <link rel="stylesheet" href="https://app.local/css/dialog.css">
     <link rel="stylesheet" href="https://app.local/css/toolbar.css">
     <link rel="stylesheet" href="https://app.local/css/codeblock.css">
+
 </head>
 <body>
 
@@ -44,6 +46,12 @@
                         <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428-.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z" />
                     </svg>
                     Settings...
+                </button>
+                <button data-action="open-providers">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M13 8.5a2.5 2.5 0 0 1-2.4 2h-5.2A2.5 2.5 0 0 1 3 8.5c0-1.2.9-2.2 2.1-2.4a3.5 3.5 0 0 1 6.8 0c1.2.2 2.1 1.2 2.1 2.4z" />
+                    </svg>
+                    Configure providers...
                 </button>
                 <button data-action="mcp-settings">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
@@ -100,8 +108,8 @@
         <div class="modal-header">Confirmation</div>
         <div class="modal-body"></div>
         <div class="modal-footer">
-            <button id="dialog-cancel">Cancel</button>
-            <button id="dialog-confirm" class="btn-main">Clear</button>
+            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="dialog-confirm" class="btn-primary">Clear</button>
         </div>
     </dialog>
 
@@ -115,10 +123,6 @@
                         Select type of LLM server you want to use.
                     </span>
                     <select name="Provider" id="provider-select" data-setting="Provider" class="settings-select">
-                        <option value="lmstudio" selected>LM Studio (local)</option>
-                        <option value="ollama">Ollama (local)</option>
-                        <option value="jan">Jan (local)</option>
-                        <option value="openai">OpenAI compatible (custom)</option>
                     </select>
                 </div>
                 <div class="settings-group">
@@ -246,8 +250,8 @@
             </form>
         </div>
         <div class="modal-footer">
-            <button id="dialog-cancel">Cancel</button>
-            <button id="dialog-confirm" class="btn-main">Save</button>
+            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
 
@@ -259,8 +263,8 @@
         </div>
 
         <div class="modal-footer">
-            <button id="dialog-cancel">Cancel</button>
-            <button id="dialog-confirm" class="btn-main">Save</button>
+            <button id="dialog-cancel" сlass="btn-secondary">Cancel</button>
+            <button id="dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
 
@@ -271,7 +275,7 @@
 
         <div class="modal-toolbar">
             <div class="toolbar-left">
-                <input type="text" id="model-filter-input" placeholder="Search models..." autocomplete="off">
+                <input type="text" id="model-filter-input" placeholder="Filter models..." autocomplete="off">
 
                 <button id="model-sort-btn" class="ui-icon-btn" title="Sort by Name">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
@@ -299,7 +303,7 @@
         </div>
 
         <div class="modal-footer">
-            <button id="model-selector-close">Close</button>
+            <button id="model-selector-close" class="btn-secondary">Close</button>
         </div>
     </dialog>
 
@@ -366,6 +370,112 @@
             <button type="button" id="mcp-dialog-confirm" class="btn-main">Save</button>
         </div>
     </dialog>
+
+    <dialog id="providers-dialog">
+        <div class="modal-header">
+            <span id="providers-modal-title">Configure providers</span>
+        </div>
+        <div class="modal-body">
+            <div id="providers-list-view">
+                <div class="modal-toolbar">
+                    <div class="toolbar-left">
+                        <input type="text" id="provider-filter-input" placeholder="Filter providers..." autocomplete="off">
+                        <button id="model-sort-btn" class="ui-icon-btn" title="Sort by Name">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
+                        </button>
+                    </div>
+                    <button type="button" id="provider-add-btn" class="btn-secondary">
+                        + Add Profile
+                    </button>
+                </div>
+
+                <div class="modal-container">
+                    <div id="providers-list-container" class="models-grid">
+                        <div class="loading-placeholder" id="providers-empty-state">
+                            <span>No custom providers added yet. Click "+ Add Profile" to create one.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="provider-form-view" class="hidden">
+                <form id="provider-crud-form">
+                    <input type="hidden" data-setting="id" name="id">
+
+                    <div class="settings-group">
+                        <label for="name" class="settings-label">Profile name</label>
+                        <span class="settings-description">
+                            Give this configuration a recognizable name (e.g., Work Ollama, OpenRouter).
+                        </span>
+                        <input type="text" data-setting="name" name="name" placeholder="e.g. My Custom OpenAI" required autocomplete="off" maxlength="40">
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="providerType" class="settings-label">Provider type</label>
+                        <span class="settings-description">
+                            Select the API protocol used by your target server.
+                        </span>
+                        <select name="providerType" data-setting="providerType" class="settings-select">
+                            <option value="lmstudio">LM Studio (local)</option>
+                            <option value="ollama">Ollama (local)</option>
+                            <option value="openai" selected>OpenAI compatible</option>
+                            <option value="deepseek">DeepSeek (cloud)</option>
+                            <option value="gemini">Gemini (cloud)</option>
+                            <option value="githubmodelsazure">Github Models via Azure (cloud)</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="customBaseUrl" class="settings-label">API base URL</label>
+                        <span class="settings-description">
+                            The full endpoint URL for the API.
+                        </span>
+                        <div class="input-with-button">
+                            <input type="url" data-setting="customBaseUrl" name="customBaseUrl" placeholder="https://api.openai.com/" required pattern="https?://.+">
+                            <button type="button" class="test-connection-btn btn-secondary" title="Test connection to the provider">
+                                <span class="btn-icon-slot">
+                                    <svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M6 11.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" opacity="0.3" />
+                                        <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
+                                    </svg>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="customApiKey" class="settings-label">API key</label>
+                        <span class="settings-description">
+                            Your API key for authentication.
+                        </span>
+                        <div class="password-input-container">
+                            <input type="password" data-setting="customApiKey" name="customApiKey" autocomplete="off" placeholder="sk-...">
+                            <button type="button" class="password-toggle" title="Show/Hide">
+                                <svg class="eye-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M8 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
+                                    <path d="M8 3C4 3 1.5 8 1.5 8S4 13 8 13s6.5-5 6.5-5S12 3 8 3zm0 8.5c-2.5 0-4.5-3.5-4.5-3.5S5.5 4.5 8 4.5s4.5 3.5 4.5 3.5S10.5 11.5 8 11.5z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <div id="providers-list-actions">
+                <button type="button" id="providers-modal-cancel" class="btn-secondary">Cancel</button>
+                <button type="button" id="providers-modal-confirm" class="btn-primary">Save Changes</button>
+            </div>
+
+            <div id="providers-form-actions">
+                <button type="button" id="provider-form-cancel" class="btn-secondary">Cancel</button>
+                <button type="submit" form="provider-crud-form" id="provider-form-save" class="btn-primary">Apply</button>
+            </div>
+        </div>
+    </dialog>
+
+
 
     <script type="importmap">
         {
