@@ -16,6 +16,7 @@ namespace LMLocal.Infrastructure.Instructions
     {
         Task<string> GetAsync(CancellationToken cancellationToken = default);
         Task UpdateAsync(string jsonInstructions, CancellationToken cancellationToken = default);
+        Task UpdateSelectedTabAsync(string selectedTabId, CancellationToken cancellationToken = default);
     }
 
     internal class InstructionsManager : IInstructionsManager
@@ -82,6 +83,31 @@ namespace LMLocal.Infrastructure.Instructions
             await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                await _fileSystem.WriteAllBytesAsync(_filePath, data, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _fileLock.Release();
+            }
+        }
+
+        public async Task UpdateSelectedTabAsync(string selectedTabId, CancellationToken cancellationToken = default)
+        {
+            await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                string jsonContent = "{}";
+                if (_fileSystem.FileExists(_filePath))
+                {
+                    jsonContent = await _fileSystem.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
+                }
+
+                JObject jObject = JObject.Parse(jsonContent);
+                jObject["selectedTabId"] = selectedTabId;
+
+                string updatedJson = jObject.ToString();
+                byte[] data = Encoding.UTF8.GetBytes(updatedJson);
+
                 await _fileSystem.WriteAllBytesAsync(_filePath, data, cancellationToken).ConfigureAwait(false);
             }
             finally

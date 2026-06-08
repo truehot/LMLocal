@@ -357,6 +357,8 @@ export class ProvidersDialog {
             }
         };
 
+        this._addBtnClickHandler = () => { this._showForm(); };
+
         this._testBtnClickHandler = async (e) => {
             e.preventDefault();
 

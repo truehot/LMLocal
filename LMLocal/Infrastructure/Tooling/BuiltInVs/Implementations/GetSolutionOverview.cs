@@ -6,6 +6,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.GetSolutionOverview;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -14,7 +15,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface IGetSolutionOverview : IBuiltInTool
     {
-        Task<object> ExecuteAsync(CancellationToken cancellationToken = default);
+        Task<SolutionOverviewResponse> ExecuteAsync(CancellationToken cancellationToken = default);
     }
 
     internal class GetSolutionOverview : IGetSolutionOverview
@@ -33,7 +34,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns a high-level summary of the solution structure: solution name, total project count, estimated file count, list of projects with names, programming languages, relative paths (use in project_filter), file counts, and test project flags. Also lists solution folders. Results limited to first 200 projects; has_more_results flag indicates more projects exist. Cached for performance. Use as a navigation starting point.",
+                Description = "Returns a high-level summary of the current Visual Studio solution structure. Response fields: success (bool), error_message (string), solution_name (string), solution_path (string), total_projects (int), total_files (int), has_more_results (bool), projects (array of {name (string), language (string), path (string), file_count (int), is_test_project (bool)}), solution_folders (array of string). has_more_results indicates more projects exist beyond the 200 project limit. Cached for performance.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -43,42 +44,73 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<object> ExecuteAsync(CancellationToken cancellationToken = default)
+        public async Task<SolutionOverviewResponse> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-            await _vsDependencies.InitializeAsync();
-
-            var solution = _vsDependencies.GetSolution();
-            if (solution == null)
-                throw new InvalidOperationException("No solution is currently open");
-
-            var overview = SolutionInspector.GetSolutionOverview(solution, maxProjects: 200);
-
-            var response = new SolutionOverviewResponse
+            try
             {
-                SolutionName = overview.SolutionName,
-                SolutionPath = overview.SolutionPath,
-                TotalProjects = overview.TotalProjects,
-                TotalFiles = overview.TotalFiles,
-                HasMoreResults = overview.Truncated,
-                SolutionFolders = overview.SolutionFolders,
-                Projects = new List<ProjectOverviewItem>()
-            };
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-            foreach (var project in overview.Projects)
-            {
-                response.Projects.Add(new ProjectOverviewItem
+                await _vsDependencies.InitializeAsync();
+
+                var solution = _vsDependencies.GetSolution();
+                if (solution == null)
+                    return new SolutionOverviewResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "No solution is currently open",
+                        SolutionName = null,
+                        SolutionPath = null,
+                        TotalProjects = 0,
+                        TotalFiles = 0,
+                        HasMoreResults = false,
+                        Projects = new List<ProjectOverviewItem>(),
+                        SolutionFolders = new List<string>()
+                    };
+
+                var overview = SolutionInspector.GetSolutionOverview(solution, maxProjects: 200);
+
+                var response = new SolutionOverviewResponse
                 {
-                    Name = project.Name,
-                    Language = project.Language,
-                    Path = project.Path,
-                    FileCount = project.FileCount,
-                    IsTestProject = project.IsTestProject
-                });
-            }
+                    SolutionName = overview.SolutionName,
+                    SolutionPath = overview.SolutionPath,
+                    TotalProjects = overview.TotalProjects,
+                    TotalFiles = overview.TotalFiles,
+                    HasMoreResults = overview.Truncated,
+                    SolutionFolders = overview.SolutionFolders,
+                    Projects = new List<ProjectOverviewItem>(),
+                    Success = true,
+                    ErrorMessage = null
+                };
 
-            return response;
+                foreach (var project in overview.Projects)
+                {
+                    response.Projects.Add(new ProjectOverviewItem
+                    {
+                        Name = project.Name,
+                        Language = project.Language,
+                        Path = project.Path,
+                        FileCount = project.FileCount,
+                        IsTestProject = project.IsTestProject
+                    });
+                }
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                return new SolutionOverviewResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    SolutionName = null,
+                    SolutionPath = null,
+                    TotalProjects = 0,
+                    TotalFiles = 0,
+                    HasMoreResults = false,
+                    Projects = new List<ProjectOverviewItem>(),
+                    SolutionFolders = new List<string>()
+                };
+            }
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
@@ -89,6 +121,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var solutionResult = (SolutionOverviewResponse)result;
+            if (!solutionResult.Success)
+            {
+                return $"Error: {solutionResult.ErrorMessage}";
+            }
             return $"Loaded {solutionResult.TotalProjects} projects, {solutionResult.TotalFiles} files.";
         }
 
@@ -114,6 +150,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("solution_folders")]
             public List<string> SolutionFolders { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
 
         public class ProjectOverviewItem

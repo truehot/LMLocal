@@ -129,7 +129,7 @@ namespace LMLocal.Application.ChatSessionStream
             {
                 linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-                var messages = new List<ChatMessage>(_history.GetHistoryCopy());
+                var messages = _history.BuildUserMessagesWithHistory("");
 
                 foreach (var toolResult in toolResults)
                 {
@@ -151,7 +151,6 @@ namespace LMLocal.Application.ChatSessionStream
                     messages.Add(chatMessage);
 
                     _history.AddToolExecutionResultMessage(chatMessage);
-
                 }
 
                 var processor = _streamProcessorFactory.Create(linkedCts);

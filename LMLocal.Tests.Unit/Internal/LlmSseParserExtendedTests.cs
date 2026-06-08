@@ -1,3 +1,4 @@
+using System.Linq;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
@@ -7,44 +8,54 @@ namespace LMLocal.Tests.Unit
     [TestFixture]
     public class LlmSseParserExtendedTests
     {
-        [Test]
-        public void ExtractDelta_ReturnsCompletion_OnDoneMarker()
+        private LlmSseParser _parser;
+
+        [SetUp]
+        public void SetUp()
         {
-            var result = LlmSseParser.ExtractDelta("data: [DONE]");
-            Assert.That(result, Is.Not.Null);
+            _parser = new LlmSseParser();
+        }
+
+        [Test]
+        public void ExtractDeltas_ReturnsCompletion_OnDoneMarker()
+        {
+            var results = _parser.ExtractDeltas("data: [DONE]");
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is CompletionStreamChunk, Is.True);
             var completion = (CompletionStreamChunk)result;
             Assert.That(completion.FinishReason, Is.EqualTo("stop"));
         }
 
         [Test]
-        public void ExtractDelta_ReturnsNull_OnNonDataLine()
+        public void ExtractDeltas_ReturnsEmpty_OnNonDataLine()
         {
-            var result = LlmSseParser.ExtractDelta("event: ping");
-            Assert.That(result, Is.Null);
+            var results = _parser.ExtractDeltas("event: ping");
+            Assert.That(results, Is.Empty);
         }
 
         [Test]
-        public void ExtractDelta_ReturnsNull_OnMalformedJson()
+        public void ExtractDeltas_ReturnsEmpty_OnMalformedJson()
         {
-            var result = LlmSseParser.ExtractDelta("data: {not a json}");
-            Assert.That(result, Is.Null);
+            var results = _parser.ExtractDeltas("data: {not a json}");
+            Assert.That(results, Is.Empty);
         }
 
         [Test]
-        public void ExtractDelta_ReturnsNull_WhenChoicesEmpty()
+        public void ExtractDeltas_ReturnsEmpty_WhenChoicesEmpty()
         {
             var json = "data: {\"choices\":[]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Empty);
         }
 
         [Test]
-        public void ExtractDelta_ReturnsTextChunk_ForContentDelta()
+        public void ExtractDeltas_ReturnsTextChunk_ForContentDelta()
         {
             var json = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is TextStreamChunk, Is.True);
             var chunk = (TextStreamChunk)result;
             Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Content));
@@ -52,67 +63,235 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ExtractDelta_ReturnsReasoningChunk_ForReasoningContent()
+        public void ExtractDeltas_ReturnsReasoningChunk_ForReasoningContent()
         {
-            var json = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking...\"}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var json = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking\"}}]}";
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is TextStreamChunk, Is.True);
             var chunk = (TextStreamChunk)result;
             Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Reasoning));
-            Assert.That(chunk.Text, Is.EqualTo("thinking..."));
+            Assert.That(chunk.Text, Is.EqualTo("thinking"));
         }
 
         [Test]
-        public void ExtractDelta_DetectsNemotronXmlToolCall_FragmentOpenTag()
+        public void ExtractDeltas_HandlesOpenAiToolCall()
         {
-            var json = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>\"}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
-            Assert.That(result is TextStreamChunk, Is.True);
-            var chunk = (TextStreamChunk)result;
-            Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.ToolCallArguments));
-            Assert.That(chunk.ToolCallIndex, Is.EqualTo(0));
+            var meta = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_123\",\"function\":{\"name\":\"get_weather\"}}]}}]}";
+            var args = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"city\\\":\\\"London\\\"}\"}}]}}]}";
+
+            var chunks1 = _parser.ExtractDeltas(meta);
+            var chunks2 = _parser.ExtractDeltas(args);
+
+            Assert.That(chunks1, Is.Not.Empty);
+            Assert.That(chunks1[0] is ToolCallMetadataChunk);
+            var toolMeta = (ToolCallMetadataChunk)chunks1[0];
+            Assert.That(toolMeta.FunctionName, Is.EqualTo("get_weather"));
+            Assert.That(toolMeta.CallId, Is.EqualTo("call_123"));
+
+            Assert.That(chunks2, Is.Not.Empty);
+            Assert.That(chunks2[0] is TextStreamChunk);
+            var argsChunk = (TextStreamChunk)chunks2[0];
+            Assert.That(argsChunk.Kind, Is.EqualTo(ChunkKind.ToolCallArguments));
+            Assert.That(argsChunk.Text, Does.Contain("\"city\""));
         }
 
         [Test]
-        public void ExtractDelta_EmitsToolCallMetadata_ForOpenAiFormat()
+        public void ExtractDeltas_BuffersRaggedToolCall()
         {
-            var json = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call123\",\"function\":{\"name\":\"search\"}}]}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
-            Assert.That(result is ToolCallMetadataChunk, Is.True);
-            var meta = (ToolCallMetadataChunk)result;
-            Assert.That(meta.Index, Is.EqualTo(1));
-            Assert.That(meta.CallId, Is.EqualTo("call123"));
-            Assert.That(meta.FunctionName, Is.EqualTo("search"));
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search_\"}}]}";
+            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Local_Solution_Files\"}}]}";
+            var line3 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" args\\n</tool_call>\"}}]}";
+
+            var chunks1 = _parser.ExtractDeltas(line1);
+            var chunks2 = _parser.ExtractDeltas(line2);
+            var chunks3 = _parser.ExtractDeltas(line3);
+
+            // First two should return nothing (buffering)
+            Assert.That(chunks1, Is.Empty);
+            Assert.That(chunks2, Is.Empty);
+
+            // Third should return complete tool call block
+            Assert.That(chunks3, Is.Not.Empty);
+            Assert.That(chunks3[0] is TextStreamChunk);
+            var toolCallBlock = (TextStreamChunk)chunks3[0];
+            Assert.That(toolCallBlock.Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            Assert.That(toolCallBlock.Text, Does.Contain("<tool_call>"));
+            Assert.That(toolCallBlock.Text, Does.Contain("</tool_call>"));
+            Assert.That(toolCallBlock.Text, Does.Contain("Search_Local_Solution_Files"));
         }
 
         [Test]
-        public void ExtractDelta_EmitsToolCallArguments_ForOpenAiFormat()
+        public void ExtractDeltas_MixesReasoningWithToolCall()
         {
-            var json = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"{\\\"q\\\":\\\"a\\\"}\"}}]}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
-            Assert.That(result is TextStreamChunk, Is.True);
-            var chunk = (TextStreamChunk)result;
-            Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.ToolCallArguments));
-            Assert.That(chunk.ToolCallIndex, Is.EqualTo(1));
-            Assert.That(chunk.Text, Does.Contain("\"q\":\"a\""));
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"The user wants to search. \"}}]}";
+            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search\"}}]}";
+            var line3 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" *.cs\"}}]}";
+            var line4 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"</tool_call>\"}}]}";
+            var line5 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" Done.\"}}]}";
+
+            var chunks1 = _parser.ExtractDeltas(line1);
+            var chunks2 = _parser.ExtractDeltas(line2);
+            var chunks3 = _parser.ExtractDeltas(line3);
+            var chunks4 = _parser.ExtractDeltas(line4);
+            var chunks5 = _parser.ExtractDeltas(line5);
+
+            // Line 1: Regular reasoning
+            Assert.That(chunks1.Count, Is.EqualTo(1));
+            Assert.That(chunks1[0] is TextStreamChunk);
+            var reasoning1 = (TextStreamChunk)chunks1[0];
+            Assert.That(reasoning1.Kind, Is.EqualTo(ChunkKind.Reasoning));
+            Assert.That(reasoning1.Text, Is.EqualTo("The user wants to search. "));
+
+            // Lines 2-3: Buffering tool call
+            Assert.That(chunks2, Is.Empty);
+            Assert.That(chunks3, Is.Empty);
+
+            // Line 4: Tool call complete
+            Assert.That(chunks4.Count, Is.EqualTo(1));
+            Assert.That(chunks4[0] is TextStreamChunk);
+            var toolCall = (TextStreamChunk)chunks4[0];
+            Assert.That(toolCall.Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            Assert.That(toolCall.Text, Does.Contain("<tool_call>"));
+            Assert.That(toolCall.Text, Does.Contain("</tool_call>"));
+
+            // Line 5: Remaining reasoning
+            Assert.That(chunks5.Count, Is.EqualTo(1));
+            Assert.That(chunks5[0] is TextStreamChunk);
+            var reasoning5 = (TextStreamChunk)chunks5[0];
+            Assert.That(reasoning5.Kind, Is.EqualTo(ChunkKind.Reasoning));
+            Assert.That(reasoning5.Text, Is.EqualTo(" Done."));
         }
 
         [Test]
-        public void ExtractDelta_HandlesParallelToolCalls_IndicesPreserved()
+        public void ExtractDeltas_FlushesBufferOnFinishReason()
+        {
+            // Simulate tool call followed by finish_reason
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search\"}}]}";
+            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" pattern</tool_call> and more\"}}]}";
+            var line3 = "data: {\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{}}]}";
+
+            var chunks1 = _parser.ExtractDeltas(line1);
+            var chunks2 = _parser.ExtractDeltas(line2);
+            var chunks3 = _parser.ExtractDeltas(line3);
+
+            // Line 1: Incomplete tool call is buffered
+            Assert.That(chunks1, Is.Empty);
+
+            // Line 2: Complete tool call block is extracted as ToolCallRaw, remaining text as reasoning
+            Assert.That(chunks2.Count, Is.EqualTo(2)); // tool call + remaining reasoning
+            Assert.That(chunks2[0] is TextStreamChunk);
+            var toolCall = (TextStreamChunk)chunks2[0];
+            Assert.That(toolCall.Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            Assert.That(toolCall.Text, Does.Contain("<tool_call>"));
+            Assert.That(toolCall.Text, Does.Contain("</tool_call>"));
+
+            Assert.That(chunks2[1] is TextStreamChunk);
+            var remaining = (TextStreamChunk)chunks2[1];
+            Assert.That(remaining.Kind, Is.EqualTo(ChunkKind.Reasoning));
+            Assert.That(remaining.Text, Is.EqualTo(" and more"));
+
+            // Line 3: finish_reason should just add completion chunk
+            Assert.That(chunks3.Count, Is.EqualTo(1)); // just completion chunk
+            Assert.That(chunks3[0] is CompletionStreamChunk);
+            var completion = (CompletionStreamChunk)chunks3[0];
+            Assert.That(completion.FinishReason, Is.EqualTo("stop"));
+        }
+
+        [Test]
+        public void ExtractDeltas_FlushesBufferOnDoneMarker()
+        {
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search\"}}]}";
+            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" args</tool_call> remaining text\"}}]}";
+            var line3 = "data: [DONE]";
+
+            var chunks1 = _parser.ExtractDeltas(line1);
+            var chunks2 = _parser.ExtractDeltas(line2);
+            var chunks3 = _parser.ExtractDeltas(line3);
+
+            // Line 1: Incomplete tool call is buffered, nothing emitted
+            Assert.That(chunks1, Is.Empty);
+
+            // Line 2: Complete tool call is extracted as ToolCallRaw, remaining text is reasoning
+            Assert.That(chunks2.Count, Is.EqualTo(2)); // tool call block + remaining reasoning
+            Assert.That(chunks2[0] is TextStreamChunk);
+            Assert.That(chunks2[0].Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            var toolCall = (TextStreamChunk)chunks2[0];
+            Assert.That(toolCall.Text, Does.Contain("<tool_call>"));
+            Assert.That(toolCall.Text, Does.Contain("</tool_call>"));
+
+            Assert.That(chunks2[1] is TextStreamChunk);
+            Assert.That(chunks2[1].Kind, Is.EqualTo(ChunkKind.Reasoning));
+            var remaining = (TextStreamChunk)chunks2[1];
+            Assert.That(remaining.Text, Is.EqualTo(" remaining text"));
+
+            // Line 3: [DONE] just adds completion marker
+            Assert.That(chunks3.Count, Is.EqualTo(1));
+            Assert.That(chunks3[0] is CompletionStreamChunk);
+            var completion = (CompletionStreamChunk)chunks3[0];
+            Assert.That(completion.FinishReason, Is.EqualTo("stop"));
+        }
+
+        [Test]
+        public void ParseNemotronToolCall_ShouldAccumulateCompleteBlock()
+        {
+            var parser = new LlmSseParser();
+            var lines = new[]
+            {
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Read_Solution\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"_Files<param\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"eter=file_path>\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"LMLocal/...\"}}]}",
+                "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"</parameter></tool_call>\"}}]}",
+            };
+
+            var allChunks = lines.SelectMany(l => parser.ExtractDeltas(l)).ToList();
+
+            // Should accumulate the complete tool_call block as ToolCallRaw
+            var toolCallRawChunks = allChunks.Where(c => c.Kind == ChunkKind.ToolCallRaw).ToList();
+            Assert.That(toolCallRawChunks.Count, Is.EqualTo(1));
+
+            var toolCallBlock = (TextStreamChunk)toolCallRawChunks[0];
+            Assert.That(toolCallBlock.Text, Does.StartWith("<tool_call>"));
+            Assert.That(toolCallBlock.Text, Does.EndWith("</tool_call>"));
+            Assert.That(toolCallBlock.Text, Does.Contain("Read_Solution_Files"));
+            Assert.That(toolCallBlock.Text, Does.Contain("parameter=file_path"));
+        }
+
+        [Test]
+        public void ExtractDeltas_HandlesMultipleToolCalls()
+        {
+            var line = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Func1 arg1</tool_call><tool_call>Func2 arg2</tool_call>\"}}]}";
+
+            var chunks = _parser.ExtractDeltas(line);
+
+            // Should have 2 raw tool call blocks
+            Assert.That(chunks.Count, Is.EqualTo(2));
+            Assert.That(chunks[0] is TextStreamChunk);
+            Assert.That(chunks[0].Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            var toolCall1 = (TextStreamChunk)chunks[0];
+            Assert.That(toolCall1.Text, Does.Contain("Func1"));
+
+            Assert.That(chunks[1] is TextStreamChunk);
+            Assert.That(chunks[1].Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
+            var toolCall2 = (TextStreamChunk)chunks[1];
+            Assert.That(toolCall2.Text, Does.Contain("Func2"));
+        }
+
+        [Test]
+        public void ExtractDeltas_HandlesParallelToolCalls_IndicesPreserved()
         {
             var meta0 = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c0\",\"function\":{\"name\":\"f0\"}}]}}]}";
             var meta1 = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c1\",\"function\":{\"name\":\"f1\"}}]}}]}";
             var args1 = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"{\\\"a\\\":1}\"}}]}}]}";
             var args0 = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"b\\\":2}\"}}]}}]}";
 
-            var r0 = LlmSseParser.ExtractDelta(meta0);
-            var r1 = LlmSseParser.ExtractDelta(meta1);
-            var r2 = LlmSseParser.ExtractDelta(args1);
-            var r3 = LlmSseParser.ExtractDelta(args0);
+            var r0 = _parser.ExtractDeltas(meta0)[0];
+            var r1 = _parser.ExtractDeltas(meta1)[0];
+            var r2 = _parser.ExtractDeltas(args1)[0];
+            var r3 = _parser.ExtractDeltas(args0)[0];
 
             Assert.That(r0 is ToolCallMetadataChunk);
             Assert.That(r1 is ToolCallMetadataChunk);
@@ -126,22 +305,24 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ExtractDelta_ReturnsCompletion_OnFinishReason()
+        public void ExtractDeltas_ReturnsCompletion_OnFinishReason()
         {
             var json = "data: {\"choices\":[{\"finish_reason\":\"tool_calls\",\"delta\":{}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is CompletionStreamChunk, Is.True);
             var c = (CompletionStreamChunk)result;
             Assert.That(c.FinishReason, Is.EqualTo("tool_calls"));
         }
 
         [Test]
-        public void ExtractDelta_ReturnsCompletion_WithUsageAndFingerprint()
+        public void ExtractDeltas_ReturnsCompletion_WithUsageAndFingerprint()
         {
             var json = "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12},\"system_fingerprint\":\"abc\"}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is CompletionStreamChunk, Is.True);
             var c = (CompletionStreamChunk)result;
             Assert.That(c.TotalTokens, Is.EqualTo(12));
@@ -151,22 +332,24 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ExtractDelta_ReturnsCompletion_WithRefusalFromDelta()
+        public void ExtractDeltas_ReturnsCompletion_WithRefusalFromDelta()
         {
             var json = "data: {\"choices\":[{\"delta\":{\"refusal\":\"I refuse\"}}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is CompletionStreamChunk, Is.True);
             var c = (CompletionStreamChunk)result;
             Assert.That(c.Refusal, Is.EqualTo("I refuse"));
         }
 
         [Test]
-        public void ExtractDelta_PreservesContentWhenUsageInSameChunk()
+        public void ExtractDeltas_PreservesContentWhenUsageInSameChunk()
         {
             var json = "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}],\"usage\":{\"total_tokens\":5}}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Not.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
             Assert.That(result is TextStreamChunk, Is.True);
             var chunk = (TextStreamChunk)result;
             Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Content));
@@ -177,8 +360,8 @@ namespace LMLocal.Tests.Unit
         public void ExtractStreamContent_HandlesMissingDeltaSafely()
         {
             var json = "data: {\"choices\":[{}]}";
-            var result = LlmSseParser.ExtractDelta(json);
-            Assert.That(result, Is.Null);
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Empty);
         }
     }
 }

@@ -43,10 +43,22 @@ class AppDataService {
     }
 
     async updateSettingsAsync(newSettings) {
+
+        const settingsState = settingsStore.getState();
         const result = await bridgeClient.updateSettingsAsync(newSettings);
 
         if (result) {
             settingsStore.setState(newSettings);
+
+            if (settingsState?.Provider !== newSettings.Provider) {
+                modelStore.setState({
+                    modelId: null,
+                    modelName: null,
+                    tokenMax: 0,
+                    tokenUsed: 0,
+                    supportsMaxTokens: false
+                });
+            }
         }
 
         return result;
@@ -101,6 +113,21 @@ class AppDataService {
                 loading: false,
                 error: "Failed to update instructions"
             });
+            throw error;
+        }
+    }
+
+    async updateInstructionsSelectedTabAsync(selectedTabId) {
+        try {
+            const result = await bridgeClient.updateInstructionsSelectedTabAsync(selectedTabId);
+            if (result) {
+                instructionsStore.setState({
+                    selectedTabId: selectedTabId
+                });
+            }
+            return result;
+        } catch (error) {
+            console.error('Failed to update selected instructions tab:', error);
             throw error;
         }
     }

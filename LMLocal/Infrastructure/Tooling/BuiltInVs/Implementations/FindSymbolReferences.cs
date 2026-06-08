@@ -10,6 +10,7 @@ using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindSymbolReferences;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -18,7 +19,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface IFindSymbolReferences : IBuiltInTool
     {
-        Task<object> ExecuteAsync(
+        Task<SymbolReferencesResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default);
     }
@@ -36,152 +37,208 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
         }
 
-        public async Task<object> ExecuteAsync(
+        private async Task<SymbolReferencesResponse> ExecuteCoreAsync(
             string symbolName,
             CancellationToken cancellationToken = default)
         {
-            symbolName = ExtractAndValidateParameters(symbolName);
-
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-            var componentModel = (IComponentModel)ServiceProvider.GlobalProvider.GetService(typeof(SComponentModel));
-            if (componentModel == null)
-                throw new InvalidOperationException("Component model is not available");
-
-            var workspace = componentModel.GetService<VisualStudioWorkspace>();
-            if (workspace == null)
-                throw new InvalidOperationException("Visual Studio workspace is not available");
-
-            var solutionSnapshot = workspace.CurrentSolution;
-            if (solutionSnapshot == null)
-                throw new InvalidOperationException("No solution is currently open");
-
-            var projects = solutionSnapshot.Projects.ToList();
-            var solutionDir = System.IO.Path.GetDirectoryName(solutionSnapshot.FilePath);
-
-            var result = await Task.Run(async () =>
+            try
             {
-                var fileGroupsDict = new Dictionary<string, FileReferencesGroup>(StringComparer.OrdinalIgnoreCase);
-                int totalReferenceCount = 0;
-                int symbolsProcessed = 0;
-                bool hasMoreResults = false;
-                var seenLocations = new HashSet<string>(StringComparer.Ordinal);
+                symbolName = ExtractAndValidateParameters(symbolName);
 
-                foreach (var project in projects)
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+                var componentModel = (IComponentModel)ServiceProvider.GlobalProvider.GetService(typeof(SComponentModel));
+                if (componentModel == null)
+                    return new SymbolReferencesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Component model is not available",
+                        SymbolName = symbolName,
+                        Results = new List<FileReferencesGroup>(),
+                        TotalReferences = 0,
+                        HasMoreResults = false
+                    };
+
+                var workspace = componentModel.GetService<VisualStudioWorkspace>();
+                if (workspace == null)
+                    return new SymbolReferencesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Visual Studio workspace is not available",
+                        SymbolName = symbolName,
+                        Results = new List<FileReferencesGroup>(),
+                        TotalReferences = 0,
+                        HasMoreResults = false
+                    };
+
+                var solutionSnapshot = workspace.CurrentSolution;
+                if (solutionSnapshot == null)
+                    return new SymbolReferencesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "No solution is currently open",
+                        SymbolName = symbolName,
+                        Results = new List<FileReferencesGroup>(),
+                        TotalReferences = 0,
+                        HasMoreResults = false
+                    };
+
+                var projects = solutionSnapshot.Projects.ToList();
+                var solutionDir = System.IO.Path.GetDirectoryName(solutionSnapshot.FilePath);
+
+                var result = await Task.Run(async () =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (!project.SupportsCompilation) continue;
+                    var fileGroupsDict = new Dictionary<string, FileReferencesGroup>(StringComparer.OrdinalIgnoreCase);
+                    int totalReferenceCount = 0;
+                    int symbolsProcessed = 0;
+                    bool hasMoreResults = false;
+                    var seenLocations = new HashSet<string>(StringComparer.Ordinal);
 
-                    var symbols = await SymbolFinder.FindDeclarationsAsync(
-                        project,
-                        symbolName,
-                        ignoreCase: false,
-                        cancellationToken: cancellationToken
-                    ).ConfigureAwait(false);
-
-                    foreach (var symbol in symbols)
+                    foreach (var project in projects)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        if (symbolsProcessed >= MaxSymbolsToProcess)
-                        {
-                            hasMoreResults = true;
-                            break;
-                        }
+                        if (!project.SupportsCompilation) continue;
 
-                        symbolsProcessed++;
-
-                        var references = await SymbolFinder.FindReferencesAsync(
-                            symbol,
-                            solutionSnapshot,
+                        var symbols = await SymbolFinder.FindDeclarationsAsync(
+                            project,
+                            symbolName,
+                            ignoreCase: false,
                             cancellationToken: cancellationToken
                         ).ConfigureAwait(false);
 
-                        foreach (var reference in references)
+                        foreach (var symbol in symbols)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            foreach (var location in reference.Locations)
+                            if (symbolsProcessed >= MaxSymbolsToProcess)
                             {
-                                var document = location.Document;
-                                var filePath = document.FilePath;
-                                if (string.IsNullOrEmpty(filePath))
-                                    continue;
+                                hasMoreResults = true;
+                                break;
+                            }
 
-                                var textSpan = location.Location.SourceSpan;
-                                var locationKey = $"{document.Id}:{textSpan.Start}:{textSpan.Length}";
+                            symbolsProcessed++;
 
-                                if (!seenLocations.Add(locationKey))
-                                    continue;
+                            var references = await SymbolFinder.FindReferencesAsync(
+                                symbol,
+                                solutionSnapshot,
+                                cancellationToken: cancellationToken
+                            ).ConfigureAwait(false);
 
-                                string relativePath = filePath;
-                                if (!string.IsNullOrEmpty(solutionDir))
+                            foreach (var reference in references)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                foreach (var location in reference.Locations)
                                 {
-                                    if (_pathResolver.TryGetRelativePath(filePath, solutionDir, out var relPath))
+                                    var document = location.Document;
+                                    var filePath = document.FilePath;
+                                    if (string.IsNullOrEmpty(filePath))
+                                        continue;
+
+                                    var textSpan = location.Location.SourceSpan;
+                                    var locationKey = $"{document.Id}:{textSpan.Start}:{textSpan.Length}";
+
+                                    if (!seenLocations.Add(locationKey))
+                                        continue;
+
+                                    string relativePath = filePath;
+                                    if (!string.IsNullOrEmpty(solutionDir))
                                     {
-                                        relativePath = relPath;
+                                        if (_pathResolver.TryGetRelativePath(filePath, solutionDir, out var relPath))
+                                        {
+                                            relativePath = relPath;
+                                        }
+                                    }
+
+                                    var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
+                                    var lineSpan = sourceText.Lines.GetLinePositionSpan(textSpan);
+
+                                    int lineNumber = lineSpan.Start.Line;
+                                    string lineText = sourceText.Lines[lineNumber].ToString().Trim();
+
+                                    if (!fileGroupsDict.TryGetValue(relativePath, out var fileGroup))
+                                    {
+                                        fileGroup = new FileReferencesGroup
+                                        {
+                                            FilePath = relativePath,
+                                            Matches = new List<ReferenceItem>()
+                                        };
+                                        fileGroupsDict[relativePath] = fileGroup;
+                                    }
+
+                                    fileGroup.Matches.Add(new ReferenceItem
+                                    {
+                                        LineNumber = lineNumber,
+                                        LineText = lineText
+                                    });
+
+                                    totalReferenceCount++;
+                                    if (totalReferenceCount >= MaxTotalReferences)
+                                    {
+                                        hasMoreResults = true;
+                                        break;
                                     }
                                 }
 
-                                var sourceText = await document.GetTextAsync(cancellationToken).ConfigureAwait(false);
-                                var lineSpan = sourceText.Lines.GetLinePositionSpan(textSpan);
-
-                                int lineNumber = lineSpan.Start.Line;
-                                string lineText = sourceText.Lines[lineNumber].ToString().Trim();
-
-                                if (!fileGroupsDict.TryGetValue(relativePath, out var fileGroup))
-                                {
-                                    fileGroup = new FileReferencesGroup
-                                    {
-                                        FilePath = relativePath,
-                                        Matches = new List<ReferenceItem>()
-                                    };
-                                    fileGroupsDict[relativePath] = fileGroup;
-                                }
-
-                                fileGroup.Matches.Add(new ReferenceItem
-                                {
-                                    LineNumber = lineNumber,
-                                    LineText = lineText
-                                });
-
-                                totalReferenceCount++;
-                                if (totalReferenceCount >= MaxTotalReferences)
-                                {
-                                    hasMoreResults = true;
+                                if (hasMoreResults)
                                     break;
-                                }
                             }
-
-                            if (hasMoreResults)
-                                break;
                         }
+
+                        if (hasMoreResults)
+                            break;
                     }
 
-                    if (hasMoreResults)
-                        break;
-                }
+                    var sortedResults = fileGroupsDict.Values
+                        .OrderBy(r => r.FilePath)
+                        .ToList();
 
-                var sortedResults = fileGroupsDict.Values
-                    .OrderBy(r => r.FilePath)
-                    .ToList();
+                    return new SymbolReferencesResponse
+                    {
+                        Results = sortedResults,
+                        SymbolName = symbolName,
+                        TotalReferences = totalReferenceCount,
+                        HasMoreResults = hasMoreResults,
+                        Success = true,
+                        ErrorMessage = null
+                    };
+                }, cancellationToken).ConfigureAwait(false);
 
+                return result;
+            }
+            catch (Exception ex)
+            {
                 return new SymbolReferencesResponse
                 {
-                    Results = sortedResults,
+                    Success = false,
+                    ErrorMessage = ex.Message,
                     SymbolName = symbolName,
-                    TotalReferences = totalReferenceCount,
-                    HasMoreResults = hasMoreResults
+                    Results = new List<FileReferencesGroup>(),
+                    TotalReferences = 0,
+                    HasMoreResults = false
                 };
-            }, cancellationToken).ConfigureAwait(false);
-
-            return result;
+            }
         }
 
-        public async Task<object> ExecuteAsync(
+        public async Task<SymbolReferencesResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default)
         {
-            var symbolName = ExtractAndValidateParametersFromDict(parameters);
-            return await ExecuteAsync(symbolName, cancellationToken);
+            try
+            {
+                var symbolName = ExtractAndValidateParametersFromDict(parameters);
+                return await ExecuteCoreAsync(symbolName, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return new SymbolReferencesResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    SymbolName = parameters?.TryGetValue("symbol_name", out var sn) == true ? sn?.ToString() : "",
+                    Results = new List<FileReferencesGroup>(),
+                    TotalReferences = 0,
+                    HasMoreResults = false
+                };
+            }
         }
 
         public ToolDefinition GetToolInfo()
@@ -189,7 +246,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds all references of a specific code symbol (class, method, variable, or property) across the entire Visual Studio solution. Returns a list of file groups with matched references, including line numbers and the exact text of each line where the symbol is used. Search is limited to the first {MaxSymbolsToProcess} matching symbols and {MaxTotalReferences} total references. Use this to trace where a specific function is invoked or where a class is instantiated.",
+                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file (string), matches (array of {{line (int), text (string)}})}}}}, has_more_results (bool). has_more_results indicates more references exist beyond the limit. Limited to first {MaxSymbolsToProcess} matching symbols and {MaxTotalReferences} total references.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -213,6 +270,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var symbolResult = (SymbolReferencesResponse)result;
+            if (!symbolResult.Success)
+            {
+                return $"Error: {symbolResult.ErrorMessage}";
+            }
             return $"Found {symbolResult.TotalReferences} references.";
         }
 
@@ -268,6 +329,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("has_more_results")]
             public bool HasMoreResults { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

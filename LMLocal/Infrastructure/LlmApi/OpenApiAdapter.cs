@@ -8,7 +8,7 @@ using LMLocal.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api.Requests;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json;

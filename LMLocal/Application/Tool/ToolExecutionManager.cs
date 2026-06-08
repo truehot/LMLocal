@@ -10,9 +10,7 @@ using Newtonsoft.Json.Linq;
 namespace LMLocal.Services.Tool
 {
     /// <summary>
-    /// Manages tool execution with VS-specific tools support.
-    /// Integrates with VsToolFactory for Visual Studio tool execution.
-    /// Handles argument parsing, execution, error handling, and timeouts.
+    /// Manages tool execution support.
     /// </summary>
     internal interface IToolExecutionManager
     {
@@ -30,11 +28,11 @@ namespace LMLocal.Services.Tool
 
     internal class ToolExecutionManager : IToolExecutionManager
     {
-        private readonly ICompositeToolFactory _vsToolFactory;
+        private readonly ICompositeToolFactory _compositeToolFactory;
 
-        public ToolExecutionManager(ICompositeToolFactory vsToolFactory)
+        public ToolExecutionManager(ICompositeToolFactory compositeToolFactory)
         {
-            _vsToolFactory = vsToolFactory ?? throw new ArgumentNullException(nameof(vsToolFactory));
+            _compositeToolFactory = compositeToolFactory ?? throw new ArgumentNullException(nameof(compositeToolFactory));
         }
 
         public async Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct)
@@ -59,7 +57,7 @@ namespace LMLocal.Services.Tool
                     parameters = jsonObj.ToObject<Dictionary<string, object>>();
                 }
 
-                if (!_vsToolFactory.ToolExists(toolCall.FunctionName))
+                if (!_compositeToolFactory.ToolExists(toolCall.FunctionName))
                 {
                     var errorMsg = $"Tool '{toolCall.FunctionName}' not found";
                     InternalLogger.Warn($"ToolExecutionManager: {errorMsg}");
@@ -72,12 +70,12 @@ namespace LMLocal.Services.Tool
                 }
 
                 InternalLogger.Info($"ToolExecutionManager: Executing {toolCall.FunctionName}");
-                var result = await _vsToolFactory.ExecuteAsync(
+                var result = await _compositeToolFactory.ExecuteAsync(
                     toolCall.FunctionName,
                     parameters,
                     ct).ConfigureAwait(false);
 
-                var completionMessage = _vsToolFactory.GetCompletionMessage(toolCall.FunctionName, result);
+                var completionMessage = _compositeToolFactory.GetCompletionMessage(toolCall.FunctionName, result);
 
                 InternalLogger.Info($"ToolExecutionManager: {toolCall.FunctionName} completed successfully");
                 return new ToolExecutionResult
@@ -140,7 +138,7 @@ namespace LMLocal.Services.Tool
                 }
             }
 
-            return _vsToolFactory.GetProcessingMessage(toolCall.FunctionName, parameters);
+            return _compositeToolFactory.GetProcessingMessage(toolCall.FunctionName, parameters);
         }
     }
 }

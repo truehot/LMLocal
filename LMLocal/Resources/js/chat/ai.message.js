@@ -17,8 +17,8 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
             </div>
             <div class="thought-content" data-element="thought-content"></div>
         </div>
-        <div data-element="ai-tool-container"></div>
         <div class="ai-response-container" style="display: none;" data-element="response-container"></div>
+        <div data-element="ai-tool-container"></div>
         </div>
     `;
 

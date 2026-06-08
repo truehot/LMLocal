@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;

@@ -7,6 +7,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindFilesByName;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -14,13 +15,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// Finds files in the Visual Studio solution by name using case-insensitive substring matching.
     /// Automatically excludes temporary directories (bin, obj, .vs, .git, CopilotBaseline, system temp folders),
     /// minified files (*.min.js, *.min.css, *.udm.js), and other non-source files.
-    /// Results are limited to first 100 files to ensure reasonable performance.
+    /// Results are limited to first 500 files to ensure reasonable performance.
     /// Returns FileSearchResultsResponse with results list and has_more_results flag indicating if search was limited.
     /// </summary>
 
     internal interface IFindFilesByName : IBuiltInTool
     {
-        Task<object> ExecuteAsync(
+        Task<FileSearchResultsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default);
     }
@@ -29,7 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
-        private const int MaxFilesToScan = 100;
+        private const int MaxFilesToScan = 500;
 
         public string ToolName => "Find_Files_By_Name";
 
@@ -44,13 +45,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds files in the Visual Studio solution by file name. Returns a list of file paths. Search is limited to the first {MaxFilesToScan} files in the solution. File name matching is case-insensitive substring match (e.g., 'config' matches 'AppConfig.cs' and 'config.json'). Results include has_more_results flag indicating if more files exist beyond the limit.",
+                Description = $"Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Response fields: success (bool), error_message (string), results (array of {{file (string)}}), has_more_results (bool), total_files_limit (int). has_more_results indicates more files exist beyond the limit. Limited to {MaxFilesToScan} files. Use optional filters: file_extension (e.g., '.cs'), project_filter. For all files, pass file_name='.'.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_name", new ToolDetails { Type = "string", Description = "The file name or partial file name to search for (case-insensitive substring match)." } },
+                        { "file_name", new ToolDetails { Type = "string", Description = "The file name or partial file name to search for (case-insensitive substring match). Do NOT use wildcards like '*'.For all files, use '.'" } },
                         { "file_extension", new ToolDetails { Type = "string", Description = "Optional file extension filter (e.g., '.cs', '.json'). If not specified, all file extensions are searched." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Optional project name filter. If specified, only files from projects matching this name (case-insensitive substring match) will be searched." } }
                     },
@@ -59,15 +60,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<object> ExecuteAsync(
+        public async Task<FileSearchResultsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default)
         {
-            var (fileName, fileExtension, projectFilter) = ExtractAndValidateParametersFromDict(parameters);
-            return await ExecuteCoreAsync(fileName, fileExtension, projectFilter, cancellationToken);
+            try
+            {
+                var (fileName, fileExtension, projectFilter) = ExtractAndValidateParametersFromDict(parameters);
+                return await ExecuteCoreAsync(fileName, fileExtension, projectFilter, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return new FileSearchResultsResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    Results = new List<FileSearchResult>(),
+                    HasMoreResults = false,
+                    TotalFilesLimit = MaxFilesToScan
+                };
+            }
         }
 
-        private async Task<object> ExecuteCoreAsync(
+        private async Task<FileSearchResultsResponse> ExecuteCoreAsync(
             string fileName,
             string fileExtension,
             string projectFilter,
@@ -104,19 +119,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 Results = results,
                 HasMoreResults = hasMoreResults,
-                TotalFilesLimit = filter.Limit
+                TotalFilesLimit = filter.Limit,
+                Success = true,
+                ErrorMessage = null
             };
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
-            if (parameters == null) return "Locating... ";
+            if (parameters == null) return "Finding... ";
 
             var fileName = parameters.TryGetValue("file_name", out var fn) ? fn?.ToString() : "";
             var ext = parameters.TryGetValue("file_extension", out var fe) ? fe?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var pf) ? pf?.ToString() : null;
 
-            var message = $"Locating '{fileName}'";
+            var message = $"Finding '{fileName}'";
             if (!string.IsNullOrEmpty(project))
                 message += $" in project '{project}'";
             if (!string.IsNullOrEmpty(ext))
@@ -129,6 +146,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var fileResults = (FileSearchResultsResponse)result;
+            if (!fileResults.Success)
+            {
+                return $"Error: {fileResults.ErrorMessage}";
+            }
             return $"Found {fileResults.Results.Count} files.";
         }
 
@@ -161,6 +182,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("total_files_limit")]
             public int TotalFilesLimit { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

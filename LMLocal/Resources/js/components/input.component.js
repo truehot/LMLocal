@@ -198,7 +198,8 @@ class InputComponent {
         const instructions = state.instructions || [];
         const selectedTabId = state.selectedTabId;
 
-        if (!instructions || instructions.length === 0) {
+        if (!instructions || !instructions?.length) {
+            this.elements.dropdown.style.display = "none";
             return;
         }
 

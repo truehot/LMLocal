@@ -65,6 +65,10 @@ class BridgeClient {
         return await this._callHost("UpdateInstructionsAsync", payload);
     }
 
+    async updateInstructionsSelectedTabAsync(selectedTabId) {
+        return await this._callHost("UpdateInstructionsSelectedTabAsync", selectedTabId);
+    }
+
     async testConnection(details) {
         const payload = JSON.stringify(details);
         var result = await this._callHost("TestConnectionAsync", payload);

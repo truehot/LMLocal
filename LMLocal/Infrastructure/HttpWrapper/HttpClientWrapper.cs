@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace LMLocal.Infrastructure.Http
+namespace LMLocal.Infrastructure.HttpWrapper
 {
     /// <summary>
     /// Abstraction over HttpClient to enable easier testing and mock implementations.

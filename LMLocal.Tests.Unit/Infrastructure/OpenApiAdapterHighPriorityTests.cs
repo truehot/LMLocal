@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.Api.Responses;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;

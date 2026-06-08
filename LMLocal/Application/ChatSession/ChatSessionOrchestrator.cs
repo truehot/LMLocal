@@ -47,7 +47,8 @@ namespace LMLocal.Application.ChatSession
         private readonly IHistoryCompactor _compactor;
         private readonly object _resetLock = new object();
 
-        private const int MAX_TOOL_ITERATIONS = 25;
+        private const int MAX_TOOL_ITERATIONS = 200;
+        private const int MAX_STATE_ITERATIONS = 200;
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
 
         private delegate Task<ChatSessionState> StateHandler(
@@ -108,15 +109,14 @@ namespace LMLocal.Application.ChatSession
 
             try
             {
-                int maxStateIterations = 100;
                 int stateIterationCount = 0;
 
                 while (sessionContext.CurrentState != ChatSessionState.Terminated)
                 {
                     stateIterationCount++;
-                    if (stateIterationCount > maxStateIterations)
+                    if (stateIterationCount > MAX_STATE_ITERATIONS)
                     {
-                        InternalLogger.Error($"ChatSessionOrchestrator: State machine exceeded max iterations ({maxStateIterations})");
+                        InternalLogger.Error($"ChatSessionOrchestrator: State machine exceeded max iterations ({MAX_STATE_ITERATIONS})");
                         sessionContext.LastException = new InvalidOperationException("State machine exceeded maximum iterations");
                         sessionContext.CurrentState = ChatSessionState.Error;
                     }
@@ -124,7 +124,7 @@ namespace LMLocal.Application.ChatSession
                     try
                     {
                         // Only check cancellation in active states to avoid infinite loop
-                        if (sessionContext.CurrentState != ChatSessionState.Error && 
+                        if (sessionContext.CurrentState != ChatSessionState.Error &&
                             sessionContext.CurrentState != ChatSessionState.Cancelled)
                         {
                             sessionToken.ThrowIfCancellationRequested();

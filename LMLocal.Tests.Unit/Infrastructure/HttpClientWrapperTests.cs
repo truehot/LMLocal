@@ -1,6 +1,6 @@
 using System;
 using System.Net.Http;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

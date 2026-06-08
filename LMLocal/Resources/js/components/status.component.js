@@ -233,6 +233,12 @@ class StatusComponent {
         this._updateStatusText(appState, prevAppState);
         this._updateGeneratingAnimation(appState, prevAppState);
     }
+
+    updateSettingsState(settingsState, prevSetttingsState) {
+        if (settingsState.Provider && settingsState.Provider !== prevSetttingsState?.Provider) {
+            this.elements.connStatus.title = `Provider type: ${settingsState.Provider}\nBase url: ${settingsState.LmStudioBaseUrl}`;
+        }
+    }
 }
 
 const statusComponent = new StatusComponent();

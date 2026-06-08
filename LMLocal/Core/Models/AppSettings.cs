@@ -37,7 +37,7 @@ namespace LMLocal.Core.Models
         /// <summary>
         /// Stream inactivity timeout in seconds. 0 = disabled (infinite timeout). Default = 20 seconds.
         /// </summary>
-        [Range(0, 100, ErrorMessage = "StreamInactivityTimeoutSeconds must be between 0 and 100.")]
+        [Range(0, 200, ErrorMessage = "StreamInactivityTimeoutSeconds must be between 0 and 200.")]
         public int StreamInactivityTimeoutSeconds { get; set; } = 20;
 
         /// <summary>

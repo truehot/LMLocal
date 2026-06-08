@@ -6,7 +6,7 @@ using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Mcp;
 using LMLocal.Infrastructure.Persistence;

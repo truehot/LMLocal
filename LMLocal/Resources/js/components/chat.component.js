@@ -14,7 +14,7 @@ class ChatComponent {
         this.chatContainer = null;
     }
 
-    update(state, prev) {
+    updateSettingsState(state, prev) {
         if (
             prev &&
             state.EnableCodeCollapse === prev.EnableCodeCollapse

@@ -5,7 +5,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Mcp;
 using NUnit.Framework;
 

@@ -9,6 +9,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.FindResults;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocument;
@@ -42,7 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns the file path and the full content of the currently active text document in Visual Studio. If no document is currently active or the file cannot be read, returns an object with null FilePath and empty Content string. If file read fails, the FilePath is still returned but Content will be empty.",
+                Description = "Returns the currently active text document in Visual Studio. Response fields: success (bool), error_message (string), file (string), content (string). If no document is currently active, returns null file with empty content and success=true.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -54,24 +55,60 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public async Task<ActiveDocumentResponse> ExecuteAsync(CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-            await _vsDependencies.InitializeAsync();
-
-            string solutionDir = _vsDependencies.GetSolutionDirectory();
-
-            var (filePath, content) = await GetActiveTextDocumentAsync(cancellationToken);
-            if (string.IsNullOrEmpty(filePath))
-                return new ActiveDocumentResponse { FilePath = null, Content = content };
-
-            if (string.IsNullOrEmpty(solutionDir) || !_pathResolver.TryGetRelativePath(filePath, solutionDir, out string relativePath))
-                relativePath = filePath;
-
-            return new ActiveDocumentResponse
+            try
             {
-                FilePath = relativePath,
-                Content = content
-            };
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+                await _vsDependencies.InitializeAsync();
+
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
+
+                var (filePath, content) = await GetActiveTextDocumentAsync(cancellationToken);
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return new ActiveDocumentResponse
+                    {
+                        FilePath = null,
+                        Content = content,
+                        Success = false,
+                        ErrorMessage = "No active document found."
+                    };
+                }
+
+                if (content == null)
+                {
+                    return new ActiveDocumentResponse
+                    {
+                        FilePath = filePath,
+                        Content = "",
+                        Success = false,
+                        ErrorMessage = "Failed to retrieve document content."
+                    };
+                }
+
+                if (string.IsNullOrEmpty(solutionDir) || !_pathResolver.TryGetRelativePath(filePath, solutionDir, out string relativePath))
+                {
+                    relativePath = filePath;
+                }
+
+                return new ActiveDocumentResponse
+                {
+                    FilePath = relativePath,
+                    Content = content,
+                    Success = true,
+                    ErrorMessage = null
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ActiveDocumentResponse
+                {
+                    FilePath = null,
+                    Content = string.Empty,
+                    Success = false,
+                    ErrorMessage = ex.Message
+                };
+            }
         }
 
         public async Task<string> GetContentAsync()
@@ -111,7 +148,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch
             {
-                return (filePath, string.Empty);
+                return (filePath, null);
             }
         }
 
@@ -156,8 +193,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var docResult = (ActiveDocumentResponse)result;
-            if(string.IsNullOrEmpty(docResult.FilePath))
-                return "";
+            if (!docResult.Success)
+            {
+                return $"Error: {docResult.ErrorMessage}";
+            }
+
             return $"Read '{docResult.FilePath}'.";
         }
 
@@ -168,6 +208,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("content")]
             public string Content { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

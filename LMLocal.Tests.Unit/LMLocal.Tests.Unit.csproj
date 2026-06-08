@@ -82,6 +82,8 @@
     <Compile Include="Infrastructure\LMStudioClientTests.cs" />
     <Compile Include="Infrastructure\Mcp\HttpMcpClientTests.cs" />
     <Compile Include="Infrastructure\Mcp\SseStreamParserTests.cs" />
+    <Compile Include="Infrastructure\Mcp\StdioMcpClientExtendedTests.cs" />
+    <Compile Include="Infrastructure\Mcp\StdioMcpClientTests.cs" />
     <Compile Include="Infrastructure\ModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\OpenApiAdapterHighPriorityTests.cs" />
     <Compile Include="Infrastructure\PathHelperTests.cs" />

@@ -131,7 +131,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             findSymbolReferencesTool.SetupGet(s => s.ToolName).Returns("find_symbol_references");
             listDirTool.SetupGet(s => s.ToolName).Returns("list_directory_contents");
 
-            var expectedSearchResult = new List<SearchResult> { new SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<SearchMatch> { new SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } };
+            var expectedSearchResult = new SearchResultsResponse { Success = true, Results = new List<SearchResult> { new SearchResult { FilePath = "a.cs", Matches = new System.Collections.Generic.List<SearchMatch> { new SearchMatch { LineNumber = 1, LineText = "x" } }, MatchCount = 1 } }, HasMoreResults = false, SearchFilesLimit = 25 };
             searchTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedSearchResult);
 
             var expectedActive = new ActiveDocumentResponse { FilePath = "a.cs", Content = "content" };
@@ -140,7 +140,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var expectedLines = new FileLinesResponse { FilePath = "a.cs", Lines = new System.Collections.Generic.List<FileLineInfo>() };
             linesTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedLines);
 
-            var expectedFindFilesResult = new List<FileSearchResult> { new FileSearchResult { FilePath = "config.cs" } };
+            var expectedFindFilesResult = new FileSearchResultsResponse { Results = new List<FileSearchResult> { new FileSearchResult { FilePath = "config.cs" } }, HasMoreResults = false, TotalFilesLimit = 500, Success = true, ErrorMessage = null };
             findFilesTool.Setup(s => s.ExecuteAsync(It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedFindFilesResult);
 
             var expectedSolutionResult = new SolutionOverviewResponse { SolutionName = "Test", TotalProjects = 2, TotalFiles = 100 };

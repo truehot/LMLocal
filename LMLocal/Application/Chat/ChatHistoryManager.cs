@@ -157,15 +157,11 @@ namespace LMLocal.Application.Chat
 
         public List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalSystemPrompt = null)
         {
-            if (string.IsNullOrEmpty(userPrompt)) return new List<ChatMessage>();
-
             bool compress = _settingsManager.Current?.EnableHistoryCompression ?? false;
 
             var messages = new List<ChatMessage>();
             lock (_lock)
             {
-                messages.AddRange(_history);
-
                 if (!string.IsNullOrEmpty(additionalSystemPrompt))
                 {
                     messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt));
@@ -175,12 +171,17 @@ namespace LMLocal.Application.Chat
                     messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(_systemPrompt) : _systemPrompt));
                 }
 
+                messages.AddRange(_history);
+
                 if (!string.IsNullOrEmpty(includedContent))
                 {
                     messages.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(FormatIncludedContent(includedContent)) : FormatIncludedContent(includedContent)));
                 }
 
-                messages.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(userPrompt) : userPrompt));
+                if (!string.IsNullOrEmpty(userPrompt))
+                {
+                    messages.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(userPrompt) : userPrompt));
+                }
             }
 
             return messages;

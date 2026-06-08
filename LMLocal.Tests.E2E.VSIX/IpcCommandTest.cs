@@ -282,7 +282,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("directory"), "Response should contain 'directory' key");
                         Assert.IsTrue(obj.ContainsKey("entries"), "Response should contain 'entries' key");
-                        Assert.IsTrue(obj.ContainsKey("has_more_entries"), "Response should contain 'has_more_entries' key");
+                        Assert.IsTrue(obj.ContainsKey("has_more_results"), "Response should contain 'has_more_results' key");
 
                         var entries = obj["entries"] as JArray;
                         Assert.IsNotNull(entries, "'entries' should be an array");

@@ -24,6 +24,12 @@ namespace LMLocal.Core.Models
         ToolCallArguments,
 
         /// <summary>
+        /// Raw tool call block (complete &lt;tool_call&gt;...&lt;/tool_call&gt; from Nemotron/DeepSeek).
+        /// StreamProcessor will parse this to extract function name and arguments.
+        /// </summary>
+        ToolCallRaw,
+
+        /// <summary>
         /// Completion metadata: finish_reason, token usage, refusal.
         /// Arrives once at the end of the stream.
         /// </summary>

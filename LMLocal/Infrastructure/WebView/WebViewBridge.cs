@@ -35,6 +35,7 @@ namespace LMLocal.Infrastructure.WebView
         Task<bool> UpdateSettingsAsync(string newSettingsJson);
         Task<string> GetInstructionsAsync();
         Task<bool> UpdateInstructionsAsync(string newInstructionsJson);
+        Task<bool> UpdateInstructionsSelectedTabAsync(string selectedTabId);
         Task<string> TestConnectionAsync(string payload);
         Task<string> GetMcpConfigAsync();
         Task<bool> UpdateMcpConfigAsync(string newMcpConfigJson);
@@ -292,6 +293,25 @@ namespace LMLocal.Infrastructure.WebView
             catch (Exception ex)
             {
                 InternalLogger.Error("UpdateInstructionsAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateInstructionsSelectedTabAsync(string selectedTabId)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(selectedTabId))
+                {
+                    return false;
+                }
+
+                await _instructionsManager.UpdateSelectedTabAsync(selectedTabId).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("UpdateInstructionsSelectedTabAsync failed", ex);
                 return false;
             }
         }

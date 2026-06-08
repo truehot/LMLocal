@@ -20,7 +20,6 @@ namespace LMLocal.Infrastructure.Streaming
         private int _currentTokens;
         private readonly ITimeProvider _timeProvider;
 
-
         public TokenSpeedCalculator(int windowSeconds = 5, ITimeProvider timeProvider = null)
         {
             _timeProvider = timeProvider ?? new SystemTimeProvider();

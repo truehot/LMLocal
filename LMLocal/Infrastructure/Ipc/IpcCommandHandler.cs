@@ -69,11 +69,11 @@ internal static class IpcCommandHandler
                         return;
                     }
 
-                    var query = parts[2];
+                    var text = parts[2];
                     var extension = parts.Length >= 4 ? parts[3] : ".cs";
                     var parameters = new Dictionary<string, object>
                     {
-                        { "query", query },
+                        { "text", text },
                         { "extension_filter", extension }
                     };
 

@@ -39,7 +39,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file within the current Visual Studio solution. Returns a FileLinesResponse with the requested lines (or fewer if end_line exceeds file length). Throws FileNotFoundException if the file does not exist or is outside the solution directory. Throws ArgumentException if start_line exceeds the file's total line count or if end_line < start_line or if either value is less than 1. Lines are returned exactly as they appear in the file, and there is no limit on the maximum number of lines per request.",
+                Description = "Reads a specific line range from a file within the current Visual Studio solution. Response fields: success (bool), error_message (string), file (string), lines (array of {line_number (int), text (string)}). Lines are returned exactly as they appear; no limit on maximum lines per request.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -58,37 +58,79 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default)
         {
-            var (filePath, startLine, endLine) = ExtractAndValidateParameters(parameters);
+            try
+            {
+                var (filePath, startLine, endLine, error) = ExtractAndValidateParameters(parameters);
 
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                if (!string.IsNullOrEmpty(error))
+                    return new FileLinesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = error,
+                        FilePath = parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "",
+                        Lines = new List<FileLineInfo>()
+                    };
 
-            await _vsDependencies.InitializeAsync();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-            string solutionDir = _vsDependencies.GetSolutionDirectory();
-            if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                throw new FileNotFoundException($"File not found: {filePath}");
+                await _vsDependencies.InitializeAsync();
 
-            if (!File.Exists(absolutePath))
-                throw new FileNotFoundException($"File not found: {absolutePath}");
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
+                if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
+                    return new FileLinesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"File not found: {filePath}",
+                        FilePath = filePath,
+                        Lines = new List<FileLineInfo>()
+                    };
 
-            if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
-                throw new ArgumentException($"File '{absolutePath}' is outside the solution directory '{solutionDir}'.");
+                if (!File.Exists(absolutePath))
+                    return new FileLinesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"File not found: {absolutePath}",
+                        FilePath = filePath,
+                        Lines = new List<FileLineInfo>()
+                    };
 
-            if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
-                relativePath = absolutePath;
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return new FileLinesResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"File '{absolutePath}' is outside the solution directory '{solutionDir}'.",
+                        FilePath = filePath,
+                        Lines = new List<FileLineInfo>()
+                    };
 
-            var result = await Task.Run(() => ReadFileLines(absolutePath, startLine, endLine, cancellationToken), cancellationToken);
+                if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
+                    relativePath = absolutePath;
 
-            result.FilePath = relativePath;
-            return result;
+                var result = await Task.Run(() => ReadFileLines(absolutePath, startLine, endLine, cancellationToken), cancellationToken);
+
+                result.FilePath = relativePath;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return new FileLinesResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    FilePath = parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "",
+                    Lines = new List<FileLineInfo>()
+                };
+            }
         }
 
         private FileLinesResponse ReadFileLines(string absolutePath, int startLine, int endLine, CancellationToken cancellationToken)
         {
             var result = new FileLinesResponse
             {
-                FilePath = "", 
-                Lines = new List<FileLineInfo>()
+                FilePath = "",
+                Lines = new List<FileLineInfo>(),
+                Success = true,
+                ErrorMessage = null
             };
 
             int currentLine = 0;
@@ -114,9 +156,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
             }
 
-            if (startLine > currentLine)
-                throw new ArgumentException($"Start line {startLine} exceeds file line count {currentLine}.", nameof(startLine));
-
             return result;
         }
 
@@ -133,31 +172,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var fileResult = (FileLinesResponse)result;
+            if (!fileResult.Success)
+            {
+                return $"Error: {fileResult.ErrorMessage}";
+            }
             return $"Read {fileResult.Lines.Count} lines.";
         }
 
-        private (string filePath, int startLine, int endLine) ExtractAndValidateParameters(
+        private (string filePath, int startLine, int endLine, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string))
-                throw new ArgumentException("Parameter 'file_path' is required and must be a string.", nameof(parameters));
+                return (null, 0, 0, "Parameter 'file_path' is required and must be a string.");
 
             if (!parameters.TryGetValue("start_line", out object startLineObj) || !TryParseInt(startLineObj, out int startLine))
-                throw new ArgumentException("Parameter 'start_line' is required and must be an integer.", nameof(parameters));
+                return (null, 0, 0, "Parameter 'start_line' is required and must be an integer.");
 
             if (!parameters.TryGetValue("end_line", out object endLineObj) || !TryParseInt(endLineObj, out int endLine))
-                throw new ArgumentException("Parameter 'end_line' is required and must be an integer.", nameof(parameters));
+                return (null, 0, 0, "Parameter 'end_line' is required and must be an integer.");
 
             string filePath = (string)filePathObj;
 
             if (string.IsNullOrWhiteSpace(filePath))
-                throw new ArgumentException("File path cannot be empty.", nameof(filePath));
+                return (null, 0, 0, "File path cannot be empty.");
             if (startLine < 1)
-                throw new ArgumentException("Start line must be 1 or greater.", nameof(startLine));
+                return (null, 0, 0, "Start line must be 1 or greater.");
             if (endLine < startLine)
-                throw new ArgumentException("End line must be greater than or equal to start line.", nameof(endLine));
+                return (null, 0, 0, "End line must be greater than or equal to start line.");
 
-            return (filePath, startLine, endLine);
+            return (filePath, startLine, endLine, null);
         }
 
         private bool TryParseInt(object value, out int result)
@@ -201,6 +244,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("lines")]
             public List<FileLineInfo> Lines { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

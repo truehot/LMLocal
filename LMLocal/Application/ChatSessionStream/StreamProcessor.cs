@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Streaming;
+using Newtonsoft.Json;
 
 namespace LMLocal.Application.ChatSessionStream
 {
@@ -23,6 +25,8 @@ namespace LMLocal.Application.ChatSessionStream
 
         private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata =
             new Dictionary<int, (string CallId, string FunctionName)>();
+
+        private readonly List<string> _rawToolCallBlocks = new List<string>();
 
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
@@ -40,6 +44,9 @@ namespace LMLocal.Application.ChatSessionStream
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            _rawToolCallBlocks.Clear();
+            _toolCallMetadata.Clear();
+
             var fullResponse = new StringBuilder();
             var contentBuffer = new StringBuilder();
             var reasoningBuffer = new StringBuilder();
@@ -56,6 +63,9 @@ namespace LMLocal.Application.ChatSessionStream
             bool isReading = true;
 
             var cancelRegistration = cancellationToken.Register(() => stream.Close());
+
+            // Create a new parser instance for this stream processing session
+            var parser = new LlmSseParser();
 
             try
             {
@@ -124,71 +134,74 @@ namespace LMLocal.Application.ChatSessionStream
                             if (string.IsNullOrWhiteSpace(line))
                                 continue;
 
-                            var chunk = LlmSseParser.ExtractDelta(line);
-
-                            if (chunk == null)
-                                continue;
+                            var chunks = parser.ExtractDeltas(line);
 
                             lock (syncLock)
                             {
-                                if (chunk is TextStreamChunk textChunk)
+                                foreach (var chunk in chunks)
                                 {
-                                    switch (textChunk.Kind)
+                                    if (chunk is TextStreamChunk textChunk)
                                     {
-                                        case ChunkKind.Reasoning:
-                                            reasoningBuffer.Append(textChunk.Text);
-                                            break;
-                                        case ChunkKind.Content:
-                                            contentBuffer.Append(textChunk.Text);
-                                            fullResponse.Append(textChunk.Text);
-                                            break;
-                                        case ChunkKind.ToolCallArguments:
+                                        switch (textChunk.Kind)
+                                        {
+                                            case ChunkKind.Reasoning:
+                                                reasoningBuffer.Append(textChunk.Text);
+                                                break;
+                                            case ChunkKind.Content:
+                                                contentBuffer.Append(textChunk.Text);
+                                                fullResponse.Append(textChunk.Text);
+                                                break;
+                                            case ChunkKind.ToolCallArguments:
 
-                                            int bufferIndex = textChunk.ToolCallIndex ?? 0;
-                                            if (!toolCallBuffers.ContainsKey(bufferIndex))
-                                                toolCallBuffers[bufferIndex] = new StringBuilder();
-                                            toolCallBuffers[bufferIndex].Append(textChunk.Text);
-                                            break;
+                                                int bufferIndex = textChunk.ToolCallIndex ?? 0;
+                                                if (!toolCallBuffers.ContainsKey(bufferIndex))
+                                                    toolCallBuffers[bufferIndex] = new StringBuilder();
+                                                toolCallBuffers[bufferIndex].Append(textChunk.Text);
+                                                break;
+                                            case ChunkKind.ToolCallRaw:
+                                                _rawToolCallBlocks.Add(textChunk.Text);
+                                                break;
+                                        }
+
+                                        currentTokens++;
+                                        _tokenSpeedCalculator.Update(currentTokens);
+
                                     }
-
-                                    currentTokens++;
-                                    _tokenSpeedCalculator.Update(currentTokens);
-
-                                }
-                                else if (chunk is ToolCallMetadataChunk metadata)
-                                {
-                                    _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName);
-
-                                    if (!toolCallBuffers.ContainsKey(metadata.Index))
-                                        toolCallBuffers[metadata.Index] = new StringBuilder();
-
-                                    if (!string.IsNullOrEmpty(metadata.InitialArguments))
+                                    else if (chunk is ToolCallMetadataChunk metadata)
                                     {
-                                        toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
+                                        _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName);
+
+                                        if (!toolCallBuffers.ContainsKey(metadata.Index))
+                                            toolCallBuffers[metadata.Index] = new StringBuilder();
+
+                                        if (!string.IsNullOrEmpty(metadata.InitialArguments))
+                                        {
+                                            toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
+                                        }
                                     }
-                                }
-                                else if (chunk is CompletionStreamChunk completion)
-                                {
-                                    if (!string.IsNullOrEmpty(completion.FinishReason))
-                                        result.FinishReason = completion.FinishReason;
+                                    else if (chunk is CompletionStreamChunk completion)
+                                    {
+                                        if (!string.IsNullOrEmpty(completion.FinishReason))
+                                            result.FinishReason = completion.FinishReason;
 
-                                    if (completion.TotalTokens.HasValue)
-                                        result.TokenUsage.TotalTokens = completion.TotalTokens;
+                                        if (completion.TotalTokens.HasValue)
+                                            result.TokenUsage.TotalTokens = completion.TotalTokens;
 
-                                    if (completion.PromptTokens.HasValue)
-                                        result.TokenUsage.PromptTokens = completion.PromptTokens;
+                                        if (completion.PromptTokens.HasValue)
+                                            result.TokenUsage.PromptTokens = completion.PromptTokens;
 
-                                    if (completion.CompletionTokens.HasValue)
-                                        result.TokenUsage.CompletionTokens = completion.CompletionTokens;
+                                        if (completion.CompletionTokens.HasValue)
+                                            result.TokenUsage.CompletionTokens = completion.CompletionTokens;
 
-                                    if (completion.ReasoningTokens.HasValue)
-                                        result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
+                                        if (completion.ReasoningTokens.HasValue)
+                                            result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
 
-                                    if (!string.IsNullOrEmpty(completion.Refusal))
-                                        result.RefusalReason = completion.Refusal;
+                                        if (!string.IsNullOrEmpty(completion.Refusal))
+                                            result.RefusalReason = completion.Refusal;
 
-                                    if (!string.IsNullOrEmpty(completion.SystemFingerprint))
-                                        result.SystemFingerprint = completion.SystemFingerprint;
+                                        if (!string.IsNullOrEmpty(completion.SystemFingerprint))
+                                            result.SystemFingerprint = completion.SystemFingerprint;
+                                    }
                                 }
                             }
                         }
@@ -248,6 +261,12 @@ namespace LMLocal.Application.ChatSessionStream
 
             result.ContentResponse = fullResponse.ToString();
 
+            foreach (var rawBlock in _rawToolCallBlocks)
+            {
+                ParseRawToolCallBlock(rawBlock, _toolCallMetadata, toolCallBuffers);
+                InternalLogger.Info($"Parse raw xml tool block completed");
+            }
+
             var toolCalls = new List<ToolCallRecord>();
             foreach (var bufferEntry in toolCallBuffers.OrderBy(kvp => kvp.Key))
             {
@@ -264,6 +283,10 @@ namespace LMLocal.Application.ChatSessionStream
                         ArgumentsJson = argumentsJson
                     });
                 }
+                else
+                {
+                    InternalLogger.Warn($"Missing metadata for tool call at index {index}. Arguments: {argumentsJson}");
+                }
             }
 
             if (toolCalls.Count > 0)
@@ -276,6 +299,78 @@ namespace LMLocal.Application.ChatSessionStream
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Parses a raw tool call block like &lt;tool_call&gt;function_name arguments&lt;/tool_call&gt;
+        /// and extracts function name and arguments into the tool call buffers.
+        /// </summary>
+        private void ParseRawToolCallBlock(string rawBlock,
+            Dictionary<int, (string, string)> toolCallMetadata,
+            Dictionary<int, StringBuilder> toolCallBuffers)
+        {
+            const string ToolCallStart = "<tool_call>";
+            const string ToolCallEnd = "</tool_call>";
+
+            string trimmed = rawBlock.Trim();
+            if (!trimmed.StartsWith(ToolCallStart) || !trimmed.EndsWith(ToolCallEnd))
+            {
+                InternalLogger.Warn($"Invalid tool call block: {rawBlock}");
+                return;
+            }
+
+            int contentStart = ToolCallStart.Length;
+            int contentEnd = trimmed.Length - ToolCallEnd.Length;
+            string inner = trimmed.Substring(contentStart, contentEnd - contentStart);
+
+            if (string.IsNullOrWhiteSpace(inner)) {
+                return;
+            }
+            
+
+            var funcMatch = Regex.Match(inner, @"<function\s*=\s*([^>]+)>");
+            if (!funcMatch.Success)
+            {
+                InternalLogger.Warn($"No <function=...> in tool call block: {inner}");
+                return;
+            }
+
+            string functionName = funcMatch.Groups[1].Value;
+            int argsStart = funcMatch.Index + funcMatch.Length;
+            int endFunc = inner.IndexOf("</function>", argsStart);
+            string arguments = (endFunc != -1)
+                ? inner.Substring(argsStart, endFunc - argsStart)
+                : inner.Substring(argsStart);
+            arguments = arguments.Trim();
+
+            int toolIndex = toolCallMetadata.Count;
+            toolCallMetadata[toolIndex] = ($"call_{toolIndex}", functionName);
+            if (!toolCallBuffers.ContainsKey(toolIndex))
+            {
+                toolCallBuffers[toolIndex] = new StringBuilder();
+            }
+
+            if (!string.IsNullOrEmpty(arguments))
+            {
+                string argumentsJson = ConvertToolParametersToJson(arguments);
+                toolCallBuffers[toolIndex].Append(argumentsJson);
+
+            }
+
+            InternalLogger.Info($"[StreamProcessor] Parsed tool: {functionName}, args length={arguments.Length}");
+        }
+
+        private string ConvertToolParametersToJson(string xmlParameters)
+        {
+            var dict = new Dictionary<string, string>();
+            var matches = Regex.Matches(xmlParameters, @"<parameter=([^>]+)>([\s\S]*?)</parameter>");
+            foreach (Match m in matches)
+            {
+                string name = m.Groups[1].Value;
+                string value = m.Groups[2].Value.Trim();
+                dict[name] = value;
+            }
+            return JsonConvert.SerializeObject(dict);
         }
     }
 }

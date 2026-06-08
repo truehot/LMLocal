@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Http;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
@@ -323,6 +323,7 @@ namespace LMLocal.Infrastructure.Mcp
 
         /// <summary>
         /// Creates appropriate MCP client based on server configuration.
+        /// Supports stdio (subprocess), HTTP, and Streamable-HTTP transports.
         /// </summary>
         private IMcpClient CreateMcpClient(McpServerConfig config)
         {
@@ -331,8 +332,7 @@ namespace LMLocal.Infrastructure.Mcp
             switch (transportType.ToLowerInvariant())
             {
                 case "stdio":
-                    // For now, only HTTP/Streamable-HTTP are supported
-                    throw new InvalidOperationException("Stdio transport type is not currently supported. Only HTTP and Streamable-HTTP are supported.");
+                    return new StdioMcpClient(config.Command, config.Args, config.Env);
 
                 case "http":
                 case "streamable-http":

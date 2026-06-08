@@ -86,7 +86,7 @@ class AppManager {
     }
 
     async performStop(text) {
-        if (!appSelectors.isBusy(appStore.getState().status)) return;
+        if (!appSelectors.isGenerating(appStore.getState().status)) return;
 
         appStore.setState({ status: AppStatus.STOPPING, userMessage: text });
 

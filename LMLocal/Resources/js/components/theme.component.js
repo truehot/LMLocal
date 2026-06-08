@@ -23,7 +23,7 @@ class ThemeComponent {
         this._applyLink(currentSettings.Theme);
     }
 
-    updateTheme(state, prevState) {
+    updateSettingsState(state, prevState) {
         if (state?.Theme !== prevState?.Theme) {
             this._applyTheme(state.Theme);
             this._applyLink(state.Theme);

@@ -8,6 +8,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ListDirectoryContents;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -19,7 +20,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface IListDirectoryContents : IBuiltInTool
     {
-        Task<object> ExecuteAsync(
+        Task<DirectoryContentsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default);
     }
@@ -52,7 +53,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Lists all files and subdirectories within a specified path. Path should be relative to solution root or absolute. Returns entries with name, full path, and type (file or directory). Only works within solution directory. Limited to first {MaxEntries} entries.",
+                Description = $"Lists files and subdirectories within a path. Response fields: success (bool), error_message (string), directory (string), entries (array of {{name (string), path (string), type (string)}}), has_more_entries (bool). has_more_entries indicates more entries exist beyond the {MaxEntries} entry limit. Only works inside solution directory.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -65,37 +66,72 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<object> ExecuteAsync(
+        public async Task<DirectoryContentsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default)
         {
-            var directoryPath = ExtractAndValidateParameters(parameters);
+            try
+            {
+                var directoryPath = ExtractAndValidateParameters(parameters);
 
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-            await _vsDependencies.InitializeAsync();
+                await _vsDependencies.InitializeAsync();
 
-            string solutionDir = _vsDependencies.GetSolutionDirectory();
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
 
-            if (!_pathResolver.TryResolveFilePath(directoryPath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
+                if (!_pathResolver.TryResolveFilePath(directoryPath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
+                    return new DirectoryContentsResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"Directory not found: {directoryPath}",
+                        DirectoryPath = directoryPath,
+                        Entries = new List<DirectoryEntry>(),
+                        HasMoreResults = false
+                    };
 
-            if (!Directory.Exists(absolutePath))
-                throw new DirectoryNotFoundException($"Directory not found: {absolutePath}");
+                if (!Directory.Exists(absolutePath))
+                    return new DirectoryContentsResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"Directory not found: {absolutePath}",
+                        DirectoryPath = directoryPath,
+                        Entries = new List<DirectoryEntry>(),
+                        HasMoreResults = false
+                    };
 
-            if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
-                throw new ArgumentException($"Directory '{absolutePath}' is outside the solution directory '{solutionDir}'.");
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return new DirectoryContentsResponse
+                    {
+                        Success = false,
+                        ErrorMessage = $"Directory '{absolutePath}' is outside the solution directory '{solutionDir}'.",
+                        DirectoryPath = directoryPath,
+                        Entries = new List<DirectoryEntry>(),
+                        HasMoreResults = false
+                    };
 
-            if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
-                relativePath = absolutePath;
+                if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
+                    relativePath = absolutePath;
 
-            if (string.IsNullOrEmpty(relativePath))
-                relativePath = ".";
+                if (string.IsNullOrEmpty(relativePath))
+                    relativePath = ".";
 
-            var result = await Task.Run(() => EnumerateDirectoryContents(absolutePath, solutionDir, cancellationToken), cancellationToken);
+                var result = await Task.Run(() => EnumerateDirectoryContents(absolutePath, solutionDir, cancellationToken), cancellationToken);
 
-            result.DirectoryPath = relativePath;
-            return result;
+                result.DirectoryPath = relativePath;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return new DirectoryContentsResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    DirectoryPath = parameters?.TryGetValue("directory_path", out var dp) == true ? dp?.ToString() : "",
+                    Entries = new List<DirectoryEntry>(),
+                    HasMoreResults = false
+                };
+            }
         }
 
         private DirectoryContentsResponse EnumerateDirectoryContents(string absolutePath, string solutionDir, CancellationToken cancellationToken)
@@ -103,7 +139,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var result = new DirectoryContentsResponse
             {
                 DirectoryPath = "",
-                Entries = new List<DirectoryEntry>()
+                Entries = new List<DirectoryEntry>(),
+                Success = true,
+                ErrorMessage = null
             };
 
             try
@@ -117,7 +155,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     if (entryCount >= MaxEntries)
                     {
-                        result.HasMoreEntries = true;
+                        result.HasMoreResults = true;
                         break;
                     }
 
@@ -140,7 +178,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     if (entryCount >= MaxEntries)
                     {
-                        result.HasMoreEntries = true;
+                        result.HasMoreResults = true;
                         break;
                     }
 
@@ -161,11 +199,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (UnauthorizedAccessException ex)
             {
-                throw new ArgumentException($"Access denied to directory '{absolutePath}': {ex.Message}", nameof(absolutePath), ex);
+                result.Success = false;
+                result.ErrorMessage = $"Access denied to directory '{absolutePath}': {ex.Message}";
             }
             catch (IOException ex)
             {
-                throw new ArgumentException($"Error reading directory '{absolutePath}': {ex.Message}", nameof(absolutePath), ex);
+                result.Success = false;
+                result.ErrorMessage = $"Error reading directory '{absolutePath}': {ex.Message}";
             }
 
             return result;
@@ -182,6 +222,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var dirResult = (DirectoryContentsResponse)result;
+            if (!dirResult.Success)
+            {
+                return $"Error: {dirResult.ErrorMessage}";
+            }
             return $"Listed {dirResult.Entries.Count} entries.";
         }
 
@@ -218,8 +262,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("entries")]
             public List<DirectoryEntry> Entries { get; set; }
 
-            [JsonProperty("has_more_entries")]
-            public bool HasMoreEntries { get; set; }
+            [JsonProperty("has_more_results")]
+            public bool HasMoreResults { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

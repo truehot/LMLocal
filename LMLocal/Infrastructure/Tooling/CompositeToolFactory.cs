@@ -52,16 +52,16 @@ namespace LMLocal.Infrastructure.Tooling
 
     internal class CompositeToolFactory : ICompositeToolFactory
     {
-        private readonly IBuiltInVsToolProvider _builtInFactory;
+        private readonly IBuiltInVsToolProvider _builtInToolProvider;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly ISettingsManager _settingsManager;
 
         public CompositeToolFactory(
-            IBuiltInVsToolProvider builtInFactory,
+            IBuiltInVsToolProvider builtInVsToolProvider,
             IMcpToolManager mcpToolManager,
             ISettingsManager settingsManager)
         {
-            _builtInFactory = builtInFactory ?? throw new ArgumentNullException(nameof(builtInFactory));
+            _builtInToolProvider = builtInVsToolProvider ?? throw new ArgumentNullException(nameof(builtInVsToolProvider));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
         }
@@ -78,7 +78,7 @@ namespace LMLocal.Infrastructure.Tooling
 
             if (AreBuiltInToolsEnabled)
             {
-                var builtInTools = _builtInFactory.GetAllToolDefinitions();
+                var builtInTools = _builtInToolProvider.GetAllToolDefinitions();
                 if (builtInTools != null)
                     allTools.AddRange(builtInTools);
             }
@@ -95,7 +95,7 @@ namespace LMLocal.Infrastructure.Tooling
             if (string.IsNullOrEmpty(toolName))
                 return false;
 
-            if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
+            if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
                 return true;
 
             return _mcpToolManager.ToolExists(toolName);
@@ -106,8 +106,8 @@ namespace LMLocal.Infrastructure.Tooling
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
 
-            if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
-                return _builtInFactory.GetTool(toolName);
+            if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+                return _builtInToolProvider.GetTool(toolName);
 
             if (_mcpToolManager.ToolExists(toolName))
             {
@@ -128,8 +128,8 @@ namespace LMLocal.Infrastructure.Tooling
             if (parameters == null)
                 throw new ArgumentNullException(nameof(parameters));
 
-            if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
-                return await _builtInFactory.ExecuteAsync(toolName, parameters, cancellationToken);
+            if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+                return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken);
 
             if (_mcpToolManager.ToolExists(toolName))
             {
@@ -145,8 +145,8 @@ namespace LMLocal.Infrastructure.Tooling
             if (string.IsNullOrEmpty(toolName))
                 return "Processing...";
 
-            if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
-                return _builtInFactory.GetProcessingMessage(toolName, parameters);
+            if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+                return _builtInToolProvider.GetProcessingMessage(toolName, parameters);
 
             if (_mcpToolManager.ToolExists(toolName))
                 return $"Executing tool '{toolName}'...";
@@ -159,8 +159,8 @@ namespace LMLocal.Infrastructure.Tooling
             if (string.IsNullOrEmpty(toolName))
                 return "Execution completed.";
 
-            if (AreBuiltInToolsEnabled && _builtInFactory.ToolExists(toolName))
-                return _builtInFactory.GetCompletionMessage(toolName, result);
+            if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+                return _builtInToolProvider.GetCompletionMessage(toolName, result);
 
             if (_mcpToolManager.ToolExists(toolName))
                 return $"Tool '{toolName}' execution completed.";

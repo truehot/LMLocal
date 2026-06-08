@@ -9,7 +9,6 @@
     <link rel="stylesheet" href="https://app.local/css/dialog.css">
     <link rel="stylesheet" href="https://app.local/css/toolbar.css">
     <link rel="stylesheet" href="https://app.local/css/codeblock.css">
-
 </head>
 <body>
 
@@ -20,7 +19,6 @@
         <div class="connection-info">
             <span id="conn-status" class="retryable">Disconnected</span>
             <button id="retry-btn" style="display:none;" title="Retry connection">↻</button>
-
         </div>
         <div id="status-separator"> · </div>
         <div class="model-info" id="model-info">
@@ -162,7 +160,7 @@
                     <span class="settings-description">
                         How long to wait for the next word or token after the first one arrives. Increase for slower local models. 0 = never timeout.
                     </span>
-                    <input type="number" name="StreamInactivityTimeoutSeconds" data-setting="StreamInactivityTimeoutSeconds" min="0" max="100" value="20" step="1">
+                    <input type="number" name="StreamInactivityTimeoutSeconds" data-setting="StreamInactivityTimeoutSeconds" min="0" max="200" value="20" step="1">
                 </div>
                 <div class="settings-group checkbox-group">
                     <label class="checkbox-container">

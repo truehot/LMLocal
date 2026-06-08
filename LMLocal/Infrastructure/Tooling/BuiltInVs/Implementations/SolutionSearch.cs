@@ -5,10 +5,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Common;
+using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionSearch;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -18,7 +20,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface ISolutionSearch : IBuiltInTool
     {
-        Task<object> ExecuteAsync(
+        Task<SearchResultsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default);
     }
@@ -28,7 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
-        private const int MaxSearchResults = 50;
+        private const int MaxSearchResults = 25;
         private const int MaxFilesToScan = 1500;
         public string ToolName => "Search_Local_Solution_Files";
 
@@ -44,30 +46,44 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Performs a text search across Visual Studio solution files. Returns matching lines with file path, line number, column, and text. Search is limited to the first {MaxSearchResults} files that contain matches. Results include has_more_results flag indicating if more matches exist beyond the limit.",
+                Description = $"Performs a text search across files in the current Visual Studio solution (case-insensitive substring). Response fields: success (bool), error_message (string), results (array of {{file (string), matches (array of {{line (int), text (string)}}), match_count (int)}}), has_more_results (bool), search_files_limit (int). has_more_results indicates more files with matches exist beyond the limit. Limited to scanning first {MaxFilesToScan} files and returning at most {MaxSearchResults} files with matches.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "query", new ToolDetails { Type = "string", Description = "The text to search for (substring match, case-insensitive)." } },
+                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive). Do not use Regular Expressions (Regex), wildcards (like '*', '?')." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Optional file extension filter (e.g., '.cs', '.js'). If not specified, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Optional project name filter. If specified, only files from projects matching this name (case-insensitive substring match) will be searched." } }
                     },
-                    Required = new List<string> { "query" }
+                    Required = new List<string> { "text" }
                 }
             };
         }
 
-        public async Task<object> ExecuteAsync(
+        public async Task<SearchResultsResponse> ExecuteAsync(
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken = default)
         {
-            var (searchText, fileExtensions, projectFilter) = ExtractAndValidateParametersFromDict(parameters);
-            return await ExecuteCoreAsync(searchText, fileExtensions, projectFilter, cancellationToken);
+            try
+            {
+                var (searchText, fileExtensions, projectFilter) = ExtractAndValidateParametersFromDict(parameters);
+                return await ExecuteCoreAsync(searchText, fileExtensions, projectFilter, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return new SearchResultsResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    Results = new List<SearchResult>(),
+                    HasMoreResults = false,
+                    SearchFilesLimit = MaxSearchResults
+                };
+            }
         }
 
-        private async Task<object> ExecuteCoreAsync(
+        private async Task<SearchResultsResponse> ExecuteCoreAsync(
             string searchText,
             string fileExtensions,
             string projectFilter,
@@ -150,7 +166,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 Results = groupedResults,
                 HasMoreResults = groupedResults.Count >= MaxSearchResults,
-                SearchFilesLimit = MaxSearchResults
+                SearchFilesLimit = MaxSearchResults,
+                Success = true,
+                ErrorMessage = null
             };
         }
 
@@ -158,11 +176,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (parameters == null) return "Searching... ";
 
-            var query = parameters.TryGetValue("query", out var q) ? q?.ToString() : "";
+            var text = parameters.TryGetValue("text", out var q) ? q?.ToString() : "";
             var ext = parameters.TryGetValue("extension_filter", out var e) ? e?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var p) ? p?.ToString() : null;
 
-            var message = $"Searching for '{query}'";
+            var message = $"Searching for '{text}'";
             if (!string.IsNullOrEmpty(project))
                 message += $" in '{project}'";
 
@@ -182,16 +200,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             var searchResults = (SearchResultsResponse)result;
+            if (!searchResults.Success)
+            {
+                return $"Error: {searchResults.ErrorMessage}";
+            }
             return $"Found {searchResults.Results.Count} matches.";
         }
 
         private (string searchText, string fileExtensions, string projectFilter) ExtractAndValidateParametersFromDict(
             Dictionary<string, object> parameters)
         {
-            if (!parameters.TryGetValue("query", out object queryObj) || !(queryObj is string))
-                throw new ArgumentException("Parameter 'query' is required and must be a string.", nameof(parameters));
+            if (!parameters.TryGetValue("text", out object textObj) || !(textObj is string))
+                throw new ArgumentException("Parameter 'text' is required and must be a string.", nameof(parameters));
 
-            var searchText = (string)queryObj;
+            var searchText = (string)textObj;
             var fileExtensions = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
 
@@ -229,6 +251,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("search_files_limit")]
             public int SearchFilesLimit { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message")]
+            public string ErrorMessage { get; set; }
         }
     }
 }

@@ -95,8 +95,9 @@ class AppController {
         instructionsStore.subscribe(this._instructionsListener);
 
         this._settingsListener = (state, prev) => {
-            themeComponent.updateTheme(state, prev);
-            chatComponent.update(state, prev);
+            themeComponent.updateSettingsState(state, prev);
+            chatComponent.updateSettingsState(state, prev);
+            statusComponent.updateSettingsState(state, prev);
         };
         settingsStore.subscribe(this._settingsListener);
 
@@ -122,10 +123,8 @@ class AppController {
             return false;
         });
 
-        inputComponent.onTabChanged.on((tabId) => {
-            instructionsStore.setState({
-                selectedTabId: tabId
-            });
+        inputComponent.onTabChanged.on(async (tabId) => {
+            return await appDataService.updateInstructionsSelectedTabAsync(tabId);
         });
 
         chatController.onCopyCode.on(async (text) => {

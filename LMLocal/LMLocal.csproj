@@ -75,7 +75,7 @@
     <Compile Include="Infrastructure\LlmApi\Responses\AzureModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\JanModelsResponse.cs" />
     <Compile Include="Infrastructure\DependencyInjection\ServiceConfiguration.cs" />
-    <Compile Include="Infrastructure\Http\HttpClientWrapper.cs" />
+    <Compile Include="Infrastructure\HttpWrapper\HttpClientWrapper.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ModelProvider.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ModelResponseConverter.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\ListModelsResponse.cs" />
