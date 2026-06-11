@@ -61,7 +61,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Models
     public class InitializeRequest
     {
         [JsonProperty("protocolVersion")]
-        public string ProtocolVersion { get; set; } = "2024-11-05";
+        public string ProtocolVersion { get; set; } = "2025-11-25";
 
         [JsonProperty("capabilities")]
         public CapabilitiesObject Capabilities { get; set; } = new CapabilitiesObject();

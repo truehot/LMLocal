@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace LMLocal.Infrastructure.Api.Responses
+namespace LMLocal.Infrastructure.LlmApi.Responses
 {
     /// <summary>
     /// Root response object from Jan API for the /v1/models endpoint.

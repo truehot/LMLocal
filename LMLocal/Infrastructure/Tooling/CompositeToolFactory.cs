@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Mcp;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 
 namespace LMLocal.Infrastructure.Tooling
 {

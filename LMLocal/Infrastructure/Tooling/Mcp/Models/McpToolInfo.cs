@@ -1,5 +1,3 @@
-using LMLocal.Infrastructure.Mcp;
-
 namespace LMLocal.Infrastructure.Tooling.Mcp.Models
 {
     /// <summary>

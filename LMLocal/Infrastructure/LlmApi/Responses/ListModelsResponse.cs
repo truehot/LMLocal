@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace LMLocal.Infrastructure.Api.Responses
+namespace LMLocal.Infrastructure.LlmApi.Responses
 {
     /// <summary>
     /// OpenAI-compatible models list response format.

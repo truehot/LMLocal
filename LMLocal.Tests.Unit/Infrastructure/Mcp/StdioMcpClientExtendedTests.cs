@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
-using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Tooling.Mcp.Client;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Mcp

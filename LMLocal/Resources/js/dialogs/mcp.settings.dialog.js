@@ -10,7 +10,6 @@ export class McpSettingsDialog {
         this._checkboxHandler = null;
         this._textareaInputHandler = null;
         this._testBtnClickHandler = null;
-        this._testBtnTimeout = null;
     }
 
     _getElements() {
@@ -67,14 +66,10 @@ export class McpSettingsDialog {
         this.onSave.off();
         this.onTestConnection.off();
         this._detachEvents();
-        if (this._testBtnTimeout) {
-            clearTimeout(this._testBtnTimeout);
-            this._testBtnTimeout = null;
-        }
         this.el = {};
     }
 
-    _updateStatus(type, badgeText, logText = '', serversData = null) {
+    _updateStatus(type, badgeText, logText = '', serversData = null, configData = null) {
         const { statusContainer, statusBadge, statusMessage, capabilitiesContainer, confirmBtn, testBtn } = this.el;
 
         if (type === 'reset') {
@@ -86,7 +81,6 @@ export class McpSettingsDialog {
         statusContainer.style.display = 'block';
         statusBadge.className = `mcp-badge ${type}`;
         statusBadge.textContent = badgeText;
-
 
         capabilitiesContainer.innerHTML = '';
 
@@ -107,14 +101,37 @@ export class McpSettingsDialog {
                     const title = document.createElement('div');
                     title.className = 'server-name';
                     title.textContent = `● Server [${serverName}]:`;
+
+                    const serversConfig = configData?.mcpServers || configData?.servers;
+                    if (serversConfig?.[serverName]?.disabled) {
+                        title.textContent += ' (disabled)';
+                    }
+
                     block.appendChild(title);
 
+                    const serverPermissions = serversConfig?.[serverName]?.permissions || {};
+                    const disabledTools = new Set();
+                    Object.entries(serverPermissions).forEach(([toolName, permission]) => {
+                        if (permission === 'disable') {
+                            disabledTools.add(toolName);
+                        }
+                    });
 
                     if (info.tools && Array.isArray(info.tools)) {
                         info.tools.forEach(tool => {
                             const tag = document.createElement('span');
                             tag.className = 'capability-tag';
-                            tag.textContent = `🛠️ ${tool.name || tool}`;
+
+                            if (disabledTools.has(tool.name || tool)) {
+                                tag.classList.add('disabled');
+                                tag.textContent = `🛠️ `;
+                                const del = document.createElement('del');
+                                del.textContent = tool.name || tool;
+                                tag.appendChild(del);
+                            } else {
+                                tag.textContent = `🛠️ ${tool.name || tool}`;
+                            }
+
                             tag.title = tool.description || '';
                             block.appendChild(tag);
                         });
@@ -124,7 +141,6 @@ export class McpSettingsDialog {
                         info.resources.forEach(res => {
                             const tag = document.createElement('span');
                             tag.className = 'capability-tag';
-                            tag.style.color = '#e5c07b';
                             tag.textContent = `📁 ${res.name || res}`;
                             block.appendChild(tag);
                         });
@@ -235,7 +251,7 @@ export class McpSettingsDialog {
 
             testBtn.disabled = true;
             confirmBtn.disabled = true;
-            iconSlot.innerHTML = '<span class="btn-spinner"></span> Testing...';
+            iconSlot.innerHTML = '<span class="btn-spinner"></span> Discovering...';
 
             try {
                 const payload = {
@@ -248,17 +264,17 @@ export class McpSettingsDialog {
 
 
                 if (result && result.error) {
-                    this._updateStatus('error', '❌ Connection Failed', result.error);
+                    this._updateStatus('error', '❌ Connection Failed', result.error, null, serversConfig);
                     return;
                 }
 
                 if (!result || !Array.isArray(result.servers)) {
-                    this._updateStatus('error', '❌ Invalid Response', 'Server returned invalid response structure');
+                    this._updateStatus('error', '❌ Invalid Response', 'Server returned invalid response structure', null, serversConfig);
                     return;
                 }
 
                 if (result.servers.length === 0) {
-                    this._updateStatus('error', '❌ No servers tested', 'No servers were configured for testing');
+                    this._updateStatus('error', '❌ No servers tested', 'No servers were configured for discovery', null, serversConfig);
                     return;
                 }
 
@@ -270,7 +286,7 @@ export class McpSettingsDialog {
                         .filter(item => item.error)
                         .map(item => `${item.serverName}: ${item.error}`)
                         .join('\n');
-                    this._updateStatus('error', '❌ All servers failed', errorMsg);
+                    this._updateStatus('error', '❌ All servers failed', errorMsg, null, serversConfig);
                 } else if (hasErrors && hasSuccesses) {
                     // Mixed results - some success, some errors
                     const errorMsg = result.servers
@@ -285,7 +301,8 @@ export class McpSettingsDialog {
                         'warning',
                         '⚠️ Partially connected (some servers failed)',
                         errorMsg,
-                        successData
+                        successData,
+                        serversConfig
                     );
                 } else {
                     // All servers succeeded
@@ -297,12 +314,13 @@ export class McpSettingsDialog {
                         'success',
                         '✓ Connected successfully! Servers loaded:',
                         '',
-                        successData
+                        successData,
+                        serversConfig
                     );
                 }
             } catch (err) {
                 console.error('MCP test execution error', err);
-                this._updateStatus('error', '❌ Runtime Error', err.toString());
+                this._updateStatus('error', '❌ Runtime Error', err.toString(), null, serversConfig);
             } finally {
                 testBtn.disabled = false;
                 iconSlot.innerHTML = originalIconHtml;

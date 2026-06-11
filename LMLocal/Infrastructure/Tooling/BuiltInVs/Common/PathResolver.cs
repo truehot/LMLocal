@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {

@@ -1,5 +1,4 @@
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Infrastructure.LlmApi.Converter;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

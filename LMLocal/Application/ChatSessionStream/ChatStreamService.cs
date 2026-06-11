@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Settings;
 
 namespace LMLocal.Application.ChatSessionStream

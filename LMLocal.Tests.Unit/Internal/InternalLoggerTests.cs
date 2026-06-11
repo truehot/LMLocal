@@ -1,6 +1,6 @@
 using System;
 using System.Reflection;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using Moq;
 using NUnit.Framework;
 

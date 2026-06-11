@@ -1,5 +1,5 @@
 using System.Net.Http;
-using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Tests.Unit.Infrastructure;

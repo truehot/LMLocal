@@ -16,10 +16,12 @@ public class ProvidersTests : AppTestBase
         await Page.Locator("button[data-action='open-providers']").ClickAsync();
 
         var dialog = Page.Locator("#providers-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for list to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Verify header and content
-        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("Configure providers");
+        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("Configure Providers");
         await Expect(dialog.Locator("#provider-add-btn")).ToHaveCountAsync(1);
     }
 
@@ -36,7 +38,9 @@ public class ProvidersTests : AppTestBase
         await Page.Locator("button[data-action='open-providers']").ClickAsync();
 
         var dialog = Page.Locator("#providers-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for list to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Verify "Add Profile" button exists and is visible
         var addBtn = dialog.Locator("#provider-add-btn");
@@ -57,7 +61,9 @@ public class ProvidersTests : AppTestBase
         await Page.Locator("button[data-action='open-providers']").ClickAsync();
 
         var dialog = Page.Locator("#providers-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for list to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Verify cancel button
         var cancelBtn = dialog.Locator("#providers-modal-cancel");
@@ -83,7 +89,9 @@ public class ProvidersTests : AppTestBase
         await Page.Locator("button[data-action='open-providers']").ClickAsync();
 
         var dialog = Page.Locator("#providers-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for list to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Verify list view is visible
         var listView = dialog.Locator("#providers-list-view");
@@ -146,7 +154,9 @@ public class ProvidersTests : AppTestBase
         await Page.Locator("button[data-action='open-providers']").ClickAsync();
 
         var dialog = Page.Locator("#providers-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for list to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Click "Add Profile" button
         var addBtn = dialog.Locator("#provider-add-btn");

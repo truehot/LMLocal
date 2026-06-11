@@ -29,8 +29,7 @@ public class ClearChatTests : AppTestBase
         var messagesBefore = await Page.Locator("#chat-container > *").CountAsync();
         Assert.That(messagesBefore, Is.GreaterThan(0), "Should have messages before clearing");
 
-        await Page.Locator("#menu-btn").ClickAsync();
-        await Page.Locator("#dropdown-menu button[data-action=\"clear-chat\"]").ClickAsync();
+        await Page.Locator("#clear-chat-btn").ClickAsync();
 
         var confirmDialog = Page.Locator("#confirm-dialog");
         await Expect(confirmDialog).ToBeVisibleAsync(new() { Timeout = 3000 });
@@ -62,8 +61,7 @@ public class ClearChatTests : AppTestBase
         await Expect(Page.Locator(".ai-response-container")).ToBeVisibleAsync(new() { Timeout = 5000 });
         await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
 
-        await Page.Locator("#menu-btn").ClickAsync();
-        await Page.Locator("#dropdown-menu button[data-action=\"clear-chat\"]").ClickAsync();
+        await Page.Locator("#clear-chat-btn").ClickAsync();
 
         var confirmDialog = Page.Locator("#confirm-dialog");
         await Expect(confirmDialog).ToBeVisibleAsync(new() { Timeout = 3000 });

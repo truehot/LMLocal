@@ -3,12 +3,13 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp
 {
     /// <summary>
     /// Manager for MCP (Model Context Protocol) configurations stored in a local JSON file.

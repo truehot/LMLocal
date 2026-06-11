@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;

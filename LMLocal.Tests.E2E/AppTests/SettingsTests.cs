@@ -15,7 +15,9 @@ public class SettingsTests : AppTestBase
         await Page.Locator("button[data-action='open-settings']").ClickAsync();
 
         var dialog = Page.Locator("#settings-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for form to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#settings-dialog form')?.children.length > 0");
 
         await Expect(dialog.Locator("input[data-setting='LmStudioBaseUrl']")).ToHaveCountAsync(1);
         await Expect(dialog.Locator("input[data-setting='StreamInactivityTimeoutSeconds']")).ToHaveCountAsync(1);
@@ -37,7 +39,9 @@ public class SettingsTests : AppTestBase
         await Page.Locator("button[data-action='open-settings']").ClickAsync();
 
         var dialog = Page.Locator("#settings-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        // Wait for form to be populated
+        await Page.WaitForFunctionAsync("() => document.querySelector('#settings-dialog form')?.children.length > 0");
 
         await Page.Locator("#settings-dialog input[data-setting='LmStudioBaseUrl']").FillAsync("https://example.test");
         await Page.Locator("#settings-dialog input[data-setting='StreamInactivityTimeoutSeconds']").FillAsync("0");

@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace LMLocal.Common
+namespace LMLocal.Core.Common
 {
     internal static class MarkdownStripper
     {

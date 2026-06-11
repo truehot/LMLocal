@@ -133,13 +133,6 @@ class AppController {
 
         menuComponent.onClick.on(async (action) => {
             switch (action) {
-                case 'clear-chat':
-                    menuComponent.hideMenu();
-                    const confirmDialog = new ConfirmDialog();
-                    const isConfirmed = await confirmDialog.confirm(UIText.CONFIRM_CLEAR_CONVERSATION);
-                    if (!isConfirmed) return false;
-                    await appManager.performClearChat();
-                    return true;
                 case 'open-settings':
                     const settingsDialog = new SettingsDialog();
                     settingsDialog.onLoad.on(async () => {
@@ -234,6 +227,14 @@ class AppController {
 
                 await dialog.show();
             }
+        });
+
+        statusComponent.onClearChat.on(async () => {
+            const confirmDialog = new ConfirmDialog();
+            const isConfirmed = await confirmDialog.confirm(UIText.CONFIRM_CLEAR_CONVERSATION);
+            if (!isConfirmed) return false;
+            await appManager.performClearChat();
+            return true;
         });
 
         statusComponent.onRetry.on(async () => {

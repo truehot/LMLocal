@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using LMLocal.Common;
-using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Core.Common;
+using LMLocal.Infrastructure.LlmApi.Provider;
+using LMLocal.Infrastructure.LlmApi.Responses;
 using Newtonsoft.Json;
 
-namespace LMLocal.Infrastructure.Api
+namespace LMLocal.Infrastructure.LlmApi.Converter
 {
     /// <summary>
     /// Converts provider-specific API responses to unified model information format.

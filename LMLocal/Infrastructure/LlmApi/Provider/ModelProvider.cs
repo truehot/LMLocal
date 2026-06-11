@@ -1,4 +1,4 @@
-namespace LMLocal.Infrastructure.Api
+namespace LMLocal.Infrastructure.LlmApi.Provider
 {
     /// <summary>
     /// Enumeration of supported model providers/backends.

@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure;
+using LMLocal.Infrastructure.Persistence;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

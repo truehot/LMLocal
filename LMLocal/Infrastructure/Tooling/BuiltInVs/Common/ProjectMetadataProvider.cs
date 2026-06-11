@@ -3,7 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common

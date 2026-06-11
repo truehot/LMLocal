@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -45,6 +45,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private string _solutionDirectory;
         private IVsSolution _solution;
         private bool _initialized;
+        private readonly ISearchResultCache _searchCache;
+
+        public VsDependencies(ISearchResultCache searchCache)
+        {
+            _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+        }
 
         public string GetSolutionDirectory()
         {
@@ -153,6 +159,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     _solutionDirectory = solutionDirectory?.TrimEnd('\\');
                 }
             }
+
+            _searchCache.Clear();
             return VSConstants.S_OK;
         }
 
@@ -162,6 +170,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             _solution = null;
             _solutionDirectory = null;
+            _searchCache.Clear();
 
             return VSConstants.S_OK;
         }

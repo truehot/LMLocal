@@ -13,25 +13,13 @@ public class McpSettingsTests : AppTestBase
 
         // Open MCP settings dialog from menu
         await Page.Locator("#menu-btn").ClickAsync();
-
-        // Need to scroll or find the MCP settings option in dropdown
-        // For now, we'll directly open it via JavaScript if menu navigation doesn't work
-        var mcpButton = Page.Locator("button[data-action='open-mcp']");
-        if (await mcpButton.CountAsync() > 0)
-        {
-            await mcpButton.ClickAsync();
-        }
-        else
-        {
-            // Fallback: Open directly via JavaScript
-            await Page.EvaluateAsync("() => { const dialog = document.getElementById('mcp-settings-dialog'); if (dialog) dialog.showModal(); }");
-        }
+        await Page.Locator("button[data-action='mcp-settings']").ClickAsync();
 
         var dialog = Page.Locator("#mcp-settings-dialog");
-        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
 
         // Verify header exists
-        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("MCP Servers Configuration");
+        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("MCP Extensions");
     }
 
     [Test]

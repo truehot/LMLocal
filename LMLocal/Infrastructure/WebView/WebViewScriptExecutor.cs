@@ -1,4 +1,4 @@
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.Threading.Tasks;

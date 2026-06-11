@@ -5,7 +5,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp.Abstractions
 {
     /// <summary>
     /// Manages MCP (Model Context Protocol) server connections and tool discovery.

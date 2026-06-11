@@ -24,10 +24,20 @@
         <div class="model-info" id="model-info">
             <span id="model-name">Select model...</span>
         </div>
+        <div class="clear_chat_container">
+            <button class="btn-clear-icon btn-opacity" title="Clear chat..." id="clear-chat-btn">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 4h6" />
+                    <path d="M2 8h5" />
+                    <path d="M2 12h8" />
+                    <path d="M11 4l3 3M14 4l-3 3" />
+                </svg>
+            </button>
+        </div>
         <div class="menu-container">
             <button id="menu-btn" class="btn-clear-icon" title="Menu">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M1 3h14v2H1V3zm0 4h14v2H1V7zm0 4h14v2H1v-2z" />
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 8h0M8 8h0M12 8h0" />
                 </svg>
             </button>
 
@@ -49,7 +59,7 @@
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
                         <path d="M13 8.5a2.5 2.5 0 0 1-2.4 2h-5.2A2.5 2.5 0 0 1 3 8.5c0-1.2.9-2.2 2.1-2.4a3.5 3.5 0 0 1 6.8 0c1.2.2 2.1 1.2 2.1 2.4z" />
                     </svg>
-                    Configure providers...
+                    Configure Providers...
                 </button>
                 <button data-action="mcp-settings">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
@@ -57,14 +67,7 @@
                         <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 10.5v-5zM4.5 5a.5.5 0 0 0-.5.5v5a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-5a.5.5 0 0 0-.5-.5h7z" />
                         <path d="M5 2a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1.5H7V2zm3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1.5H10V2zm-2.5 11a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5z" />
                     </svg>
-                    Configure MCP...
-                </button>
-                <button data-action="clear-chat">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
-                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z" />
-                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4L4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z" />
-                    </svg>
-                    Clear chat...
+                    MCP Extensions...
                 </button>
             </div>
         </div>
@@ -112,11 +115,11 @@
     </dialog>
 
     <dialog id="settings-dialog">
-        <div class="modal-header">Extension settings</div>
+        <div class="modal-header">Settings</div>
         <div class="modal-body">
             <form id="settings-form">
                 <div class="settings-group">
-                    <label for="Provider" class="settings-label">AI Provider</label>
+                    <label for="Provider" class="settings-label">AI provider</label>
                     <span class="settings-description">
                         Select type of LLM server you want to use.
                     </span>
@@ -254,14 +257,14 @@
     </dialog>
 
     <dialog id="instructions-dialog">
-        <div class="modal-header">AI instructions & modes</div>
+        <div class="modal-header">AI Instructions</div>
         <div class="modal-container">
             <aside class="settings-sidebar"></aside>
             <div class="modal-body"></div>
         </div>
 
         <div class="modal-footer">
-            <button id="dialog-cancel" сlass="btn-secondary">Cancel</button>
+            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
             <button id="dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
@@ -306,16 +309,16 @@
     </dialog>
 
     <dialog id="mcp-settings-dialog">
-        <div class="modal-header">MCP Servers Configuration</div>
+        <div class="modal-header">MCP Extensions</div>
         <div class="modal-body">
             <form id="mcp-settings-form">
                 <div class="settings-group checkbox-group">
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableMcp" id="mcp-dialog-enable-checkbox">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable Model Context Protocol (MCP)</span>
+                            <span class="checkbox-title">Enable model context protocol (MCP)</span>
                             <span class="checkbox-description">
-                                Allow the AI to interact with local/remote external tools and data sources.
+                                Allow the AI to interact with local/remote external tools.
                             </span>
                         </span>
                     </label>
@@ -327,7 +330,7 @@
                             <label for="McpServersJson" class="settings-label" style="margin-bottom: 0;">Configuration (JSON)</label>
                         </div>
                         <span class="settings-description">
-                            Configure MCP Servers (Streamable HTTP only. stdio and legacy sse transports are not supported).
+                            Configure MCP servers (legacy sse transports are not supported).
                         </span>
 
                         <textarea name="McpServersJson"
@@ -346,7 +349,7 @@
                                     <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
                                     </svg>
-                                    Test Config
+                                    Discover Tools
                                 </span>
                             </button>
                         </div>
@@ -371,7 +374,7 @@
 
     <dialog id="providers-dialog">
         <div class="modal-header">
-            <span id="providers-modal-title">Configure providers</span>
+            <span id="providers-modal-title">Configure Providers</span>
         </div>
         <div class="modal-body">
             <div id="providers-list-view">

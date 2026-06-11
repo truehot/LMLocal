@@ -3,8 +3,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure;
 using LMLocal.Infrastructure.Instructions;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 using NUnit.Framework;
 

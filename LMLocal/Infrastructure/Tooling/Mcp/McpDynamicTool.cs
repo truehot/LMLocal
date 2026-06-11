@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.Abstractions;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp
 {
     /// <summary>
     /// Dynamic wrapper for MCP server tools that implements IVsTool interface.

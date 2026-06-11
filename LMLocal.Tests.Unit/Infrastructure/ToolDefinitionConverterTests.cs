@@ -1,6 +1,5 @@
 using System.Collections.Generic;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Requests;
+using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.Tooling;
 using NUnit.Framework;
 

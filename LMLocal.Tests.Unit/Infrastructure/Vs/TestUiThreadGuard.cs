@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Vs

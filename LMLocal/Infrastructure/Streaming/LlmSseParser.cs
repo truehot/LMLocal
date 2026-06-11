@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using System.Text;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using Newtonsoft.Json.Linq;
 
@@ -151,8 +151,7 @@ namespace LMLocal.Infrastructure.Streaming
             {
                 foreach (var toolCallToken in toolCallsArray)
                 {
-                    var toolCall = toolCallToken as JObject;
-                    if (toolCall == null) continue;
+                    if (!(toolCallToken is JObject toolCall)) continue;
 
                     var index = toolCall["index"]?.Value<int?>();
                     var callId = toolCall["id"]?.ToString();

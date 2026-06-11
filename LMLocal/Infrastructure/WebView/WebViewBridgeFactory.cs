@@ -4,10 +4,11 @@ using LMLocal.Application.ChatSession;
 using LMLocal.Application.ModelsList;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Instructions;
-using LMLocal.Infrastructure.Mcp;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.Mcp;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 
 namespace LMLocal.Infrastructure.WebView
 {

@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 
 namespace LMLocal.Infrastructure.Streaming
 {

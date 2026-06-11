@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using Newtonsoft.Json;
 
 namespace LMLocal.Core.Models
@@ -125,6 +125,22 @@ namespace LMLocal.Core.Models
                 return hash;
             }
         }
+
+        private static bool DictionaryEquals<TKey, TValue>(Dictionary<TKey, TValue> a, Dictionary<TKey, TValue> b)
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            if (a.Count != b.Count) return false;
+
+            foreach (var kvp in a)
+            {
+                if (!b.TryGetValue(kvp.Key, out var bValue))
+                    return false;
+                if (!kvp.Value.Equals(bValue))
+                    return false;
+            }
+            return true;
+        }
     }
 
     /// <summary>
@@ -181,6 +197,19 @@ namespace LMLocal.Core.Models
         public string Token { get; set; }
 
         /// <summary>
+        /// Whether this server is disabled. Disabled servers won't be initialized and their tools won't be available.
+        /// </summary>
+        [JsonProperty("disabled")]
+        public bool Disabled { get; set; } = false;
+
+        /// <summary>
+        /// Optional tool permissions for this server. Key is tool name, value is permission (e.g. "disable").
+        /// Disabled tools won't be available to the AI model.
+        /// </summary>
+        [JsonProperty("permissions", NullValueHandling = NullValueHandling.Ignore)]
+        public Dictionary<string, string> Permissions { get; set; } = new Dictionary<string, string>();
+
+        /// <summary>
         /// Resolves the transport type based on configuration.
         /// </summary>
         public string ResolveTransportType()
@@ -233,9 +262,11 @@ namespace LMLocal.Core.Models
                 && string.Equals(Url, other.Url, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(Auth, other.Auth, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(Token, other.Token, StringComparison.Ordinal)
+                && Disabled == other.Disabled
                 && DictionaryEquals(Args, other.Args)
                 && DictionaryEquals(Env, other.Env)
-                && DictionaryEquals(Headers, other.Headers);
+                && DictionaryEquals(Headers, other.Headers)
+                && DictionaryEquals(Permissions, other.Permissions);
         }
 
         public override bool Equals(object obj) => Equals(obj as McpServerConfig);
@@ -250,6 +281,15 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + (Url != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Url) : 0);
                 hash = hash * 23 + (Auth != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Auth) : 0);
                 hash = hash * 23 + (Token != null ? Token.GetHashCode() : 0);
+                hash = hash * 23 + Disabled.GetHashCode();
+                if (Permissions != null)
+                {
+                    foreach (var kvp in Permissions)
+                    {
+                        hash = hash * 23 + kvp.Key.GetHashCode();
+                        hash = hash * 23 + kvp.Value.GetHashCode();
+                    }
+                }
                 return hash;
             }
         }

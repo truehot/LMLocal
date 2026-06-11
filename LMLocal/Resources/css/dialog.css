@@ -1056,6 +1056,18 @@
         border: 1px solid rgba(255, 255, 255, 0.03);
     }
 
+        #mcp-settings-dialog .capability-tag.disabled {
+            opacity: 0.45;
+            background-color: transparent;
+            border-style: dashed;
+            border-color: var(--border-color);
+            color: var(--muted-color);
+        }
+
+            #mcp-settings-dialog .capability-tag.disabled del {
+                text-decoration-color: var(--danger-color, #c75050);
+            }
+
         #mcp-settings-dialog .capability-tag.resource {
             color: var(--link-color);
         }

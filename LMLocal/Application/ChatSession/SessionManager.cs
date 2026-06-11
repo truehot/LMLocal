@@ -1,8 +1,9 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.WebView;
 
 namespace LMLocal.Application.ChatSession
@@ -36,14 +37,16 @@ namespace LMLocal.Application.ChatSession
     internal class SessionManager : ISessionManager
     {
         private readonly IChatSessionOrchestrator _orchestrator;
+        private readonly ISearchResultCache _searchCache;
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
         private volatile bool _isSessionRunning = false;
 
         public bool IsSessionRunning => _isSessionRunning;
 
-        public SessionManager(IChatSessionOrchestrator orchestrator)
+        public SessionManager(IChatSessionOrchestrator orchestrator, ISearchResultCache searchCache)
         {
             _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
+            _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
         }
 
         public async Task<bool> TryStartSessionAsync(
@@ -65,6 +68,7 @@ namespace LMLocal.Application.ChatSession
                     return false;
                 }
 
+                _searchCache.Clear();
                 _isSessionRunning = true;
                 InternalLogger.Info("SessionManager: Starting new session");
 

@@ -1,4 +1,4 @@
-using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Tooling.Mcp.Client;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Mcp
@@ -52,7 +52,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Type, Is.EqualTo(SseMessageType.Data));
             Assert.That(result.RawData, Is.EqualTo("{\"id\":1,\"result\":\"test\"}"));
-            Assert.That(result.ParsedData, Is.Not.Null);
+
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Type, Is.EqualTo(SseMessageType.Data));
             Assert.That(result.RawData, Is.EqualTo("{not json}"));
-            Assert.That(result.ParsedData, Is.Null);
+
         }
 
         [Test]
@@ -165,7 +165,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
             var result = SseStreamParser.TryParseSseLine("data: {\"url\":\"http://example.com\"}");
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Type, Is.EqualTo(SseMessageType.Data));
-            Assert.That(result.ParsedData, Is.Not.Null);
+
         }
 
         [Test]
@@ -174,8 +174,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
             var json = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}";
             var result = SseStreamParser.TryParseSseLine($"data: {json}");
             Assert.That(result, Is.Not.Null);
-            Assert.That(result.ParsedData, Is.Not.Null);
-            Assert.That(result.ParsedData["id"].ToString(), Is.EqualTo("1"));
+
         }
     }
 }

@@ -1,4 +1,4 @@
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit

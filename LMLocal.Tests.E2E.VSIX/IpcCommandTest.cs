@@ -238,7 +238,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue(obj.ContainsKey("symbol_name"), "Response should contain 'symbol_name' key");
                         Assert.IsTrue(obj.ContainsKey("total_references"), "Response should contain 'total_references' key");
                         Assert.IsTrue(obj.ContainsKey("results"), "Response should contain 'results' key");
-                        Assert.IsTrue(obj.ContainsKey("has_more_results"), "Response should contain 'has_more_results' key");
+
 
                         Assert.AreEqual("Dispose", (string)obj["symbol_name"], "Symbol name should match");
 

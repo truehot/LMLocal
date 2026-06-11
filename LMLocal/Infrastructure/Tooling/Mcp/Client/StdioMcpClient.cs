@@ -5,12 +5,15 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
 using Newtonsoft.Json;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp.Client
 {
+    /// <summary>
+    /// MCP client implementation that communicates with a server process via standard input/output (stdio).
+    /// </summary>
     public class StdioMcpClient : McpClientBase
     {
         private readonly string _command;
@@ -84,23 +87,6 @@ namespace LMLocal.Infrastructure.Mcp
 
             try
             {
-                try
-                {
-                    var shutdownRequest = new JsonRpcRequest
-                    {
-                        Id = GetNextRequestId(),
-                        Method = "shutdown"
-                    };
-
-                    var shutdownJson = shutdownRequest.ToJson();
-                    await SendJsonAsync(shutdownJson, CancellationToken.None).ConfigureAwait(false);
-                    await Task.Delay(100, CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Debug($"[StdioMcpClient] Error during graceful shutdown: {ex.Message}");
-                }
-
                 _internalCancellationTokenSource?.Cancel();
 
                 if (_readingTask != null || _stderrTask != null)
@@ -156,7 +142,7 @@ namespace LMLocal.Infrastructure.Mcp
                     using (cts.Token.Register(() => tcs.TrySetCanceled(cts.Token)))
                     {
                         var response = await tcs.Task.ConfigureAwait(false);
-                        return response.Result?.ToJson() ?? throw new InvalidOperationException("Empty response from server");
+                        return response?.ToJson() ?? throw new InvalidOperationException("Empty response from server");
                     }
                 }
             }
@@ -261,7 +247,14 @@ namespace LMLocal.Infrastructure.Mcp
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var line = await _stdoutReader.ReadLineAsync().ConfigureAwait(false);
+                    var reader = _stdoutReader;
+                    if (reader == null)
+                    {
+                        InternalLogger.Debug("[StdioMcpClient] stdout reader became null, exiting");
+                        break;
+                    }
+
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
                     if (line == null)
                     {
                         InternalLogger.Debug("[StdioMcpClient] stdout closed by server");
@@ -301,11 +294,18 @@ namespace LMLocal.Infrastructure.Mcp
 
         private async Task ReadStderrAsync(CancellationToken cancellationToken)
         {
+            var reader = _stderrReader;
+            if (reader == null)
+            {
+                InternalLogger.Debug("[StdioMcpClient] stderr reader is null");
+                return;
+            }
+
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var line = await _stderrReader.ReadLineAsync().ConfigureAwait(false);
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
                     if (line == null) break;
 
                     if (!string.IsNullOrWhiteSpace(line))
@@ -314,7 +314,10 @@ namespace LMLocal.Infrastructure.Mcp
                     }
                 }
             }
-            catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { }
+            catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
+            {
+                InternalLogger.Info($"[StdioMcpClient] Shutdown");
+            }
             catch (Exception ex)
             {
                 InternalLogger.Debug($"[StdioMcpClient] Error reading from stderr: {ex.Message}");
@@ -326,7 +329,7 @@ namespace LMLocal.Infrastructure.Mcp
             if (response?.Id == null)
                 return;
 
-            long requestId = Convert.ToInt64(response.Id);
+            long requestId = response.Id is long id ? id : Convert.ToInt64(response.Id);
 
             lock (_pendingRequestsLock)
             {
@@ -428,12 +431,10 @@ namespace LMLocal.Infrastructure.Mcp
         {
             if (string.IsNullOrEmpty(arg))
                 return "\"\"";
-
             if (arg.Contains(" ") || arg.Contains("\"") || arg.Contains("\\"))
             {
                 return "\"" + arg.Replace("\"", "\\\"") + "\"";
             }
-
             return arg;
         }
     }

@@ -3,11 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
-using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp.Client
 {
     /// <summary>
     /// Base class for MCP client implementations.
@@ -15,13 +16,6 @@ namespace LMLocal.Infrastructure.Mcp
     public abstract class McpClientBase : IMcpClient
     {
         private long _requestId = 0;
-        private readonly object _requestIdLock = new object();
-
-        protected virtual async Task SendRequestAsync(JsonRpcRequest request, CancellationToken cancellationToken)
-        {
-            var json = JsonConvert.SerializeObject(request);
-            await SendJsonAsync(json, cancellationToken).ConfigureAwait(false);
-        }
 
         protected virtual async Task<JsonRpcResponse> SendRequestAndWaitResponseAsync(
             JsonRpcRequest request,
@@ -29,7 +23,6 @@ namespace LMLocal.Infrastructure.Mcp
         {
             var json = request.ToJson();
             var responseJson = await SendJsonAndWaitResponseAsync(json, cancellationToken).ConfigureAwait(false);
-
             if (string.IsNullOrEmpty(responseJson))
                 throw new InvalidOperationException("Empty response from MCP server");
 
@@ -39,24 +32,14 @@ namespace LMLocal.Infrastructure.Mcp
                 var errorMsg = response.Error?.Message ?? "Unknown error";
                 throw new InvalidOperationException($"MCP error: {errorMsg}");
             }
-
             return response;
         }
 
-        protected long GetNextRequestId()
-        {
-            lock (_requestIdLock)
-            {
-                return ++_requestId;
-            }
-        }
+        protected long GetNextRequestId() => Interlocked.Increment(ref _requestId);
 
         protected abstract Task<string> SendJsonAndWaitResponseAsync(string json, CancellationToken cancellationToken);
-
         protected abstract Task SendJsonAsync(string json, CancellationToken cancellationToken);
-
         public abstract Task InitializeAsync(CancellationToken cancellationToken);
-
         public abstract Task CloseAsync(CancellationToken cancellationToken);
 
         public async Task<IReadOnlyList<McpToolDefinition>> ListToolsAsync(CancellationToken cancellationToken)
@@ -70,19 +53,21 @@ namespace LMLocal.Infrastructure.Mcp
 
             var response = await SendRequestAndWaitResponseAsync(request, cancellationToken).ConfigureAwait(false);
 
-            var resultJson = response.Result.ToJson();
-            var toolsList = resultJson.FromJson<ToolsListResponse>();
+            var toolsList = (response.Result as JObject)?.ToObject<ToolsListResponse>();
+            var rawTools = toolsList?.Tools ?? Array.Empty<ToolInfo>();
 
-            var definitions = (toolsList?.Tools ?? Array.Empty<ToolInfo>())
-                .Select(t => new McpToolDefinition
+            var definitions = new McpToolDefinition[rawTools.Length];
+            for (int i = 0; i < rawTools.Length; i++)
+            {
+                var t = rawTools[i];
+                definitions[i] = new McpToolDefinition
                 {
                     Name = t.Name,
                     Description = t.Description,
                     InputSchema = t.InputSchema
-                })
-                .ToList();
-
-            return definitions.AsReadOnly();
+                };
+            }
+            return definitions;
         }
 
         public async Task<object> CallToolAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken)
@@ -103,16 +88,18 @@ namespace LMLocal.Infrastructure.Mcp
 
             var response = await SendRequestAndWaitResponseAsync(request, cancellationToken).ConfigureAwait(false);
 
-            var resultJson = response.Result.ToJson();
-            var toolResponse = resultJson.FromJson<ToolCallResponse>();
+            if (response.Result == null)
+                throw new InvalidOperationException("Server returned empty result for tool call.");
 
-            var textContent = toolResponse?.Content
-                ?.FirstOrDefault(c => c.Type == "text")
-                ?.Text;
+            var toolResponse = (response.Result as JObject)?.ToObject<ToolCallResponse>();
+
+            var textContent = toolResponse?.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
 
             if (toolResponse?.IsError == true)
             {
-                var errorMessage = !string.IsNullOrEmpty(textContent) ? $"Tool execution failed: {textContent}" : "Tool execution failed.";
+                var errorMessage = !string.IsNullOrEmpty(textContent)
+                    ? $"Tool execution failed: {textContent}"
+                    : "Tool execution failed.";
                 throw new InvalidOperationException(errorMessage);
             }
 

@@ -17,6 +17,7 @@ class StatusComponent {
         this.connectTimeout = null;
         this.onRetry = createCallback();
         this.onConnect = createCallback();
+        this.onClearChat = createCallback();
     }
 
     _getElements() {
@@ -28,7 +29,8 @@ class StatusComponent {
             statusBar: document.getElementById('status-bar'),
             liveTokenCount: document.getElementById('live-token-count'),
             tokenCountText: document.getElementById('token-number'),
-            tokensSpeed: document.getElementById('tokens-speed')
+            tokensSpeed: document.getElementById('tokens-speed'),
+            clearChatBtn: document.getElementById('clear-chat-btn')
         };
     }
 
@@ -189,12 +191,19 @@ class StatusComponent {
         await this.onConnect.emit();
     };
 
+    _onClearChatClick = async () => {
+        await this.onClearChat.emit();
+    }
+
     _attachEvents() {
         if (this.elements.retryBtn) {
             this.elements.retryBtn.addEventListener('click', this._onRetryClick);
         }
         if (this.elements.connectBtn) {
             this.elements.connectBtn.addEventListener('click', this._onConnectClick);
+        }
+        if (this.elements.clearChatBtn) {
+            this.elements.clearChatBtn.addEventListener('click', this._onClearChatClick);
         }
     }
 
@@ -204,6 +213,9 @@ class StatusComponent {
         }
         if (this.elements.connectBtn) {
             this.elements.connectBtn.removeEventListener('click', this._onConnectClick);
+        }
+        if (this.elements.clearChatBtn) {
+            this.elements.clearChatBtn.removeEventListener('click', this._onClearChatClick);
         }
     }
 
@@ -234,8 +246,8 @@ class StatusComponent {
         this._updateGeneratingAnimation(appState, prevAppState);
     }
 
-    updateSettingsState(settingsState, prevSetttingsState) {
-        if (settingsState.Provider && settingsState.Provider !== prevSetttingsState?.Provider) {
+    updateSettingsState(settingsState, prevSettingsState) {
+        if (settingsState.Provider && settingsState.Provider !== prevSettingsState?.Provider && this.elements.connStatus) {
             this.elements.connStatus.title = `Provider type: ${settingsState.Provider}\nBase url: ${settingsState.LmStudioBaseUrl}`;
         }
     }

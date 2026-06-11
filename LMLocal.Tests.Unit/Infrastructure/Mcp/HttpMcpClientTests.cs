@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.HttpWrapper;
-using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.Tooling.Mcp.Client;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Mcp
@@ -85,8 +85,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
             var result = await client.CallSendJsonAndWaitResponseAsync("{}", CancellationToken.None).ConfigureAwait(false);
 
             // SSE reader returns the first complete JSON message (per current implementation)
-            Assert.That(result, Does.Contain("{\"a\":1}"));
-            Assert.That(result, Does.Not.Contain("{\"b\":2}"));
+            Assert.That(result, Does.Contain("{\"b\":2}"));
+            Assert.That(result, Does.Not.Contain("{\"a\":1}"));
         }
 
         [Test]

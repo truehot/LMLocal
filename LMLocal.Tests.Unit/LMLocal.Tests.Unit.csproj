@@ -81,6 +81,7 @@
     <Compile Include="Infrastructure\InstructionsManagerTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientTests.cs" />
     <Compile Include="Infrastructure\Mcp\HttpMcpClientTests.cs" />
+    <Compile Include="Infrastructure\Mcp\McpToolManagerTests.cs" />
     <Compile Include="Infrastructure\Mcp\SseStreamParserTests.cs" />
     <Compile Include="Infrastructure\Mcp\StdioMcpClientExtendedTests.cs" />
     <Compile Include="Infrastructure\Mcp\StdioMcpClientTests.cs" />

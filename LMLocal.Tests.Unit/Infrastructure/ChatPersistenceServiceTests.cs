@@ -2,7 +2,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 using Moq;

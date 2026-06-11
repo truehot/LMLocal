@@ -4,17 +4,19 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api.Requests;
-using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
+using LMLocal.Infrastructure.LlmApi.Converter;
+using LMLocal.Infrastructure.LlmApi.Requests;
+using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Infrastructure.Api
+namespace LMLocal.Infrastructure.LlmApi
 {
     /// <summary>
     /// Client for communicating with the LM backend API.
@@ -117,7 +119,7 @@ namespace LMLocal.Infrastructure.Api
             ModelContext modelContext,
             CancellationToken cancellationToken)
         {
-            var openAiRequest = BuildRequest(messageContext, modelContext, stream: true, store: false);
+            var openAiRequest = BuildRequest(messageContext, modelContext, stream: true);
 
             var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json");
             HttpRequestMessage request = null;
@@ -166,7 +168,7 @@ namespace LMLocal.Infrastructure.Api
             ModelContext modelContext,
             CancellationToken cancellationToken)
         {
-            var openAiRequest = BuildRequest(messageContext, modelContext, stream: false, store: false, useTools: false);
+            var openAiRequest = BuildRequest(messageContext, modelContext, stream: false, useTools: false);
 
             using (var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json"))
             using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content })
@@ -201,7 +203,7 @@ namespace LMLocal.Infrastructure.Api
         private SendChatRequest BuildRequest(
             MessageContext messageContext,
             ModelContext modelContext,
-            bool stream, bool store, bool useTools = true)
+            bool stream, bool useTools = true)
         {
             var messages = new List<Message>();
 

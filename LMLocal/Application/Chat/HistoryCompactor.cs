@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Settings;
 
 

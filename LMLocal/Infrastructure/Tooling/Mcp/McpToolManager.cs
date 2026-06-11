@@ -1,19 +1,21 @@
+using LMLocal.Core.Common;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.HttpWrapper;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
+using LMLocal.Infrastructure.Tooling.Mcp.Client;
+using LMLocal.Infrastructure.Tooling.Mcp.Models;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
-using LMLocal.Core.Models;
-using LMLocal.Infrastructure.HttpWrapper;
-using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
-using LMLocal.Infrastructure.Tooling.Mcp.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp
 {
     /// <summary>
     /// Manages MCP server connections and caches available tools.
@@ -91,6 +93,7 @@ namespace LMLocal.Infrastructure.Mcp
                 if (serversConfig?.Servers != null && serversConfig.Servers.Count > 0)
                 {
                     var connectTasks = serversConfig.Servers
+                        .Where(serverEntry => !serverEntry.Value.Disabled)
                         .Select(serverEntry => ConnectAndCacheToolsAsync(serverEntry.Key, serverEntry.Value, cancellationToken))
                         .ToList();
 
@@ -233,8 +236,16 @@ namespace LMLocal.Infrastructure.Mcp
                 _activeClients[serverName] = client;
                 int toolCount = 0;
 
+                var serverPermissions = serverConfig.Permissions ?? new Dictionary<string, string>();
+
                 foreach (var tool in tools)
                 {
+                    if (serverPermissions.TryGetValue(tool.Name, out var permission) && permission == "disable")
+                    {
+                        InternalLogger.Debug($"Tool '{tool.Name}' is disabled by server permissions, skipping");
+                        continue;
+                    }
+
                     var definition = new ToolDefinition
                     {
                         Name = tool.Name,

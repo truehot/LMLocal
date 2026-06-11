@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-namespace LMLocal.Common
+namespace LMLocal.Core.Common
 {
     /// <summary>
     /// Lightweight internal logger. Calls are conditional on DEBUG so they are omitted in Release builds.

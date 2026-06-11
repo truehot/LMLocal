@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Net.Http;
 
-namespace LMLocal.Infrastructure.Api.Responses
+namespace LMLocal.Infrastructure.LlmApi.Responses
 {
     /// <summary>
     /// Owns the HTTP response and its stream for a streaming chat request.

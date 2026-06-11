@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
-using LMLocal.Infrastructure.Api.Requests;
+using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Tooling;
 
-namespace LMLocal.Infrastructure.Api
+namespace LMLocal.Infrastructure.LlmApi.Converter
 {
     /// <summary>
     /// Converts tool definitions from internal MCP format to OpenAI Chat Completions API format.

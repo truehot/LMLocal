@@ -6,9 +6,10 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Responses;
 using LMLocal.Infrastructure.HttpWrapper;
+using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Converter;
+using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -79,7 +80,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
+            var adapter = new LMLocal.Infrastructure.LlmApi.OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");

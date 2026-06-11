@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;

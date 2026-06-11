@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp.Abstractions
 {
     /// <summary>
     /// Base interface for MCP (Model Context Protocol) client implementations.

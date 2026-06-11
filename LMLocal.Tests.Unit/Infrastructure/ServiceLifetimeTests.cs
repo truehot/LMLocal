@@ -1,9 +1,8 @@
 using System;
 using System.Net.Http;
 using LMLocal.Application.Chat;
-using LMLocal.Infrastructure;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;

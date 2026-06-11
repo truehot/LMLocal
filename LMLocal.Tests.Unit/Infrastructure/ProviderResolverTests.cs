@@ -1,5 +1,6 @@
 using System;
 using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure

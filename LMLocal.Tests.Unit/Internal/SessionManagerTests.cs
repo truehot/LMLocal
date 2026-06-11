@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.ChatSession;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.WebView;
 using Moq;
 using NUnit.Framework;
@@ -16,13 +17,14 @@ namespace LMLocal.Tests.Unit.Internal
         public async Task TryStartSessionAsync_ConcurrentStart_ReturnsFalseForSecondCaller()
         {
             var orchestratorMock = new Mock<IChatSessionOrchestrator>();
+            var cacheMock = new Mock<ISearchResultCache>();
 
             var tcs = new TaskCompletionSource<object>();
             // First call to GenerateWithToolsAsync will not complete until we set the TCS
             orchestratorMock.Setup(o => o.RunSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<System.Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
                 .Returns(() => tcs.Task);
 
-            var manager = new SessionManager(orchestratorMock.Object);
+            var manager = new SessionManager(orchestratorMock.Object, cacheMock.Object);
 
             var ctx = new GenerateStreamContext { Prompt = "p", ModelId = "m" };
 
@@ -40,6 +42,9 @@ namespace LMLocal.Tests.Unit.Internal
             // Complete the first orchestrator task so that it can finish
             tcs.SetResult(null);
             await first.ConfigureAwait(false);
+
+            // Verify that Clear was called on the cache
+            cacheMock.Verify(c => c.Clear(), Times.AtLeastOnce);
         }
     }
 }

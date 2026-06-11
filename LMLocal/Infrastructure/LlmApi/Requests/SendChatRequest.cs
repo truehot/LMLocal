@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
-namespace LMLocal.Infrastructure.Api.Requests
+namespace LMLocal.Infrastructure.LlmApi.Requests
 {
     internal class SendChatRequest
     {

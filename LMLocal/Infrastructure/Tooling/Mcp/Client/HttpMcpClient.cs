@@ -6,17 +6,16 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Infrastructure.Mcp
+namespace LMLocal.Infrastructure.Tooling.Mcp.Client
 {
     /// <summary>
     /// MCP client implementation using HTTP transport with Streamable HTTP support.
-    /// Caller must explicitly call CloseAsync() to properly clean up server-side resources.
     /// </summary>
     public class HttpMcpClient : McpClientBase
     {
@@ -27,6 +26,7 @@ namespace LMLocal.Infrastructure.Mcp
         private readonly TimeSpan _requestTimeout;
         private string _sessionId;
         private bool _closed = false;
+        private readonly object _sessionLock = new object();
 
         public HttpMcpClient(
             string baseUrl,
@@ -75,27 +75,18 @@ namespace LMLocal.Infrastructure.Mcp
 
             try
             {
-                var shutdownRequest = new JsonRpcRequest
+                string sessionIdToDelete;
+                lock (_sessionLock)
                 {
-                    Id = GetNextRequestId(),
-                    Method = "shutdown"
-                };
-
-                try
-                {
-                    await SendJsonAsync(shutdownRequest.ToJson(), cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"Error sending shutdown request: {ex.Message}");
+                    sessionIdToDelete = _sessionId;
+                    _sessionId = null;
                 }
 
-                if (!string.IsNullOrEmpty(_sessionId))
+                if (!string.IsNullOrEmpty(sessionIdToDelete))
                 {
                     try
                     {
-                        await DeleteSessionAsync(cancellationToken).ConfigureAwait(false);
+                        await DeleteSessionAsync(sessionIdToDelete, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -105,11 +96,6 @@ namespace LMLocal.Infrastructure.Mcp
             }
             finally
             {
-                if (!string.IsNullOrEmpty(_sessionId))
-                {
-                    InternalLogger.Debug($"Closing MCP session: {_sessionId}");
-                    _sessionId = null;
-                }
                 _closed = true;
             }
         }
@@ -119,28 +105,7 @@ namespace LMLocal.Infrastructure.Mcp
             if (_httpClientWrapper == null)
                 throw new InvalidOperationException("HTTP client wrapper not initialized");
 
-            var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            request.Headers.Add("Accept", "application/json, text/event-stream");
-
-            if (!string.IsNullOrEmpty(_sessionId))
-            {
-                request.Headers.Add("Mcp-Session-Id", _sessionId);
-            }
-
-            if (!string.IsNullOrEmpty(_authToken))
-            {
-                request.Headers.Add("Authorization", $"Bearer {_authToken}");
-            }
-
-            foreach (var header in _headers)
-            {
-                request.Headers.Add(header.Key, header.Value);
-            }
-
+            using (var request = CreateRequest(json))
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 cts.CancelAfter(_requestTimeout);
@@ -158,50 +123,80 @@ namespace LMLocal.Infrastructure.Mcp
                     }
 
                     var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-
                     if (contentType.Equals("text/event-stream", StringComparison.OrdinalIgnoreCase))
-                    {
                         return await ReadSseResponseAsync(response, cts.Token).ConfigureAwait(false);
-                    }
                     else
+                        return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
+            }
+        }
+
+        protected override async Task SendJsonAsync(string json, CancellationToken cancellationToken)
+        {
+            if (_httpClientWrapper == null)
+                throw new InvalidOperationException("HTTP client wrapper not initialized");
+
+            using (var request = CreateRequest(json))
+            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                cts.CancelAfter(_requestTimeout);
+
+                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token).ConfigureAwait(false))
+                {
+                    ExtractSessionIdFromResponse(response);
+                    if (!response.IsSuccessStatusCode)
                     {
-                        var responseJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        return responseJson;
+                        var errorMessage = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
+                        throw new InvalidOperationException(
+                            $"HTTP request failed ({(int)response.StatusCode} {response.StatusCode}): {errorMessage}");
                     }
                 }
             }
         }
 
-        /// <summary>
-        /// Extracts error details from HTTP error response.
-        /// </summary>
+        private HttpRequestMessage CreateRequest(string json)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            request.Headers.TryAddWithoutValidation("Accept", "application/json, text/event-stream");
+
+            string sessionId;
+            lock (_sessionLock) { sessionId = _sessionId; }
+            if (!string.IsNullOrEmpty(sessionId))
+                request.Headers.Add("Mcp-Session-Id", sessionId);
+
+            if (!string.IsNullOrEmpty(_authToken))
+                request.Headers.Add("Authorization", $"Bearer {_authToken}");
+
+            foreach (var header in _headers)
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+            return request;
+        }
+
         private async Task<string> ExtractErrorDetailsAsync(HttpResponseMessage response)
         {
             try
             {
                 var errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
                 if (string.IsNullOrWhiteSpace(errorBody))
-                {
                     return "No error details provided";
-                }
 
                 try
                 {
                     var errorJson = JObject.Parse(errorBody);
-
                     var error = errorJson["error"]?.ToString()
                         ?? errorJson["message"]?.ToString()
                         ?? errorJson["detail"]?.ToString()
                         ?? errorBody;
-
                     return error;
                 }
                 catch (JsonException)
                 {
-                    return errorBody.Length > 200
-                        ? errorBody.Substring(0, 200) + "..."
-                        : errorBody;
+                    return errorBody.Length > 200 ? errorBody.Substring(0, 200) + "..." : errorBody;
                 }
             }
             catch (Exception ex)
@@ -211,60 +206,49 @@ namespace LMLocal.Infrastructure.Mcp
             }
         }
 
-        /// <summary>
-        /// Extracts Mcp-Session-Id from response headers if present and stores it for future requests.
-        /// </summary>
         private void ExtractSessionIdFromResponse(HttpResponseMessage response)
         {
-            if (response?.Headers == null)
-                return;
+            if (response?.Headers == null) return;
 
             if (response.Headers.TryGetValues("Mcp-Session-Id", out var sessionIdValues))
             {
                 var sessionId = sessionIdValues?.FirstOrDefault();
-                if (!string.IsNullOrEmpty(sessionId) && sessionId != _sessionId)
+                if (!string.IsNullOrEmpty(sessionId))
                 {
-                    _sessionId = sessionId;
-                    InternalLogger.Debug($"MCP session ID received: {_sessionId}");
+                    lock (_sessionLock)
+                    {
+                        if (sessionId != _sessionId)
+                        {
+                            _sessionId = sessionId;
+                            InternalLogger.Debug($"MCP session ID received: {_sessionId}");
+                        }
+                    }
                 }
             }
         }
 
-        /// <summary>
-        /// Deletes the session by sending HTTP DELETE request with session ID.
-        /// </summary>
-        private async Task DeleteSessionAsync(CancellationToken cancellationToken)
+        private async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken)
         {
-            if (_httpClientWrapper == null)
-                return;
+            if (_httpClientWrapper == null) return;
 
-            var request = new HttpRequestMessage(HttpMethod.Delete, _baseUrl) { };
-
-            request.Headers.Add("Mcp-Session-Id", _sessionId);
+            var request = new HttpRequestMessage(HttpMethod.Delete, _baseUrl);
+            request.Headers.Add("Mcp-Session-Id", sessionId);
 
             if (!string.IsNullOrEmpty(_authToken))
-            {
                 request.Headers.Add("Authorization", $"Bearer {_authToken}");
-            }
 
             foreach (var header in _headers)
-            {
-                request.Headers.Add(header.Key, header.Value);
-            }
+                request.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 cts.CancelAfter(_requestTimeout);
-
                 try
                 {
-                    using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token)
-                        .ConfigureAwait(false))
+                    using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token).ConfigureAwait(false))
                     {
                         if (response.IsSuccessStatusCode)
-                        {
                             InternalLogger.Debug("MCP session deleted successfully");
-                        }
                         else
                         {
                             var errorDetails = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
@@ -275,14 +259,10 @@ namespace LMLocal.Infrastructure.Mcp
                 catch (OperationCanceledException)
                 {
                     InternalLogger.Warn("Delete session request timed out");
-                    throw;
                 }
             }
         }
 
-        /// <summary>
-        /// Reads a Server-Sent Events (SSE) response and extracts JSON-RPC response(s).
-        /// </summary>
         private async Task<string> ReadSseResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
         {
             using (var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
@@ -290,179 +270,68 @@ namespace LMLocal.Infrastructure.Mcp
             {
                 var accumulatedDataLines = new List<string>();
                 var currentEventType = "";
-                var lastValidResponse = null as string;  // Keep track of last valid response
-                var isTerminalEventSeen = false;
+                string lastValidResponse = null;
+                bool isTerminalEventSeen = false;
 
                 while (!cancellationToken.IsCancellationRequested && !isTerminalEventSeen)
                 {
-                    try
-                    {
-                        var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (line == null) break;
 
-                        if (line == null)
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        if (accumulatedDataLines.Count > 0)
                         {
+                            var combined = string.Join("\n", accumulatedDataLines);
+                            if (IsValidJson(combined))
+                            {
+                                lastValidResponse = combined;
+                            }
+                            accumulatedDataLines.Clear();
+                            currentEventType = "";
+                        }
+                        continue;
+                    }
+
+                    var sseMessage = SseStreamParser.TryParseSseLine(line);
+                    if (sseMessage == null) continue;
+
+                    switch (sseMessage.Type)
+                    {
+                        case SseMessageType.Event:
+                            currentEventType = sseMessage.EventType;
+                            InternalLogger.Debug($"SSE event: {currentEventType}");
+                            if (currentEventType.Equals("done", StringComparison.OrdinalIgnoreCase))
+                                isTerminalEventSeen = true;
+                            break;
+                        case SseMessageType.Data:
+                            if (!string.IsNullOrEmpty(sseMessage.RawData))
+                                accumulatedDataLines.Add(sseMessage.RawData);
+                            break;
+                        case SseMessageType.Done:
+                            isTerminalEventSeen = true;
                             if (accumulatedDataLines.Count > 0)
                             {
                                 var combined = string.Join("\n", accumulatedDataLines);
-                                if (TryValidateJson(combined))
-                                {
-                                    lastValidResponse = combined;
-                                }
+                                if (IsValidJson(combined))
+                                    return combined;
                             }
                             break;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(line))
-                        {
-                            if (accumulatedDataLines.Count > 0)
-                            {
-                                var combined = string.Join("\n", accumulatedDataLines);
-                                if (TryValidateJson(combined))
-                                {
-                                    lastValidResponse = combined;
-                                    InternalLogger.Debug($"SSE message received (event: {(string.IsNullOrEmpty(currentEventType) ? "message" : currentEventType)})");
-
-                                    if (string.IsNullOrEmpty(currentEventType) ||
-                                        currentEventType.Equals("message", StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        return lastValidResponse;
-                                    }
-                                }
-
-                                accumulatedDataLines.Clear();
-                                currentEventType = "";
-                            }
-                            continue;
-                        }
-
-                        var sseMessage = SseStreamParser.TryParseSseLine(line);
-
-                        if (sseMessage == null)
-                        {
-                            continue;
-                        }
-
-                        switch (sseMessage.Type)
-                        {
-                            case SseMessageType.Comment:
-                                break;
-
-                            case SseMessageType.Event:
-                                currentEventType = sseMessage.EventType;
-                                InternalLogger.Debug($"SSE event: {currentEventType}");
-
-                                if (currentEventType.Equals("done", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    isTerminalEventSeen = true;
-                                }
-                                break;
-
-                            case SseMessageType.Data:
-                                if (!string.IsNullOrEmpty(sseMessage.RawData))
-                                {
-                                    accumulatedDataLines.Add(sseMessage.RawData);
-                                }
-                                break;
-
-                            case SseMessageType.Done:
-                                isTerminalEventSeen = true;
-                                if (accumulatedDataLines.Count > 0)
-                                {
-                                    var combined = string.Join("\n", accumulatedDataLines);
-                                    if (TryValidateJson(combined))
-                                    {
-                                        return combined;
-                                    }
-                                }
-                                if (lastValidResponse != null)
-                                {
-                                    return lastValidResponse;
-                                }
-                                break;
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        InternalLogger.Error($"Error reading SSE response: {ex.Message}", ex);
-                        throw new InvalidOperationException($"Failed to read SSE response: {ex.Message}", ex);
                     }
                 }
 
                 if (lastValidResponse != null)
-                {
                     return lastValidResponse;
-                }
 
                 throw new InvalidOperationException("No valid JSON-RPC response found in SSE stream");
             }
         }
 
-        /// <summary>
-        /// Validates if a string is valid JSON.
-        /// </summary>
-        private bool TryValidateJson(string json)
+        private bool IsValidJson(string json)
         {
-            if (string.IsNullOrWhiteSpace(json))
-                return false;
-
-            try
-            {
-                JObject.Parse(json);
-                return true;
-            }
-            catch (JsonException)
-            {
-                return false;
-            }
-        }
-
-        protected override async Task SendJsonAsync(string json, CancellationToken cancellationToken)
-        {
-            if (_httpClientWrapper == null)
-                throw new InvalidOperationException("HTTP client wrapper not initialized");
-
-            var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
-            };
-
-            request.Headers.Add("Accept", "application/json, text/event-stream");
-
-            if (!string.IsNullOrEmpty(_sessionId))
-            {
-                request.Headers.Add("Mcp-Session-Id", _sessionId);
-            }
-
-            if (!string.IsNullOrEmpty(_authToken))
-            {
-                request.Headers.Add("Authorization", $"Bearer {_authToken}");
-            }
-
-            foreach (var header in _headers)
-            {
-                request.Headers.Add(header.Key, header.Value);
-            }
-
-            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-            {
-                cts.CancelAfter(_requestTimeout);
-
-                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token).ConfigureAwait(false))
-                {
-                    ExtractSessionIdFromResponse(response);
-
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errorMessage = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
-                        throw new InvalidOperationException(
-                            $"HTTP request failed ({(int)response.StatusCode} {response.StatusCode}): {errorMessage}");
-                    }
-                }
-            }
+            if (string.IsNullOrWhiteSpace(json)) return false;
+            try { JObject.Parse(json); return true; }
+            catch (JsonException) { return false; }
         }
     }
 }

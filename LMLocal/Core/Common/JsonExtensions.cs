@@ -1,7 +1,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
-namespace LMLocal.Common
+namespace LMLocal.Core.Common
 {
     internal static class JsonExtensions
     {

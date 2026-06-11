@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.Api.Responses;
+using LMLocal.Infrastructure.LlmApi.Converter;
+using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Models;
 using Moq;
 using Newtonsoft.Json;

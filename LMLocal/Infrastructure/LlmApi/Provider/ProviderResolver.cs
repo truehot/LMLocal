@@ -1,3 +1,5 @@
+using LMLocal.Infrastructure.LlmApi.Provider;
+
 namespace LMLocal.Infrastructure.Api
 {
     /// <summary>

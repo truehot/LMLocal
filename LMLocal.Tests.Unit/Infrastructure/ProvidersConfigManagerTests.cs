@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure;
 using LMLocal.Infrastructure.Providers;

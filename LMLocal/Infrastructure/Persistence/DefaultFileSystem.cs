@@ -4,7 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace LMLocal.Infrastructure
+namespace LMLocal.Infrastructure.Persistence
 {
     /// <summary>
     /// Default filesystem implementation that delegates to the .NET
@@ -45,7 +45,7 @@ namespace LMLocal.Infrastructure
             return File.ReadAllText(path);
         }
 
-        public async Task<string> ReadAllTextAsync(string path, System.Threading.CancellationToken cancellationToken = default)
+        public async Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default)
         {
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
             {
@@ -60,7 +60,7 @@ namespace LMLocal.Infrastructure
             }
         }
 
-        public async Task WriteAllBytesAsync(string path, byte[] data, System.Threading.CancellationToken cancellationToken = default)
+        public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
             {
@@ -69,7 +69,7 @@ namespace LMLocal.Infrastructure
             }
         }
 
-        public async Task AppendAllBytesAsync(string path, byte[] data, System.Threading.CancellationToken cancellationToken = default)
+        public async Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.None, 4096, useAsync: true))
             {

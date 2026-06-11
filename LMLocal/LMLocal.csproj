@@ -85,6 +85,7 @@
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ISearchResultCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByName.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ListDirectoryContents.cs" />

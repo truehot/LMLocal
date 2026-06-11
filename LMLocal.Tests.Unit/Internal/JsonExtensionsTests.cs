@@ -1,5 +1,5 @@
 using NUnit.Framework;
-using LMLocal.Common;
+using LMLocal.Core.Common;
 
 namespace LMLocal.Tests.Unit
 {

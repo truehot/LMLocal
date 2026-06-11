@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -10,6 +5,11 @@ using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindSymbolReferences;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -27,14 +27,36 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     internal class FindSymbolReferences : IFindSymbolReferences
     {
         private readonly IPathResolver _pathResolver;
+        private readonly ISearchResultCache _searchCache;
         private const int MaxSymbolsToProcess = 5;
-        private const int MaxTotalReferences = 50;
+        private const int MaxTotalReferences = 200;
+        private const int DefaultTake = 25;
 
         public string ToolName => "Find_Symbol_References";
 
-        public FindSymbolReferences(IPathResolver pathResolver)
+        public FindSymbolReferences(IPathResolver pathResolver, ISearchResultCache searchCache)
         {
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
+            _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+        }
+
+        public ToolDefinition GetToolInfo()
+        {
+            return new ToolDefinition
+            {
+                Name = ToolName,
+                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file (string), matches (array of {{line (int), text (string)}})}}}}, next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Returns up to {MaxTotalReferences} references, paginated by file ({DefaultTake} files per page). Limited to {MaxSymbolsToProcess} symbol candidates.",
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolDetails>
+                    {
+                        { "symbol_name", new ToolDetails { Type = "string", Description = "The exact name of the code symbol (e.g., 'PaymentService', 'ProcessOrder', or '_logger') to find references for." } },
+                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use the next_page_token value from the previous response to get the next page." } }
+                    },
+                    Required = new List<string> { "symbol_name" }
+                }
+            };
         }
 
         private async Task<SymbolReferencesResponse> ExecuteCoreAsync(
@@ -56,7 +78,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         SymbolName = symbolName,
                         Results = new List<FileReferencesGroup>(),
                         TotalReferences = 0,
-                        HasMoreResults = false
+                        NextPageToken = null
                     };
 
                 var workspace = componentModel.GetService<VisualStudioWorkspace>();
@@ -68,7 +90,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         SymbolName = symbolName,
                         Results = new List<FileReferencesGroup>(),
                         TotalReferences = 0,
-                        HasMoreResults = false
+                        NextPageToken = null
                     };
 
                 var solutionSnapshot = workspace.CurrentSolution;
@@ -80,7 +102,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         SymbolName = symbolName,
                         Results = new List<FileReferencesGroup>(),
                         TotalReferences = 0,
-                        HasMoreResults = false
+                        NextPageToken = null
                     };
 
                 var projects = solutionSnapshot.Projects.ToList();
@@ -196,7 +218,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         Results = sortedResults,
                         SymbolName = symbolName,
                         TotalReferences = totalReferenceCount,
-                        HasMoreResults = hasMoreResults,
+                        NextPageToken = null,
                         Success = true,
                         ErrorMessage = null
                     };
@@ -213,7 +235,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     SymbolName = symbolName,
                     Results = new List<FileReferencesGroup>(),
                     TotalReferences = 0,
-                    HasMoreResults = false
+                    NextPageToken = null
                 };
             }
         }
@@ -224,8 +246,50 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-                var symbolName = ExtractAndValidateParametersFromDict(parameters);
-                return await ExecuteCoreAsync(symbolName, cancellationToken);
+                var (symbolName, pageToken) = ExtractAndValidateParametersFromDict(parameters);
+                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
+                int skip = pageNumber * DefaultTake;
+
+                string cacheKey = BuildCacheKey(symbolName);
+                if (_searchCache.TryGet(cacheKey, "", out CachedToolResults<FileReferencesGroup> cached))
+                {
+                    var page = cached.AllResults.Skip(skip).Take(DefaultTake).ToList();
+                    string nextToken = (skip + DefaultTake) < cached.AllResults.Count ? (pageNumber + 1).ToString() : null;
+                    return new SymbolReferencesResponse
+                    {
+                        Results = page,
+                        SymbolName = symbolName,
+                        TotalReferences = cached.AllResults.Sum(r => r.Matches.Count),
+                        NextPageToken = nextToken,
+                        Success = true,
+                        ErrorMessage = null
+                    };
+                }
+
+                var fullResponse = await ExecuteCoreAsync(symbolName, cancellationToken);
+
+                if (fullResponse.Success && fullResponse.Results.Count > 0)
+                {
+                    var cacheEntry = new CachedToolResults<FileReferencesGroup>
+                    {
+                        AllResults = fullResponse.Results,
+                        ItemsScanned = fullResponse.Results.Count
+                    };
+                    _searchCache.Set(cacheKey, "", cacheEntry);
+                    var page = cacheEntry.AllResults.Skip(skip).Take(DefaultTake).ToList();
+                    string nextToken = (skip + DefaultTake) < cacheEntry.AllResults.Count ? (pageNumber + 1).ToString() : null;
+                    return new SymbolReferencesResponse
+                    {
+                        Results = page,
+                        SymbolName = symbolName,
+                        TotalReferences = cacheEntry.AllResults.Sum(r => r.Matches.Count),
+                        NextPageToken = nextToken,
+                        Success = true,
+                        ErrorMessage = null
+                    };
+                }
+
+                return fullResponse;
             }
             catch (Exception ex)
             {
@@ -236,27 +300,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     SymbolName = parameters?.TryGetValue("symbol_name", out var sn) == true ? sn?.ToString() : "",
                     Results = new List<FileReferencesGroup>(),
                     TotalReferences = 0,
-                    HasMoreResults = false
+                    NextPageToken = null
                 };
             }
         }
 
-        public ToolDefinition GetToolInfo()
+        private string BuildCacheKey(string symbolName)
         {
-            return new ToolDefinition
-            {
-                Name = ToolName,
-                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file (string), matches (array of {{line (int), text (string)}})}}}}, has_more_results (bool). has_more_results indicates more references exist beyond the limit. Limited to first {MaxSymbolsToProcess} matching symbols and {MaxTotalReferences} total references.",
-                Parameters = new ToolParameters
-                {
-                    Type = "object",
-                    Properties = new Dictionary<string, ToolDetails>
-                    {
-                        { "symbol_name", new ToolDetails { Type = "string", Description = "The exact name of the code symbol (e.g., 'PaymentService', 'ProcessOrder', or '_logger') to find references for." } }
-                    },
-                    Required = new List<string> { "symbol_name" }
-                }
-            };
+            return symbolName ?? string.Empty;
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
@@ -264,7 +315,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters == null) return "Finding references... ";
 
             var symbolName = parameters.TryGetValue("symbol_name", out var s) ? s?.ToString() : "";
-            return $"Finding references to '{symbolName}'... ";
+            var pageToken = parameters.TryGetValue("page_token", out var pt) ? pt?.ToString() : null;
+
+            var message = $"Finding references to '{symbolName}'";
+            if (!string.IsNullOrEmpty(pageToken))
+                message += $" (page {pageToken})";
+
+            message += "... ";
+            return message;
         }
 
         public string GetCompletionMessage(object result)
@@ -274,7 +332,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 return $"Error: {symbolResult.ErrorMessage}";
             }
-            return $"Found {symbolResult.TotalReferences} references.";
+            int pageReferences = symbolResult.Results.Sum(r => r.Matches.Count);
+            return $"Found {pageReferences} references on this page (total: {symbolResult.TotalReferences} references).";
         }
 
         private string ExtractAndValidateParameters(string symbolName)
@@ -285,17 +344,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return symbolName;
         }
 
-        private string ExtractAndValidateParametersFromDict(Dictionary<string, object> parameters)
+        private (string symbolName, string pageToken) ExtractAndValidateParametersFromDict(Dictionary<string, object> parameters)
         {
             if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
                 throw new ArgumentException("Parameter 'symbol_name' is required and must be a string.", nameof(parameters));
 
             var symbolName = (string)symbolNameObj;
+            var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            if (string.IsNullOrEmpty(symbolName))
-                throw new ArgumentException("Parameter 'symbol_name' cannot be empty.", nameof(symbolName));
-
-            return symbolName;
+            return (symbolName, pageToken);
         }
 
         public class ReferenceItem
@@ -327,8 +384,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("results")]
             public List<FileReferencesGroup> Results { get; set; }
 
-            [JsonProperty("has_more_results")]
-            public bool HasMoreResults { get; set; }
+            [JsonProperty("next_page_token")]
+            public string NextPageToken { get; set; }
 
             [JsonProperty("success")]
             public bool Success { get; set; }

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace LMLocal.Infrastructure.Api.Responses
+namespace LMLocal.Infrastructure.LlmApi.Responses
 {
     /// <summary>
     /// Root response object from Ollama /api/ps endpoint.

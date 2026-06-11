@@ -5,10 +5,9 @@ using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Instructions;
-using LMLocal.Infrastructure.Mcp;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
@@ -16,6 +15,8 @@ using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.Mcp;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,6 +81,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IPathResolver, PathResolver>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
+            services.AddSingleton<ISearchResultCache, SearchResultCache>();
             services.AddTransient<IVsSolutionFilesScanner, VsSolutionFilesScanner>();
 
             services.AddTransient<ISolutionSearch, SolutionSearch>();
