@@ -2,6 +2,8 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Ipc;
 using Microsoft.VisualStudio.Shell;
 using Task = System.Threading.Tasks.Task;
@@ -54,6 +56,13 @@ namespace LMLocal
 
             // Initialize dependency injection container early so other components can resolve services.
             await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+
+            //load dependencies for solution
+            var vsDependencies = ServiceConfiguration.GetService<IVsDependencies>();
+            await vsDependencies.InitializeAsync();
+
+            var snapshotSolutionEvents = ServiceConfiguration.GetService<ISnapshotSolutionEvents>();
+            snapshotSolutionEvents.Initialize();
 
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);

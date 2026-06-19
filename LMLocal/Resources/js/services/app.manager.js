@@ -32,7 +32,8 @@ class AppManager {
         } catch (e) {
             console.error("onAppInit load failed:", e);
         } finally {
-            await this.getInstructions();
+            await appDataService.getInstructionsAsync();
+            await appDataService.getSnapshotAsync();
         }
     }
 

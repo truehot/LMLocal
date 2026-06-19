@@ -1,27 +1,24 @@
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
-using Microsoft.VisualStudio.Shell;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindFilesByName;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using Microsoft.VisualStudio.Shell;
+using Newtonsoft.Json;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Finds files in the Visual Studio solution by name using case-insensitive substring matching.
+    /// Tool to find files in the Visual Studio solution by name using case-insensitive substring matching.
     /// Automatically excludes temporary directories (bin, obj, .vs, .git, CopilotBaseline, system temp folders),
     /// minified files (*.min.js, *.min.css, *.udm.js), and other non-source files.
     /// </summary>
 
     internal interface IFindFilesByName : IBuiltInTool
     {
-        Task<FileSearchResultsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default);
     }
 
     internal class FindFilesByName : IFindFilesByName
@@ -33,6 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int MaxFilesToScan = 1500;
 
         public string ToolName => "Find_Files_By_Name";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public FindFilesByName(
             IVsDependencies vsDependencies,
@@ -49,7 +47,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Response fields: success (bool), error_message (string), results (array of {{file (string)}}), total_files (int), next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Results are paginated by {DefaultTake} files per page. Limited to scanning first {MaxFilesToScan} files. Use optional filters: file_extension (e.g., '.cs'), project_filter. For all files, pass file_name='.'.",
+                Description = $"Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Response fields: success (bool), error_message (string), results (array of {{file_path (string)}}), total_files (int), next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Results are paginated by {DefaultTake} files per page. Limited to scanning first {MaxFilesToScan} files. Use optional filters: file_extension (e.g., '.cs'), project_filter. For all files, pass file_name='.'.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -65,19 +63,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<FileSearchResultsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (fileName, fileExtension, projectFilter, pageToken) = ExtractAndValidateParametersFromDict(parameters);
+                if (!_vsDependencies.IsSolutionOpen)
+                    return Error("No solution is currently open.");
+
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
+
+                var (fileName, fileExtension, projectFilter, pageToken, error) = ExtractAndValidateParameters(parameters);
+                if (!string.IsNullOrEmpty(error))
+                    return Error(error);
+
                 int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
                 int skip = pageNumber * DefaultTake;
-
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-                await _vsDependencies.InitializeAsync();
-                string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 string cacheKey = BuildCacheKey(fileName, fileExtension, projectFilter);
                 if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
@@ -103,6 +103,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Limit = MaxFilesToScan,
                     IncludeProjects = true
                 };
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var matchingFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
 
                 var response = await Task.Run(() =>
@@ -135,20 +137,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                return ErrorResponse(ex.Message);
+                return Error(ex.Message);
             }
-        }
-
-        private static FileSearchResultsResponse ErrorResponse(string message)
-        {
-            return new FileSearchResultsResponse
-            {
-                Success = false,
-                ErrorMessage = message,
-                Results = new List<FileSearchResult>(),
-                NextPageToken = null,
-                TotalFiles = 0
-            };
         }
 
         private string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
@@ -173,8 +163,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 message += $" in project '{project}'";
             if (!string.IsNullOrEmpty(ext))
                 message += $", with extension '{ext}'";
-            if (!string.IsNullOrEmpty(pageToken))
-                message += $" (page {pageToken})";
+            if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
+                message += $" (page {pageTokenValue})";
 
             message += "... ";
             return message;
@@ -187,26 +177,48 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 return $"Error: {fileResults.ErrorMessage}";
             }
-            return $"Found {fileResults.Results.Count} files on this page (total: {fileResults.TotalFiles} files).";
+
+            var message = $"Found {fileResults.Results.Count} files";
+            if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
+            {
+                message += $"(total: {fileResults.TotalFiles} files)";
+            }
+            message += ".";
+            return message;
         }
 
-        private (string fileName, string fileExtension, string projectFilter, string pageToken) ExtractAndValidateParametersFromDict(
+        private (string fileName, string fileExtension, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
+            if (parameters == null)
+                return (null, null, null, null, "Parameters cannot be null.");
             if (!parameters.TryGetValue("file_name", out object fileNameObj) || !(fileNameObj is string))
-                throw new ArgumentException("Parameter 'file_name' is required and must be a string.", nameof(parameters));
+                return (null, null, null, null, "Parameter 'file_name' is required and must be a string.");
 
             var fileName = (string)fileNameObj;
             var fileExtension = parameters.TryGetValue("file_extension", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            return (fileName, fileExtension, projectFilter, pageToken);
+            return (fileName, fileExtension, projectFilter, pageToken, null);
         }
+
+        private static FileSearchResultsResponse Error(string message)
+        {
+            return new FileSearchResultsResponse
+            {
+                Results = new List<FileSearchResult>(),
+                NextPageToken = null,
+                TotalFiles = 0,
+                Success = false,
+                ErrorMessage = message
+            };
+        }
+
 
         public class FileSearchResult
         {
-            [JsonProperty("file")]
+            [JsonProperty("file_path")]
             public string FilePath { get; set; }
         }
 

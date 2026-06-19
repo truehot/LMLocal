@@ -4,16 +4,19 @@ import { inputComponent } from '@app/components/input.component.js';
 import { themeComponent } from '@app/components/theme.component.js';
 import { toolbarComponent } from '@app/components/toolbar.component.js';
 import { chatComponent } from '@app/components/chat.component.js';
+import { changesPanelComponent } from '@app/components/changes.panel.component.js';
 
 import chatController from '@app/chat/chat.controller.js';
 import appManager from '@app/services/app.manager.js';
+
 import { bridgeMessageHandler } from '@app/api/bridge.message.handler.js';
-import appStore from '@app/store/app.store.js';
 import { appSelectors } from '@app/store/app.selectors.js';
+import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import settingsStore from '@app/store/settings.store.js';
 import providersStore from '@app/store/providers.store.js';
+import changesStore from '@app/store/changes.store.js';
 import bridgeMessageDispatcher from '@app/api/bridge.message.dispatcher.js';
 import appDataService from '@app/services/app.data.service.js';
 
@@ -23,6 +26,7 @@ import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
+import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
 import { UIText } from '@app/constants/app.globals.js';
 
 /**
@@ -34,10 +38,11 @@ import { UIText } from '@app/constants/app.globals.js';
 class AppController {
     constructor() {
         this._initialized = false;
-        this._storeListener = null;
-        this._modelListener = null;
-        this._instructionsListener = null;
-        this._settingsListener = null;
+        this._appStoreListener = null;
+        this._modelStoreListener = null;
+        this._instructionsStoreListener = null;
+        this._settingsStoreListener = null;
+        this._changesStoreListener = null;
         this._globalClickHandler = null;
     }
 
@@ -51,6 +56,7 @@ class AppController {
         chatController.setup();
         menuComponent.setup();
         chatComponent.setup();
+        changesPanelComponent.setup();
 
         this._attachEvents();
 
@@ -71,35 +77,42 @@ class AppController {
         chatController.reset();
         menuComponent.reset();
         chatComponent.reset();
+        changesPanelComponent.reset();
 
         this._initialized = false;
     }
 
     _attachEvents() {
-        this._storeListener = (appState, prevAppState) => {
-            statusComponent.update(appState, prevAppState);
-            inputComponent.update(appState, prevAppState);
-            chatController.update(appState, prevAppState);
-            toolbarComponent.update(appState, prevAppState);
+        this._appStoreListener = (state, prev) => {
+            statusComponent.updateAppState(state, prev);
+            inputComponent.updateAppState(state, prev);
+            chatController.updateAppState(state, prev);
+            toolbarComponent.updateAppState(state, prev);
+            changesPanelComponent.updateAppState(state, prev);
         };
-        appStore.subscribe(this._storeListener);
+        appStore.subscribe(this._appStoreListener);
 
-        this._modelListener = (state, prev) => {
+        this._modelStoreListener = (state, prev) => {
             toolbarComponent.updateModelState(state, prev);
         };
-        modelStore.subscribe(this._modelListener);
+        modelStore.subscribe(this._modelStoreListener);
 
-        this._instructionsListener = (state, prev) => {
+        this._instructionsStoreListener = (state, prev) => {
             inputComponent.updateInstructionsState(state, prev);
         };
-        instructionsStore.subscribe(this._instructionsListener);
+        instructionsStore.subscribe(this._instructionsStoreListener);
 
-        this._settingsListener = (state, prev) => {
+        this._settingsStoreListener = (state, prev) => {
             themeComponent.updateSettingsState(state, prev);
             chatComponent.updateSettingsState(state, prev);
             statusComponent.updateSettingsState(state, prev);
         };
-        settingsStore.subscribe(this._settingsListener);
+        settingsStore.subscribe(this._settingsStoreListener);
+
+        this._changesStoreListener = (state, prev) => {
+            changesPanelComponent.updateChangesState(state, prev);
+        };
+        changesStore.subscribe(this._changesStoreListener);
 
         themeComponent.setup();
 
@@ -203,6 +216,17 @@ class AppController {
                     menuComponent.hideMenu();
                     await providersDialog.show();
                     return true;
+                case 'open-tools':
+                    const toolsDialog = new ToolsDialog();
+                    toolsDialog.onLoad.on(async () => {
+                        return await appDataService.getToolsAsync();
+                    });
+                    toolsDialog.onSave.on(async (config) => {
+                        return await appDataService.updateToolsAsync(config);
+                    });
+                    menuComponent.hideMenu();
+                    await toolsDialog.show();
+                    return true;
                 default:
                     return false;
             }
@@ -241,6 +265,26 @@ class AppController {
             await appManager.reloadActiveModel();
         });
 
+        changesPanelComponent.onDiscardAll.on(async () => {
+            return await appDataService.discardAllAsync();
+        });
+
+        changesPanelComponent.onAcceptAll.on(async () => {
+            return await appDataService.acceptAllAsync();
+        });
+
+        changesPanelComponent.onReviewFile.on(async (filePath) => {
+            return await appDataService.reviewFileAsync(filePath);
+        });
+
+        changesPanelComponent.onDiscardSingleFile.on(async (filePath) => {
+            return await appDataService.discardFileAsync(filePath);
+        });
+
+        changesPanelComponent.onAcceptSingleFile.on(async (filePath) => {
+            return await appDataService.acceptFileAsync(filePath);
+        });
+
         this._globalClickHandler = () => {
             menuComponent.hideMenu();
             inputComponent.hideDropdown();
@@ -249,24 +293,29 @@ class AppController {
     }
 
     _detachEvents() {
-        if (this._storeListener) {
-            appStore.unsubscribe(this._storeListener);
-            this._storeListener = null;
+        if (this._appStoreListener) {
+            appStore.unsubscribe(this._appStoreListener);
+            this._appStoreListener = null;
         }
 
-        if (this._modelListener) {
-            modelStore.unsubscribe(this._modelListener);
-            this._modelListener = null;
+        if (this._modelStoreListener) {
+            modelStore.unsubscribe(this._modelStoreListener);
+            this._modelStoreListener = null;
         }
 
-        if (this._instructionsListener) {
-            instructionsStore.unsubscribe(this._instructionsListener);
-            this._instructionsListener = null;
+        if (this._instructionsStoreListener) {
+            instructionsStore.unsubscribe(this._instructionsStoreListener);
+            this._instructionsStoreListener = null;
         }
 
-        if (this._settingsListener) {
-            settingsStore.unsubscribe(this._settingsListener);
-            this._settingsListener = null;
+        if (this._settingsStoreListener) {
+            settingsStore.unsubscribe(this._settingsStoreListener);
+            this._settingsStoreListener = null;
+        }
+
+        if (this._changesStoreListener) {
+            changesStore.unsubscribe(this._changesStoreListener);
+            this._changesStoreListener = null;
         }
 
         if (this._globalClickHandler) {

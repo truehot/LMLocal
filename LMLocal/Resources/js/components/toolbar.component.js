@@ -105,7 +105,7 @@ class ToolbarComponent {
         this._hasShownModelInfo = false;
     }
 
-    update(state, prevState) {
+    updateAppState(state, prevState) {
         this.isConnecting = state.status == AppStatus.CONNECTING;
 
         if (prevState?.status == AppStatus.CONNECTING && state.status != AppStatus.CONNECTING && !this._hasShownModelInfo) {

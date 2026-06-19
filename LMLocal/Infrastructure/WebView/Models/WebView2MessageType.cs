@@ -74,6 +74,12 @@ namespace LMLocal.Infrastructure.WebView
         /// Tool iteration loop started (after tool execution, before next generation).
         /// Signals UI that a new iteration of the tool execution cycle is beginning.
         /// </summary>
-        ChatSessionIterating
+        ChatSessionIterating,
+
+        /// <summary>
+        /// Snapshot files list has changed (files were backed up, rolled back, or committed).
+        /// Sent after tool execution or when snapshot operations complete.
+        /// </summary>
+        SnapshotFilesChanged
     }
 }

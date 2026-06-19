@@ -71,12 +71,12 @@ public class InstructionsTests : AppTestBase
         await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
 
         // Verify cancel button exists
-        var cancelBtn = dialog.Locator("#dialog-cancel");
+        var cancelBtn = dialog.Locator("#instructions-dialog-cancel");
         await Expect(cancelBtn).ToHaveCountAsync(1);
         await Expect(cancelBtn).ToHaveTextAsync("Cancel");
 
         // Verify save button exists
-        var saveBtn = dialog.Locator("#dialog-confirm");
+        var saveBtn = dialog.Locator("#instructions-dialog-confirm");
         await Expect(saveBtn).ToHaveCountAsync(1);
         await Expect(saveBtn).ToHaveTextAsync("Save");
     }

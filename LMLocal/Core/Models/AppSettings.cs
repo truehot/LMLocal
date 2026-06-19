@@ -51,9 +51,14 @@ namespace LMLocal.Core.Models
         public string ApiKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// When true, AI Tools are enabled (allows the AI to inspect the open solution/files).
+        /// When true, AI Tools are enabled (read-only).
         /// </summary>
         public bool EnableAiTools { get; set; } = false;
+
+        /// <summary>
+        /// When true, AI Tools can write and modify files (requires EnableAiTools to be true).
+        /// </summary>
+        public bool EnableAiWriteTools { get; set; } = false;
 
         /// <summary>
         /// When true, large code blocks are collapsed to limit height and keep chat history clean.
@@ -61,7 +66,7 @@ namespace LMLocal.Core.Models
         public bool EnableCodeCollapse { get; set; } = false;
 
         /// <summary>
-        /// AI provider backend: "lmstudio" (local), "ollama" (local), or "openai" (custom compatible).
+        /// AI provider backend: "lmstudio" (local), "ollama" (local), "openai" (custom compatible), etc..
         /// </summary>
         [Required(ErrorMessage = "Provider is required.")]
         public string Provider { get; set; } = "lmstudio";
@@ -78,6 +83,7 @@ namespace LMLocal.Core.Models
                 && StreamInactivityTimeoutSeconds == other.StreamInactivityTimeoutSeconds
                 && EnableChatLogging == other.EnableChatLogging
                 && EnableAiTools == other.EnableAiTools
+                && EnableAiWriteTools == other.EnableAiWriteTools
                 && EnableCodeCollapse == other.EnableCodeCollapse
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase);
@@ -98,6 +104,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + StreamInactivityTimeoutSeconds.GetHashCode();
                 hash = hash * 23 + EnableChatLogging.GetHashCode();
                 hash = hash * 23 + EnableAiTools.GetHashCode();
+                hash = hash * 23 + EnableAiWriteTools.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);

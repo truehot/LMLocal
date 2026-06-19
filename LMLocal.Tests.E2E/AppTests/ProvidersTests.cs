@@ -21,7 +21,7 @@ public class ProvidersTests : AppTestBase
         await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
 
         // Verify header and content
-        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("Configure Providers");
+        await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("Providers");
         await Expect(dialog.Locator("#provider-add-btn")).ToHaveCountAsync(1);
     }
 
@@ -73,7 +73,7 @@ public class ProvidersTests : AppTestBase
         // Verify save button
         var saveBtn = dialog.Locator("#providers-modal-confirm");
         await Expect(saveBtn).ToHaveCountAsync(1);
-        await Expect(saveBtn).ToHaveTextAsync("Save Changes");
+        await Expect(saveBtn).ToHaveTextAsync("Save");
     }
 
     [Test]

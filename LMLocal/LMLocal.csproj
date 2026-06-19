@@ -70,6 +70,7 @@
   <ItemGroup>
     <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
+    <Compile Include="Core\Models\ToolsConfigFile.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\AzureModelsResponse.cs" />
@@ -85,10 +86,24 @@
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ISearchResultCache.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContent.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolution.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFile.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\DeleteFile.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesByName.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FormatDocument.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ListDirectoryContents.cs" />
+    <Compile Include="Infrastructure\Persistence\FileLockManager.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceLines.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceMultipleLines.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\RunProjectTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManager.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotModels.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotSolutionEvents.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotPathsFactory.cs" />
+    <Compile Include="Core\Common\AsyncLock.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpServerStatus.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpToolDefinition.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Client\HttpMcpClient.cs" />
@@ -110,7 +125,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsSolutionFilesScanner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsDependencies.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsUiThreadGuard.cs" />
-    <Compile Include="Infrastructure\Tooling\CompositeToolFactory.cs" />
+    <Compile Include="Infrastructure\Tooling\CompositeToolProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ActiveDocument.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileLinesReader.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindSymbolReferences.cs" />
@@ -135,6 +150,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\css\toolbar.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\components\changes.panel.component.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -166,12 +185,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Compile Include="Infrastructure\Tooling\ToolsConfigManager.cs" />
+    <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
+    <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2MessageType.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ScriptMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ScriptMessageWithCount.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2SessionCompleteMessage.cs" />
+    <Compile Include="Infrastructure\WebView\Models\WebView2SnapshotMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ToolCallMessage.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridgeFactory.cs" />
     <Compile Include="Infrastructure\Ipc\IpcCommandHandler.cs" />
@@ -291,6 +314,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\store\changes.store.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\store\instructions.store.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -311,6 +338,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\ui\dropdown.component.js" />
     <Content Include="Resources\js\workers\highlight.parser.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -381,6 +409,14 @@
     </Content>
     <Compile Include="Application\Tool\ToolExecutionManager.cs" />
     <Compile Include="Application\Tool\ToolExecutionResult.cs" />
+    <Content Include="Resources\css\component.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\dialogs\tools.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Compile Include="ShowMainWindow.cs" />
     <Content Include="Resources\js\workers\marked\marked.worker.client.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

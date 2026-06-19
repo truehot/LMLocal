@@ -4,6 +4,19 @@ using Newtonsoft.Json;
 namespace LMLocal.Infrastructure.Tooling
 {
     /// <summary>
+    /// Defines the access level of a built-in tool.
+    /// </summary>
+    public enum ToolAccessLevel
+    {
+        /// <summary>Can read solution files, but cannot modify them.</summary>
+        ReadOnly,
+        /// <summary>Can run external processes (build, test) but does not modify solution files.</summary>
+        Execution,
+        /// <summary>Can add, change, delete solution files.</summary>
+        FullAccess
+    }
+
+    /// <summary>
     /// Represents a tool description that can be exposed to an LLM. Contains the
     /// tool's name, optional description and parameter schema used when calling the tool.
     /// </summary>

@@ -100,6 +100,40 @@ class BridgeClient {
         const payload = JSON.stringify(providersConfig);
         return await this._callHost("UpdateProvidersAsync", payload);
     }
+
+    async getToolsAsync() {
+        const res = await this._callHost("GetToolsAsync");
+        return JSON.parse(res);
+    }
+
+    async updateToolsAsync(toolsConfig) {
+        const payload = JSON.stringify(toolsConfig);
+        return await this._callHost("UpdateToolsAsync", payload);
+    }
+
+    async getSnapshotAsync() {
+        return await this._callHost("GetSnapshotAsync");
+    }
+
+    async discardChangesAsync() {
+        return await this._callHost("DiscardChangesAsync");
+    }
+
+    async acceptChangesAsync() {
+        return await this._callHost("AcceptChangesAsync");
+    }
+
+    async reviewFileAsync(filePath) {
+        return await this._callHost("ReviewFileAsync", filePath);
+    }
+
+    async discardFileAsync(filePath) {
+        return await this._callHost("DiscardFileAsync", filePath);
+    }
+
+    async acceptFileAsync(filePath) {
+        return await this._callHost("AcceptFileAsync", filePath);
+    }
 }
 
 const bridgeClient = new BridgeClient();

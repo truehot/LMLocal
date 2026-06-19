@@ -11,11 +11,10 @@ using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.GetSolutio
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Tool interface to obtain a high-level summary of the currently opened Visual Studio solution.
+    /// Tool to obtain a high-level summary of the current Visual Studio solution.
     /// </summary>
     internal interface IGetSolutionOverview : IBuiltInTool
     {
-        Task<SolutionOverviewResponse> ExecuteAsync(CancellationToken cancellationToken = default);
     }
 
     internal class GetSolutionOverview : IGetSolutionOverview
@@ -23,6 +22,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
 
         public string ToolName => "Get_Solution_Overview";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public GetSolutionOverview(IVsDependencies vsDependencies)
         {
@@ -44,29 +44,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<SolutionOverviewResponse> ExecuteAsync(CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-                await _vsDependencies.InitializeAsync();
-
                 var solution = _vsDependencies.GetSolution();
                 if (solution == null)
-                    return new SolutionOverviewResponse
-                    {
-                        Success = false,
-                        ErrorMessage = "No solution is currently open",
-                        SolutionName = null,
-                        SolutionPath = null,
-                        TotalProjects = 0,
-                        TotalFiles = 0,
-                        HasMoreResults = false,
-                        Projects = new List<ProjectOverviewItem>(),
-                        SolutionFolders = new List<string>()
-                    };
+                {
+                    return Error("No solution is currently open");
+                }
 
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var overview = SolutionInspector.GetSolutionOverview(solution, maxProjects: 200);
 
                 var response = new SolutionOverviewResponse
@@ -98,19 +86,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                return new SolutionOverviewResponse
-                {
-                    Success = false,
-                    ErrorMessage = ex.Message,
-                    SolutionName = null,
-                    SolutionPath = null,
-                    TotalProjects = 0,
-                    TotalFiles = 0,
-                    HasMoreResults = false,
-                    Projects = new List<ProjectOverviewItem>(),
-                    SolutionFolders = new List<string>()
-                };
+                return Error(ex.Message);
             }
+        }
+
+        private SolutionOverviewResponse Error(string errorMessage)
+        {
+            return new SolutionOverviewResponse
+            {
+                Success = false,
+                ErrorMessage = errorMessage,
+                SolutionName = null,
+                SolutionPath = null,
+                TotalProjects = 0,
+                TotalFiles = 0,
+                HasMoreResults = false,
+                Projects = new List<ProjectOverviewItem>(),
+                SolutionFolders = new List<string>()
+            };
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)

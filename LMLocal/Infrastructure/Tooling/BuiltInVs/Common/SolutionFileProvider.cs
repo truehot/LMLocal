@@ -11,28 +11,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
     internal interface ISolutionFileProvider
     {
-        IEnumerable<string> GetFiles(bool includeProjects = false);
+        IEnumerable<string> GetFiles(IVsSolution solution, bool includeProjects = false);
     }
 
     internal class SolutionFileProvider : ISolutionFileProvider
     {
-        private readonly IVsSolution _solution;
 
-        public SolutionFileProvider(IVsSolution solution)
-        {
-            _solution = solution;
-        }
-
-        public IEnumerable<string> GetFiles(bool includeProjects = false)
+        public IEnumerable<string> GetFiles(IVsSolution solution, bool includeProjects = false)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             var result = new List<string>();
 
-            if (_solution == null)
+            if (solution == null)
                 return result;
 
             Guid guid = Guid.Empty;
-            if (_solution.GetProjectEnum((uint)__VSENUMPROJFLAGS.EPF_LOADEDINSOLUTION, ref guid, out IEnumHierarchies enumHier) != VSConstants.S_OK)
+            if (solution.GetProjectEnum((uint)__VSENUMPROJFLAGS.EPF_LOADEDINSOLUTION, ref guid, out IEnumHierarchies enumHier) != VSConstants.S_OK)
                 return result;
 
             IVsHierarchy[] hier = new IVsHierarchy[1];

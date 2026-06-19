@@ -6,7 +6,10 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 
@@ -28,10 +31,13 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IMcpConfigManager _mcpConfigManager;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly IProvidersConfigManager _providersConfigManager;
+        private readonly IBuiltInVsToolProvider _builtInVsToolProvider;
+        private readonly IToolsConfigManager _toolsConfigManager;
         private readonly IActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
+        private readonly ISnapshotManager _snapshotManager;
 
         public WebViewBridgeFactory(
             ISettingsManager settingsManager,
@@ -40,10 +46,13 @@ namespace LMLocal.Infrastructure.WebView
             IMcpConfigManager mcpConfigManager,
             IMcpToolManager mcpToolManager,
             IProvidersConfigManager providersConfigManager,
+            IBuiltInVsToolProvider builtInVsToolProvider,
+            IToolsConfigManager toolsConfigManager,
             IActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
-            IChatHistoryManager chatHistoryManager)
+            IChatHistoryManager chatHistoryManager,
+            ISnapshotManager snapshotManager)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _modelsListService = modelsListService ?? throw new ArgumentNullException(nameof(modelsListService));
@@ -51,10 +60,13 @@ namespace LMLocal.Infrastructure.WebView
             _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
             _providersConfigManager = providersConfigManager ?? throw new ArgumentNullException(nameof(providersConfigManager));
+            _builtInVsToolProvider = builtInVsToolProvider ?? throw new ArgumentNullException(nameof(builtInVsToolProvider));
+            _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
             _activeDocumentTool = activeDocumentTool ?? throw new ArgumentNullException(nameof(activeDocumentTool));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
         public IWebViewBridge CreateBridge(Microsoft.Web.WebView2.Core.CoreWebView2 coreWebView2)
@@ -64,7 +76,7 @@ namespace LMLocal.Infrastructure.WebView
 
             var scriptExecutor = new WebViewScriptExecutor(coreWebView2);
 
-            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _mcpConfigManager, _mcpToolManager, _providersConfigManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager);
+            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _mcpConfigManager, _mcpToolManager, _providersConfigManager, _builtInVsToolProvider, _toolsConfigManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager, _snapshotManager);
         }
     }
 }

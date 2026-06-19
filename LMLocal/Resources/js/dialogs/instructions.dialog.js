@@ -103,8 +103,8 @@ export class InstructionsDialog {
         if (!dialog) throw new Error('Dialog #instructions-dialog not found');
 
         const body = dialog.querySelector('.modal-body');
-        const confirmBtn = dialog.querySelector('#dialog-confirm');
-        const cancelBtn = dialog.querySelector('#dialog-cancel');
+        const confirmBtn = dialog.querySelector('#instructions-dialog-confirm');
+        const cancelBtn = dialog.querySelector('#instructions-dialog-cancel');
 
         if (!body || !confirmBtn || !cancelBtn) {
             throw new Error('Missing elements in dialog');
@@ -232,9 +232,9 @@ export class InstructionsDialog {
         const section = document.createElement('section');
         section.className = 'tab-content';
 
-        const headerHtml = `<label class="group-header-row">
+        const headerHtml = `<label class="group-header-row" for="enabled-${tabId}">
             <span class="settings-label">${escapeHtml(modeConfig.displayName)} Instructions</span>
-            <input type="checkbox" data-field="enabled" ${tabState.enabled ? 'checked' : ''}>
+            <input type="checkbox" name="enabled-${tabId}" id="enabled-${tabId}" data-field="enabled" ${tabState.enabled ? 'checked' : ''}>
            </label>
            <div class="checkbox-description header-desc">Enable this mode to make it available for quick selection via the mode dropdown in the chat bar.</div>`;
 
@@ -248,9 +248,9 @@ export class InstructionsDialog {
         const promptGroup = document.createElement('div');
         promptGroup.className = 'settings-group';
         promptGroup.innerHTML = `
-        <label class="settings-label">System prompt</label>
+        <label class="settings-label" for="prompt-${tabId}">System prompt</label>
         <div class="checkbox-description">Defines the AI's core persona, behavior, processing rules, and operational constraints.</div>
-        <textarea data-field="prompt" class="prompt-textarea"></textarea>`;
+        <textarea data-field="prompt" name="prompt-${tabId}" id="prompt-${tabId}" class="prompt-textarea"></textarea>`;
 
         promptGroup.querySelector('textarea').value = tabState.prompt;
         fieldsWrapper.appendChild(promptGroup);
@@ -258,9 +258,9 @@ export class InstructionsDialog {
         const tempGroup = document.createElement('div');
         tempGroup.className = 'settings-group';
         tempGroup.innerHTML = `
-        <label class="settings-label">Temperature</label>
+        <label class="settings-label" for="temperature-${tabId}">Temperature</label>
         <div class="checkbox-description">Controls response variability: 0 is completely deterministic and focused, while 1 introduces maximum randomness and creativity.</div>
-        <input type="number" data-field="temperature" class="temperature-input" min="0" max="1" step="0.05" value="${tabState.temperature}">`;
+        <input type="number" data-field="temperature" name="temperature-${tabId}" id="temperature-${tabId}" class="temperature-input" min="0" max="1" step="0.05" value="${tabState.temperature}">`;
 
         fieldsWrapper.appendChild(tempGroup);
 

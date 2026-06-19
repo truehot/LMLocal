@@ -10,9 +10,7 @@ using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 namespace LMLocal.Infrastructure.Tooling
 {
     /// <summary>
-    /// Composite tool factory that combines built-in VS tools and MCP (Model Context Protocol) tools.
-    /// Serves as the primary IVsToolFactory entry point, delegating to BuiltInVsToolFactory for VS tools
-    /// and IMcpToolManager for external MCP tools.
+    /// Composite tool provider that combines built-in VS tools and MCP (Model Context Protocol) tools.
     /// </summary>
     public interface ICompositeToolFactory
     {
@@ -50,13 +48,13 @@ namespace LMLocal.Infrastructure.Tooling
         string GetCompletionMessage(string toolName, object result);
     }
 
-    internal class CompositeToolFactory : ICompositeToolFactory
+    internal class CompositeToolProvider : ICompositeToolFactory
     {
         private readonly IBuiltInVsToolProvider _builtInToolProvider;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly ISettingsManager _settingsManager;
 
-        public CompositeToolFactory(
+        public CompositeToolProvider(
             IBuiltInVsToolProvider builtInVsToolProvider,
             IMcpToolManager mcpToolManager,
             ISettingsManager settingsManager)
@@ -67,10 +65,22 @@ namespace LMLocal.Infrastructure.Tooling
         }
 
         /// <summary>
-        /// Checks if built-in tools are enabled.
+        /// Checks if built-in tools are enabled (at least read-only).
         /// </summary>
         private bool AreBuiltInToolsEnabled =>
             _settingsManager?.Current?.EnableAiTools ?? true;
+
+        /// <summary>
+        /// Checks if write tools are enabled (full access).
+        /// </summary>
+        private bool AreWriteToolsEnabled =>
+            _settingsManager?.Current?.EnableAiWriteTools ?? false;
+
+        private bool IsBuiltInToolAccessAllowed(string toolName)
+        {
+            var accessLevel = _builtInToolProvider.GetToolAccessLevel(toolName);
+            return accessLevel == ToolAccessLevel.ReadOnly || AreWriteToolsEnabled;
+        }
 
         public IReadOnlyList<ToolDefinition> GetAllToolDefinitions()
         {
@@ -80,7 +90,16 @@ namespace LMLocal.Infrastructure.Tooling
             {
                 var builtInTools = _builtInToolProvider.GetAllToolDefinitions();
                 if (builtInTools != null)
-                    allTools.AddRange(builtInTools);
+                {
+                    foreach (var toolDef in builtInTools)
+                    {
+                        if (_builtInToolProvider.ToolExists(toolDef.Name) &&
+                            IsBuiltInToolAccessAllowed(toolDef.Name))
+                        {
+                            allTools.Add(toolDef);
+                        }
+                    }
+                }
             }
 
             var mcpTools = _mcpToolManager.GetMcpToolDefinitions();
@@ -96,7 +115,7 @@ namespace LMLocal.Infrastructure.Tooling
                 return false;
 
             if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
-                return true;
+                return IsBuiltInToolAccessAllowed(toolName);
 
             return _mcpToolManager.ToolExists(toolName);
         }
@@ -107,7 +126,11 @@ namespace LMLocal.Infrastructure.Tooling
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
 
             if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+            {
+                if (!IsBuiltInToolAccessAllowed(toolName))
+                    throw new ArgumentException($"Tool '{toolName}' requires write access (EnableAiWriteTools).", nameof(toolName));
                 return _builtInToolProvider.GetTool(toolName);
+            }
 
             if (_mcpToolManager.ToolExists(toolName))
             {
@@ -129,7 +152,11 @@ namespace LMLocal.Infrastructure.Tooling
                 throw new ArgumentNullException(nameof(parameters));
 
             if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
+            {
+                if (!IsBuiltInToolAccessAllowed(toolName))
+                    throw new ArgumentException($"Tool '{toolName}' requires write access (EnableAiWriteTools).", nameof(toolName));
                 return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken);
+            }
 
             if (_mcpToolManager.ToolExists(toolName))
             {

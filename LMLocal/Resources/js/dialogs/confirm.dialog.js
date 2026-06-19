@@ -4,8 +4,8 @@ export class ConfirmDialog {
         if (!dialog) throw new Error('Dialog #confirm-dialog not found');
 
         const body = dialog.querySelector('.modal-body');
-        const confirmBtn = dialog.querySelector('#dialog-confirm');
-        const cancelBtn = dialog.querySelector('#dialog-cancel');
+        const confirmBtn = dialog.querySelector('#confirm-dialog-confirm');
+        const cancelBtn = dialog.querySelector('#confirm-dialog-cancel');
 
         if (!body || !confirmBtn || !cancelBtn) {
             throw new Error('Missing .modal-body, #dialog-confirm or #dialog-cancel');

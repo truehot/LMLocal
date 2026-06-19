@@ -30,6 +30,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             public void CreateDirectory(string path) { }
             public bool FileExists(string path) => _files.ContainsKey(N(path));
+            public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_files[N(path)].Length, DateTime.MinValue);
             public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]);
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
             public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
@@ -87,6 +88,52 @@ namespace LMLocal.Tests.Unit.Infrastructure
             }
 
             public void EnsureDirectoryExistsForFile(string filePath)
+            {
+            }
+
+            public async Task CopyFileAsync(string sourcePath, string destPath, CancellationToken cancellationToken)
+            {
+                await _allowWrite.Task.ConfigureAwait(false);
+                var key = N(sourcePath);
+                if (!_files.TryGetValue(key, out var data)) throw new System.IO.FileNotFoundException();
+                _files[N(destPath)] = data;
+            }
+
+            public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default)
+            {
+                return ReadAllTextAsync(path, cancellationToken);
+            }
+
+            public async Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            {
+                await _allowWrite.Task.ConfigureAwait(false);
+                if (startLine < 1) throw new ArgumentOutOfRangeException(nameof(startLine), "startLine must be >= 1");
+                if (endLine < startLine) throw new ArgumentOutOfRangeException(nameof(endLine), "endLine must be >= startLine");
+
+                var text = ReadAllText(path);
+                var lines = text.Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.None);
+                var result = new System.Collections.Generic.List<string>();
+                for (int i = startLine - 1; i < endLine && i < lines.Length; i++)
+                {
+                    result.Add(lines[i]);
+                }
+                return result;
+            }
+
+            public async Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
+            {
+                await _allowWrite.Task.ConfigureAwait(false);
+                if (lineHandler == null) throw new ArgumentNullException(nameof(lineHandler));
+                var text = ReadAllText(path);
+                var lines = text.Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.None);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    lineHandler(i + 1, lines[i]);
+                }
+            }
+
+            public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
             {
             }
         }

@@ -239,7 +239,7 @@ class StatusComponent {
         this.elements = {};
     }
 
-    update(appState, prevAppState) {
+    updateAppState(appState, prevAppState) {
         this._updateConnectionStatus(appState, prevAppState);
         this._updateTokenCounter(appState, prevAppState);
         this._updateStatusText(appState, prevAppState);

@@ -1,0 +1,344 @@
+/* =============== Changes Panel Styles ================================ */
+
+.changes-panel-component {
+    background-color: var(--surface-bg);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    margin: 0;
+    overflow: hidden;
+    font-family: inherit;
+    transition: max-height 0.2s ease-in-out;
+}
+
+    .changes-panel-component.hidden {
+        display: none !important;
+    }
+
+    .changes-panel-component .changes-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 12px;
+        background-color: var(--panel-bg);
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 0.1s ease;
+    }
+
+        .changes-panel-component .changes-header:hover {
+            background-color: var(--input-bg);
+        }
+
+    .changes-panel-component .header-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-color);
+    }
+
+    .changes-panel-component .accordion-arrow {
+        display: inline-block;
+        transition: transform 0.15s ease;
+        font-size: 10px;
+        color: var(--muted-color);
+        width: 12px;
+        text-align: center;
+    }
+
+    .changes-panel-component.expanded .accordion-arrow {
+        transform: rotate(90deg);
+    }
+
+    .changes-panel-component .changes-title {
+        font-weight: 600;
+        font-size: 12px;
+        color: var(--strong-text);
+    }
+
+    .changes-panel-component .changes-count {
+        color: var(--muted-color);
+        font-size: 11px;
+    }
+
+    .changes-panel-component .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .changes-panel-component .btn-small {
+        padding: 3px 10px;
+        font-size: 11px;
+        border-radius: 3px;
+        border: 1px solid var(--border-color);
+        cursor: pointer;
+        font-weight: 500;
+        transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+    }
+
+        .changes-panel-component .btn-small.btn-primary {
+            background-color: var(--accent-color);
+            color: var(--selection-text);
+            border: 1px solid transparent;
+        }
+
+            .changes-panel-component .btn-small.btn-primary:hover {
+                background-image: linear-gradient(var(--hover-bg-alpha), var(--hover-bg-alpha));
+            }
+
+            .changes-panel-component .btn-small.btn-primary:disabled {
+                background-color: var(--border-color);
+                color: var(--muted-color);
+                cursor: not-allowed;
+            }
+
+        .changes-panel-component .btn-small.btn-secondary {
+            background-color: var(--input-bg);
+            color: var(--text-color);
+        }
+
+            .changes-panel-component .btn-small.btn-secondary:hover {
+                background-color: var(--border-color);
+            }
+
+            .changes-panel-component .btn-small.btn-secondary:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+    .changes-panel-component .btn-icon-only {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 2px 6px;
+        font-size: 12px;
+        border-radius: 3px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--btn-icon-color);
+        transition: background-color 0.1s ease, color 0.1s ease;
+    }
+
+        .changes-panel-component .btn-icon-only:hover {
+            color: var(--btn-icon-hover);
+            background-color: var(--hover-bg-alpha);
+        }
+
+    .changes-panel-component .changes-body {
+        display: none;
+        border-top: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        max-height: 350px;
+        overflow-y: auto;
+    }
+
+    .changes-panel-component.expanded .changes-body {
+        display: block;
+    }
+
+    .changes-panel-component .files-list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .changes-panel-component .tree-folder-row {
+        display: flex;
+        align-items: center;
+        padding: 5px 12px;
+        background: transparent;
+        border: none;
+        width: 100%;
+        text-align: left;
+        font-family: inherit;
+        user-select: none;
+    }
+
+    .changes-panel-component .folder-name {
+        font-family: Consolas, monospace;
+        font-size: 11px;
+        color: var(--text-color);
+    }
+
+    .changes-panel-component .file-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 12px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+        border-radius: 0;
+        width: 100%;
+        outline: none;
+        font-family: inherit;
+        text-align: left;
+        cursor: pointer;
+        transition: background-color 0.1s ease;
+    }
+
+        .changes-panel-component .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .changes-panel-component .file-item:hover {
+            background-color: var(--hover-bg-alpha);
+        }
+
+    .changes-panel-component .file-info-block {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        overflow: hidden;
+        flex-grow: 1;
+        min-width: 0;
+    }
+
+    .changes-panel-component .file-icon {
+        font-size: 13px;
+        color: var(--muted-color);
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .changes-panel-component .file-name {
+        font-family: Consolas, monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-color);
+        flex-shrink: 0;
+    }
+
+    .changes-panel-component .file-item:hover .file-name {
+        color: var(--strong-text);
+    }
+
+    .changes-panel-component .file-status {
+        font-family: var(--font-sans, system-ui, sans-serif);
+        font-size: 10px;
+        font-weight: 600;
+        flex-shrink: 0;
+        margin-left: 8px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        display: inline-block;
+        line-height: 1;
+    }
+
+    .changes-panel-component .file-status-created {
+        color: var(--link-color);
+        border: 1px solid var(--link-color);
+    }
+
+    .changes-panel-component .file-status-modified {
+        color: var(--code-inline-text);
+        border: 1px solid var(--code-inline-text);
+    }
+
+    .changes-panel-component .file-status-deleted {
+        color: var(--danger-color);
+        border: 1px solid var(--danger-color);
+    }
+
+    .changes-panel-component .file-path-dir {
+        font-family: Consolas, monospace;
+        font-size: 11px;
+        color: var(--muted-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        padding-left: 4px;
+    }
+
+    .changes-panel-component .file-row-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+
+    .changes-panel-component .view-list .file-action-hint {
+        font-size: 10px;
+        color: var(--muted-color);
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .changes-panel-component .view-tree .file-action-hint {
+        display: none;
+    }
+
+    .changes-panel-component .file-item:hover .file-action-hint {
+        opacity: 0.6;
+    }
+
+    .changes-panel-component .action-btn {
+        font-size: 12px;
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        opacity: 0;
+        color: var(--muted-color);
+        transition: opacity 0.1s ease, background-color 0.1s ease, color 0.1s ease;
+    }
+
+    .changes-panel-component .file-item:hover .action-btn {
+        opacity: 0.6;
+    }
+
+    .changes-panel-component .action-btn:hover {
+        opacity: 1 !important;
+    }
+
+    .changes-panel-component .action-discard:hover {
+        color: var(--danger-color);
+        background-color: var(--stop-bg);
+    }
+
+    .changes-panel-component .action-accept:hover {
+        color: var(--success-color);
+        background-color: rgba(106, 153, 85, 0.15);
+    }
+
+    .changes-panel-component .tree-folder-row .file-icon {
+        color: var(--code-inline-text);
+        opacity: 0.8;
+    }
+
+    .changes-panel-component .changes-body::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    .changes-panel-component .changes-body::-webkit-scrollbar-thumb {
+        background-color: var(--scrollbar-thumb);
+    }
+
+    .changes-panel-component .header-actions svg,
+    .changes-panel-component .file-row-actions svg {
+        pointer-events: none;
+    }
+
+    .changes-panel-component.processing {
+        pointer-events: none;
+    }
+
+        .changes-panel-component.processing #changes-header-trigger {
+            pointer-events: auto;
+        }
+
+        .changes-panel-component.processing .btn-small {
+            opacity: 0.6;
+            cursor: wait !important;
+        }
+
+    .changes-panel-component .btn-small:disabled {
+        opacity: 0.5;
+        cursor: not-allowed !important;
+        background-color: var(--input-bg) !important;
+        color: var(--muted-color) !important;
+        border-color: var(--border-color) !important;
+    }

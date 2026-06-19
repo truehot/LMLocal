@@ -10,7 +10,10 @@ using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.WebView;
@@ -56,7 +59,10 @@ namespace LMLocal.Tests.Unit
                 var mockMcp = new Mock<IMcpConfigManager>();
                 var mockMcpToolManager = new Mock<IMcpToolManager>();
                 var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+                var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+                var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+                var mockSnapshotManager = new Mock<ISnapshotManager>();
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -83,7 +89,10 @@ namespace LMLocal.Tests.Unit
                 var mockMcp = new Mock<IMcpConfigManager>();
                 var mockMcpToolManager = new Mock<IMcpToolManager>();
                 var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, new Mock<IActiveDocument>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object);
+                var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+                var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+                var mockSnapshotManager = new Mock<ISnapshotManager>();
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, new Mock<IActiveDocument>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -105,7 +114,10 @@ namespace LMLocal.Tests.Unit
             var mockMcp = new Mock<IMcpConfigManager>();
             var mockMcpToolManager = new Mock<IMcpToolManager>();
             var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
             await bridge.ExecutePromptAsync(null).ConfigureAwait(false);
             await bridge.ExecutePromptAsync("").ConfigureAwait(false);
@@ -137,7 +149,10 @@ namespace LMLocal.Tests.Unit
             var mockMcp = new Mock<IMcpConfigManager>();
             var mockMcpToolManager = new Mock<IMcpToolManager>();
             var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
             var req = new LMLocal.Models.ExecutePromptRequest { Prompt = "hello", IncludeContent = true, AdditionalPrompt = "add", ModelId = "m1" };
             var json = req.ToJson();
@@ -169,7 +184,10 @@ namespace LMLocal.Tests.Unit
             var mockMcp = new Mock<IMcpConfigManager>();
             var mockMcpToolManager = new Mock<IMcpToolManager>();
             var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
             var res1 = await bridge.SetActiveModelAsync(null, 0).ConfigureAwait(false);
             Assert.That(res1, Is.False);
@@ -200,7 +218,10 @@ namespace LMLocal.Tests.Unit
             var mockMcp = new Mock<IMcpConfigManager>();
             var mockMcpToolManager = new Mock<IMcpToolManager>();
             var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
             var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
             Assert.That(reset, Is.True);
@@ -227,7 +248,10 @@ namespace LMLocal.Tests.Unit
             var mockMcp = new Mock<IMcpConfigManager>();
             var mockMcpToolManager = new Mock<IMcpToolManager>();
             var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object);
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
 
             var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
             Assert.That(reset, Is.False);

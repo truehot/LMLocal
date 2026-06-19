@@ -7,6 +7,7 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;
 using Moq;
@@ -20,6 +21,7 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IChatStreamService> _chatServiceMock;
         private Mock<IToolExecutionManager> _toolManagerMock;
         private Mock<IHistoryCompactor> _compactorMock;
+        private Mock<ISnapshotManager> _snapshotManagerMock;
 
         [SetUp]
         public void SetUp()
@@ -27,6 +29,7 @@ namespace LMLocal.Tests.Unit.Internal
             _chatServiceMock = new Mock<IChatStreamService>();
             _toolManagerMock = new Mock<IToolExecutionManager>();
             _compactorMock = new Mock<IHistoryCompactor>();
+            _snapshotManagerMock = new Mock<ISnapshotManager>();
         }
 
         // Arrange-Act-Assert: successful generation path without tools -> sends complete and compaction messages
@@ -54,7 +57,7 @@ namespace LMLocal.Tests.Unit.Internal
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(true);
             _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object);
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object);
 
             async Task OnMessage(WebView2ScriptMessage msg)
             {
@@ -101,7 +104,7 @@ namespace LMLocal.Tests.Unit.Internal
                 }
             });
 
-            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object);
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object);
 
             async Task OnMessage(WebView2ScriptMessage msg)
             {
@@ -146,7 +149,7 @@ namespace LMLocal.Tests.Unit.Internal
                 }
             });
 
-            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object);
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object);
 
             async Task OnMessage(WebView2ScriptMessage msg)
             {

@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.WebView;
@@ -44,11 +45,15 @@ namespace LMLocal
 
             _webViewInitializing = true;
 
-            //load settings first
+            // Load settings and tools config first
             var settingsManager = ServiceConfiguration.GetService<ISettingsManager>();
             await settingsManager.LoadAsync();
 
-            //init MCP in background 
+            var toolsConfigManager = ServiceConfiguration.GetService<IToolsConfigManager>();
+            await toolsConfigManager.LoadAsync();
+
+
+            // Init MCP in background 
             _ = Task.Run(async () =>
             {
                 try

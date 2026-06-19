@@ -1,3 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -5,23 +11,14 @@ using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FindSymbolReferences;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Tool interface for finding references to a code symbol across the current Visual Studio solution.
+    /// Tool for finding references to a code symbol across the current Visual Studio solution.
     /// </summary>
     internal interface IFindSymbolReferences : IBuiltInTool
     {
-        Task<SymbolReferencesResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default);
     }
 
     internal class FindSymbolReferences : IFindSymbolReferences
@@ -33,6 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int DefaultTake = 25;
 
         public string ToolName => "Find_Symbol_References";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public FindSymbolReferences(IPathResolver pathResolver, ISearchResultCache searchCache)
         {
@@ -45,7 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file (string), matches (array of {{line (int), text (string)}})}}}}, next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Returns up to {MaxTotalReferences} references, paginated by file ({DefaultTake} files per page). Limited to {MaxSymbolsToProcess} symbol candidates.",
+                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file_path (string), matches (array of {{line (int), text (string)}})}}), next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Returns up to {MaxTotalReferences} references, paginated by file ({DefaultTake} files per page). The symbol name is resolved to up to {MaxSymbolsToProcess} matching code symbols; references for all matched candidates are returned.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -59,13 +57,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private async Task<SymbolReferencesResponse> ExecuteCoreAsync(
-            string symbolName,
-            CancellationToken cancellationToken = default)
+        private async Task<SymbolReferencesResponse> ExecuteCoreAsync(string symbolName, CancellationToken cancellationToken = default)
         {
             try
             {
-                symbolName = ExtractAndValidateParameters(symbolName);
+                if (string.IsNullOrEmpty(symbolName))
+                    throw new ArgumentException("Parameter 'symbol_name' cannot be empty.", nameof(symbolName));
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
@@ -106,7 +103,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     };
 
                 var projects = solutionSnapshot.Projects.ToList();
-                var solutionDir = System.IO.Path.GetDirectoryName(solutionSnapshot.FilePath);
+                var solutionDir = Path.GetDirectoryName(solutionSnapshot.FilePath);
 
                 var result = await Task.Run(async () =>
                 {
@@ -119,6 +116,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     foreach (var project in projects)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
+
                         if (!project.SupportsCompilation) continue;
 
                         var symbols = await SymbolFinder.FindDeclarationsAsync(
@@ -131,6 +129,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         foreach (var symbol in symbols)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
+
                             if (symbolsProcessed >= MaxSymbolsToProcess)
                             {
                                 hasMoreResults = true;
@@ -148,6 +147,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             foreach (var reference in references)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
+
                                 foreach (var location in reference.Locations)
                                 {
                                     var document = location.Document;
@@ -240,13 +240,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        public async Task<SymbolReferencesResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (symbolName, pageToken) = ExtractAndValidateParametersFromDict(parameters);
+                var (symbolName, pageToken, error) = ExtractAndValidateParameters(parameters);
+                if (!string.IsNullOrEmpty(error))
+                {
+                    return Error(error, symbolName);
+                }
+
                 int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
                 int skip = pageNumber * DefaultTake;
 
@@ -266,6 +269,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     };
                 }
 
+                // Cache miss: perform the full Roslyn search.
+                // An expensive call is unavoidable when the cache is cold,
+                // so we run the search once, cache the results, and serve
+                // the requested page from the in-memory cache.
                 var fullResponse = await ExecuteCoreAsync(symbolName, cancellationToken);
 
                 if (fullResponse.Success && fullResponse.Results.Count > 0)
@@ -305,6 +312,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
+        private string Error(string message, string symbolName)
+        {
+            return JsonConvert.SerializeObject(new SymbolReferencesResponse
+            {
+                Success = false,
+                ErrorMessage = message,
+                SymbolName = symbolName,
+                Results = new List<FileReferencesGroup>(),
+                TotalReferences = 0,
+                NextPageToken = null
+            });
+        }
+
         private string BuildCacheKey(string symbolName)
         {
             return symbolName ?? string.Empty;
@@ -318,8 +338,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var pageToken = parameters.TryGetValue("page_token", out var pt) ? pt?.ToString() : null;
 
             var message = $"Finding references to '{symbolName}'";
-            if (!string.IsNullOrEmpty(pageToken))
-                message += $" (page {pageToken})";
+            if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
+                message += $" (page {pageTokenValue})";
 
             message += "... ";
             return message;
@@ -333,26 +353,27 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return $"Error: {symbolResult.ErrorMessage}";
             }
             int pageReferences = symbolResult.Results.Sum(r => r.Matches.Count);
-            return $"Found {pageReferences} references on this page (total: {symbolResult.TotalReferences} references).";
+            var message = $"Found {pageReferences} references";
+            if (symbolResult.TotalReferences > 0 && pageReferences < symbolResult.TotalReferences)
+            {
+                message += $" (total: {symbolResult.TotalReferences} references)";
+            }
+            message += ".";
+            return message;
         }
 
-        private string ExtractAndValidateParameters(string symbolName)
+        private (string symbolName, string pageToken, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
-            if (string.IsNullOrEmpty(symbolName))
-                throw new ArgumentException("Parameter 'symbol_name' cannot be empty.", nameof(symbolName));
+            if(parameters == null)
+                return (null, null, "Parameters are required.");
 
-            return symbolName;
-        }
-
-        private (string symbolName, string pageToken) ExtractAndValidateParametersFromDict(Dictionary<string, object> parameters)
-        {
             if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
-                throw new ArgumentException("Parameter 'symbol_name' is required and must be a string.", nameof(parameters));
+                return (null, null, "Parameter 'symbol_name' is required and must be a string.");
 
             var symbolName = (string)symbolNameObj;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            return (symbolName, pageToken);
+            return (symbolName, pageToken, null);
         }
 
         public class ReferenceItem
@@ -366,7 +387,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public class FileReferencesGroup
         {
-            [JsonProperty("file")]
+            [JsonProperty("file_path")]
             public string FilePath { get; set; }
 
             [JsonProperty("matches")]

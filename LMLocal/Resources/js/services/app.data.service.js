@@ -4,6 +4,8 @@ import settingsStore from '@app/store/settings.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import providersStore from '@app/store/providers.store.js';
 import appStore from '@app/store/app.store.js';
+
+
 import { AppStatus } from '@app/store/app.status.js';
 
 class AppDataService {
@@ -203,6 +205,55 @@ class AppDataService {
             });
             throw error;
         }
+    }
+
+    async getToolsAsync() {
+        try {
+            const result = await bridgeClient.getToolsAsync();
+            return result;
+        } catch (error) {
+            console.error('Failed to load tools:', error);
+            throw error;
+        }
+    }
+
+    async updateToolsAsync(config) {
+        try {
+            const result = await bridgeClient.updateToolsAsync(config);
+            return result;
+        } catch (error) {
+            console.error('Failed to update tools:', error);
+            throw error;
+        }
+    }
+
+    async getSnapshotAsync() {
+        try {
+            const result = await bridgeClient.getSnapshotAsync();
+            return result;
+        } catch (error) {
+            console.error('Failed to load snapshot:', error);
+        }
+    }
+
+    async discardAllAsync() {
+        return await bridgeClient.discardChangesAsync();
+    }
+
+    async acceptAllAsync() {
+        return await bridgeClient.acceptChangesAsync();
+    }
+
+    async reviewFileAsync(filePath) {
+        return await bridgeClient.reviewFileAsync(filePath);
+    }
+
+    async discardFileAsync(filePath) {
+        return await bridgeClient.discardFileAsync(filePath);
+    }
+
+    async acceptFileAsync(filePath) {
+        return await bridgeClient.acceptFileAsync(filePath);
     }
 }
 

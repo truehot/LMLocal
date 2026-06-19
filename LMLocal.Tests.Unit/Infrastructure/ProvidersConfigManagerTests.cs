@@ -167,6 +167,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public int BatchIntervalMs => 100;
             public int WindowSeconds => 5;
             public int RequestTimeoutSeconds => 15;
+            public string SnapshotFolder => "Snapshots";
+            public string LocalSnapshotsFileName => "manifest.json";
         }
     }
 }

@@ -6,23 +6,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
-using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ListDirectoryContents;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Lists all files and subdirectories within a specified path (relative to solution root or absolute).
-    /// Helps navigate the project structure without scanning the entire solution.
-    /// Works only within the solution directory.
-    /// Returns list of entries with path, name, and type (file or folder).
+    /// Tool to list all files and subdirectories within a specified path.
     /// </summary>
     internal interface IListDirectoryContents : IBuiltInTool
     {
-        Task<DirectoryContentsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default);
     }
 
     internal class ListDirectoryContents : IListDirectoryContents
@@ -41,6 +33,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         };
 
         public string ToolName => "List_Directory_Contents";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public ListDirectoryContents(IVsDependencies vsDependencies, IPathResolver pathResolver)
         {
@@ -53,7 +46,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Lists files and subdirectories within a path. Response fields: success (bool), error_message (string), directory (string), entries (array of {{name (string), path (string), type (string)}}), has_more_entries (bool). has_more_entries indicates more entries exist beyond the {MaxEntries} entry limit. Only works inside solution directory.",
+                Description = $"Lists files and subdirectories within a path. System directories (bin, obj, .vs, .git, CopilotBaseline) are excluded from results. Response fields: success (bool), error_message (string), directory (string), entries (array of {{name (string), path (string), type (string)}}), has_more_results (bool). has_more_results indicates more entries exist beyond the {MaxEntries} entry limit. Only works inside solution directory.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -66,49 +59,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<DirectoryContentsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                var directoryPath = ExtractAndValidateParameters(parameters);
 
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                var (directoryPath, error) = ExtractAndValidateParameters(parameters);
+                if (error != null)
+                    return Error(error, directoryPath);
 
-                await _vsDependencies.InitializeAsync();
+                if (!_vsDependencies.IsSolutionOpen)
+                    return Error("No solution is currently open.", directoryPath);
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 if (!_pathResolver.TryResolveFilePath(directoryPath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                    return new DirectoryContentsResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"Directory not found: {directoryPath}",
-                        DirectoryPath = directoryPath,
-                        Entries = new List<DirectoryEntry>(),
-                        HasMoreResults = false
-                    };
+                    return Error($"Directory not found: {directoryPath}", directoryPath);
 
                 if (!Directory.Exists(absolutePath))
-                    return new DirectoryContentsResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"Directory not found: {absolutePath}",
-                        DirectoryPath = directoryPath,
-                        Entries = new List<DirectoryEntry>(),
-                        HasMoreResults = false
-                    };
+                    return Error($"Directory not found: {absolutePath}", directoryPath);
 
                 if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
-                    return new DirectoryContentsResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"Directory '{absolutePath}' is outside the solution directory '{solutionDir}'.",
-                        DirectoryPath = directoryPath,
-                        Entries = new List<DirectoryEntry>(),
-                        HasMoreResults = false
-                    };
+                    return Error($"Directory '{absolutePath}' is outside the solution directory '{solutionDir}'.", directoryPath);
 
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
@@ -229,17 +201,32 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return $"Listed {dirResult.Entries.Count} entries.";
         }
 
-        private string ExtractAndValidateParameters(Dictionary<string, object> parameters)
+        private (string directoryPath, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
+            if (parameters == null)
+                return (null, "Parameters are required.");
+
             if (!parameters.TryGetValue("directory_path", out object pathObj) || !(pathObj is string))
-                throw new ArgumentException("Parameter 'directory_path' is required and must be a string.", nameof(parameters));
+                return (null, "directory_path parameter is required and must be a string.");
 
             var directoryPath = (string)pathObj;
 
             if (string.IsNullOrWhiteSpace(directoryPath))
                 directoryPath = ".";
 
-            return directoryPath;
+            return (directoryPath, null);
+        }
+
+        private static DirectoryContentsResponse Error(string message, string directoryPath = "")
+        {
+            return new DirectoryContentsResponse
+            {
+                Success = false,
+                ErrorMessage = message,
+                DirectoryPath = directoryPath,
+                Entries = new List<DirectoryEntry>(),
+                HasMoreResults = false
+            };
         }
 
         public class DirectoryEntry

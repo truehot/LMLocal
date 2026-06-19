@@ -53,7 +53,7 @@ export class ProvidersDialog {
             listActions: dialog.querySelector('#providers-list-actions'),
             formActions: dialog.querySelector('#providers-form-actions'),
             filterInput: dialog.querySelector('#provider-filter-input'),
-            sortBtn: dialog.querySelector('#model-sort-btn')
+            sortBtn: dialog.querySelector('#providers-sort-btn')
         };
     }
 

@@ -12,9 +12,13 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
+using LMLocal.Infrastructure.VisualStudio;
 using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
 using Microsoft.VisualStudio.Shell;
@@ -43,6 +47,14 @@ namespace LMLocal.Infrastructure.WebView
         Task<string> TestMcpConnectionAsync(string payload);
         Task<string> GetProvidersAsync();
         Task<bool> UpdateProvidersAsync(string providersConfigJson);
+        Task<string> GetToolsAsync();
+        Task<bool> UpdateToolsAsync(string toolsConfigJson);
+        Task<bool> GetSnapshotAsync();
+        Task<bool> DiscardChangesAsync();
+        Task<bool> AcceptChangesAsync();
+        Task<bool> ReviewFileAsync(string filePath);
+        Task<bool> DiscardFileAsync(string filePath);
+        Task<bool> AcceptFileAsync(string filePath);
     }
 
 
@@ -61,6 +73,9 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
         private readonly IProvidersConfigManager _providersConfigManager;
+        private readonly IBuiltInVsToolProvider _builtInVsToolProvider;
+        private readonly IToolsConfigManager _toolsConfigManager;
+        private readonly ISnapshotManager _snapshotManager;
 
         internal WebViewBridge(
             ISettingsManager settingsManager,
@@ -70,10 +85,13 @@ namespace LMLocal.Infrastructure.WebView
             IMcpConfigManager mcpConfigManager,
             IMcpToolManager mcpToolManager,
             IProvidersConfigManager providersConfigManager,
+            IBuiltInVsToolProvider builtInVsToolProvider,
+            IToolsConfigManager toolsConfigManager,
             IActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
-            IChatHistoryManager chatHistoryManager)
+            IChatHistoryManager chatHistoryManager,
+            ISnapshotManager snapshotManager)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _scriptExecutor = scriptExecutor ?? throw new ArgumentNullException(nameof(scriptExecutor));
@@ -86,6 +104,10 @@ namespace LMLocal.Infrastructure.WebView
             _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
             _providersConfigManager = providersConfigManager ?? throw new ArgumentNullException(nameof(providersConfigManager));
+            _builtInVsToolProvider = builtInVsToolProvider ?? throw new ArgumentNullException(nameof(builtInVsToolProvider));
+            _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _snapshotManager.SnapshotChanged += OnSnapshotChanged;
         }
 
         /// <summary>
@@ -514,6 +536,188 @@ namespace LMLocal.Infrastructure.WebView
                 InternalLogger.Error("UpdateProvidersAsync failed", ex);
                 return false;
             }
+        }
+
+        public Task<string> GetToolsAsync()
+        {
+            try
+            {
+                var toolsConfig = _toolsConfigManager.Current;
+                var allToolDefs = _builtInVsToolProvider.GetAllToolDefinitionsUnfiltered();
+
+                var tools = new List<ToolResponse>();
+
+                foreach (var toolDef in allToolDefs)
+                {
+                    var isEnabled = true;
+
+                    if (toolsConfig?.Tools != null && toolsConfig.Tools.Count > 0)
+                    {
+                        var toolConfig = toolsConfig.Tools.Find(t => t.Id == toolDef.Name);
+                        if (toolConfig != null)
+                        {
+                            isEnabled = toolConfig.Enabled;
+                        }
+                    }
+
+                    tools.Add(new ToolResponse
+                    {
+                        Id = toolDef.Name,
+                        Name = toolDef.Name,
+                        Description = toolDef.Description ?? string.Empty,
+                        Enabled = isEnabled
+                    });
+                }
+
+                var response = new ToolsListResponse { Tools = tools };
+                return Task.FromResult(response.ToJson());
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetToolsAsync failed", ex);
+                return Task.FromResult("{}");
+            }
+        }
+
+        public async Task<bool> UpdateToolsAsync(string toolsConfigJson)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(toolsConfigJson))
+                {
+                    return false;
+                }
+
+                var config = toolsConfigJson.FromJson<ToolsConfigFile>();
+                if (config == null)
+                {
+                    return false;
+                }
+
+                await _toolsConfigManager.SaveAsync(config).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("UpdateToolsAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> GetSnapshotAsync()
+        {
+            try
+            {
+                await _snapshotManager.LoadSnapshotAsync().ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetSnapshotAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> DiscardChangesAsync()
+        {
+            try
+            {
+                await _snapshotManager.RollbackAllAsync().ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("DiscardChangesAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> AcceptChangesAsync()
+        {
+            try
+            {
+                await _snapshotManager.CommitAllAsync().ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("AcceptChangesAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> ReviewFileAsync(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePath))
+                    return false;
+
+                var leftPath = await _snapshotManager.GetSnapshotFilePathAsync(filePath).ConfigureAwait(false);
+                var rightPath = _snapshotManager.GetCurrentFilePath(filePath);
+                var tmpDirectory = _snapshotManager.GetTmpDirectoryPath();
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                await DiffViewer.ShowDiffAsync(leftPath, rightPath, tmpDirectory).ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("ReviewFileDiffAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> DiscardFileAsync(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePath))
+                    return false;
+
+                await _snapshotManager.RollbackFilesAsync(new[] { filePath }).ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("DiscardFileAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> AcceptFileAsync(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePath))
+                    return false;
+
+                await _snapshotManager.CommitFilesAsync(new[] { filePath }).ConfigureAwait(false);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("AcceptFileAsync failed", ex);
+                return false;
+            }
+        }
+        private void OnSnapshotChanged(IReadOnlyList<string> changedFiles)
+        {
+            _ = Task.Run(async () =>
+            {
+                var fileChanges = await _snapshotManager.GetChangedFilesWithStatusAsync().ConfigureAwait(false);
+                var message = new WebView2SnapshotMessage
+                {
+                    ChangedFiles = fileChanges.ToList(),
+                };
+                await _scriptExecutor.PostMessageAsJsonAsync(message).ConfigureAwait(false);
+            });
         }
     }
 }

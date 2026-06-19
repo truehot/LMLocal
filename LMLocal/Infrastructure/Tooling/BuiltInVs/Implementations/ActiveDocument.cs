@@ -1,15 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.FindResults;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocument;
@@ -21,7 +19,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface IActiveDocument : IBuiltInTool
     {
-        Task<ActiveDocumentResponse> ExecuteAsync(CancellationToken cancellationToken = default);
         Task<string> GetContentAsync();
     }
 
@@ -29,13 +26,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
+        private readonly IFileSystem _fileSystem;
 
         public string ToolName => "Get_Active_Document_Content";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public ActiveDocument(IVsDependencies vsDependencies, IPathResolver pathResolver)
+        public ActiveDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public ToolDefinition GetToolInfo()
@@ -43,7 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns the currently active text document in Visual Studio. Response fields: success (bool), error_message (string), file (string), content (string). If no document is currently active, returns null file with empty content and success=true.",
+                Description = "Returns the currently active text document in Visual Studio. Response fields: success (bool), error_message (string), file_path (string), content (string). If the document content cannot be read, returns success=false with error_message.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -53,13 +53,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<ActiveDocumentResponse> ExecuteAsync(CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-                await _vsDependencies.InitializeAsync();
+                if (!_vsDependencies.IsSolutionOpen)
+                    return Error("No solution is currently open.");
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
@@ -139,49 +138,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                string content = await ReadFileContentAsync(filePath, cancellationToken).ConfigureAwait(false);
+                string content = await _fileSystem.ReadAllTextWithSharedReadAsync(filePath, cancellationToken).ConfigureAwait(false);
                 return (filePath, content);
             }
             catch (OperationCanceledException)
             {
-                throw;
-            }
-            catch
-            {
-                return (filePath, null);
-            }
-        }
-
-        private static async Task<string> ReadFileContentAsync(string filePath, CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrEmpty(filePath))
-                return string.Empty;
-
-            try
-            {
-                using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true))
-                using (var sr = new StreamReader(fs))
-                {
-                    var sb = new StringBuilder();
-                    char[] buffer = new char[8192];
-                    int charsRead;
-                    while ((charsRead = await sr.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        sb.Append(buffer, 0, charsRead);
-                    }
-                    return sb.ToString();
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                InternalLogger.Warn($"File read operation for '{filePath}' was canceled.");
+                InternalLogger.Warn($"Operation to get active document was canceled.");
                 throw;
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading file '{filePath}': {ex.Message}");
-                return string.Empty;
+                InternalLogger.Error($"Error retrieving active document content: {ex.Message}");
+                return (filePath, null);
             }
         }
 
@@ -201,9 +169,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return $"Read '{docResult.FilePath}'.";
         }
 
+        private static ActiveDocumentResponse Error(string message)
+        {
+            return new ActiveDocumentResponse
+            {
+                FilePath = null,
+                Content = string.Empty,
+                Success = false,
+                ErrorMessage = message
+            };
+        }
+
         public class ActiveDocumentResponse
         {
-            [JsonProperty("file")]
+            [JsonProperty("file_path")]
             public string FilePath { get; set; }
 
             [JsonProperty("content")]

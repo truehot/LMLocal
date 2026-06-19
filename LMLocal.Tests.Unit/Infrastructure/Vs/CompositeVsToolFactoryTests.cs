@@ -20,7 +20,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         private Mock<IBuiltInVsToolProvider> _builtInFactoryMock;
         private Mock<IMcpToolManager> _mcpToolManagerMock;
         private Mock<ISettingsManager> _settingsManagerMock;
-        private CompositeToolFactory _compositeFactory;
+        private CompositeToolProvider _compositeFactory;
 
         [SetUp]
         public void SetUp()
@@ -33,7 +33,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var settings = new AppSettings { EnableAiTools = true };
             _settingsManagerMock.SetupGet(s => s.Current).Returns(settings);
 
-            _compositeFactory = new CompositeToolFactory(
+            _compositeFactory = new CompositeToolProvider(
                 _builtInFactoryMock.Object, 
                 _mcpToolManagerMock.Object,
                 _settingsManagerMock.Object);
@@ -52,9 +52,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
 
             var result = _compositeFactory.GetAllToolDefinitions();
 
-            Assert.That(result.Count, Is.EqualTo(2));
-            Assert.That(result[0].Name, Is.EqualTo("search_in_files"));
-            Assert.That(result[1].Name, Is.EqualTo("external_tool"));
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Name, Is.EqualTo("external_tool"));
         }
 
         [Test]

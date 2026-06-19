@@ -2,6 +2,7 @@ import { Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js'
+import changesStore from '@app/store/changes.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
 
 class BridgeMessageHandler {
@@ -138,6 +139,16 @@ class BridgeMessageHandler {
             toolCallId: toolCall.CallId,
             toolWithError: toolCall.IsError,
             toolMessage: toolCall.IsError ? toolCall.Error : toolCall.Message
+        });
+    }
+
+    handleSnapshotFilesChanged(message) {
+        changesStore.setState({
+            loading: false,
+            loaded: true,
+            error: null,
+            changedFiles: message.ChangedFiles || [],
+            visible: (message.ChangedFiles && message.ChangedFiles.length > 0)
         });
     }
 }

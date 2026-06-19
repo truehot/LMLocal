@@ -90,6 +90,10 @@ class BridgeMessageDispatcher {
                 this._handler.handleCompactionEnd();
                 break;
 
+            case 'SnapshotFilesChanged':
+                this._handler.handleSnapshotFilesChanged(data);
+                break;
+
             default:
                 console.warn('[BridgeMessageDispatcher] Unknown message type:', data.Type);
         }

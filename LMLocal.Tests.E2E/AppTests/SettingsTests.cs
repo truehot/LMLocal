@@ -116,7 +116,7 @@ public class SettingsTests : AppTestBase
         await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 1000 });
 
         // Close the dialog via cancel
-        await Page.Locator("#settings-dialog .modal-footer button#dialog-cancel").ClickAsync();
+        await Page.Locator("#settings-dialog .modal-footer button#settings-dialog-cancel").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync();
     }
 }

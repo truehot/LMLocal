@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using Moq;
 using NUnit.Framework;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Vs
 {
@@ -46,7 +48,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver(), provider);
 
             // Act - Filter by ProjectB (case-insensitive substring match)
             var filter = new EnumerateSolutionFilesFilter
@@ -75,7 +77,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver(), provider);
 
             // Act - Use lowercase filter for "MyProject"
             var filter = new EnumerateSolutionFilesFilter
@@ -110,7 +112,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver(), provider);
 
             // Act
             var filter = new EnumerateSolutionFilesFilter
@@ -138,7 +140,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var provider = new TestFileProvider(_root);
             var dependencies = new TestVsDependencies(_root, provider);
             var uiThreadGuard = new TestUiThreadGuard();
-            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver());
+            var scanner = new VsSolutionFilesScanner(dependencies, uiThreadGuard, new PathResolver(), provider);
 
             // Act
             var filter = new EnumerateSolutionFilesFilter
@@ -158,18 +160,29 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         {
             private readonly string _root;
             public TestFileProvider(string root) { _root = root; }
-            public IEnumerable<string> GetFiles(bool includeProjects = false) => Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories);
+            public IEnumerable<string> GetFiles(Microsoft.VisualStudio.Shell.Interop.IVsSolution solution, bool includeProjects = false) => Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories);
         }
 
         private class TestVsDependencies : IVsDependencies
         {
             private readonly string _solutionDirectory;
             private readonly ISolutionFileProvider _fileProvider;
+            private readonly Microsoft.VisualStudio.Shell.Interop.IVsSolution _solution;
+
+#pragma warning disable CS0067
+            public event Action SolutionOpened;
+            public event Action SolutionClosed;
+#pragma warning restore CS0067
+
+            public bool IsSolutionOpen => true;
 
             public TestVsDependencies(string solutionDirectory, ISolutionFileProvider fileProvider = null)
             {
                 _solutionDirectory = solutionDirectory;
                 _fileProvider = fileProvider;
+                // Create a mock IVsSolution
+                var solutionMock = new Mock<Microsoft.VisualStudio.Shell.Interop.IVsSolution>();
+                _solution = solutionMock.Object;
             }
 
             public Task InitializeAsync()
@@ -184,7 +197,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
 
             public Microsoft.VisualStudio.Shell.Interop.IVsSolution GetSolution()
             {
-                return null;
+                return _solution;
             }
 
             public ISolutionFileProvider GetFileProvider()

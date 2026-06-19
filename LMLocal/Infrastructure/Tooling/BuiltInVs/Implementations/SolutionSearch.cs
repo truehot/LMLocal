@@ -1,27 +1,24 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionSearch;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Searches for text across Visual Studio solution files.
-    /// Performs a case-insensitive substring match on file contents.
+    /// Tool for performing text search across files in the current Visual Studio solution.
     /// </summary>
     internal interface ISolutionSearch : IBuiltInTool
     {
-        Task<SearchResultsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default);
     }
 
     internal class SolutionSearch : ISolutionSearch
@@ -30,20 +27,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
         private readonly ISearchResultCache _searchCache;
+        private readonly IFileSystem _fileSystem;
         private const int DefaultTake = 100;
         private const int MaxFilesToScan = 1500;
+
         public string ToolName => "Search_Local_Solution_Files";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public SolutionSearch(
             IVsDependencies vsDependencies,
             IPathResolver pathResolver,
             IVsSolutionFilesScanner solutionFilesScanner,
-            ISearchResultCache searchCache)
+            ISearchResultCache searchCache,
+            IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _solutionFilesScanner = solutionFilesScanner ?? throw new ArgumentNullException(nameof(solutionFilesScanner));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public ToolDefinition GetToolInfo()
@@ -51,13 +53,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Performs a text search across files in the current Visual Studio solution (case-insensitive substring). Response fields: success (bool), error_message (string), results (array of {{file (string), matches (array of {{line (int), text (string)}}), match_count (int)}}), total_matches (int), total_files (int), next_page_token (string or null). Results are paginated by total number of matches ({DefaultTake} matches per page). If 'next_page_token' is not null, pass it as page_token to get next page. Limited to scanning first {MaxFilesToScan} files.",
+                Description = $"Searches inside files in the current Visual Studio solution for a case-insensitive substring. Does not search file names. Response fields: success (bool), error_message (string), results (array of {{file_path (string), matches (array of {{line (int), text (string)}}), match_count (int)}}), total_matches (int), total_files (int), next_page_token (string or null). Results are paginated by total number of matches ({DefaultTake} matches per page). If 'next_page_token' is not null, pass it as page_token to get next page. Limited to scanning first {MaxFilesToScan} files. ",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive). Do not use Regular Expressions (Regex), wildcards (like '*', '?')." } },
+                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive) inside file contents - not file names. Do not use Regular Expressions (Regex) or wildcards (like '*', '?')." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "File extension filter (e.g., '.cs', '.js'). If not specified, searches all file types. Use it to narrow result set." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. Use it to narrow result set." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use 'next_page_token' from the response as 'page_token' to get next page of results." } }
@@ -67,17 +69,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<SearchResultsResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (searchText, fileExtensions, projectFilter, pageToken) = ExtractAndValidateParametersFromDict(parameters);
+                var (searchText, fileExtensions, projectFilter, pageToken, error) = ExtractAndValidateParameters(parameters);
+                if (error != null)
+                    return Error(error);
+
                 int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
 
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-                await _vsDependencies.InitializeAsync();
+                if (!_vsDependencies.IsSolutionOpen)
+                    return Error("No solution is currently open.");
+
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 string cacheKey = BuildCacheKey(searchText, fileExtensions, projectFilter);
@@ -93,8 +97,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             NextPageToken = nextToken,
                             TotalMatches = page.TotalMatches,
                             TotalFiles = page.TotalFiles,
-                            Success = true,
-                            ErrorMessage = null
+                            Success = true
                         };
                     }
 
@@ -104,8 +107,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         NextPageToken = null,
                         TotalMatches = cached.AllResults.FirstOrDefault()?.TotalMatches ?? 0,
                         TotalFiles = cached.AllResults.FirstOrDefault()?.TotalFiles ?? 0,
-                        Success = true,
-                        ErrorMessage = null
+                        Success = true
                     };
                 }
 
@@ -117,110 +119,107 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Limit = MaxFilesToScan,
                     IncludeProjects = false
                 };
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var allFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
 
-                var response = await Task.Run(() =>
+                var allResults = new List<SearchResult>();
+
+                foreach (var absolutePath in allFiles)
                 {
-                    var allResults = new List<SearchResult>();
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                    foreach (var absolutePath in allFiles)
+                    if (!_fileSystem.FileExists(absolutePath))
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        InternalLogger.Warn($"SearchInSolution: file not found: '{absolutePath}'");
+                        continue;
+                    }
 
-                        try
+                    try
+                    {
+                        var matches = new List<SearchMatch>();
+                        await _fileSystem.ReadLinesAsync(absolutePath, (lineNumber, line) =>
+                        {
+                            if (line.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                matches.Add(new SearchMatch
+                                {
+                                    LineNumber = lineNumber,
+                                    LineText = line.Trim()
+                                });
+                            }
+                        }, cancellationToken).ConfigureAwait(false);
+
+                        if (matches.Count > 0)
                         {
                             if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                                 relativePath = absolutePath;
 
-                            var matches = new List<SearchMatch>();
-                            int lineNumber = 0;
-
-                            foreach (var line in File.ReadLines(absolutePath))
+                            allResults.Add(new SearchResult
                             {
-                                lineNumber++;
-                                int column = line.IndexOf(searchText, StringComparison.OrdinalIgnoreCase);
-                                if (column >= 0)
-                                {
-                                    matches.Add(new SearchMatch
-                                    {
-                                        LineNumber = lineNumber,
-                                        LineText = line.Trim()
-                                    });
-                                }
-                            }
-
-                            if (matches.Count > 0)
-                            {
-                                allResults.Add(new SearchResult
-                                {
-                                    FilePath = relativePath,
-                                    Matches = matches,
-                                    MatchCount = matches.Count
-                                });
-                            }
-                        }
-                        catch (FileNotFoundException)
-                        {
-                            InternalLogger.Warn($"SearchInSolution: file not found: '{absolutePath}'");
-                        }
-                        catch (IOException ex)
-                        {
-                            InternalLogger.Warn($"SearchInSolution: IO error: {ex.Message}");
-                        }
-                        catch (UnauthorizedAccessException ex)
-                        {
-                            InternalLogger.Warn($"SearchInSolution: access denied: {ex.Message}");
+                                FilePath = relativePath,
+                                Matches = matches,
+                                MatchCount = matches.Count
+                            });
                         }
                     }
-
-                    allResults.Sort((a, b) => b.MatchCount.CompareTo(a.MatchCount));
-
-                    var pages = PaginateByMatches(allResults, DefaultTake);
-                    int totalMatches = allResults.Sum(r => r.MatchCount);
-
-                    var cacheEntry = new CachedToolResults<PagedSearchResults>
+                    catch (OperationCanceledException)
                     {
-                        AllResults = pages,
-                        ItemsScanned = allFiles.Count
-                    };
-                    _searchCache.Set(cacheKey, solutionDir, cacheEntry);
-
-                    if (pages.Count > 0)
-                    {
-                        var firstPage = pages[0];
-                        string nextToken = pages.Count > 1 ? "1" : null;
-                        return new SearchResultsResponse
-                        {
-                            Results = firstPage.Results,
-                            NextPageToken = nextToken,
-                            TotalMatches = totalMatches,
-                            TotalFiles = firstPage.TotalFiles,
-                            Success = true,
-                            ErrorMessage = null
-                        };
+                        throw;
                     }
+                    catch (Exception ex)
+                    {
+                        InternalLogger.Warn($"SearchInSolution: error reading '{absolutePath}': {ex.Message}");
+                    }
+                }
 
+                allResults.Sort((a, b) => b.MatchCount.CompareTo(a.MatchCount));
+
+                var pages = PaginateByMatches(allResults, DefaultTake);
+                int totalMatches = allResults.Sum(r => r.MatchCount);
+                int totalFiles = allResults.Count;
+
+                var cacheEntry = new CachedToolResults<PagedSearchResults>
+                {
+                    AllResults = pages,
+                    ItemsScanned = allFiles.Count
+                };
+                _searchCache.Set(cacheKey, solutionDir, cacheEntry);
+
+                if (pages.Count > 0)
+                {
+                    var firstPage = pages[0];
+                    string nextToken = pages.Count > 1 ? "1" : null;
                     return new SearchResultsResponse
                     {
-                        Results = new List<SearchResult>(),
-                        NextPageToken = null,
-                        TotalMatches = 0,
-                        TotalFiles = 0,
-                        Success = true,
-                        ErrorMessage = null
+                        Results = firstPage.Results,
+                        NextPageToken = nextToken,
+                        TotalMatches = totalMatches,
+                        TotalFiles = totalFiles,
+                        Success = true
                     };
+                }
 
-                }, cancellationToken).ConfigureAwait(false);
-
-                return response;
+                return new SearchResultsResponse
+                {
+                    Results = new List<SearchResult>(),
+                    NextPageToken = null,
+                    TotalMatches = 0,
+                    TotalFiles = 0,
+                    Success = true
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                return Error("Operation was cancelled.");
             }
             catch (Exception ex)
             {
-                return ErrorResponse(ex.Message);
+                return Error(ex.Message);
             }
         }
 
-        private static SearchResultsResponse ErrorResponse(string message)
+        private static SearchResultsResponse Error(string message)
         {
             return new SearchResultsResponse
             {
@@ -332,16 +331,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 message += $" in '{project}'";
 
             if (!string.IsNullOrEmpty(ext))
-            {
                 message += $", with extension '{ext}'";
-            }
             else
-            {
                 message += " in all files";
-            }
 
-            if (!string.IsNullOrEmpty(pageToken))
-                message += $" (page {pageToken})";
+            if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
+                message += $" (page {pageTokenValue})";
 
             message += "... ";
             return message;
@@ -351,25 +346,32 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             var searchResults = (SearchResultsResponse)result;
             if (!searchResults.Success)
-            {
                 return $"Error: {searchResults.ErrorMessage}";
-            }
+
             int pageMatches = searchResults.Results.Sum(r => r.MatchCount);
-            return $"Found {pageMatches} matches in {searchResults.Results.Count} files (total: {searchResults.TotalMatches} matches in {searchResults.TotalFiles} files).";
+            var message = $"Found {pageMatches} matches";
+            if (searchResults.TotalMatches > 0 && pageMatches < searchResults.TotalMatches)
+            {
+                message += $" (total: {searchResults.TotalMatches} matches)";
+            }
+            message += ".";
+            return message;
         }
 
-        private (string searchText, string fileExtensions, string projectFilter, string pageToken) ExtractAndValidateParametersFromDict(
+        private (string searchText, string fileExtensions, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
+            if (parameters == null)
+                return (null, null, null, null, "Parameters cannot be null.");
             if (!parameters.TryGetValue("text", out object textObj) || !(textObj is string))
-                throw new ArgumentException("Parameter 'text' is required and must be a string.", nameof(parameters));
+                return (null, null, null, null, "Parameter 'text' is required and must be a string.");
 
             var searchText = (string)textObj;
             var fileExtensions = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            return (searchText, fileExtensions, projectFilter, pageToken);
+            return (searchText, fileExtensions, projectFilter, pageToken, null);
         }
 
         public class SearchMatch
@@ -383,7 +385,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public class SearchResult
         {
-            [JsonProperty("file")]
+            [JsonProperty("file_path")]
             public string FilePath { get; set; }
 
             [JsonProperty("matches")]

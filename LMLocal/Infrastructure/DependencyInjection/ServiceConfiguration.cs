@@ -13,20 +13,20 @@ using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;
 using Microsoft.Extensions.DependencyInjection;
-
 namespace LMLocal.Infrastructure.DependencyInjection
 {
-    /// <summary>
+
     /// Central configuration point for the dependency injection container.
-    /// Initializes asynchronously without blocking the UI thread.
-    /// Supports graceful cleanup on extension shutdown.
     /// </summary>
     public static class ServiceConfiguration
     {
@@ -74,6 +74,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IInstructionsManager, InstructionsManager>();
             services.AddSingleton<IMcpConfigManager, McpConfigManager>();
             services.AddSingleton<IProvidersConfigManager, ProvidersConfigManager>();
+            services.AddSingleton<IToolsConfigManager, ToolsConfigManager>();
 
             services.AddSingleton<IMcpToolManager, McpToolManager>();
 
@@ -82,15 +83,33 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
             services.AddSingleton<ISearchResultCache, SearchResultCache>();
+
+            services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();
             services.AddTransient<IVsSolutionFilesScanner, VsSolutionFilesScanner>();
 
-            services.AddTransient<ISolutionSearch, SolutionSearch>();
+            services.AddSingleton<IFileLockManager, FileLockManager>();
+
+            services.AddSingleton<ISnapshotPathsFactory, SnapshotPathsFactory>();
+            services.AddSingleton<ISnapshotSolutionEvents, SnapshotSolutionEvents>();
+            services.AddSingleton<ISnapshotManager, SnapshotManager>();
+
+            services.AddTransient<IBuiltInTool, SolutionSearch>();
+            services.AddTransient<IBuiltInTool, FileLinesReader>();
+            services.AddTransient<IBuiltInTool, FindFilesByName>();
+            services.AddTransient<IBuiltInTool, GetSolutionOverview>();
+            services.AddTransient<IBuiltInTool, FindSymbolReferences>();
+            services.AddTransient<IBuiltInTool, ListDirectoryContents>();
+            services.AddTransient<IBuiltInTool, CreateFile>();
+            services.AddTransient<IBuiltInTool, DeleteFile>();
+            services.AddTransient<IBuiltInTool, ReplaceFileContent>();
+            services.AddTransient<IBuiltInTool, ReplaceLines>();
+            services.AddTransient<IBuiltInTool, ReplaceMultipleLines>();
+            services.AddTransient<IBuiltInTool, ActiveDocument>();
+            services.AddTransient<IBuiltInTool, BuildSolution>();
+            services.AddTransient<IBuiltInTool, RunProjectTests>();
+            services.AddTransient<IBuiltInTool, FormatDocument>();
+
             services.AddTransient<IActiveDocument, ActiveDocument>();
-            services.AddTransient<IFileLinesReader, FileLinesReader>();
-            services.AddTransient<IFindFilesByName, FindFilesByName>();
-            services.AddTransient<IGetSolutionOverview, GetSolutionOverview>();
-            services.AddTransient<IFindSymbolReferences, FindSymbolReferences>();
-            services.AddTransient<IListDirectoryContents, ListDirectoryContents>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
@@ -99,7 +118,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
-            services.AddSingleton<ICompositeToolFactory, CompositeToolFactory>();
+            services.AddSingleton<ICompositeToolFactory, CompositeToolProvider>();
 
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
             services.AddSingleton<IModelsListService, ModelsListService>();

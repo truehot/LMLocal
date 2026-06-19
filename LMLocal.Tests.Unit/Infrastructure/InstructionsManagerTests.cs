@@ -120,6 +120,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public int BatchIntervalMs => 100;
             public int WindowSeconds => 5;
             public int RequestTimeoutSeconds => 15;
+            public string SnapshotFolder => "Snapshots";
+            public string LocalSnapshotsFileName => "manifest.json";
         }
 
         private class ThrowingReadFileSystem : IFileSystem
@@ -127,6 +129,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             private readonly InMemoryFileSystem _inner = new InMemoryFileSystem();
             public void CreateDirectory(string path) { }
             public bool FileExists(string path) => _inner.FileExists(path);
+            public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => _inner.GetFileInfo(path);
             public string ReadAllText(string path) => throw new Exception("read error");
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => throw new Exception("read error");
             public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) => _inner.WriteAllBytesAsync(path, data, cancellationToken);
@@ -137,6 +140,15 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public System.Collections.Generic.IEnumerable<string> GetAllFiles() => _inner.GetAllFiles();
             public void ValidateFilePath(string filePath) { }
             public void EnsureDirectoryExistsForFile(string filePath) { }
+            public Task CopyFileAsync(string sourcePath, string destPath, CancellationToken cancellationToken) => _inner.CopyFileAsync(sourcePath, destPath, cancellationToken);
+            public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default) => _inner.ReadAllTextWithSharedReadAsync(path, cancellationToken);
+            public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) => _inner.ReadLinesRangeAsync(path, startLine, endLine, cancellationToken);
+            public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) => _inner.ReadLinesAsync(path, lineHandler, cancellationToken);
+
+            public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
+            {
+
+            }
         }
 
         private class SpyFileSystem : IFileSystem
@@ -145,6 +157,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public bool EnsureDirectoryCalled { get; private set; }
             public void CreateDirectory(string path) { }
             public bool FileExists(string path) => false;
+            public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => throw new System.IO.FileNotFoundException();
             public string ReadAllText(string path) => throw new System.IO.FileNotFoundException();
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
             public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) { return Task.CompletedTask; }
@@ -155,6 +168,15 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public System.Collections.Generic.IEnumerable<string> GetAllFiles() { yield break; }
             public void ValidateFilePath(string filePath) { ValidateCalled = true; }
             public void EnsureDirectoryExistsForFile(string filePath) { EnsureDirectoryCalled = true; }
+            public Task CopyFileAsync(string sourcePath, string destPath, CancellationToken cancellationToken) { return Task.CompletedTask; }
+            public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default) { return Task.FromResult(ReadAllText(path)); }
+            public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) { return Task.FromResult(new System.Collections.Generic.List<string>()); }
+            public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) { return Task.CompletedTask; }
+
+            public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
+            {
+
+            }
         }
     }
 }

@@ -38,6 +38,8 @@ namespace LMLocal.Infrastructure.Settings
         int BatchIntervalMs { get; }
         int WindowSeconds { get; }
         int RequestTimeoutSeconds { get; }
+        string SnapshotFolder { get; }
+        string LocalSnapshotsFileName { get; }
     }
 
     internal class SettingsManager : ISettingsManager, IDisposable
@@ -56,9 +58,11 @@ namespace LMLocal.Infrastructure.Settings
         private const string DefaultLocalAppDataFolder = "LMLocalChat";
         private const string DefaultLocalAppSettingFileName = "settings.json";
         private const string DefaultLocalAppInstructionsFileName = "instructions.json";
+        private const string DefaultLocalSnapshotsFileName = "manifest.json";
         private const string DefaultLocalAppMcpFileName = "mcp.json";
         private const string DefaultWebViewUserDataFolder = "WebViewData";
         private const string DefaultChatHistoryFolder = "ChatHistory";
+        private const string DefaultSnapshotFolder = "Snapshots";
         private const string DefaultChatHistoryFilePrefix = "chat_";
         private const string DefaultHtmlResourcePath = "Resources/app.html";
         private const string DefaultVirtualHostName = "app.local";
@@ -114,10 +118,12 @@ namespace LMLocal.Infrastructure.Settings
         public string SettingsFileName => DefaultSettingsFileName;
         public string LocalAppDataFolder => DefaultLocalAppDataFolder;
         public string LocalAppSettingFileName => DefaultLocalAppSettingFileName;
+        public string LocalSnapshotsFileName => DefaultLocalSnapshotsFileName;
         public string LocalAppInstructionsFileName => DefaultLocalAppInstructionsFileName;
         public string LocalAppMcpFileName => DefaultLocalAppMcpFileName;
         public string WebViewUserDataFolder => DefaultWebViewUserDataFolder;
         public string ChatHistoryFolder => DefaultChatHistoryFolder;
+        public string SnapshotFolder => DefaultSnapshotFolder;
         public string ChatHistoryFilePrefix => DefaultChatHistoryFilePrefix;
         public string HtmlResourcePath => DefaultHtmlResourcePath;
         public string VirtualHostName => DefaultVirtualHostName;

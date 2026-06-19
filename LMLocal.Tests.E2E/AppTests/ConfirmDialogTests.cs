@@ -20,8 +20,8 @@ public class ConfirmDialogTests : AppTestBase
 
         // Verify header and buttons exist
         await Expect(dialog.Locator(".modal-header")).ToHaveTextAsync("Confirmation");
-        await Expect(dialog.Locator("#dialog-cancel")).ToHaveCountAsync(1);
-        await Expect(dialog.Locator("#dialog-confirm")).ToHaveCountAsync(1);
+        await Expect(dialog.Locator("#confirm-dialog-cancel")).ToHaveCountAsync(1);
+        await Expect(dialog.Locator("#confirm-dialog-confirm")).ToHaveCountAsync(1);
     }
 
     [Test]
@@ -39,12 +39,12 @@ public class ConfirmDialogTests : AppTestBase
         await Expect(dialog).ToBeVisibleAsync();
 
         // Verify cancel button
-        var cancelBtn = dialog.Locator("#dialog-cancel");
+        var cancelBtn = dialog.Locator("#confirm-dialog-cancel");
         await Expect(cancelBtn).ToHaveCountAsync(1);
         await Expect(cancelBtn).ToHaveTextAsync("Cancel");
 
         // Verify confirm button
-        var confirmBtn = dialog.Locator("#dialog-confirm");
+        var confirmBtn = dialog.Locator("#confirm-dialog-confirm");
         await Expect(confirmBtn).ToHaveCountAsync(1);
         await Expect(confirmBtn).ToHaveTextAsync("Clear");
     }

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;
 
@@ -45,10 +47,11 @@ namespace LMLocal.Application.ChatSession
         private readonly IChatStreamService _chatService;
         private readonly IToolExecutionManager _toolManager;
         private readonly IHistoryCompactor _compactor;
+        private readonly ISnapshotManager _snapshotManager;
         private readonly object _resetLock = new object();
 
-        private const int MAX_TOOL_ITERATIONS = 200;
-        private const int MAX_STATE_ITERATIONS = 200;
+        private const int MAX_TOOL_ITERATIONS = 400;
+        private const int MAX_STATE_ITERATIONS = 400;
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
 
         private delegate Task<ChatSessionState> StateHandler(
@@ -59,7 +62,7 @@ namespace LMLocal.Application.ChatSession
             CancellationToken ct);
 
         /// <summary>
-        /// Static state handlers dictionary. Allocated once when type is loaded. Class should be transient
+        /// Static state handlers dictionary. Allocated once when type is loaded.
         /// </summary>
         private static readonly Dictionary<ChatSessionState, StateHandler> StateHandlers =
             new Dictionary<ChatSessionState, StateHandler>
@@ -74,17 +77,18 @@ namespace LMLocal.Application.ChatSession
                 { ChatSessionState.Cancelled, (self, ctx, gen, msg, ct) => self.HandleCancelledStateAsync(msg) }
             };
 
-
         private CancellationTokenSource _sessionCts;
 
         public ChatSessionOrchestrator(
             IChatStreamService chatService,
             IToolExecutionManager toolManager,
-            IHistoryCompactor compactor)
+            IHistoryCompactor compactor,
+            ISnapshotManager snapshotManager)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
             _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
             _compactor = compactor ?? throw new ArgumentNullException(nameof(compactor));
+            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
         public async Task RunSessionAsync(
@@ -123,7 +127,6 @@ namespace LMLocal.Application.ChatSession
 
                     try
                     {
-                        // Only check cancellation in active states to avoid infinite loop
                         if (sessionContext.CurrentState != ChatSessionState.Error &&
                             sessionContext.CurrentState != ChatSessionState.Cancelled)
                         {
@@ -288,47 +291,63 @@ namespace LMLocal.Application.ChatSession
             context.ConsecutiveToolIterationCount++;
             context.ToolResultsForNextRound.Clear();
 
-            foreach (var toolCall in context.LastResult.ToolCalls)
+            await _snapshotManager.BeginBatchAsync(ct).ConfigureAwait(false);
+            try
             {
-                ct.ThrowIfCancellationRequested();
-
-                var processingMessage = _toolManager.GetProcessingMessage(toolCall);
-
-                await onMessage(new WebView2ToolCallMessage
+                foreach (var toolCall in context.LastResult.ToolCalls)
                 {
-                    Type = WebView2MessageType.StreamToolCall,
-                    FunctionName = toolCall.FunctionName,
-                    CallId = toolCall.CallId,
-                    ArgumentsJson = toolCall.ArgumentsJson,
-                    Message = processingMessage
-                }).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
 
-                using (var toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
-                {
-                    toolCts.CancelAfter(TOOL_EXECUTION_TIMEOUT_MS);
-
-                    var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token)
-                        .ConfigureAwait(false);
-
-                    context.ToolResultsForNextRound.Add(new ToolResultMessage
-                    {
-                        ToolCallId = toolCall.CallId,
-                        ToolName = toolCall.FunctionName,
-                        Result = string.IsNullOrEmpty(toolResult.Error) ? toolResult.Result : toolResult.Error,
-                        Error = toolResult.Error
-                    });
+                    var processingMessage = _toolManager.GetProcessingMessage(toolCall);
 
                     await onMessage(new WebView2ToolCallMessage
                     {
-                        Type = WebView2MessageType.StreamToolEnd,
+                        Type = WebView2MessageType.StreamToolCall,
                         FunctionName = toolCall.FunctionName,
                         CallId = toolCall.CallId,
-                        Message = toolResult.CompletionMessage,
-                        Error = toolResult.Error,
-                        IsError = !string.IsNullOrEmpty(toolResult.Error)
+                        ArgumentsJson = toolCall.ArgumentsJson,
+                        Message = processingMessage
                     }).ConfigureAwait(false);
+
+                    using (var toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                    {
+                        toolCts.CancelAfter(TOOL_EXECUTION_TIMEOUT_MS);
+
+                        var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token)
+                            .ConfigureAwait(false);
+
+                        context.ToolResultsForNextRound.Add(new ToolResultMessage
+                        {
+                            ToolCallId = toolCall.CallId,
+                            ToolName = toolCall.FunctionName,
+                            Result = string.IsNullOrEmpty(toolResult.Error) ? toolResult.Result : toolResult.Error,
+                            Error = toolResult.Error
+                        });
+
+                        await onMessage(new WebView2ToolCallMessage
+                        {
+                            Type = WebView2MessageType.StreamToolEnd,
+                            FunctionName = toolCall.FunctionName,
+                            CallId = toolCall.CallId,
+                            Message = toolResult.CompletionMessage,
+                            Error = toolResult.Error,
+                            IsError = !string.IsNullOrEmpty(toolResult.Error)
+                        }).ConfigureAwait(false);
+                    }
                 }
             }
+
+            catch (Exception)
+            {
+                await _snapshotManager.CancelBatchAsync(ct).ConfigureAwait(false);
+                throw;
+            }
+            finally
+            {
+                await _snapshotManager.EndBatchAsync(ct).ConfigureAwait(false);
+            }
+
+            await SendSnapshotUpdateAsync(onMessage).ConfigureAwait(false);
 
             if (context.ConsecutiveToolIterationCount >= MAX_TOOL_ITERATIONS)
             {
@@ -504,6 +523,28 @@ namespace LMLocal.Application.ChatSession
                 {
                     InternalLogger.Warn("ChatSessionOrchestrator: Object already disposed");
                 }
+            }
+        }
+
+        private async Task SendSnapshotUpdateAsync(Func<WebView2ScriptMessage, Task> onMessage)
+        {
+            try
+            {
+                var changedFiles = await _snapshotManager.GetChangedFilesWithStatusAsync().ConfigureAwait(false);
+
+                var message = new WebView2SnapshotMessage
+                {
+                    ChangedFiles = changedFiles.ToList(),
+                };
+
+                if (onMessage != null)
+                {
+                    await onMessage(message).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("SendSnapshotUpdateAsync failed", ex);
             }
         }
     }

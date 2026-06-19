@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Services.Tool;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using Moq;
 using NUnit.Framework;
 using LMLocal.Core.Models;
@@ -20,6 +21,7 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IChatStreamService> _chatServiceMock;
         private Mock<IToolExecutionManager> _toolManagerMock;
         private Mock<IHistoryCompactor> _compactorMock;
+        private Mock<ISnapshotManager> _snapshotManagerMock;
 
         [SetUp]
         public void SetUp()
@@ -27,6 +29,7 @@ namespace LMLocal.Tests.Unit.Internal
             _chatServiceMock = new Mock<IChatStreamService>();
             _toolManagerMock = new Mock<IToolExecutionManager>();
             _compactorMock = new Mock<IHistoryCompactor>();
+            _snapshotManagerMock = new Mock<ISnapshotManager>();
         }
 
         [Test]
@@ -87,7 +90,7 @@ namespace LMLocal.Tests.Unit.Internal
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(true);
             _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object);
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object);
 
             async Task OnMessage(WebView2ScriptMessage msg)
             {
@@ -169,7 +172,7 @@ namespace LMLocal.Tests.Unit.Internal
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
-            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object);
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object);
 
             async Task OnMessage(WebView2ScriptMessage msg)
             {

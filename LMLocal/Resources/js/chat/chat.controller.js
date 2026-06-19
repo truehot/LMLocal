@@ -283,7 +283,7 @@ class ChatController {
         return this;
     }
 
-    update(state, prev) {
+    updateAppState(state, prev) {
         this._renderMessageFlow(state, prev);
     }
 

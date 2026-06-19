@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="https://app.local/css/dialog.css">
     <link rel="stylesheet" href="https://app.local/css/toolbar.css">
     <link rel="stylesheet" href="https://app.local/css/codeblock.css">
+    <link rel="stylesheet" href="https://app.local/css/component.css">
 </head>
 <body>
 
@@ -56,16 +57,23 @@
                     Settings...
                 </button>
                 <button data-action="open-providers">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
-                        <path d="M13 8.5a2.5 2.5 0 0 1-2.4 2h-5.2A2.5 2.5 0 0 1 3 8.5c0-1.2.9-2.2 2.1-2.4a3.5 3.5 0 0 1 6.8 0c1.2.2 2.1 1.2 2.1 2.4z" />
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M12.5 10A2.5 2.5 0 0 0 14 7.75a2.5 2.5 0 0 0-3.3-2.35 4.5 4.5 0 0 0-8.4 1.6 3 3 0 0 0 .2 5.9h10a2.5 2.5 0 0 0 0-5z" />
                     </svg>
-                    Configure Providers...
+                    Providers...
+                </button>
+                <button data-action="open-tools">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="2" y="3" width="5" height="3" rx="0.5" />
+                        <rect x="9" y="10" width="5" height="3" rx="0.5" />
+                        <path d="M4.5 6v4h4.5" />
+                    </svg>
+                    Built-in Tools...
                 </button>
                 <button data-action="mcp-settings">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 8px; flex-shrink: 0;">
-                        <path d="M6 11h4V4H6v7zM4.5 4a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V4z" />
-                        <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h7A1.5 1.5 0 0 1 13 5.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 10.5v-5zM4.5 5a.5.5 0 0 0-.5.5v5a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-5a.5.5 0 0 0-.5-.5h7z" />
-                        <path d="M5 2a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1.5H7V2zm3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1.5H10V2zm-2.5 11a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-1 0v-1a.5.5 0 0 1 .5-.5z" />
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <rect x="2" y="3" width="12" height="8" rx="1" />
+                        <path d="M6 11v2h4v-2M5 13h6" />
                     </svg>
                     MCP Extensions...
                 </button>
@@ -78,13 +86,34 @@
          aria-relevant="additions"
          aria-atomic="false">
     </div>
+
+    <div id="global-changes-panel" class="changes-panel-component hidden">
+        <div class="changes-header" id="changes-header-trigger">
+            <div class="header-left">
+                <span class="accordion-arrow">&#9656;</span>
+                <span class="changes-title">Changes</span>
+                <span class="changes-count" id="global-changes-count">(0 files)</span>
+                <button class="btn-icon-only" id="toggle-view-mode-btn" title="Toggle View Mode (List/Tree)" type="button"></button>
+            </div>
+            <div class="header-actions">
+                <button class="btn-small btn-secondary" id="review-all-btn">Review all</button>
+                <button class="btn-small btn-secondary" id="discard-all-btn">Discard all</button>
+                <button class="btn-small btn-primary" id="accept-all-btn">Accept all</button>
+            </div>
+        </div>
+
+        <div class="changes-body">
+            <div class="files-list view-list" id="global-files-list"></div>
+        </div>
+    </div>
+
     <div class="scroll-spacer"></div>
 
     <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span></div>
 
     <div class="input-container">
         <div class="input-wrapper">
-            <textarea id="userInput" placeholder="Ask LMLocal..." rows="1" autofocus></textarea>
+            <textarea id="userInput" placeholder="Ask LM Local..." rows="1" autofocus></textarea>
             <div class="input-footer">
                 <div class="input-footer-left">
                     <div class="dropdown" id="actionDropdown">
@@ -109,8 +138,8 @@
         <div class="modal-header">Confirmation</div>
         <div class="modal-body"></div>
         <div class="modal-footer">
-            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
-            <button id="dialog-confirm" class="btn-primary">Clear</button>
+            <button id="confirm-dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="confirm-dialog-confirm" class="btn-primary">Clear</button>
         </div>
     </dialog>
 
@@ -178,11 +207,25 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableAiTools">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable built-in AI tools</span>
+                            <span class="checkbox-title">Enable built-in AI tools (read-only)</span>
                             <span class="checkbox-description">
                                 Allows the AI to see your open solution and read files for smarter, context‑aware help.
                                 <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
                                     Requires a model that supports function calling.
+                                </span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="EnableAiWriteTools">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Enable built-in AI tools (beta, write/modify)</span>
+                            <span class="checkbox-description">
+                                Extends AI tools to allow automatic file editing and applying modifications directly to your solution.
+                                <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
+                                    Recommended only for solutions under source control (Git) so you can easily review and revert any automated changes.
                                 </span>
                             </span>
                         </span>
@@ -251,8 +294,8 @@
             </form>
         </div>
         <div class="modal-footer">
-            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
-            <button id="dialog-confirm" class="btn-primary">Save</button>
+            <button id="settings-dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="settings-dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
 
@@ -264,14 +307,14 @@
         </div>
 
         <div class="modal-footer">
-            <button id="dialog-cancel" class="btn-secondary">Cancel</button>
-            <button id="dialog-confirm" class="btn-primary">Save</button>
+            <button id="instructions-dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="instructions-dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
 
     <dialog id="model-selector-dialog" class="model-modal">
         <div class="modal-header">
-            <span>Select model</span>
+            <span>Select Model</span>
         </div>
 
         <div class="modal-toolbar">
@@ -363,25 +406,24 @@
                         </div>
                     </div>
                 </div>
-
             </form>
         </div>
         <div class="modal-footer">
-            <button type="button" id="mcp-dialog-cancel">Cancel</button>
-            <button type="button" id="mcp-dialog-confirm" class="btn-main">Save</button>
+            <button type="button" id="mcp-dialog-cancel" class="btn-secondary">Cancel</button>
+            <button type="button" id="mcp-dialog-confirm" class="btn-primary">Save</button>
         </div>
     </dialog>
 
     <dialog id="providers-dialog">
         <div class="modal-header">
-            <span id="providers-modal-title">Configure Providers</span>
+            <span id="providers-modal-title">Providers</span>
         </div>
         <div class="modal-body">
             <div id="providers-list-view">
                 <div class="modal-toolbar">
                     <div class="toolbar-left">
                         <input type="text" id="provider-filter-input" placeholder="Filter providers..." autocomplete="off">
-                        <button id="model-sort-btn" class="ui-icon-btn" title="Sort by Name">
+                        <button id="providers-sort-btn" class="ui-icon-btn" title="Sort by Name">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
                         </button>
                     </div>
@@ -466,7 +508,7 @@
         <div class="modal-footer">
             <div id="providers-list-actions">
                 <button type="button" id="providers-modal-cancel" class="btn-secondary">Cancel</button>
-                <button type="button" id="providers-modal-confirm" class="btn-primary">Save Changes</button>
+                <button type="button" id="providers-modal-confirm" class="btn-primary">Save</button>
             </div>
 
             <div id="providers-form-actions">
@@ -476,7 +518,36 @@
         </div>
     </dialog>
 
+    <dialog id="tools-dialog">
+        <div class="modal-header">
+            <span id="tools-modal-title">Built-in Tools</span>
+        </div>
 
+        <div class="modal-body">
+            <div class="modal-toolbar">
+                <div class="toolbar-left">
+                    <input type="text" id="tool-filter-input" placeholder="Filter tools..." autocomplete="off">
+                    <button id="tools-sort-btn" class="ui-icon-btn" title="Sort by Name">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
+                    </button>
+                </div>
+                <div class="toolbar-right">
+                    <button type="button" id="tools-enable-all-btn" class="btn-text-action">Enable All</button>
+                    <button type="button" id="tools-disable-all-btn" class="btn-text-action">Disable All</button>
+                </div>
+            </div>
+
+            <div class="modal-container">
+                <div id="tools-list-container" class="tools-list-grid">
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" id="tools-modal-close" class="btn-secondary">Close</button>
+            <button type="button" id="tools-modal-save" class="btn-primary">Save</button>
+        </div>
+    </dialog>
 
     <script type="importmap">
         {

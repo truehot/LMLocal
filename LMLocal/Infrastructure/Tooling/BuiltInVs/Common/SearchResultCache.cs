@@ -11,12 +11,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         void Clear();
     }
 
-    internal class CachedToolResults<T> where T : class
-    {
-        public List<T> AllResults { get; set; }
-        public int ItemsScanned { get; set; }
-    }
-
     internal class SearchResultCache : ISearchResultCache
     {
         private readonly ConcurrentDictionary<string, object> _cache = 
@@ -49,5 +43,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         {
             _cache.Clear();
         }
+    }
+
+    internal class CachedToolResults<T> where T : class
+    {
+        public List<T> AllResults { get; set; }
+        public int ItemsScanned { get; set; }
     }
 }

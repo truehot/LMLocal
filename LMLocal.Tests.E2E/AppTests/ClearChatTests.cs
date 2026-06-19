@@ -33,7 +33,7 @@ public class ClearChatTests : AppTestBase
 
         var confirmDialog = Page.Locator("#confirm-dialog");
         await Expect(confirmDialog).ToBeVisibleAsync(new() { Timeout = 3000 });
-        await Page.Locator("#confirm-dialog #dialog-confirm").ClickAsync();
+        await Page.Locator("#confirm-dialog #confirm-dialog-confirm").ClickAsync();
 
         // Wait for dialog to close
         await Expect(confirmDialog).ToBeHiddenAsync(new() { Timeout = 3000 });
@@ -65,7 +65,7 @@ public class ClearChatTests : AppTestBase
 
         var confirmDialog = Page.Locator("#confirm-dialog");
         await Expect(confirmDialog).ToBeVisibleAsync(new() { Timeout = 3000 });
-        await Page.Locator("#confirm-dialog #dialog-cancel").ClickAsync();
+        await Page.Locator("#confirm-dialog #confirm-dialog-cancel").ClickAsync();
 
         await Expect(Page.Locator("#chat-container > *")).Not.ToHaveCountAsync(0);
     }

@@ -57,7 +57,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON, but got: {response}");
 
                         var obj = JObject.Parse(response);
-                        Assert.IsTrue(obj.ContainsKey("file"), "Response should contain 'file' key");
+                        Assert.IsTrue(obj.ContainsKey("file_path"), "Response should contain 'file_path' key");
                         Assert.IsTrue(obj.ContainsKey("content"), "Response should contain 'content' key");
                     }
                 }
@@ -123,7 +123,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON, but got: {response}");
 
                         var obj = JObject.Parse(response);
-                        Assert.IsTrue(obj.ContainsKey("file"), "Response should contain 'file' key");
+                        Assert.IsTrue(obj.ContainsKey("file_path"), "Response should contain 'file_path' key");
                         Assert.IsTrue(obj.ContainsKey("lines"), "Response should contain 'lines' key");
                         var lines = obj["lines"] as JArray;
                         Assert.IsNotNull(lines);
@@ -203,7 +203,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         var results = obj["results"] as JArray;
                         Assert.IsNotNull(results, "'results' should be an array");
                         Assert.IsTrue(results.Count > 0, "Expected at least one file matching 'Package'");
-                        Assert.IsTrue(results[0]["file"] != null, "Each result should have 'file' key");
+                        Assert.IsTrue(results[0]["file_path"] != null, "Each result should have 'file_path' key");
                     }
                 }
                 finally
@@ -245,7 +245,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         var results = obj["results"] as JArray;
                         Assert.IsNotNull(results, "'results' should be an array");
                         Assert.IsTrue(results.Count > 0, "Expected at least one reference for 'Dispose'");
-                        Assert.IsTrue(results[0]["file"] != null, "Each result should have 'file' key");
+                        Assert.IsTrue(results[0]["file_path"] != null, "Each result should have 'file_path' key");
                         Assert.IsTrue(results[0]["matches"] != null, "Each result should have 'matches' key");
                     }
                 }

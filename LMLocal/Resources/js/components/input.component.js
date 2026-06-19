@@ -172,7 +172,7 @@ class InputComponent {
         return this;
     }
 
-    update(state, prev) {
+    updateAppState(state, prev) {
         if (this.elements.userInput && this.elements.mainBtn) {
             this._updateControls(state, prev);
         }

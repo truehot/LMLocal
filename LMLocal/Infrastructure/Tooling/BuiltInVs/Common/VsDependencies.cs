@@ -9,35 +9,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
     /// <summary>
     /// Provides read-only access to VS solution information.
-    /// Data is cached after async initialization from UI thread.
-    /// Automatically invalidates cache when solution changes.
-    /// Safe to call from any thread after initialization.
     /// </summary>
     internal interface IVsDependencies
     {
+        bool IsSolutionOpen { get; }
+
+        event Action SolutionOpened;
+        event Action SolutionClosed;
+
         /// <summary>
         /// Gets the cached solution directory.
-        /// Safe to call from any thread after InitializeAsync.
         /// </summary>
         string GetSolutionDirectory();
 
         /// <summary>
         /// Gets the cached IVsSolution instance.
-        /// Safe to call from any thread after InitializeAsync.
         /// </summary>
         IVsSolution GetSolution();
 
         /// <summary>
-        /// Gets the file provider for enumerating solution files.
-        /// Must be called on UI thread.
-        /// </summary>
-        ISolutionFileProvider GetFileProvider();
-
-        /// <summary>
         /// Initializes solution information on UI thread.
-        /// Must be called before GetSolutionDirectory or GetSolution.
         /// </summary>
         Task InitializeAsync();
+
     }
 
     internal class VsDependencies : IVsDependencies, IVsSolutionEvents
@@ -47,41 +41,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private bool _initialized;
         private readonly ISearchResultCache _searchCache;
 
+        public event Action SolutionOpened;
+        public event Action SolutionClosed;
+
         public VsDependencies(ISearchResultCache searchCache)
         {
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
         }
 
+        public bool IsSolutionOpen
+        {
+            get
+            {
+                return !string.IsNullOrEmpty(_solutionDirectory) && _solution != null;
+            }
+        }
+
         public string GetSolutionDirectory()
         {
-            if (!_initialized)
-                throw new InvalidOperationException("VsDependencies not initialized. Call InitializeAsync() first.");
-            if (_solution == null)
-                throw new InvalidOperationException("No solution is currently open.");
-            if (string.IsNullOrEmpty(_solutionDirectory))
-                throw new InvalidOperationException("Solution directory is not available. Ensure a solution is loaded.");
             return _solutionDirectory;
         }
 
         public IVsSolution GetSolution()
         {
-            if (!_initialized)
-                throw new InvalidOperationException("VsDependencies not initialized. Call InitializeAsync() first.");
-            if (_solution == null)
-                throw new InvalidOperationException("No solution is currently open.");
-
             return _solution;
-        }
-
-        public ISolutionFileProvider GetFileProvider()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (!_initialized)
-                throw new InvalidOperationException("VsDependencies not initialized. Call InitializeAsync() first.");
-            if (_solution == null)
-                throw new InvalidOperationException("No solution is currently open.");
-
-            return new SolutionFileProvider(_solution);
         }
 
         public async Task InitializeAsync()
@@ -89,7 +72,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             if (_initialized)
                 return;
 
-            // Switch to UI thread to access VS services
+
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
             try
@@ -113,9 +96,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
 
             _initialized = true;
+
         }
 
-        // IVsSolutionEvents implementation - invalidate cache when solution changes
         public int OnAfterOpenProject(IVsHierarchy pHierarchy, int fAdded)
         {
             return VSConstants.S_OK;
@@ -161,6 +144,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
 
             _searchCache.Clear();
+            SolutionOpened?.Invoke();
             return VSConstants.S_OK;
         }
 
@@ -172,6 +156,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             _solutionDirectory = null;
             _searchCache.Clear();
 
+            SolutionClosed?.Invoke();
             return VSConstants.S_OK;
         }
 

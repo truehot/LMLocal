@@ -1,37 +1,36 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
-using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileLinesReader;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Tool interface to read a range of lines from a file inside the current Visual Studio solution.
+    /// Tool to read a range of lines from a file inside the current Visual Studio solution.
     /// </summary>
     internal interface IFileLinesReader : IBuiltInTool
     {
-        Task<FileLinesResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default);
     }
 
     internal class FileLinesReader : IFileLinesReader
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
+        private readonly IFileSystem _fileSystem;
 
         public string ToolName => "Read_Solution_File_Lines";
+        public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public FileLinesReader(IVsDependencies vsDependencies, IPathResolver pathResolver)
+        public FileLinesReader(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public ToolDefinition GetToolInfo()
@@ -39,7 +38,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file within the current Visual Studio solution. Response fields: success (bool), error_message (string), file (string), lines (array of {line_number (int), text (string)}). Lines are returned exactly as they appear; no limit on maximum lines per request.",
+                Description = "Reads a specific line range from a file within the current Visual Studio solution. Response fields: success (bool), error_message (string), file_path (string), lines (array of {line_number (int), text (string)}). Lines are returned exactly as they appear; no limit on maximum lines per request.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -54,62 +53,49 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public async Task<FileLinesResponse> ExecuteAsync(
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             try
             {
                 var (filePath, startLine, endLine, error) = ExtractAndValidateParameters(parameters);
 
                 if (!string.IsNullOrEmpty(error))
-                    return new FileLinesResponse
-                    {
-                        Success = false,
-                        ErrorMessage = error,
-                        FilePath = parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "",
-                        Lines = new List<FileLineInfo>()
-                    };
+                    return Error(error, parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "");
 
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-
-                await _vsDependencies.InitializeAsync();
+                if (!_vsDependencies.IsSolutionOpen)
+                    return Error("No solution is currently open.", filePath);
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                    return new FileLinesResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"File not found: {filePath}",
-                        FilePath = filePath,
-                        Lines = new List<FileLineInfo>()
-                    };
+                    return Error($"File not found: {filePath}", filePath);
 
-                if (!File.Exists(absolutePath))
-                    return new FileLinesResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"File not found: {absolutePath}",
-                        FilePath = filePath,
-                        Lines = new List<FileLineInfo>()
-                    };
+                if (!_fileSystem.FileExists(absolutePath))
+                    return Error($"File not found: {absolutePath}", filePath);
 
                 if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
-                    return new FileLinesResponse
-                    {
-                        Success = false,
-                        ErrorMessage = $"File '{absolutePath}' is outside the solution directory '{solutionDir}'.",
-                        FilePath = filePath,
-                        Lines = new List<FileLineInfo>()
-                    };
+                    return Error($"File '{absolutePath}' is outside the solution directory '{solutionDir}'.", filePath);
 
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
 
-                var result = await Task.Run(() => ReadFileLines(absolutePath, startLine, endLine, cancellationToken), cancellationToken);
+                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, endLine, cancellationToken).ConfigureAwait(false);
 
-                result.FilePath = relativePath;
-                return result;
+                var resultLines = new List<FileLineInfo>();
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    resultLines.Add(new FileLineInfo
+                    {
+                        LineNumber = startLine + i,
+                        Text = lines[i]
+                    });
+                }
+
+                return new FileLinesResponse
+                {
+                    Success = true,
+                    FilePath = relativePath,
+                    Lines = resultLines
+                };
             }
             catch (Exception ex)
             {
@@ -121,42 +107,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Lines = new List<FileLineInfo>()
                 };
             }
-        }
-
-        private FileLinesResponse ReadFileLines(string absolutePath, int startLine, int endLine, CancellationToken cancellationToken)
-        {
-            var result = new FileLinesResponse
-            {
-                FilePath = "",
-                Lines = new List<FileLineInfo>(),
-                Success = true,
-                ErrorMessage = null
-            };
-
-            int currentLine = 0;
-            using (var reader = new StreamReader(absolutePath))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    currentLine++;
-
-                    if (currentLine < startLine)
-                        continue;
-
-                    if (currentLine > endLine)
-                        break;
-
-                    result.Lines.Add(new FileLineInfo
-                    {
-                        LineNumber = currentLine,
-                        Text = line
-                    });
-                }
-            }
-
-            return result;
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
@@ -182,50 +132,41 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private (string filePath, int startLine, int endLine, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
+            if (parameters == null)
+                return (null, 0, 0, "Parameters cannot be null.");
+
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string))
-                return (null, 0, 0, "Parameter 'file_path' is required and must be a string.");
+                return (null, 0, 0, "file_path parameter is required and must be a string.");
 
             if (!parameters.TryGetValue("start_line", out object startLineObj) || !TryParseInt(startLineObj, out int startLine))
-                return (null, 0, 0, "Parameter 'start_line' is required and must be an integer.");
+                return (null, 0, 0, "start_line parameter is required and must be an integer.");
 
             if (!parameters.TryGetValue("end_line", out object endLineObj) || !TryParseInt(endLineObj, out int endLine))
-                return (null, 0, 0, "Parameter 'end_line' is required and must be an integer.");
+                return (null, 0, 0, "end_line parameter is required and must be an integer.");
 
-            string filePath = (string)filePathObj;
-
-            if (string.IsNullOrWhiteSpace(filePath))
-                return (null, 0, 0, "File path cannot be empty.");
             if (startLine < 1)
-                return (null, 0, 0, "Start line must be 1 or greater.");
-            if (endLine < startLine)
-                return (null, 0, 0, "End line must be greater than or equal to start line.");
+                return (null, 0, 0, "start_line must be a positive integer (>= 1).");
 
-            return (filePath, startLine, endLine, null);
+            if (endLine < 1)
+                return (null, 0, 0, "end_line must be a positive integer (>= 1).");
+
+            if (endLine < startLine)
+                return (null, 0, 0, "end_line must be greater than or equal to start_line.");
+
+            return ((string)filePathObj, startLine, endLine, null);
         }
 
-        private bool TryParseInt(object value, out int result)
+        private bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
+
+        private static FileLinesResponse Error(string message, string filePath = "")
         {
-            result = 0;
-            if (value is int intVal)
+            return new FileLinesResponse
             {
-                result = intVal;
-                return true;
-            }
-            if (value is long longVal)
-            {
-                if (longVal >= int.MinValue && longVal <= int.MaxValue)
-                {
-                    result = (int)longVal;
-                    return true;
-                }
-                return false;
-            }
-            if (value is string strVal && int.TryParse(strVal, out int parsed))
-            {
-                result = parsed;
-                return true;
-            }
-            return false;
+                Success = false,
+                ErrorMessage = message,
+                FilePath = filePath,
+                Lines = new List<FileLineInfo>()
+            };
         }
 
         public class FileLineInfo
@@ -239,7 +180,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public class FileLinesResponse
         {
-            [JsonProperty("file")]
+            [JsonProperty("file_path")]
             public string FilePath { get; set; }
 
             [JsonProperty("lines")]

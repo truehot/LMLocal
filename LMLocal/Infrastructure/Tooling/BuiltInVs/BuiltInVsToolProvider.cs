@@ -1,11 +1,11 @@
-
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs
 {
@@ -16,9 +16,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
     internal interface IBuiltInVsToolProvider
     {
         /// <summary>
-        /// Returns all registered tool definitions for the LLM.
+        /// Returns all registered tool definitions for the LLM (filtered by enabled status).
         /// </summary>
         IReadOnlyList<ToolDefinition> GetAllToolDefinitions();
+
+        /// <summary>
+        /// Returns all registered tool definitions including disabled ones (for UI configuration).
+        /// </summary>
+        IReadOnlyList<ToolDefinition> GetAllToolDefinitionsUnfiltered();
+
+        /// <summary>
+        /// Returns the access level of a tool by its name. Throws if the tool is not found.
+        /// </summary>
+        ToolAccessLevel GetToolAccessLevel(string toolName);
 
         /// <summary>
         /// Checks whether a tool with the specified name is registered.
@@ -33,10 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
         /// <summary>
         /// Executes a tool with the given parameters from LLM response.
         /// </summary>
-        Task<object> ExecuteAsync(
-            string toolName,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken);
+        Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets processing message for a tool based on its parameters.
@@ -50,62 +57,74 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
     }
 
     /// <summary>
-    /// Factory for Visual Studio built-in tools.
+    /// Provider for Visual Studio built-in tools.
+    /// Handles filtering of tools based on configuration.
     /// </summary>
     internal class BuiltInVsToolProvider : IBuiltInVsToolProvider
     {
-        private readonly ISolutionSearch _solutionSearch;
-        private readonly IActiveDocument _activeDocument;
-        private readonly IFileLinesReader _fileLinesReader;
-        private readonly IFindFilesByName _findFilesByName;
-        private readonly IGetSolutionOverview _getSolutionOverview;
-        private readonly IFindSymbolReferences _findSymbolReferences;
-        private readonly IListDirectoryContents _listDirectoryContents;
-
         private readonly IReadOnlyList<ToolDefinition> _allToolDefinitions;
         private readonly Dictionary<string, IBuiltInTool> _toolsByName;
+        private readonly IToolsConfigManager _toolsConfigManager;
+        private readonly ISearchResultCache _searchCache;
 
         public BuiltInVsToolProvider(
-            ISolutionSearch solutionSearch,
-            IActiveDocument activeDocument,
-            IFileLinesReader fileLinesReader,
-            IFindFilesByName findFilesByName,
-            IGetSolutionOverview getSolutionOverview,
-            IFindSymbolReferences findSymbolReferences,
-            IListDirectoryContents listDirectoryContents)
+            IEnumerable<IBuiltInTool> tools,
+            IToolsConfigManager toolsConfigManager,
+            ISearchResultCache searchCache)
         {
-            _solutionSearch = solutionSearch ?? throw new ArgumentNullException(nameof(solutionSearch));
-            _activeDocument = activeDocument ?? throw new ArgumentNullException(nameof(activeDocument));
-            _fileLinesReader = fileLinesReader ?? throw new ArgumentNullException(nameof(fileLinesReader));
-            _findFilesByName = findFilesByName ?? throw new ArgumentNullException(nameof(findFilesByName));
-            _getSolutionOverview = getSolutionOverview ?? throw new ArgumentNullException(nameof(getSolutionOverview));
-            _findSymbolReferences = findSymbolReferences ?? throw new ArgumentNullException(nameof(findSymbolReferences));
-            _listDirectoryContents = listDirectoryContents ?? throw new ArgumentNullException(nameof(listDirectoryContents));
+            var toolsList = tools?.ToList() ?? throw new ArgumentNullException(nameof(tools));
+            if (toolsList.Count == 0)
+                throw new ArgumentException("At least one tool must be provided.", nameof(tools));
 
-            _allToolDefinitions = new List<ToolDefinition>
-            {
-                _solutionSearch.GetToolInfo(),
-                _activeDocument.GetToolInfo(),
-                _fileLinesReader.GetToolInfo(),
-                _findFilesByName.GetToolInfo(),
-                _getSolutionOverview.GetToolInfo(),
-                _findSymbolReferences.GetToolInfo(),
-                _listDirectoryContents.GetToolInfo()
-            }.AsReadOnly();
+            _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
+            _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _toolsByName = new Dictionary<string, IBuiltInTool>(StringComparer.OrdinalIgnoreCase);
+            var definitions = new List<ToolDefinition>();
 
-            _toolsByName = new Dictionary<string, IBuiltInTool>(StringComparer.OrdinalIgnoreCase)
+            foreach (var tool in toolsList)
             {
-                { _solutionSearch.ToolName, _solutionSearch },
-                { _activeDocument.ToolName, _activeDocument },
-                { _fileLinesReader.ToolName, _fileLinesReader },
-                { _findFilesByName.ToolName, _findFilesByName },
-                { _getSolutionOverview.ToolName, _getSolutionOverview },
-                { _findSymbolReferences.ToolName, _findSymbolReferences },
-                { _listDirectoryContents.ToolName, _listDirectoryContents }
-            };
+                _toolsByName[tool.ToolName] = tool;
+                definitions.Add(tool.GetToolInfo());
+            }
+
+            _allToolDefinitions = definitions.AsReadOnly();
+        }
+
+        /// <summary>
+        /// Checks if a tool is enabled based on cached configuration.
+        /// </summary>
+        private bool IsToolEnabled(string toolName)
+        {
+            if (string.IsNullOrEmpty(toolName))
+                return false;
+
+            try
+            {
+                var config = _toolsConfigManager.Current;
+                if (config?.Tools == null || config.Tools.Count == 0)
+                    return false;
+
+                var toolConfig = config.Tools.FirstOrDefault(t => t.Id == toolName);
+                if (toolConfig == null)
+                    return false;
+
+                return toolConfig.Enabled;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         public IReadOnlyList<ToolDefinition> GetAllToolDefinitions()
+        {
+            return _allToolDefinitions
+                .Where(t => IsToolEnabled(t.Name))
+                .ToList()
+                .AsReadOnly();
+        }
+
+        public IReadOnlyList<ToolDefinition> GetAllToolDefinitionsUnfiltered()
         {
             return _allToolDefinitions;
         }
@@ -129,46 +148,38 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
         }
 
-        public async Task<object> ExecuteAsync(
-            string toolName,
-            Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
+        public ToolAccessLevel GetToolAccessLevel(string toolName)
         {
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
-            if (parameters == null)
-                throw new ArgumentNullException(nameof(parameters));
 
+            if (_toolsByName.TryGetValue(toolName, out var tool))
+                return tool.AccessLevel;
+
+            throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
+        }
+
+        public async Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(toolName))
+                throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
 
             if (!_toolsByName.TryGetValue(toolName, out var tool))
                 throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
 
-            switch (tool)
-            {
-                case IActiveDocument activeDocument:
-                    return await activeDocument.ExecuteAsync(cancellationToken);
-                case IGetSolutionOverview solutionOverview:
-                    return await solutionOverview.ExecuteAsync(cancellationToken);
-                case ISolutionSearch solutionSearch:
-                    return await solutionSearch.ExecuteAsync(parameters, cancellationToken);
-                case IFileLinesReader fileLinesReader:
-                    return await fileLinesReader.ExecuteAsync(parameters, cancellationToken);
-                case IFindFilesByName findFilesByName:
-                    return await findFilesByName.ExecuteAsync(parameters, cancellationToken);
-                case IFindSymbolReferences findSymbolReferences:
-                    return await findSymbolReferences.ExecuteAsync(parameters, cancellationToken);
-                case IListDirectoryContents listDirectoryContents:
-                    return await listDirectoryContents.ExecuteAsync(parameters, cancellationToken);
-                default:
-                    throw new NotSupportedException($"Tool type '{tool.GetType().Name}' is not supported.");
-            }
+            var result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken);
+
+            if (tool.AccessLevel == ToolAccessLevel.FullAccess)
+                _searchCache.Clear();
+
+            return result;
         }
 
         public string GetProcessingMessage(string toolName, Dictionary<string, object> parameters)
         {
             if (!string.IsNullOrEmpty(toolName) && _toolsByName.TryGetValue(toolName, out var tool))
             {
-                return tool.GetProcessingMessage(parameters);
+                return tool.GetProcessingMessage(parameters ?? new Dictionary<string, object>());
             }
 
             return "Processing...";

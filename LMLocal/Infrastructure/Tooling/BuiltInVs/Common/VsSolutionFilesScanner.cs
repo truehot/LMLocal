@@ -4,48 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
-    internal class EnumerateSolutionFilesFilter
-    {
-        /// <summary>
-        /// Optional extension filter (e.g. ".cs" or ".cs;.xaml"). Null or empty means no extension filtering.
-        /// </summary>
-        public string ExtensionFilter { get; set; }
-
-        /// <summary>
-        /// Maximum number of results to return. Pass 0 or a negative value to indicate no limit. Default is 200.
-        /// This limits the number of returned files, not the number of files scanned.
-        /// </summary>
-        public int Limit { get; set; } = 200;
-
-        /// <summary>
-        /// Optional file name (or partial name) to match. Case-insensitive substring match.
-        /// </summary>
-        public string FileName { get; set; }
-
-        /// <summary>
-        /// If true, returns relative paths from solution directory; if false, returns absolute paths. Default is true.
-        /// </summary>
-        public bool ReturnRelative { get; set; } = true;
-
-        /// <summary>
-        /// Optional project name filter. If specified, only files from projects matching this name 
-        /// (case-insensitive substring match) will be returned.
-        /// </summary>
-        public string ProjectFilter { get; set; }
-
-        /// <summary>
-        /// If true, includes the project files themselves (e.g., .csproj, .vbproj) in the result.
-        /// Default is false (only source/document files are returned).
-        /// </summary>
-        public bool IncludeProjects { get; set; } = false;
-    }
 
     internal interface IVsSolutionFilesScanner
     {
-
         /// <summary>
         /// Asynchronously enumerates files from the Visual Studio solution. 
         Task<IList<string>> EnumerateSolutionFilesAsync(EnumerateSolutionFilesFilter filter, CancellationToken cancellationToken = default);
@@ -56,16 +21,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private readonly IVsDependencies _vsDependencies;
         private readonly IUiThreadGuard _uiThreadGuard;
         private readonly IPathResolver _pathResolver;
+        private readonly ISolutionFileProvider _solutionFileProvider;
 
         private static readonly HashSet<string> _imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff" };
         private static readonly string[] _minifiedSuffixes = { ".min.js", ".min.css", ".udm.js" };
         private static readonly string[] _excludedDirectories = { "bin", "obj", ".vs", ".git", "CopilotBaseline" };
 
-        public VsSolutionFilesScanner(IVsDependencies vsDependencies, IUiThreadGuard uiThreadGuard, IPathResolver pathResolver)
+        public VsSolutionFilesScanner(IVsDependencies vsDependencies, IUiThreadGuard uiThreadGuard, IPathResolver pathResolver, ISolutionFileProvider solutionFileProvider)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _uiThreadGuard = uiThreadGuard ?? throw new ArgumentNullException(nameof(uiThreadGuard));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
+            _solutionFileProvider = solutionFileProvider ?? throw new ArgumentNullException(nameof(solutionFileProvider));
         }
 
         public async Task<IList<string>> EnumerateSolutionFilesAsync(EnumerateSolutionFilesFilter filter, CancellationToken cancellationToken = default)
@@ -75,8 +42,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             _uiThreadGuard.EnsureOnUIThread();
 
-            var provider = _vsDependencies.GetFileProvider();
-            var filesList = provider.GetFiles(filter.IncludeProjects).ToList();
+            var ivSolution = _vsDependencies.GetSolution();
+            if (ivSolution == null)
+                throw new InvalidOperationException("No solution is currently open.");
+
+            var filesList = _solutionFileProvider.GetFiles(ivSolution, filter.IncludeProjects).ToList();
 
             var normalizedSolutionDir = NormalizeDir(_vsDependencies.GetSolutionDirectory());
             var extensions = ParseExtensions(filter.ExtensionFilter);
@@ -233,5 +203,42 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             return set.Count == 0 ? null : set;
         }
+
+        internal class EnumerateSolutionFilesFilter
+        {
+            /// <summary>
+            /// Optional extension filter (e.g. ".cs" or ".cs;.xaml"). Null or empty means no extension filtering.
+            /// </summary>
+            public string ExtensionFilter { get; set; }
+
+            /// <summary>
+            /// Maximum number of results to return. Pass 0 or a negative value to indicate no limit. Default is 200.
+            /// This limits the number of returned files, not the number of files scanned.
+            /// </summary>
+            public int Limit { get; set; } = 200;
+
+            /// <summary>
+            /// Optional file name (or partial name) to match. Case-insensitive substring match.
+            /// </summary>
+            public string FileName { get; set; }
+
+            /// <summary>
+            /// If true, returns relative paths from solution directory; if false, returns absolute paths. Default is true.
+            /// </summary>
+            public bool ReturnRelative { get; set; } = true;
+
+            /// <summary>
+            /// Optional project name filter. If specified, only files from projects matching this name 
+            /// (case-insensitive substring match) will be returned.
+            /// </summary>
+            public string ProjectFilter { get; set; }
+
+            /// <summary>
+            /// If true, includes the project files themselves (e.g., .csproj, .vbproj) in the result.
+            /// Default is false (only source/document files are returned).
+            /// </summary>
+            public bool IncludeProjects { get; set; } = false;
+        }
+
     }
 }
