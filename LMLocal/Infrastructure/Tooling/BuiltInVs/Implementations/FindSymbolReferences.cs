@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
@@ -29,7 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int MaxTotalReferences = 200;
         private const int DefaultTake = 25;
 
-        public string ToolName => "Find_Symbol_References";
+        public string ToolName => "find_symbol_references";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public FindSymbolReferences(IPathResolver pathResolver, ISearchResultCache searchCache)
@@ -43,7 +44,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds all references of a code symbol across the current Visual Studio solution. Response fields: success (bool), error_message (string), symbol_name (string), total_references (int), results (array of {{file_path (string), matches (array of {{line (int), text (string)}})}}), next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Returns up to {MaxTotalReferences} references, paginated by file ({DefaultTake} files per page). The symbol name is resolved to up to {MaxSymbolsToProcess} matching code symbols; references for all matched candidates are returned.",
+                Description = "Finds all references to a code symbol (class, method, property, field, etc.) across the current Visual Studio solution. Use to understand where a symbol is used or to plan refactoring. Returns up to 200 references, paginated by file (25 files per page). The symbol name is resolved to up to 5 matching candidates; references for all matched candidates are merged in the response. If next_page_token is not null, call again with page_token set to that value. Example: {\"symbol_name\":\"PaymentService\"} → {\"success\":true,\"symbol_name\":\"PaymentService\",\"total_references\":12,\"results\":[{\"file_path\":\"Services/OrderService.cs\",\"matches\":[{\"line\":15,\"text\":\"var ps = new PaymentService();\",\"symbol_full_name\":\"global::App.Services.PaymentService\",\"symbol_kind\":\"NamedType\"}]}],\"next_page_token\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -147,7 +148,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             foreach (var reference in references)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
-
+                                var symbolFullName = reference.Definition.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                                var symbolKind = reference.Definition.Kind.ToString();
                                 foreach (var location in reference.Locations)
                                 {
                                     var document = location.Document;
@@ -189,7 +191,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                     fileGroup.Matches.Add(new ReferenceItem
                                     {
                                         LineNumber = lineNumber,
-                                        LineText = lineText
+                                        LineText = lineText,
+                                        SymbolFullName = symbolFullName,
+                                        SymbolKind = symbolKind
                                     });
 
                                     totalReferenceCount++;
@@ -270,9 +274,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
 
                 // Cache miss: perform the full Roslyn search.
-                // An expensive call is unavoidable when the cache is cold,
-                // so we run the search once, cache the results, and serve
-                // the requested page from the in-memory cache.
                 var fullResponse = await ExecuteCoreAsync(symbolName, cancellationToken);
 
                 if (fullResponse.Success && fullResponse.Results.Count > 0)
@@ -312,9 +313,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private string Error(string message, string symbolName)
+        private SymbolReferencesResponse Error(string message, string symbolName)
         {
-            return JsonConvert.SerializeObject(new SymbolReferencesResponse
+            return new SymbolReferencesResponse
             {
                 Success = false,
                 ErrorMessage = message,
@@ -322,7 +323,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Results = new List<FileReferencesGroup>(),
                 TotalReferences = 0,
                 NextPageToken = null
-            });
+            };
         }
 
         private string BuildCacheKey(string symbolName)
@@ -350,7 +351,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var symbolResult = (SymbolReferencesResponse)result;
             if (!symbolResult.Success)
             {
-                return $"Error: {symbolResult.ErrorMessage}";
+                return $"Finding references failed: {symbolResult.ErrorMessage}";
             }
             int pageReferences = symbolResult.Results.Sum(r => r.Matches.Count);
             var message = $"Found {pageReferences} references";
@@ -364,7 +365,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         private (string symbolName, string pageToken, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
-            if(parameters == null)
+            if (parameters == null)
                 return (null, null, "Parameters are required.");
 
             if (!parameters.TryGetValue("symbol_name", out object symbolNameObj) || !(symbolNameObj is string))
@@ -383,6 +384,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("text")]
             public string LineText { get; set; }
+
+            [JsonProperty("symbol_full_name")]
+            public string SymbolFullName { get; set; }
+            
+            [JsonProperty("symbol_kind")]
+            public string SymbolKind { get; set; }
         }
 
         public class FileReferencesGroup

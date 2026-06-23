@@ -223,8 +223,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             _fileSystemMock.Setup(fs => fs.FileExists(_testPaths.ManifestPath)).Returns(false);
 
             var manager = CreateManager();
-            IReadOnlyList<string> notifiedFiles = null;
-            manager.SnapshotChanged += files => notifiedFiles = files;
+            IReadOnlyList<SnapshotFileChange> notifiedFiles = null;
+            manager.SnapshotChangedAsync += files => { notifiedFiles = files; return Task.CompletedTask; };
 
             await manager.LoadSnapshotAsync(CancellationToken.None);
 
@@ -243,8 +243,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             var manager = CreateManager();
             await manager.LoadSnapshotAsync(CancellationToken.None);
 
-            IReadOnlyList<string> notifiedFiles = null;
-            manager.SnapshotChanged += files => notifiedFiles = files;
+            IReadOnlyList<SnapshotFileChange> notifiedFiles = null;
+            manager.SnapshotChangedAsync += files => { notifiedFiles = files; return Task.CompletedTask; };
 
             await manager.ResetAsync(CancellationToken.None);
 
@@ -769,8 +769,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             var manager = CreateManager();
             await manager.LoadSnapshotAsync(CancellationToken.None);
 
-            IReadOnlyList<string> notifiedFiles = null;
-            manager.SnapshotChanged += files => notifiedFiles = files;
+            IReadOnlyList<SnapshotFileChange> notifiedFiles = null;
+            manager.SnapshotChangedAsync += files => { notifiedFiles = files; return Task.CompletedTask; };
 
             await manager.BeginBatchAsync(CancellationToken.None);
             await manager.EndBatchAsync(CancellationToken.None);
@@ -894,8 +894,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             var manager = CreateManager();
             await manager.LoadSnapshotAsync(CancellationToken.None);
 
-            IReadOnlyList<string> notifiedFiles = null;
-            manager.SnapshotChanged += files => notifiedFiles = files;
+            IReadOnlyList<SnapshotFileChange> notifiedFiles = null;
+            manager.SnapshotChangedAsync += files => { notifiedFiles = files; return Task.CompletedTask; };
 
             await manager.RollbackAllAsync(CancellationToken.None);
 
@@ -1106,7 +1106,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
 
         #endregion
 
-        #region SnapshotChanged Event Tests
+        #region SnapshotChangedAsync Event Tests
 
         [Test]
         public async Task SnapshotChanged_IsFired_OnEndBatch()
@@ -1116,8 +1116,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             var manager = CreateManager();
             await manager.LoadSnapshotAsync(CancellationToken.None);
 
-            IReadOnlyList<string> notifiedFiles = null;
-            manager.SnapshotChanged += files => notifiedFiles = files;
+            IReadOnlyList<SnapshotFileChange> notifiedFiles = null;
+            manager.SnapshotChangedAsync += files => { notifiedFiles = files; return Task.CompletedTask; };
 
             await manager.BeginBatchAsync(CancellationToken.None);
             await manager.EndBatchAsync(CancellationToken.None);

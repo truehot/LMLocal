@@ -10,18 +10,18 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SolutionSearch;
+using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SearchFileContent;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
     /// Tool for performing text search across files in the current Visual Studio solution.
     /// </summary>
-    internal interface ISolutionSearch : IBuiltInTool
+    internal interface ISearchFileContent : IBuiltInTool
     {
     }
 
-    internal class SolutionSearch : ISolutionSearch
+    internal class SearchFileContent : ISearchFileContent
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
@@ -31,10 +31,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int DefaultTake = 100;
         private const int MaxFilesToScan = 1500;
 
-        public string ToolName => "Search_Local_Solution_Files";
+        public string ToolName => "search_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public SolutionSearch(
+        public SearchFileContent(
             IVsDependencies vsDependencies,
             IPathResolver pathResolver,
             IVsSolutionFilesScanner solutionFilesScanner,
@@ -53,7 +53,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Searches inside files in the current Visual Studio solution for a case-insensitive substring. Does not search file names. Response fields: success (bool), error_message (string), results (array of {{file_path (string), matches (array of {{line (int), text (string)}}), match_count (int)}}), total_matches (int), total_files (int), next_page_token (string or null). Results are paginated by total number of matches ({DefaultTake} matches per page). If 'next_page_token' is not null, pass it as page_token to get next page. Limited to scanning first {MaxFilesToScan} files. ",
+                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Results are paginated by total number of matches (100 matches per page); if next_page_token is not null, call again with page_token set to that value. Limited to scanning the first 1500 files in the solution. Optional filters: extension_filter (e.g., '.cs') and project_filter narrow the scope. The search text is plain substring matching — do not use Regular Expressions or wildcards like '*' or '?'. Example: {\"text\":\"PaymentService\",\"extension_filter\":\".cs\"} → {\"success\":true,\"results\":[{\"file_path\":\"src/OrderHandler.cs\",\"matches\":[{\"line\":12,\"text\":\"var ps = new PaymentService();\"}],\"match_count\":1}],\"total_matches\":3,\"total_files\":2,\"next_page_token\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -344,18 +344,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var searchResults = (SearchResultsResponse)result;
-            if (!searchResults.Success)
-                return $"Error: {searchResults.ErrorMessage}";
-
-            int pageMatches = searchResults.Results.Sum(r => r.MatchCount);
-            var message = $"Found {pageMatches} matches";
-            if (searchResults.TotalMatches > 0 && pageMatches < searchResults.TotalMatches)
+            if (result is SearchResultsResponse searchResults)
             {
-                message += $" (total: {searchResults.TotalMatches} matches)";
+                if (!searchResults.Success)
+                    return $"Searching failed: {searchResults.ErrorMessage}";
+
+                int pageMatches = searchResults.Results.Sum(r => r.MatchCount);
+                var message = $"Found {pageMatches} matches";
+                if (searchResults.TotalMatches > 0 && pageMatches < searchResults.TotalMatches)
+                    message += $" (total: {searchResults.TotalMatches} matches)";
+                message += ".";
+                return message;
             }
-            message += ".";
-            return message;
+            return "Search finished.";
         }
 
         private (string searchText, string fileExtensions, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(

@@ -78,7 +78,14 @@ namespace LMLocal.Infrastructure.Streaming
                 if (!string.IsNullOrEmpty(finishReason))
                 {
                     FlushBuffer(chunks);
-                    chunks.Add(new CompletionStreamChunk(finishReason: finishReason));
+                    var usage = ExtractUsage(json);
+                    chunks.Add(new CompletionStreamChunk(
+                        finishReason: finishReason,
+                        totalTokens: usage?.TotalTokens,
+                        promptTokens: usage?.PromptTokens,
+                        completionTokens: usage?.CompletionTokens,
+                        reasoningTokens: usage?.ReasoningTokens,
+                        systemFingerprint: usage?.SystemFingerprint));
                     return chunks;
                 }
 
@@ -86,7 +93,14 @@ namespace LMLocal.Infrastructure.Streaming
                 if (!string.IsNullOrEmpty(refusal))
                 {
                     FlushBuffer(chunks);
-                    chunks.Add(new CompletionStreamChunk(refusal: refusal));
+                    var usage = ExtractUsage(json);
+                    chunks.Add(new CompletionStreamChunk(
+                        refusal: refusal,
+                        totalTokens: usage?.TotalTokens,
+                        promptTokens: usage?.PromptTokens,
+                        completionTokens: usage?.CompletionTokens,
+                        reasoningTokens: usage?.ReasoningTokens,
+                        systemFingerprint: usage?.SystemFingerprint));
                     return chunks;
                 }
             }

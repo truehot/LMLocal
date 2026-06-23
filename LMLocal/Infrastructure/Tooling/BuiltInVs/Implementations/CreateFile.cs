@@ -25,7 +25,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
         private readonly ISnapshotManager _snapshotManager;
-        public string ToolName => "Create_File";
+        public string ToolName => "create_file";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
         public CreateFile(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, ISnapshotManager snapshotManager)
@@ -41,7 +41,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Creates a new file with initial content. Fails if file already exists. Parent directories are created if they don't exist. Response fields: success (bool), error_message (string), file_path (string), created_successfully (bool). Path can be absolute or relative to solution root.",
+                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Models/Customer.cs\",\"content\":\"public class Customer {}\"} → {\"success\":true,\"file_path\":\"Models/Customer.cs\",\"created_successfully\":true,\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -114,15 +114,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var filePath = (parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "") ?? "";
-            return $"Creating file '{filePath}'...";
+            return $"Creating file '{filePath}'... ";
         }
 
         public string GetCompletionMessage(object result)
         {
-            if (result is CreateFileResponse response && response.Success)
-                return $"File created.";
-
-            return $"Error: {((CreateFileResponse)result).ErrorMessage}";
+            if (result is CreateFileResponse response)
+                return response.Success ? "File created." : $"File creation failed: {response.ErrorMessage}";
+            return "File creation finished.";
         }
 
         private (string filePath, string content, string error) ExtractAndValidateParameters(

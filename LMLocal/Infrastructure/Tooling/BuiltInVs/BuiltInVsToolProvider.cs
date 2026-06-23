@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -102,16 +103,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             {
                 var config = _toolsConfigManager.Current;
                 if (config?.Tools == null || config.Tools.Count == 0)
-                    return false;
+                    return true;
 
                 var toolConfig = config.Tools.FirstOrDefault(t => t.Id == toolName);
                 if (toolConfig == null)
-                    return false;
+                    return true;
 
                 return toolConfig.Enabled;
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException ex)
             {
+                InternalLogger.Warn($"Failed to get tool configuration for '{toolName}'. Defaulting to disabled. Exception: {ex}");
                 return false;
             }
         }

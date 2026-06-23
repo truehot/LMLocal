@@ -1,4 +1,4 @@
-﻿import { createCallback } from '@app/lib/callback.js';
+import { createCallback } from '@app/lib/callback.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 
 class ChangesPanelComponent {
@@ -7,6 +7,7 @@ class ChangesPanelComponent {
         this.headerTrigger = null;
         this.filesList = null;
         this.reviewAllBtn = null;
+        this.openAllBtn = null;
         this.discardAllBtn = null;
         this.acceptAllBtn = null;
         this.toggleViewModeBtn = null;
@@ -15,16 +16,18 @@ class ChangesPanelComponent {
         this._viewMode = 'list';// 'list' | 'tree'
         this._cachedFiles = [];
         this._processingCounter = 0;
-
         this.onDiscardAll = createCallback();
         this.onAcceptAll = createCallback();
+        this.onOpenAll = createCallback();
 
         this.onReviewFile = createCallback();
+        this.onReviewAll = createCallback();
         this.onDiscardSingleFile = createCallback();
         this.onAcceptSingleFile = createCallback();
 
         this._togglePanel = this._togglePanel.bind(this);
         this._handleReviewAll = this._handleReviewAll.bind(this);
+        this._handleOpenAll = this._handleOpenAll.bind(this);
         this._handleDiscardAll = this._handleDiscardAll.bind(this);
         this._handleAcceptAll = this._handleAcceptAll.bind(this);
         this._toggleViewMode = this._toggleViewMode.bind(this);
@@ -38,6 +41,7 @@ class ChangesPanelComponent {
         this.headerTrigger = this.panelElement.querySelector('#changes-header-trigger');
         this.filesList = this.panelElement.querySelector('#global-files-list');
         this.reviewAllBtn = this.panelElement.querySelector('#review-all-btn');
+        this.openAllBtn = this.panelElement.querySelector('#open-all-btn');
         this.discardAllBtn = this.panelElement.querySelector('#discard-all-btn');
         this.acceptAllBtn = this.panelElement.querySelector('#accept-all-btn');
         this.toggleViewModeBtn = this.panelElement.querySelector('#toggle-view-mode-btn');
@@ -55,23 +59,24 @@ class ChangesPanelComponent {
         this.headerTrigger = null;
         this.filesList = null;
         this.reviewAllBtn = null;
+        this.openAllBtn = null;
         this.discardAllBtn = null;
         this.acceptAllBtn = null;
         this.toggleViewModeBtn = null;
 
         this.onDiscardAll.off();
         this.onAcceptAll.off();
-
+        this.onOpenAll.off();
         this.onReviewFile.off();
+        this.onReviewAll.off();
         this.onDiscardSingleFile.off();
-        this.onAcceptSingleFile.off();
-
         this._processingCounter = 0;
     }
 
     _attachEvents() {
         if (this.headerTrigger) this.headerTrigger.addEventListener('click', this._togglePanel);
         if (this.reviewAllBtn) this.reviewAllBtn.addEventListener('click', this._handleReviewAll);
+        if (this.openAllBtn) this.openAllBtn.addEventListener('click', this._handleOpenAll);
         if (this.discardAllBtn) this.discardAllBtn.addEventListener('click', this._handleDiscardAll);
         if (this.acceptAllBtn) this.acceptAllBtn.addEventListener('click', this._handleAcceptAll);
         if (this.toggleViewModeBtn) this.toggleViewModeBtn.addEventListener('click', this._toggleViewMode);
@@ -81,6 +86,7 @@ class ChangesPanelComponent {
     _detachEvents() {
         if (this.headerTrigger) this.headerTrigger.removeEventListener('click', this._togglePanel);
         if (this.reviewAllBtn) this.reviewAllBtn.removeEventListener('click', this._handleReviewAll);
+        if (this.openAllBtn) this.openAllBtn.removeEventListener('click', this._handleOpenAll);
         if (this.discardAllBtn) this.discardAllBtn.removeEventListener('click', this._handleDiscardAll);
         if (this.acceptAllBtn) this.acceptAllBtn.removeEventListener('click', this._handleAcceptAll);
         if (this.toggleViewModeBtn) this.toggleViewModeBtn.removeEventListener('click', this._toggleViewMode);
@@ -93,6 +99,7 @@ class ChangesPanelComponent {
         const disabled = isProcessing || !hasChanges;
 
         if (this.reviewAllBtn) this.reviewAllBtn.disabled = disabled;
+        if (this.openAllBtn) this.openAllBtn.disabled = disabled;
         if (this.discardAllBtn) this.discardAllBtn.disabled = disabled;
         if (this.acceptAllBtn) this.acceptAllBtn.disabled = disabled;
 
@@ -117,7 +124,7 @@ class ChangesPanelComponent {
         } else {
             this._processingCounter--;
         }
-        
+
         this._updateUiState();
     }
 
@@ -162,10 +169,11 @@ class ChangesPanelComponent {
         if (this.reviewAllBtn?.disabled) return;
         this._incrementProcessing();
         try {
-            for (const fileChange of this._cachedFiles) {
-                const filePath = fileChange.relativePath || fileChange;
-                await this.onReviewFile.emit(filePath);
-                await new Promise(resolve => setTimeout(resolve, 0));
+            const nonDeletedPaths = this._cachedFiles
+                .filter(f => (f.relativePath || f))
+                .map(f => f.relativePath || f);
+            if (nonDeletedPaths.length > 0) {
+                await this.onReviewAll.emit(nonDeletedPaths);
             }
         } catch (error) {
             console.error('Critical error in _handleReviewAll:', error);
@@ -174,9 +182,27 @@ class ChangesPanelComponent {
         }
     }
 
+    async _handleOpenAll() {
+        if (this.openAllBtn?.disabled) return;
+        this._incrementProcessing();
+        try {
+            const nonDeletedPaths = this._cachedFiles
+                .filter(f => (f.relativePath || f) && f.status !== 'deleted')
+                .map(f => f.relativePath || f);
+            if (nonDeletedPaths.length > 0) {
+                await this.onOpenAll.emit(nonDeletedPaths);
+            }
+        } catch (error) {
+            console.error('Critical error in _handleOpenAll:', error);
+        } finally {
+            this._decrementProcessing();
+        }
+    }
+
     async _handleDiscardAll() {
         if (this.discardAllBtn?.disabled) return;
         this._incrementProcessing();
+        this._cachedFiles = [];
         try {
             await this.onDiscardAll.emit();
         } finally {
@@ -187,6 +213,7 @@ class ChangesPanelComponent {
     async _handleAcceptAll() {
         if (this.acceptAllBtn?.disabled) return;
         this._incrementProcessing();
+        this._cachedFiles = [];
         try {
             await this.onAcceptAll.emit();
         } finally {

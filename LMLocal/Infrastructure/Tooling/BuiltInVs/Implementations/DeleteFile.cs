@@ -25,7 +25,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
 
-        public string ToolName => "Delete_File";
+        public string ToolName => "delete_file";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
         public DeleteFile(IVsDependencies vsDependencies, IPathResolver pathResolver,
@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Deletes a file from the solution. Creates backup before deletion for undo capability. Response fields: success (bool), error_message (string), file_path (string), deleted_successfully (bool). Path can be absolute or relative to solution root.",
+                Description = "Deletes a file from disk. Fails if the file does not exist. The file is permanently removed; use set_file_project_status to only exclude from .csproj while keeping it on disk. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Temp/old_code.cs\"} → {\"success\":true,\"file_path\":\"Temp/old_code.cs\",\"deleted_successfully\":true,\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -113,15 +113,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var filePath = (parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "") ?? "";
-            return $"Deleting file '{filePath}'...";
+            return $"Deleting file '{filePath}'... ";
         }
 
         public string GetCompletionMessage(object result)
         {
-            if (result is DeleteFileResponse response && response.Success)
-                return $"File deleted.";
-
-            return $"Error: {((DeleteFileResponse)result).ErrorMessage}";
+            if (result is DeleteFileResponse response)
+                return response.Success ? "File deleted." : $"File deletion failed: {response.ErrorMessage}";
+            return "File deletion finished.";
         }
 
         private (string filePath, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)

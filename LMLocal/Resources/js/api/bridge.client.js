@@ -127,6 +127,14 @@ class BridgeClient {
         return await this._callHost("ReviewFileAsync", filePath);
     }
 
+    async reviewAllFilesAsync(filePaths) {
+        return await this._callHost("ReviewAllFilesAsync", JSON.stringify(filePaths));
+    }
+
+    async openAllFilesAsync(filePaths) {
+        return await this._callHost("OpenAllFilesAsync", JSON.stringify(filePaths));
+    }
+
     async discardFileAsync(filePath) {
         return await this._callHost("DiscardFileAsync", filePath);
     }

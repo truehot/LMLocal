@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using EnvDTE80;
+
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Moq;
 using NUnit.Framework;
@@ -199,6 +201,12 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             {
                 return _solution;
             }
+
+            public DTE2 GetDTE()
+            {
+                return null;
+            }
+
 
             public ISolutionFileProvider GetFileProvider()
             {

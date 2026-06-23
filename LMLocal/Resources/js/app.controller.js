@@ -277,6 +277,14 @@ class AppController {
             return await appDataService.reviewFileAsync(filePath);
         });
 
+        changesPanelComponent.onReviewAll.on(async (filePaths) => {
+            return await appDataService.reviewAllFilesAsync(filePaths);
+        });
+
+        changesPanelComponent.onOpenAll.on(async (filePaths) => {
+            return await appDataService.openAllFilesAsync(filePaths);
+        });
+
         changesPanelComponent.onDiscardSingleFile.on(async (filePath) => {
             return await appDataService.discardFileAsync(filePath);
         });
@@ -339,4 +347,3 @@ class AppController {
 
 const appController = new AppController();
 export default appController;
-

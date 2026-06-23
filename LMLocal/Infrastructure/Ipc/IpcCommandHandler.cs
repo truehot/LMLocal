@@ -58,7 +58,7 @@ internal static class IpcCommandHandler
                 if (string.Equals(cmd, "GetActiveDocument", StringComparison.OrdinalIgnoreCase))
                 {
                     var parameters = new Dictionary<string, object>();
-                    var res = await builtInVsToolProvider.ExecuteAsync("Get_Active_Document_Content", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("get_active_document", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "SearchInFiles", StringComparison.OrdinalIgnoreCase))
@@ -77,7 +77,7 @@ internal static class IpcCommandHandler
                         { "extension_filter", extension }
                     };
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("Search_Local_Solution_Files", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("search_file_content", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "ReadFileLines", StringComparison.OrdinalIgnoreCase))
@@ -102,13 +102,13 @@ internal static class IpcCommandHandler
                         { "end_line", endLine }
                     };
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("Read_Solution_File_Lines", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("read_file_lines", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "GetSolutionOverview", StringComparison.OrdinalIgnoreCase))
                 {
                     var parameters = new Dictionary<string, object>();
-                    var res = await builtInVsToolProvider.ExecuteAsync("Get_Solution_Overview", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("get_solution_overview", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "FindFilesByName", StringComparison.OrdinalIgnoreCase))
@@ -131,10 +131,10 @@ internal static class IpcCommandHandler
                         parameters["file_extension"] = extension;
                     }
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("Find_Files_By_Name", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("find_files", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
-                else if (string.Equals(cmd, "Find_Symbol_References", StringComparison.OrdinalIgnoreCase))
+                else if (string.Equals(cmd, "find_symbol_references", StringComparison.OrdinalIgnoreCase))
                 {
                     if (parts.Length < 3)
                     {
@@ -148,7 +148,7 @@ internal static class IpcCommandHandler
                         { "symbol_name", symbolName }
                     };
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("Find_Symbol_References", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("find_symbol_references", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else if (string.Equals(cmd, "ListDirectoryContents", StringComparison.OrdinalIgnoreCase))
@@ -159,7 +159,7 @@ internal static class IpcCommandHandler
                         { "directory_path", directoryPath }
                     };
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("List_Directory_Contents", parameters, token);
+                    var res = await builtInVsToolProvider.ExecuteAsync("list_directory", parameters, token);
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
                 }
                 else

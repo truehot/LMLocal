@@ -76,7 +76,6 @@ namespace LMLocal.Application.Chat
         {
             if (toolCalls == null || toolCalls.Count == 0) return;
 
-
             var toolCallObjects = new List<ToolCall>();
             foreach (var toolCall in toolCalls)
             {

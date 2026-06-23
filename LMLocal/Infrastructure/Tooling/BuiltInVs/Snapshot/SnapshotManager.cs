@@ -15,7 +15,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 {
     internal interface ISnapshotManager
     {
-        event Action<IReadOnlyList<string>> SnapshotChanged;
+        event Func<IReadOnlyList<SnapshotFileChange>, Task> SnapshotChangedAsync;
         Task LoadSnapshotAsync(CancellationToken cancellationToken = default);
         Task<IReadOnlyList<string>> GetChangedFilesAsync(CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SnapshotFileChange>> GetChangedFilesWithStatusAsync(CancellationToken cancellationToken = default);
@@ -52,7 +52,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
         private readonly HashSet<string> _batchPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private bool _isBatching;
 
-        public event Action<IReadOnlyList<string>> SnapshotChanged;
+        public event Func<IReadOnlyList<SnapshotFileChange>, Task> SnapshotChangedAsync;
 
         public SnapshotManager(
             IVsDependencies vsDependencies,
@@ -70,7 +70,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
         public async Task LoadSnapshotAsync(CancellationToken ct)
         {
-            IReadOnlyList<string> filesToNotify = null;
+            IReadOnlyList<SnapshotFileChange> filesToNotify = null;
 
             using (await _lock.LockAsync(ct).ConfigureAwait(false))
             {
@@ -87,6 +87,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 EnsureDirectories(paths);
 
                 SnapshotManifestInfo manifest = null;
+
                 if (_fileSystem.FileExists(paths.ManifestPath))
                 {
                     try
@@ -135,10 +136,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                     };
                 }
 
-                filesToNotify = _manifest?.Files?.Select(f => f.RelativePath).ToList() ?? new List<string>();
+                filesToNotify = _pendingChanges.Values.ToList().AsReadOnly();
             }
 
-            SnapshotChanged?.Invoke(filesToNotify);
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(filesToNotify);
         }
 
         public async Task ResetAsync(CancellationToken ct = default)
@@ -152,7 +155,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 _paths = null;
                 _manifestDirty = false;
             }
-            SnapshotChanged?.Invoke(new List<string>());
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
         }
 
         public async Task<IReadOnlyList<string>> GetChangedFilesAsync(CancellationToken ct = default)
@@ -203,6 +208,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 return null;
             if (!_fileSystem.FileExists(absolutePath))
                 return null;
+
             return absolutePath;
         }
 
@@ -220,7 +226,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             if (_manifest == null)
                 await LoadSnapshotAsync(ct).ConfigureAwait(false);
 
-            IReadOnlyList<string> filesToNotify = null;
+            IReadOnlyList<SnapshotFileChange> filesToNotify = null;
 
             using (await _lock.LockAsync(ct).ConfigureAwait(false))
             {
@@ -247,14 +253,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                         _fileSystem.EnsureDirectoryExistsForFile(bakPath);
                         await _fileSystem.CopyFileAsync(absolutePath, bakPath, ct).ConfigureAwait(false);
 
-                        var fi = _fileSystem.GetFileInfo(absolutePath);
+                        var (Length, LastWriteTimeUtc) = _fileSystem.GetFileInfo(absolutePath);
                         _manifest.Files.Add(new SnapshotFileEntry
                         {
                             RelativePath = relativePath,
                             BackupId = backupId,
                             ExistedAtSnapshot = true,
-                            FileSize = fi.Length,
-                            LastWriteTimeUtc = fi.LastWriteTimeUtc
+                            FileSize = Length,
+                            LastWriteTimeUtc = LastWriteTimeUtc
                         });
                     }
                     else
@@ -305,12 +311,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 else
                 {
                     await SaveManifestIfDirtyAsync(ct).ConfigureAwait(false);
-                    filesToNotify = _manifest?.Files?.Select(f => f.RelativePath).ToList();
+                    filesToNotify = _pendingChanges.Values.ToList().AsReadOnly();
                 }
             }
 
             if (filesToNotify != null)
-                SnapshotChanged?.Invoke(filesToNotify);
+            {
+                var handlers = SnapshotChangedAsync;
+                if (handlers != null)
+                    await handlers.Invoke(filesToNotify);
+            }
         }
 
         public async Task BeginBatchAsync(CancellationToken ct)
@@ -327,7 +337,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
         public async Task EndBatchAsync(CancellationToken ct)
         {
-            IReadOnlyList<string> filesToNotify = null;
+            IReadOnlyList<SnapshotFileChange> filesToNotify = null;
 
             using (await _lock.LockAsync(ct).ConfigureAwait(false))
             {
@@ -357,9 +367,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                         string bakPath = _paths.GetBackupPath(entry.BackupId);
                         if (_fileSystem.FileExists(bakPath))
                         {
-                            var currentFi = _fileSystem.GetFileInfo(absolutePath);
+                            var (Length, LastWriteTimeUtc) = _fileSystem.GetFileInfo(absolutePath);
                             var bakFi = _fileSystem.GetFileInfo(bakPath);
-                            if (currentFi.Length == bakFi.Length && currentFi.LastWriteTimeUtc == bakFi.LastWriteTimeUtc)
+                            if (Length == bakFi.Length && LastWriteTimeUtc == bakFi.LastWriteTimeUtc)
                             {
                                 _fileSystem.Delete(bakPath);
                                 toRemove.Add(entry);
@@ -380,11 +390,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 _isBatching = false;
 
                 await SaveManifestIfDirtyAsync(ct).ConfigureAwait(false);
-                filesToNotify = _manifest?.Files?.Select(f => f.RelativePath).ToList();
+                filesToNotify = _pendingChanges.Values.ToList().AsReadOnly();
             }
 
             if (filesToNotify != null)
-                SnapshotChanged?.Invoke(filesToNotify);
+            {
+                var handlers = SnapshotChangedAsync;
+                if (handlers != null)
+                    await handlers.Invoke(filesToNotify);
+            }
         }
 
         public async Task CancelBatchAsync(CancellationToken ct = default)
@@ -393,6 +407,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             {
                 if (!_isBatching)
                     return;
+
                 _batchPaths.Clear();
                 _isBatching = false;
             }
@@ -449,7 +464,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
-            SnapshotChanged?.Invoke(new List<string>());
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             if (errors.Count > 0)
                 throw new AggregateException("RollbackAll completed with errors.", errors);
@@ -465,15 +482,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             foreach (string rel in relativePaths)
             {
                 if (!IsValidRelativePath(rel))
+                {
                     pathErrors.Add(new ArgumentException($"Path '{rel}' is not inside solution."));
+                }
                 else
+                {
                     validPaths.Add(rel);
+                }
             }
 
             if (validPaths.Count == 0)
             {
                 if (pathErrors.Count > 0)
                     throw new AggregateException("RollbackFiles completed with errors.", pathErrors);
+
                 return;
             }
 
@@ -535,7 +557,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
-            SnapshotChanged?.Invoke(new List<string>());
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)
@@ -553,6 +577,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
                 if (_manifest == null || _manifest.Files.Count == 0)
                     return;
+
                 entriesWithBak = _manifest.Files
                     .Select(entry => (entry, _paths.GetBackupPath(entry.BackupId)))
                     .ToList();
@@ -591,7 +616,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
-            SnapshotChanged?.Invoke(new List<string>());
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             if (errors.Count > 0)
                 throw new AggregateException("CommitAll completed with errors.", errors);
@@ -608,15 +635,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             foreach (string rel in relativePaths)
             {
                 if (!IsValidRelativePath(rel))
+                {
                     pathErrors.Add(new ArgumentException($"Path '{rel}' is not inside solution."));
+                }
                 else
+                {
                     validPaths.Add(rel);
+                }
             }
 
             if (validPaths.Count == 0)
             {
                 if (pathErrors.Count > 0)
                     throw new AggregateException("CommitFiles completed with errors.", pathErrors);
+
                 return;
             }
 
@@ -628,6 +660,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
                 if (_manifest == null || _manifest.Files.Count == 0)
                     return;
+
                 entriesToCommit = validPaths
                     .Select(p => _manifest.Files.Find(
                         f => string.Equals(f.RelativePath, p, StringComparison.OrdinalIgnoreCase)))
@@ -661,6 +694,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 {
                     if (_manifest.Files.Contains(entry))
                         _manifest.Files.Remove(entry);
+
                     _pendingChanges.Remove(entry.RelativePath);
                 }
                 if (entriesToCommit.Count > 0)
@@ -674,7 +708,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
-            SnapshotChanged?.Invoke(new List<string>());
+            var handlers = SnapshotChangedAsync;
+            if (handlers != null)
+                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)
@@ -729,7 +765,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
         private async Task<SnapshotManifestInfo> LoadManifestFromDiskAsync(string manifestPath, CancellationToken ct)
         {
             string json = await _fileSystem.ReadAllTextAsync(manifestPath, ct).ConfigureAwait(false);
-            return JsonConvert.DeserializeObject<SnapshotManifestInfo>(json) ?? throw new InvalidDataException("Manifest deserialized to null");
+            return json.FromJson<SnapshotManifestInfo>() ?? throw new InvalidDataException("Manifest deserialized to null");
         }
 
         private async Task SaveManifestAsync(string manifestPath, SnapshotManifestInfo manifest, CancellationToken ct)
@@ -764,6 +800,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
         {
             if (!Directory.Exists(snapshotDir))
                 return;
+
             string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
             string archiveDir = snapshotDir + "_corrupted_" + timestamp;
             Directory.Move(snapshotDir, archiveDir);

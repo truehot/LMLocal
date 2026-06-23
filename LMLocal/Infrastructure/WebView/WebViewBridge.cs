@@ -15,13 +15,14 @@ using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using LMLocal.Infrastructure.VisualStudio;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
-using LMLocal.Infrastructure.VisualStudio;
 using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
 using Microsoft.VisualStudio.Shell;
+using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.WebView
 {
@@ -53,8 +54,9 @@ namespace LMLocal.Infrastructure.WebView
         Task<bool> DiscardChangesAsync();
         Task<bool> AcceptChangesAsync();
         Task<bool> ReviewFileAsync(string filePath);
+        Task<bool> ReviewAllFilesAsync(string filePathsJson);
+        Task<bool> OpenAllFilesAsync(string filePathsJson);
         Task<bool> DiscardFileAsync(string filePath);
-        Task<bool> AcceptFileAsync(string filePath);
     }
 
 
@@ -68,7 +70,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IMcpConfigManager _mcpConfigManager;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly ISettingsManager _settingsManager;
-        private readonly IActiveDocument _activeDocumentTool;
+        private readonly IGetActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
@@ -87,7 +89,7 @@ namespace LMLocal.Infrastructure.WebView
             IProvidersConfigManager providersConfigManager,
             IBuiltInVsToolProvider builtInVsToolProvider,
             IToolsConfigManager toolsConfigManager,
-            IActiveDocument activeDocumentTool,
+            IGetActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
             IChatHistoryManager chatHistoryManager,
@@ -107,7 +109,7 @@ namespace LMLocal.Infrastructure.WebView
             _builtInVsToolProvider = builtInVsToolProvider ?? throw new ArgumentNullException(nameof(builtInVsToolProvider));
             _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _snapshotManager.SnapshotChanged += OnSnapshotChanged;
+            _snapshotManager.SnapshotChangedAsync += OnSnapshotChangedAsync;
         }
 
         /// <summary>
@@ -648,7 +650,6 @@ namespace LMLocal.Infrastructure.WebView
                 return false;
             }
         }
-
         public async Task<bool> ReviewFileAsync(string filePath)
         {
             try
@@ -668,6 +669,74 @@ namespace LMLocal.Infrastructure.WebView
             catch (Exception ex)
             {
                 InternalLogger.Error("ReviewFileDiffAsync failed", ex);
+                return false;
+            }
+        }
+        public async Task<bool> ReviewAllFilesAsync(string filePathsJson)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePathsJson))
+                    return false;
+
+                var filePaths = JsonConvert.DeserializeObject<string[]>(filePathsJson);
+                if (filePaths == null || filePaths.Length == 0)
+                    return false;
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                var tmpDirectory = _snapshotManager.GetTmpDirectoryPath();
+
+                foreach (var relativePath in filePaths)
+                {
+                    if (string.IsNullOrWhiteSpace(relativePath))
+                        continue;
+
+                    var leftPath = await _snapshotManager.GetSnapshotFilePathAsync(relativePath).ConfigureAwait(false);
+                    var rightPath = _snapshotManager.GetCurrentFilePath(relativePath);
+
+                    await DiffViewer.ShowDiffAsync(leftPath, rightPath, tmpDirectory).ConfigureAwait(false);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("ReviewAllFilesAsync failed", ex);
+                return false;
+            }
+        }
+
+        public async Task<bool> OpenAllFilesAsync(string filePathsJson)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(filePathsJson))
+                    return false;
+
+                var filePaths = JsonConvert.DeserializeObject<string[]>(filePathsJson);
+                if (filePaths == null || filePaths.Length == 0)
+                    return false;
+
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                foreach (var relativePath in filePaths)
+                {
+                    if (string.IsNullOrWhiteSpace(relativePath))
+                        continue;
+
+                    var absolutePath = _snapshotManager.GetCurrentFilePath(relativePath);
+                    if (absolutePath == null)
+                        continue;
+
+                    await FileViewer.OpenFileAsync(absolutePath).ConfigureAwait(false);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("OpenAllFilesAsync failed", ex);
                 return false;
             }
         }
@@ -707,17 +776,13 @@ namespace LMLocal.Infrastructure.WebView
                 return false;
             }
         }
-        private void OnSnapshotChanged(IReadOnlyList<string> changedFiles)
+        private async Task OnSnapshotChangedAsync(IReadOnlyList<SnapshotFileChange> changedFiles)
         {
-            _ = Task.Run(async () =>
+            var message = new WebView2SnapshotMessage
             {
-                var fileChanges = await _snapshotManager.GetChangedFilesWithStatusAsync().ConfigureAwait(false);
-                var message = new WebView2SnapshotMessage
-                {
-                    ChangedFiles = fileChanges.ToList(),
-                };
-                await _scriptExecutor.PostMessageAsJsonAsync(message).ConfigureAwait(false);
-            });
+                ChangedFiles = changedFiles.ToList(),
+            };
+            await _scriptExecutor.PostMessageAsJsonAsync(message).ConfigureAwait(false);
         }
     }
 }

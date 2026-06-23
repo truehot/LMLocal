@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
+
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
@@ -17,23 +18,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     internal class BuildSolution : IBuildSolution
     {
         private readonly IVsDependencies _vsDependencies;
-        private DTE2 _dte;
-
-        public string ToolName => "Build_Solution";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.Execution;
+
+        public string ToolName => "build_solution";
 
         public BuildSolution(IVsDependencies vsDependencies)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
         }
 
-        private DTE2 GetDTE()
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (_dte == null)
-                _dte = ServiceProvider.GlobalProvider.GetService(typeof(DTE)) as DTE2;
-            return _dte;
-        }
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
@@ -42,7 +35,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!_vsDependencies.IsSolutionOpen)
                 return ErrorResponse("No solution is open.");
 
-            var dte = GetDTE();
+            var dte = _vsDependencies.GetDTE();
             if (dte == null)
                 return ErrorResponse("DTE service not available.");
 
@@ -57,10 +50,31 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             void buildDoneHandler(vsBuildScope vsBuildScope, vsBuildAction vsBuildAction)
             {
-                ThreadHelper.ThrowIfNotOnUIThread();
-                bool succeeded = dte.Solution.SolutionBuild.LastBuildInfo == 0;
-                tcs.TrySetResult(succeeded);
-                buildEvents.OnBuildDone -= buildDoneHandler;
+                try
+                {
+                    if (!ThreadHelper.CheckAccess())
+                    {
+                        ThreadHelper.JoinableTaskFactory.Run(async () =>
+                        {
+                            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                            bool succeeded = dte.Solution.SolutionBuild.LastBuildInfo == 0;
+                            tcs.TrySetResult(succeeded);
+                        });
+                    }
+                    else
+                    {
+                        bool succeeded = dte.Solution.SolutionBuild.LastBuildInfo == 0;
+                        tcs.TrySetResult(succeeded);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+                finally
+                {
+                    buildEvents.OnBuildDone -= buildDoneHandler;
+                }
             }
 
             buildEvents.OnBuildDone += buildDoneHandler;
@@ -76,7 +90,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         return ErrorResponse("Build was cancelled.");
 
                     var messages = new List<BuildMessage>();
-                    await CollectErrorMessagesAsync(messages);
+                    await CollectErrorMessagesAsync(messages, cancellationToken);
 
                     return new BuildSolutionResponse
                     {
@@ -102,13 +116,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private async Task CollectErrorMessagesAsync(List<BuildMessage> messages)
+        private async Task CollectErrorMessagesAsync(List<BuildMessage> messages, CancellationToken ct)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            var dte = GetDTE();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
+            var dte = _vsDependencies.GetDTE();
             if (dte?.ToolWindows?.ErrorList == null) return;
 
-            await Task.Delay(300);
+            await Task.Delay(300, ct).ConfigureAwait(false);
+
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
 
             ErrorItems errorItems = dte.ToolWindows.ErrorList.ErrorItems;
             int count = errorItems.Count;
@@ -137,7 +154,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        public string GetProcessingMessage(Dictionary<string, object> parameters) => "Building solution...";
+        public string GetProcessingMessage(Dictionary<string, object> parameters) => "Building solution... ";
 
         public string GetCompletionMessage(object result)
         {
@@ -153,7 +170,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Builds the currently opened solution in Visual Studio asynchronously. Response fields: success (bool), solution_name (string), solution_path (string), error_message (string or null), build_messages (array of {file (string), line (int), column (int), message (string)}).",
+                Description = "Builds the currently opened Visual Studio solution asynchronously. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. Example success: {\"success\":true,\"solution_name\":\"MyApp\",\"solution_path\":\"C:\\dev\\MyApp.sln\",\"error_message\":null,\"build_messages\":[]}. Example failure: {\"success\":false,\"error_message\":\"Build failed. See messages for details.\",\"build_messages\":[{\"file\":\"Program.cs\",\"line\":42,\"column\":10,\"message\":\"error CS0103: 'foo' does not exist\"}]}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

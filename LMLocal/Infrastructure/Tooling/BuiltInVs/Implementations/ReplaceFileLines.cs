@@ -12,21 +12,21 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    internal interface IReplaceLines : IBuiltInTool
+    internal interface IReplaceFileLines : IBuiltInTool
     {
     }
 
-    internal class ReplaceLines : IReplaceLines
+    internal class ReplaceFileLines : IReplaceFileLines
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
 
-        public string ToolName => "Replace_Lines";
+        public string ToolName => "replace_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public ReplaceLines(
+        public ReplaceFileLines(
             IVsDependencies vsDependencies,
             IPathResolver pathResolver,
             ISnapshotManager snapshotManager,
@@ -43,7 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = @"Replaces a range of lines in a file by line numbers. Creates a backup before modification for undo. Lines are 1-indexed. Response fields: success (bool), error_message (string), file_path (string). Automatically extends the file with empty lines when start_line or end_line exceeds the current line count.",
+                Description = "Replaces a range of lines in a file by line numbers (1-indexed, inclusive on both ends). After the replacement, line numbers shift — re-read the file if you need accurate positions for subsequent edits. If start_line or end_line exceeds the current line count, the file is automatically padded with empty lines. Set new_lines to an empty string to delete the range. When return_context is true, the response includes the old (replaced) and new blocks so you can verify correctness and calculate line shifts without re-reading. Always check the success field first; if false, read error_message to understand the failure. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":5,\"end_line\":10,\"new_lines\":\"Console.WriteLine(\\\"Hello\\\");\\n\",\"return_context\":true} replaces lines 5-10 with a single line and returns both the replaced block and the new block.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -52,7 +52,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "file_path", new ToolDetails { Type = "string", Description = "Absolute or relative path to file." } },
                         { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, inclusive)." } },
                         { "end_line", new ToolDetails { Type = "integer", Description = "Ending line number (1-indexed, inclusive). Must be >= start_line." } },
-                        { "new_lines", new ToolDetails { Type = "string", Description = "New text to replace the lines. Can contain multiple lines separated by \\n or \\r\\n." } }
+                        { "new_lines", new ToolDetails { Type = "string", Description = "New text to replace the lines. Can contain multiple lines separated by \\n or \\r\\n. If empty string, the line range is deleted." } },
+                        { "return_context", new ToolDetails { Type = "boolean", Description = "If true, returns the replaced and new blocks for verification. Use this to calculate the line shift and update your internal numbering without re-reading the whole file." } }
                     },
                     Required = new List<string> { "file_path", "start_line", "end_line", "new_lines" }
                 }
@@ -63,7 +64,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-                var (filePath, startLine, endLine, newLinesText, error) = ExtractAndValidateParameters(parameters);
+                var (filePath, startLine, endLine, newLinesText, returnContext, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
                     return Error(error);
 
@@ -91,6 +92,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var resultLines = new List<string>();
                 int lineNumber = 0;
                 bool blockReplaced = false;
+                var rangeLines = new List<string>();
 
                 await _fileSystem.ReadLinesAsync(absolutePath, (_, line) =>
                 {
@@ -103,6 +105,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                 resultLines.AddRange(newLines);
                             blockReplaced = true;
                         }
+                        if (returnContext)
+                            rangeLines.Add(line);
                     }
                     else
                     {
@@ -131,11 +135,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await _fileSystem.WriteAllBytesAsync(absolutePath, Encoding.UTF8.GetBytes(newContent), cancellationToken).ConfigureAwait(false);
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
-                return new ReplaceLinesResponse
+
+                var response = new ReplaceLinesResponse
                 {
                     Success = true,
-                    FilePath = relativePath ?? absolutePath
+                    FilePath = relativePath ?? absolutePath,
+                    LinesReplaced = endLine - startLine + 1
                 };
+
+                if (returnContext)
+                {
+                    response.Replaced = rangeLines.ToArray();
+                    response.New = hasNewLines ? newLines : Array.Empty<string>();
+                }
+
+                return response;
             }
             catch (OperationCanceledException)
             {
@@ -148,29 +162,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private (string filePath, int startLine, int endLine, string newLines, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
+        private (string filePath, int startLine, int endLine, string newLines, bool returnContext, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, 0, 0, null, "Parameters cannot be null.");
+                return (null, 0, 0, null, false, "Parameters cannot be null.");
 
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string filePath))
-                return (null, 0, 0, null, "file_path parameter is required and must be a string.");
+                return (null, 0, 0, null, false, "file_path parameter is required and must be a string.");
 
             if (!parameters.TryGetValue("start_line", out object startObj) || !TryParseInt(startObj, out int startLine))
-                return (null, 0, 0, null, "start_line parameter is required and must be an integer.");
+                return (null, 0, 0, null, false, "start_line parameter is required and must be an integer.");
 
             if (!parameters.TryGetValue("end_line", out object endObj) || !TryParseInt(endObj, out int endLine))
-                return (null, 0, 0, null, "end_line parameter is required and must be an integer.");
+                return (null, 0, 0, null, false, "end_line parameter is required and must be an integer.");
 
             if (!parameters.TryGetValue("new_lines", out object newLinesObj) || !(newLinesObj is string newLines))
-                return (null, 0, 0, null, "new_lines parameter is required and must be a string.");
+                return (null, 0, 0, null, false, "new_lines parameter is required and must be a string.");
+
+            bool returnContext = false;
+            if (parameters.TryGetValue("return_context", out object rc) && rc != null)
+                returnContext = Convert.ToBoolean(rc);
 
             if (startLine < 1)
-                return (null, 0, 0, null, "start_line must be >= 1.");
+                return (null, 0, 0, null, false, "start_line must be >= 1.");
+            if (endLine < 1)
+                return (null, 0, 0, null, false, "end_line must be >= 1.");
             if (endLine < startLine)
-                return (null, 0, 0, null, "end_line must be >= start_line.");
+                return (null, 0, 0, null, false, "end_line must be >= start_line.");
 
-            return (filePath, startLine, endLine, newLines, null);
+            return (filePath, startLine, endLine, newLines, returnContext, null);
         }
 
         private static bool TryParseInt(object value, out int result)
@@ -187,14 +207,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var filePath = parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "";
             var start = parameters?.TryGetValue("start_line", out var s) == true ? s?.ToString() : "?";
             var end = parameters?.TryGetValue("end_line", out var e) == true ? e?.ToString() : "?";
-            return $"Replacing lines {start}-{end} in '{filePath}'...";
+            return $"Replacing lines {start}-{end} in '{filePath}'... ";
         }
 
         public string GetCompletionMessage(object result)
         {
-            if (result is ReplaceLinesResponse response && response.Success)
-                return $"Replacements finished.";
-            return $"Line replacement failed: {((ReplaceLinesResponse)result).ErrorMessage}";
+            if (result is ReplaceLinesResponse response)
+                return response.Success ? $"{response.LinesReplaced} line(s) replaced." : $"Replacing lines failed: {response.ErrorMessage}";
+            return "Replacing lines finished.";
         }
 
         private static ReplaceLinesResponse Error(string message)
@@ -213,5 +233,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("error_message")]
         public string ErrorMessage { get; set; }
+
+        [JsonProperty("lines_replaced")]
+        public int LinesReplaced { get; set; }
+
+        [JsonProperty("replaced", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] Replaced { get; set; }
+
+        [JsonProperty("new", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] New { get; set; }
     }
 }

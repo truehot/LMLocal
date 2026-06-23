@@ -1,9 +1,11 @@
-using System;
-using System.Threading.Tasks;
+using EnvDTE;
+using EnvDTE80;
 using LMLocal.Core.Common;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using System;
+using System.Threading.Tasks;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
@@ -28,6 +30,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         IVsSolution GetSolution();
 
         /// <summary>
+        /// Gets the cached DTE2 instance (EnvDTE automation model).
+        /// Must be called on UI thread.
+        /// </summary>
+        DTE2 GetDTE();
+
+
+        /// <summary>
         /// Initializes solution information on UI thread.
         /// </summary>
         Task InitializeAsync();
@@ -40,6 +49,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private IVsSolution _solution;
         private bool _initialized;
         private readonly ISearchResultCache _searchCache;
+        private DTE2 _dte;
+
 
         public event Action SolutionOpened;
         public event Action SolutionClosed;
@@ -66,6 +77,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         {
             return _solution;
         }
+
+        public DTE2 GetDTE()
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (_dte == null)
+                _dte = ServiceProvider.GlobalProvider.GetService(typeof(DTE)) as DTE2;
+            return _dte;
+        }
+
 
         public async Task InitializeAsync()
         {
@@ -142,7 +162,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     _solutionDirectory = solutionDirectory?.TrimEnd('\\');
                 }
             }
-
+            _dte = null;
             _searchCache.Clear();
             SolutionOpened?.Invoke();
             return VSConstants.S_OK;
@@ -154,6 +174,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             _solution = null;
             _solutionDirectory = null;
+            _dte = null;
             _searchCache.Clear();
 
             SolutionClosed?.Invoke();

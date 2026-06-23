@@ -26,7 +26,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
 
-        public string ToolName => "Replace_File_Content";
+        public string ToolName => "replace_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
         public ReplaceFileContent(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem)
@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces entire file content with new content. Creates backup before modification for undo capability. Response fields: success (bool), error_message (string), file_path (string). Path can be absolute or relative to solution root.",
+                Description = "Replaces the entire content of a file with new content. This is a full overwrite — the old content is completely replaced, not merged. After this operation, line numbers shift, so re-read the file if you need accurate line positions. Use for small files or when replacing the whole file is simpler than targeting specific lines. For partial edits, prefer replace_file_lines. Fails if the file does not exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"src/Config.cs\",\"new_content\":\"public static class Config { public const int Port = 8080; }\"} → {\"success\":true,\"file_path\":\"src/Config.cs\",\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -107,15 +107,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var filePath = (parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "") ?? "";
-            return $"Replacing content in `{filePath}`...";
+            return $"Replacing content in `{filePath}`... ";
         }
 
         public string GetCompletionMessage(object result)
         {
-            if (result is ApplyCodeEditResponse response && response.Success)
-                return $"Replacement completed.";
-
-            return "Replacement failed.";
+            if (result is ApplyCodeEditResponse response)
+                return response.Success ? "Replacement completed." : $"Replacement failed: {response.ErrorMessage}";
+            return "Replacement finished.";
         }
 
         private (string filePath, string newContent, string error) ExtractAndValidateParameters(

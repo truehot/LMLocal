@@ -13,11 +13,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// <summary>
     /// Tool to list all files and subdirectories within a specified path.
     /// </summary>
-    internal interface IListDirectoryContents : IBuiltInTool
+    internal interface IListDirectory : IBuiltInTool
     {
     }
 
-    internal class ListDirectoryContents : IListDirectoryContents
+    internal class ListDirectory : IListDirectory
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
@@ -32,10 +32,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             "CopilotBaseline"
         };
 
-        public string ToolName => "List_Directory_Contents";
+        public string ToolName => "list_directory";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public ListDirectoryContents(IVsDependencies vsDependencies, IPathResolver pathResolver)
+        public ListDirectory(IVsDependencies vsDependencies, IPathResolver pathResolver)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -46,7 +46,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Lists files and subdirectories within a path. System directories (bin, obj, .vs, .git, CopilotBaseline) are excluded from results. Response fields: success (bool), error_message (string), directory (string), entries (array of {{name (string), path (string), type (string)}}), has_more_results (bool). has_more_results indicates more entries exist beyond the {MaxEntries} entry limit. Only works inside solution directory.",
+                Description = "Lists files and subdirectories within a given path. System directories (bin, obj, .vs, .git, CopilotBaseline) are automatically excluded from results. Returns up to 200 entries; if has_more_results is true, the directory has more entries not shown. Only works inside the solution directory — paths outside the solution are rejected. Use '.' for the solution root. Example: {\"directory_path\":\"src\"} → {\"success\":true,\"directory\":\"src\",\"entries\":[{\"name\":\"Program.cs\",\"path\":\"src/Program.cs\",\"type\":\"file\"},{\"name\":\"Models\",\"path\":\"src/Models\",\"type\":\"directory\"}],\"has_more_results\":false,\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -185,7 +185,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
-            if (parameters == null) return "Listing directory contents... ";
+            if (parameters == null) return "Listing directory... ";
 
             var path = parameters.TryGetValue("directory_path", out var p) ? p?.ToString() : "";
             return $"Listing directory '{path}'... ";
@@ -193,12 +193,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var dirResult = (DirectoryContentsResponse)result;
-            if (!dirResult.Success)
-            {
-                return $"Error: {dirResult.ErrorMessage}";
-            }
-            return $"Listed {dirResult.Entries.Count} entries.";
+            if (result is DirectoryContentsResponse dirResult)
+                return dirResult.Success
+                    ? $"Listed {dirResult.Entries.Count} entries."
+                    : $"Listing directory failed: {dirResult.ErrorMessage}";
+            return "Directory listing finished.";
         }
 
         private (string directoryPath, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)

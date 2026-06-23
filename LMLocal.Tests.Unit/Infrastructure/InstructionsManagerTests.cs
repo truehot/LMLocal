@@ -122,6 +122,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public int RequestTimeoutSeconds => 15;
             public string SnapshotFolder => "Snapshots";
             public string LocalSnapshotsFileName => "manifest.json";
+            public string UserAgent => "LMLocalChat/1.0";
         }
 
         private class ThrowingReadFileSystem : IFileSystem

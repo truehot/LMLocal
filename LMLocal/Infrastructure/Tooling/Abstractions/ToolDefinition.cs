@@ -67,12 +67,14 @@ namespace LMLocal.Infrastructure.Tooling
     }
 
     /// <summary>
-    /// Describes a single parameter/property: its JSON type and an optional description.
+    /// Describes a single parameter/property: its JSON type, an optional description,
+    /// and optionally nested items (for arrays), properties (for objects) and required fields.
+    /// Supports recursive schema definitions compatible with JSON Schema / OpenAPI.
     /// </summary>
     public class ToolDetails
     {
         /// <summary>
-        /// The JSON Schema type for the parameter (e.g. "string", "integer").
+        /// The JSON Schema type for the parameter (e.g. "string", "integer", "array", "object").
         /// </summary>
         [JsonProperty("type")]
         public string Type { get; set; }
@@ -80,7 +82,25 @@ namespace LMLocal.Infrastructure.Tooling
         /// <summary>
         /// Human-readable description of the parameter.
         /// </summary>
-        [JsonProperty("description")]
+        [JsonProperty("description", NullValueHandling = NullValueHandling.Ignore)]
         public string Description { get; set; }
+
+        /// <summary>
+        /// When Type is "array", defines the schema of array items.
+        /// </summary>
+        [JsonProperty("items", NullValueHandling = NullValueHandling.Ignore)]
+        public ToolDetails Items { get; set; }
+
+        /// <summary>
+        /// When Type is "object", defines the nested properties of the object.
+        /// </summary>
+        [JsonProperty("properties", NullValueHandling = NullValueHandling.Ignore)]
+        public Dictionary<string, ToolDetails> Properties { get; set; }
+
+        /// <summary>
+        /// When Type is "object", lists the required property names.
+        /// </summary>
+        [JsonProperty("required", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> Required { get; set; }
     }
 }

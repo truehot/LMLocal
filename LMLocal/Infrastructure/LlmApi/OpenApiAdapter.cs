@@ -82,10 +82,11 @@ namespace LMLocal.Infrastructure.LlmApi
             {
                 using (var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + endpoint))
                 {
+                    if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
+                        request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
                     if (!string.IsNullOrEmpty(apiKey))
-                    {
                         request.Headers.Add("Authorization", $"Bearer {apiKey}");
-                    }
+
 
                     using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                     {
@@ -129,10 +130,11 @@ namespace LMLocal.Infrastructure.LlmApi
             try
             {
                 request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content };
+
+                if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
+                    request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
                 if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
-                {
                     request.Headers.Add("Authorization", $"Bearer {_settingsManager.Current.ApiKey}");
-                }
 
                 response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
@@ -173,10 +175,11 @@ namespace LMLocal.Infrastructure.LlmApi
             using (var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json"))
             using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content })
             {
+                if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
+                    request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
                 if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
-                {
                     request.Headers.Add("Authorization", $"Bearer {_settingsManager.Current.ApiKey}");
-                }
+
 
                 using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                 {
@@ -244,7 +247,6 @@ namespace LMLocal.Infrastructure.LlmApi
                         var openAiTools = ToolDefinitionConverter.ConvertToOpenAiFormat(vsTools);
                         request.Tools = openAiTools;
                         request.ToolChoice = "auto";
-                        request.ParallelToolCalls = false;
                     }
                 }
                 catch (Exception ex)

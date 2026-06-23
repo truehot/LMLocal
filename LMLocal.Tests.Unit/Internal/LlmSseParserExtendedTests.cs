@@ -100,8 +100,8 @@ namespace LMLocal.Tests.Unit
         [Test]
         public void ExtractDeltas_BuffersRaggedToolCall()
         {
-            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search_\"}}]}";
-            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Local_Solution_Files\"}}]}";
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>search_\"}}]}";
+            var line2 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"file_content\"}}]}";
             var line3 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\" args\\n</tool_call>\"}}]}";
 
             var chunks1 = _parser.ExtractDeltas(line1);
@@ -119,7 +119,7 @@ namespace LMLocal.Tests.Unit
             Assert.That(toolCallBlock.Kind, Is.EqualTo(ChunkKind.ToolCallRaw));
             Assert.That(toolCallBlock.Text, Does.Contain("<tool_call>"));
             Assert.That(toolCallBlock.Text, Does.Contain("</tool_call>"));
-            Assert.That(toolCallBlock.Text, Does.Contain("Search_Local_Solution_Files"));
+            Assert.That(toolCallBlock.Text, Does.Contain("search_file_content"));
         }
 
         [Test]
@@ -354,6 +354,39 @@ namespace LMLocal.Tests.Unit
             var chunk = (TextStreamChunk)result;
             Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Content));
             Assert.That(chunk.Text, Is.EqualTo("x"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ReturnsCompletion_WithUsageWhenFinishReasonPresent()
+        {
+            // DeepSeek format: finish_reason + usage in the same chunk
+            var json = "data: {\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{\"content\":\"\"}}],\"usage\":{\"prompt_tokens\":72313,\"completion_tokens\":13,\"total_tokens\":72326,\"completion_tokens_details\":{\"reasoning_tokens\":8},\"prompt_tokens_details\":{\"cached_tokens\":72192},\"prompt_cache_hit_tokens\":72192,\"prompt_cache_miss_tokens\":121},\"system_fingerprint\":\"fp_test\"}";
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
+            Assert.That(result is CompletionStreamChunk, Is.True);
+            var c = (CompletionStreamChunk)result;
+            Assert.That(c.FinishReason, Is.EqualTo("stop"));
+            Assert.That(c.TotalTokens, Is.EqualTo(72326));
+            Assert.That(c.PromptTokens, Is.EqualTo(72313));
+            Assert.That(c.CompletionTokens, Is.EqualTo(13));
+            Assert.That(c.ReasoningTokens, Is.EqualTo(8));
+            Assert.That(c.SystemFingerprint, Is.EqualTo("fp_test"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ReturnsCompletion_WithUsageAndRefusalInSameChunk()
+        {
+            var json = "data: {\"choices\":[{\"delta\":{\"refusal\":\"I cannot do that\"}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":1,\"total_tokens\":11}}";
+            var results = _parser.ExtractDeltas(json);
+            Assert.That(results, Is.Not.Empty);
+            var result = results[0];
+            Assert.That(result is CompletionStreamChunk, Is.True);
+            var c = (CompletionStreamChunk)result;
+            Assert.That(c.Refusal, Is.EqualTo("I cannot do that"));
+            Assert.That(c.TotalTokens, Is.EqualTo(11));
+            Assert.That(c.PromptTokens, Is.EqualTo(10));
+            Assert.That(c.CompletionTokens, Is.EqualTo(1));
         }
 
         [Test]

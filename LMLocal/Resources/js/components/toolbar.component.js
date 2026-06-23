@@ -41,7 +41,7 @@ class ToolbarComponent {
         if (!modelState.supportsMaxTokens) {
             this.elements.tokenBarFill.style.display = 'none';
 
-            const text = `Token usage: ${modelState.tokenUsed.toLocaleString('en-US') }`;
+            const text = `Context usage: ${modelState.tokenUsed.toLocaleString('en-US')}`;
             this.elements.barInfoTooltip.title = text;
             this.elements.modelName.title = text;
 
@@ -54,7 +54,7 @@ class ToolbarComponent {
             : 0;
         this.elements.tokenBarFill.style.transform = `scaleY(${percent / 100})`;
 
-        const text = `Last context: ${Math.round(percent)}% \n${modelState.tokenUsed.toLocaleString('en-US')} / ${modelState.tokenMax.toLocaleString('en-US') } tokens`;
+        const text = `Context usage: ${Math.round(percent)}% \n${modelState.tokenUsed.toLocaleString('en-US')} / ${modelState.tokenMax.toLocaleString('en-US')} tokens`;
         this.elements.barInfoTooltip.title = text;
         this.elements.modelName.title = text;
     }

@@ -93,23 +93,26 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISnapshotSolutionEvents, SnapshotSolutionEvents>();
             services.AddSingleton<ISnapshotManager, SnapshotManager>();
 
-            services.AddTransient<IBuiltInTool, SolutionSearch>();
-            services.AddTransient<IBuiltInTool, FileLinesReader>();
-            services.AddTransient<IBuiltInTool, FindFilesByName>();
-            services.AddTransient<IBuiltInTool, GetSolutionOverview>();
-            services.AddTransient<IBuiltInTool, FindSymbolReferences>();
-            services.AddTransient<IBuiltInTool, ListDirectoryContents>();
+            services.AddTransient<IBuiltInTool, BuildSolution>();
             services.AddTransient<IBuiltInTool, CreateFile>();
             services.AddTransient<IBuiltInTool, DeleteFile>();
-            services.AddTransient<IBuiltInTool, ReplaceFileContent>();
-            services.AddTransient<IBuiltInTool, ReplaceLines>();
-            services.AddTransient<IBuiltInTool, ReplaceMultipleLines>();
-            services.AddTransient<IBuiltInTool, ActiveDocument>();
-            services.AddTransient<IBuiltInTool, BuildSolution>();
-            services.AddTransient<IBuiltInTool, RunProjectTests>();
+            services.AddTransient<IBuiltInTool, FindFiles>();
+            services.AddTransient<IBuiltInTool, FindSymbolReferences>();
             services.AddTransient<IBuiltInTool, FormatDocument>();
+            services.AddTransient<IBuiltInTool, GetActiveDocument>();
+            services.AddTransient<IBuiltInTool, GetSolutionOverview>();
+            services.AddTransient<IBuiltInTool, InsertFileLines>();
+            services.AddTransient<IBuiltInTool, InspectType>();
+            services.AddTransient<IBuiltInTool, ListDirectory>();
+            services.AddTransient<IBuiltInTool, OptimizeUsings>();
+            services.AddTransient<IBuiltInTool, ReadFileLines>();
+            services.AddTransient<IBuiltInTool, ReplaceFileLines>();
+            services.AddTransient<IBuiltInTool, ReplaceFileContent>();
+            services.AddTransient<IBuiltInTool, RunTests>();
+            services.AddTransient<IBuiltInTool, SearchFileContent>();
+            services.AddTransient<IBuiltInTool, SetFileProjectStatus>();
 
-            services.AddTransient<IActiveDocument, ActiveDocument>();
+            services.AddTransient<IGetActiveDocument, GetActiveDocument>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();

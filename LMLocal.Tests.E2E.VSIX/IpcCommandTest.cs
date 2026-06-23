@@ -230,7 +230,7 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         await Task.Delay(2000);
 
-                        response = await client.SendCommandAsync("RunTool|Find_Symbol_References|Dispose", cts.Token);
+                        response = await client.SendCommandAsync("RunTool|find_symbol_references|Dispose", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
                         Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
 

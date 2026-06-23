@@ -106,8 +106,12 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
 
     public class FunctionParameters
     {
-        [JsonProperty("type")] public string Type { get; set; } = "object";
-        [JsonProperty("properties")] public Dictionary<string, object> Properties { get; set; }
+        [JsonProperty("type")] 
+        public string Type { get; set; } = "object";
+
+        [JsonProperty("properties")] 
+        public Dictionary<string, object> Properties { get; set; }
+
         [JsonProperty("required", NullValueHandling = NullValueHandling.Ignore)]
         public List<string> Required { get; set; }
     }
@@ -116,8 +120,10 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
     {
         [JsonProperty("name")]
         public string Name { get; set; }
+
         [JsonProperty("description", NullValueHandling = NullValueHandling.Ignore)]
         public string Description { get; set; }
+
         [JsonProperty("parameters", NullValueHandling = NullValueHandling.Ignore)]
         public FunctionParameters Parameters { get; set; }
     }

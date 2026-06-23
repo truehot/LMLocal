@@ -12,18 +12,18 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    internal interface IFormatDocument : IBuiltInTool { }
+    internal interface IOptimizeUsings : IBuiltInTool { }
 
-    internal class FormatDocument : IFormatDocument
+    internal class OptimizeUsings : IOptimizeUsings
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
 
-        public string ToolName => "format_document";
+        public string ToolName => "optimize_usings";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public FormatDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager)
+        public OptimizeUsings(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -74,10 +74,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken).ConfigureAwait(false);
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-                dte.ExecuteCommand("Edit.FormatDocument");
+                dte.ExecuteCommand("Edit.RemoveAndSort");
                 dte.ActiveDocument.Save();
 
-                return new FormatCodeResponse
+                return new RemoveAndSortUsingsResponse
                 {
                     Success = true,
                     FilePath = absolutePath
@@ -85,7 +85,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                return ErrorResponse($"Formatting failed: {ex.Message}");
+                return ErrorResponse($"Remove and sort usings failed: {ex.Message}");
             }
             finally
             {
@@ -96,9 +96,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private static FormatCodeResponse ErrorResponse(string message)
+        private static RemoveAndSortUsingsResponse ErrorResponse(string message)
         {
-            return new FormatCodeResponse
+            return new RemoveAndSortUsingsResponse
             {
                 Success = false,
                 ErrorMessage = message
@@ -108,14 +108,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var path = parameters?.TryGetValue("file_path", out var p) == true ? p?.ToString() : "file";
-            return $"Formatting '{path}'... ";
+            return $"Removing and sorting usings for '{path}'... ";
         }
 
         public string GetCompletionMessage(object result)
         {
-            if (result is FormatCodeResponse resp)
-                return resp.Success ? "Successfully formatted." : $"Formatting failed: {resp.ErrorMessage}";
-            return "Formatting completed.";
+            if (result is RemoveAndSortUsingsResponse resp)
+                return resp.Success ? "Successfully removed and sorted usings." : $"Remove and sort usings failed: {resp.ErrorMessage}";
+            return "Remove and sort usings completed.";
         }
 
         public ToolDefinition GetToolInfo()
@@ -123,13 +123,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Formats a code file using Visual Studio's built-in formatting engine. Normalizes indentation, spacing, and line breaks according to the solution's .editorconfig or VS settings. The file is opened, formatted, saved, and closed automatically. Works on any file type supported by the VS editor (C#, XML, JSON, etc.). Fails if the file does not exist or cannot be resolved. Example: {\"file_path\":\"src/Services/OrderService.cs\"} → {\"success\":true,\"error_message\":null,\"file_path\":\"src/Services/OrderService.cs\"}.",
+                Description = "Removes unused 'using' directives and sorts the remaining ones alphabetically in a C# code file. Use after adding or removing code that changes which namespaces are needed. The file is opened, processed, saved, and closed automatically. Only works on C# files. Fails if the file does not exist. Example: {\"file_path\":\"src/Program.cs\"} → {\"success\":true,\"error_message\":null,\"file_path\":\"src/Program.cs\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Path to the file to format (absolute or relative to solution root)." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Path to the C# file to process (absolute or relative to solution root)." } }
                     },
                     Required = new List<string> { "file_path" }
                 }
@@ -137,7 +137,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
     }
 
-    public class FormatCodeResponse
+    public class RemoveAndSortUsingsResponse
     {
         [JsonProperty("success")]
         public bool Success { get; set; }

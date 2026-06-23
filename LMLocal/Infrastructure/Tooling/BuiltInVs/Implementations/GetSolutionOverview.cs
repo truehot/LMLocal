@@ -21,7 +21,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     {
         private readonly IVsDependencies _vsDependencies;
 
-        public string ToolName => "Get_Solution_Overview";
+        public string ToolName => "get_solution_overview";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
         public GetSolutionOverview(IVsDependencies vsDependencies)
@@ -34,7 +34,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns a high-level summary of the current Visual Studio solution structure. Response fields: success (bool), error_message (string), solution_name (string), solution_path (string), total_projects (int), total_files (int), has_more_results (bool), projects (array of {name (string), language (string), path (string), file_count (int), is_test_project (bool)}), solution_folders (array of string). has_more_results indicates more projects exist beyond the 200 project limit. Cached for performance.",
+                Description = "Returns a high-level summary of the current Visual Studio solution: name, path, project list (with language, file count, test project flag), solution folders, and total file count. Use as a first step to understand the codebase layout before diving into specific files. The projects array is limited to 200 entries; has_more_results=true means some projects were not included. Results are cached for performance — call once and refer to it. Example: (no parameters) → {\"success\":true,\"solution_name\":\"MyApp\",\"solution_path\":\"C:\\dev\\MyApp.sln\",\"total_projects\":4,\"total_files\":209,\"has_more_results\":false,\"projects\":[{\"name\":\"MyApp\",\"language\":\"C#\",\"path\":\"MyApp/MyApp.csproj\",\"file_count\":132,\"is_test_project\":false}],\"solution_folders\":[]}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -113,12 +113,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var solutionResult = (SolutionOverviewResponse)result;
-            if (!solutionResult.Success)
-            {
-                return $"Error: {solutionResult.ErrorMessage}";
-            }
-            return $"Loaded {solutionResult.TotalProjects} projects, {solutionResult.TotalFiles} files.";
+            if (result is SolutionOverviewResponse solutionResult)
+                return solutionResult.Success
+                    ? $"Loaded {solutionResult.TotalProjects} projects, {solutionResult.TotalFiles} files."
+                    : $"Error: {solutionResult.ErrorMessage}";
+            return "Solution overview loaded.";
         }
 
         public class SolutionOverviewResponse

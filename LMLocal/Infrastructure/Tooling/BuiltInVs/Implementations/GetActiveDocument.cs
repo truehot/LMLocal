@@ -10,28 +10,27 @@ using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.ActiveDocument;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
     /// Tool interface to retrieve the currently active text document in Visual Studio.
     /// </summary>
-    internal interface IActiveDocument : IBuiltInTool
+    internal interface IGetActiveDocument : IBuiltInTool
     {
         Task<string> GetContentAsync();
     }
 
-    internal class ActiveDocument : IActiveDocument
+    internal class GetActiveDocument : IGetActiveDocument
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
 
-        public string ToolName => "Get_Active_Document_Content";
+        public string ToolName => "get_active_document";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public ActiveDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
+        public GetActiveDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -43,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns the currently active text document in Visual Studio. Response fields: success (bool), error_message (string), file_path (string), content (string). If the document content cannot be read, returns success=false with error_message.",
+                Description = "Returns the currently active text document in Visual Studio — the file the user is viewing/editing. Use when the user asks to 'fix this' or 'refactor this file' and you need to see what they're looking at without guessing the path. If no document is open, returns success=false. If the document content cannot be read (e.g., unsaved changes conflict), returns success=false with an error_message. Example: (no parameters) → {\"success\":true,\"file_path\":\"src/Program.cs\",\"content\":\"using System;\\n...\",\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -160,13 +159,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var docResult = (ActiveDocumentResponse)result;
-            if (!docResult.Success)
-            {
-                return $"Error: {docResult.ErrorMessage}";
-            }
-
-            return $"Read '{docResult.FilePath}'.";
+            if (result is ActiveDocumentResponse docResult)
+                return docResult.Success ? $"Read '{docResult.FilePath}'." : $"Error: {docResult.ErrorMessage}";
+            return "Read active document finished.";
         }
 
         private static ActiveDocumentResponse Error(string message)

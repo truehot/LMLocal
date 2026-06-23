@@ -250,7 +250,15 @@ export class ModelSelectorDialog {
 
     async show() {
         this.el = this._getElements();
+        this.filterText = '';
+        this.sortAsc = true;
+        this.showOnlyActive = false;
+
         if (!this.el.dialog) throw new Error('Dialog #model-selector-dialog not found');
+
+        if (this.el.filterInput) {
+            this.el.filterInput.value = '';
+        }
 
         if (this.el.activeToggle) {
             this.showOnlyActive = !!this.el.activeToggle.checked;

@@ -17,11 +17,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// minified files (*.min.js, *.min.css, *.udm.js), and other non-source files.
     /// </summary>
 
-    internal interface IFindFilesByName : IBuiltInTool
+    internal interface IFindFiles : IBuiltInTool
     {
     }
 
-    internal class FindFilesByName : IFindFilesByName
+    internal class FindFiles : IFindFiles
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
@@ -29,10 +29,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int DefaultTake = 100;
         private const int MaxFilesToScan = 1500;
 
-        public string ToolName => "Find_Files_By_Name";
+        public string ToolName => "find_files";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public FindFilesByName(
+        public FindFiles(
             IVsDependencies vsDependencies,
             IVsSolutionFilesScanner solutionFilesScanner,
             ISearchResultCache searchCache)
@@ -47,7 +47,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = $"Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Response fields: success (bool), error_message (string), results (array of {{file_path (string)}}), total_files (int), next_page_token (string or null). If 'next_page_token' is not null, more results exist; pass it as 'page_token' to get next page. Results are paginated by {DefaultTake} files per page. Limited to scanning first {MaxFilesToScan} files. Use optional filters: file_extension (e.g., '.cs'), project_filter. For all files, pass file_name='.'.",
+                Description = "Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Use to locate files when you know part of the name. Results are paginated (100 files per page); if next_page_token is not null, call again with page_token set to that value to get the next page. Limited to scanning first 1500 files. Optional filters: file_extension (e.g., '.cs'), project_filter narrows to a specific project. For all files, pass file_name='.'. Example: {\"file_name\":\"Program\",\"file_extension\":\".cs\"} → {\"success\":true,\"results\":[{\"file_path\":\"src/Program.cs\"}],\"total_files\":1,\"next_page_token\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -172,19 +172,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var fileResults = (FileSearchResultsResponse)result;
-            if (!fileResults.Success)
+            if (result is FileSearchResultsResponse fileResults)
             {
-                return $"Error: {fileResults.ErrorMessage}";
-            }
+                if (!fileResults.Success)
+                    return $"Error: {fileResults.ErrorMessage}";
 
-            var message = $"Found {fileResults.Results.Count} files";
-            if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
-            {
-                message += $"(total: {fileResults.TotalFiles} files)";
+                var message = $"Found {fileResults.Results.Count} files";
+                if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
+                    message += $"(total: {fileResults.TotalFiles} files)";
+                message += ".";
+                return message;
             }
-            message += ".";
-            return message;
+            return "File search finished.";
         }
 
         private (string fileName, string fileExtension, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(

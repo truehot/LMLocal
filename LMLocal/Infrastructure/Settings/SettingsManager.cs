@@ -40,6 +40,7 @@ namespace LMLocal.Infrastructure.Settings
         int RequestTimeoutSeconds { get; }
         string SnapshotFolder { get; }
         string LocalSnapshotsFileName { get; }
+        string UserAgent { get; }
     }
 
     internal class SettingsManager : ISettingsManager, IDisposable
@@ -67,9 +68,11 @@ namespace LMLocal.Infrastructure.Settings
         private const string DefaultHtmlResourcePath = "Resources/app.html";
         private const string DefaultVirtualHostName = "app.local";
         private const string DefaultSystemPrompt = "You are an expert Senior Software Engineer and Architect. You are integrated as a plugin into Visual Studio. When calling tools, you MUST extract relevant values from the user's input and fill all 'required' parameters.";
+        private const string DefaultUserAgent = "LMLocalChat/1.0";
         private const int DefaultBatchIntervalMs = 100;
         private const int DefaultWindowSeconds = 5;
         private const int DefaultRequestTimeoutSeconds = 105;
+        
         public event Action<AppSettings> SettingsChanged;
 
         public SettingsManager()
@@ -128,6 +131,7 @@ namespace LMLocal.Infrastructure.Settings
         public string HtmlResourcePath => DefaultHtmlResourcePath;
         public string VirtualHostName => DefaultVirtualHostName;
         public string SystemPrompt => DefaultSystemPrompt;
+        public string UserAgent => DefaultUserAgent;
         public int BatchIntervalMs => DefaultBatchIntervalMs;
         public int WindowSeconds => DefaultWindowSeconds;
         public int RequestTimeoutSeconds => DefaultRequestTimeoutSeconds;

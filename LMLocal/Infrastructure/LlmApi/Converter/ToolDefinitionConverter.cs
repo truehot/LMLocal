@@ -61,7 +61,6 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 Required = internalParams.Required
             };
         }
-
         private static Dictionary<string, object> ConvertProperties(
             Dictionary<string, ToolDetails> internalProperties)
         {
@@ -72,17 +71,32 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
             foreach (var kvp in internalProperties)
             {
-                var toolDetail = kvp.Value;
-                var propertyObj = new Dictionary<string, object>
-                {
-                    { "type", toolDetail.Type },
-                    { "description", toolDetail.Description }
-                };
-
-                result[kvp.Key] = propertyObj;
+                result[kvp.Key] = ConvertToolDetails(kvp.Value);
             }
 
             return result;
+        }
+
+        private static object ConvertToolDetails(ToolDetails detail)
+        {
+            var obj = new Dictionary<string, object>
+            {
+                { "type", detail.Type },
+            };
+
+            if (detail.Description != null)
+                obj["description"] = detail.Description;
+
+            if (detail.Items != null)
+                obj["items"] = ConvertToolDetails(detail.Items);
+
+            if (detail.Properties != null && detail.Properties.Count > 0)
+                obj["properties"] = ConvertProperties(detail.Properties);
+
+            if (detail.Required != null && detail.Required.Count > 0)
+                obj["required"] = detail.Required;
+
+            return obj;
         }
     }
 }

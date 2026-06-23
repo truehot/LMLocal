@@ -6,27 +6,26 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Newtonsoft.Json;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.FileLinesReader;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
     /// Tool to read a range of lines from a file inside the current Visual Studio solution.
     /// </summary>
-    internal interface IFileLinesReader : IBuiltInTool
+    internal interface IReadFileLines : IBuiltInTool
     {
     }
 
-    internal class FileLinesReader : IFileLinesReader
+    internal class ReadFileLines : IReadFileLines
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
 
-        public string ToolName => "Read_Solution_File_Lines";
+        public string ToolName => "read_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public FileLinesReader(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
+        public ReadFileLines(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -38,14 +37,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file within the current Visual Studio solution. Response fields: success (bool), error_message (string), file_path (string), lines (array of {line_number (int), text (string)}). Lines are returned exactly as they appear; no limit on maximum lines per request.",
+                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25} → {\"success\":true,\"file_path\":\"src/Program.cs\",\"lines\":[{\"line_number\":1,\"text\":\"using System;\"},{\"line_number\":2,\"text\":\"\"},{\"line_number\":3,\"text\":\"namespace App {\"}],\"error_message\":null}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { "file_path", new ToolDetails { Type = "string", Description = "Path to the source file (absolute or relative to solution root)." } },
-                        { "start_line", new ToolDetails { Type = "integer", Description = "The starting line number (1-indexed). Must be a positive integer (>= 1)." } },
+                        { "start_line", new ToolDetails { Type = "integer", Description = "The starting line number (1-indexed, inclusive). Must be a positive integer (>= 1)." } },
                         { "end_line", new ToolDetails { Type = "integer", Description = "The ending line number (inclusive). Must be a positive integer (>= 1) and must be >= start_line." } }
                     },
                     Required = new List<string> { "file_path", "start_line", "end_line" }
@@ -121,12 +120,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var fileResult = (FileLinesResponse)result;
-            if (!fileResult.Success)
-            {
-                return $"Error: {fileResult.ErrorMessage}";
-            }
-            return $"Read {fileResult.Lines.Count} lines.";
+            if (result is FileLinesResponse fileResult)
+                return fileResult.Success ? $"Read {fileResult.Lines.Count} lines." : $"Reading lines failed: {fileResult.ErrorMessage}";
+            return "Reading lines finished.";
         }
 
         private (string filePath, int startLine, int endLine, string error) ExtractAndValidateParameters(

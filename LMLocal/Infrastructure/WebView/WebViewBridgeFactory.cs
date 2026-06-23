@@ -33,7 +33,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IProvidersConfigManager _providersConfigManager;
         private readonly IBuiltInVsToolProvider _builtInVsToolProvider;
         private readonly IToolsConfigManager _toolsConfigManager;
-        private readonly IActiveDocument _activeDocumentTool;
+        private readonly IGetActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
@@ -48,7 +48,7 @@ namespace LMLocal.Infrastructure.WebView
             IProvidersConfigManager providersConfigManager,
             IBuiltInVsToolProvider builtInVsToolProvider,
             IToolsConfigManager toolsConfigManager,
-            IActiveDocument activeDocumentTool,
+            IGetActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
             IChatHistoryManager chatHistoryManager,
