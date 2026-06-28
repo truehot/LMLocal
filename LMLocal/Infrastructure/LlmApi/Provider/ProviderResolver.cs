@@ -31,6 +31,8 @@ namespace LMLocal.Infrastructure.Api
                     return ModelProvider.Gemini;
                 case "githubmodelsazure":
                     return ModelProvider.GithubModelsAzure;
+                case "llamacpp":
+                    return ModelProvider.LlamaCpp;
                 default:
                     return ModelProvider.LmStudio;
             }

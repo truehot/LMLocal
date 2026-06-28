@@ -48,6 +48,10 @@ namespace LMLocal.Application.ModelsList
                 {
                     response = await GetOllamaModelsAsync(cancellationToken);
                 }
+                else if (provider == ModelProvider.LlamaCpp)
+                {
+                    response = await GetLlamaCppModelsAsync(baseUrl, cancellationToken);
+                }
                 else
                 {
                     var json = await _openApiAdapter.ListModelsRawAsync(endpoint, baseUrl, null, cancellationToken);
@@ -73,6 +77,12 @@ namespace LMLocal.Application.ModelsList
             var allModelsResponse = ModelResponseConverter.ConvertToUnified(allJson, ModelProvider.OpenAi);
 
             return ModelResponseConverter.MergeOllamaModels(activeModelsResponse, allModelsResponse);
+        }
+
+        private async Task<UnifiedListModelsResponse> GetLlamaCppModelsAsync(string baseUrl, CancellationToken cancellationToken)
+        {
+            var modelsJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, baseUrl, null, cancellationToken);
+            return ModelResponseConverter.ConvertLlamaCppResponseToUnified(modelsJson);
         }
 
         private string GetBaseUrl()

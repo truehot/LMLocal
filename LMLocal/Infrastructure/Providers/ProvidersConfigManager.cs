@@ -75,6 +75,14 @@ namespace LMLocal.Infrastructure.Providers
                     },
                     new CustomProvider
                     {
+                        Id = 4,
+                        ProviderName = "Llama.cpp (local)",
+                        ProviderType = "llamacpp",
+                        CustomBaseUrl = "http://localhost:8080",
+                        CustomApiKey = string.Empty
+                    },
+                    new CustomProvider
+                    {
                         Id = 3,
                         ProviderName = "OpenAI compatible (custom)",
                         ProviderType = "openai",

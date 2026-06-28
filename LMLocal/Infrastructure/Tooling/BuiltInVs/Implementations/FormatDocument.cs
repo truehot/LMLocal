@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -30,13 +31,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
-
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-
             if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePathParam) || string.IsNullOrEmpty(filePathParam))
                 return ErrorResponse("Parameter 'file_path' is required.");
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (string.IsNullOrEmpty(solutionDir))
@@ -52,31 +52,38 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (dte == null)
                 return ErrorResponse("DTE service not available.");
 
-            Window window = null;
+            Document targetDocument = null;
+            Window openedWindow = null;
             bool wasOpen = false;
+
             try
             {
                 foreach (Document doc in dte.Documents)
                 {
                     if (string.Equals(doc.FullName, absolutePath, StringComparison.OrdinalIgnoreCase))
                     {
+                        targetDocument = doc;
                         wasOpen = true;
-                        window = doc.ActiveWindow;
-                        doc.Activate();
                         break;
                     }
                 }
 
                 if (!wasOpen)
                 {
-                    window = dte.ItemOperations.OpenFile(absolutePath, EnvDTE.Constants.vsViewKindAny);
+                    openedWindow = dte.ItemOperations.OpenFile(absolutePath, EnvDTE.Constants.vsViewKindAny);
+                    targetDocument = openedWindow.Document;
                 }
-                await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken).ConfigureAwait(false);
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
+                if (targetDocument == null)
+                    return ErrorResponse("Failed to obtain document reference.");
+
+                targetDocument.Activate();
+
+                await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
 
                 dte.ExecuteCommand("Edit.FormatDocument");
-                dte.ActiveDocument.Save();
 
+                targetDocument.Save();
                 return new FormatCodeResponse
                 {
                     Success = true,
@@ -85,13 +92,23 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                InternalLogger.Error($"Error during formatting for {absolutePath}: {ex}");
                 return ErrorResponse($"Formatting failed: {ex.Message}");
             }
             finally
             {
-                if (!wasOpen && window != null)
+
+                if (!wasOpen && openedWindow != null)
                 {
-                    window.Close(vsSaveChanges.vsSaveChangesNo);
+                    try
+                    {
+                        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                        openedWindow.Close(vsSaveChanges.vsSaveChangesNo);
+                    }
+                    catch
+                    {
+                        InternalLogger.Info($"Failed to close window for file: {absolutePath}");
+                    }
                 }
             }
         }
@@ -123,13 +140,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Formats a code file using Visual Studio's built-in formatting engine. Normalizes indentation, spacing, and line breaks according to the solution's .editorconfig or VS settings. The file is opened, formatted, saved, and closed automatically. Works on any file type supported by the VS editor (C#, XML, JSON, etc.). Fails if the file does not exist or cannot be resolved. Example: {\"file_path\":\"src/Services/OrderService.cs\"} → {\"success\":true,\"error_message\":null,\"file_path\":\"src/Services/OrderService.cs\"}.",
+                Description = "Formats a code file using Visual Studio's built-in formatting engine. Normalizes indentation, spacing, and line breaks according to the solution's .editorconfig or VS settings. The file is opened, formatted, saved, and closed automatically. Works on any file type supported by the VS editor (C#, XML, JSON, etc.). Fails if the file does not exist or cannot be resolved. Example: {\"file_path\":\"src/Services/OrderService.cs\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Path to the file to format (absolute or relative to solution root)." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } }
                     },
                     Required = new List<string> { "file_path" }
                 }

@@ -12,9 +12,6 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to apply code edits by replacing entire file content.
-    /// </summary>
     internal interface IReplaceFileContent : IBuiltInTool
     {
     }
@@ -42,7 +39,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces the entire content of a file with new content. This is a full overwrite — the old content is completely replaced, not merged. After this operation, line numbers shift, so re-read the file if you need accurate line positions. Use for small files or when replacing the whole file is simpler than targeting specific lines. For partial edits, prefer replace_file_lines. Fails if the file does not exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"src/Config.cs\",\"new_content\":\"public static class Config { public const int Port = 8080; }\"} → {\"success\":true,\"file_path\":\"src/Config.cs\",\"error_message\":null}.",
+                Description = "Replaces the entire content of a file with new content. This is a full overwrite — the old content is completely replaced, not merged. After this operation, line numbers shift, so re-read the file if you need accurate line positions. Use for small files or when replacing the whole file is simpler than targeting specific lines. For partial edits, prefer replace_file_lines. Fails if the file does not exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"src/Config.cs\",\"new_content\":\"public static class Config { public const int Port = 8080; }\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -80,6 +77,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     return Error($"Invalid file path: {ex.Message}");
                 }
+
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return Error($"File '{absolutePath}' is outside the solution directory.");
 
                 if (!_fileSystem.FileExists(absolutePath))
                     return Error($"File not found: {filePath}");

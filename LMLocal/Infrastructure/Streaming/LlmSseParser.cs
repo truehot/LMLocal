@@ -123,17 +123,24 @@ namespace LMLocal.Infrastructure.Streaming
 
         private CompletionStreamChunk ExtractUsage(JObject json)
         {
-            var usage = json["usage"];
-            if (usage == null)
-            {
+            var usageToken = json["usage"];
+            if (usageToken == null || usageToken.Type != JTokenType.Object)
                 return null;
+
+            var usage = (JObject)usageToken;
+
+            int? totalTokens = usage["total_tokens"]?.Value<int?>();
+            int? promptTokens = usage["prompt_tokens"]?.Value<int?>();
+            int? completionTokens = usage["completion_tokens"]?.Value<int?>();
+
+            int? reasoningTokens = null;
+            var detailsToken = usage["completion_tokens_details"];
+            if (detailsToken?.Type == JTokenType.Object)
+            {
+                reasoningTokens = detailsToken["reasoning_tokens"]?.Value<int?>();
             }
 
-            var totalTokens = usage["total_tokens"]?.Value<int?>();
-            var promptTokens = usage["prompt_tokens"]?.Value<int?>();
-            var completionTokens = usage["completion_tokens"]?.Value<int?>();
-            var reasoningTokens = usage["completion_tokens_details"]?["reasoning_tokens"]?.Value<int?>();
-            var systemFingerprint = json["system_fingerprint"]?.ToString();
+            string systemFingerprint = json["system_fingerprint"]?.ToString();
 
             return new CompletionStreamChunk(
                 totalTokens: totalTokens,

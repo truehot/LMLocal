@@ -91,3 +91,53 @@ export function createStreamingPipeline(streamBuffer, renderer, parser, schedule
         reset
     };
 }
+
+/**
+ * Create an immediate pipeline that coordinates parsing and rendering of loaded history.
+ **/
+export function createImmediatePipeline(renderer, parser) {
+    let isRunning = false;
+
+    let onAbortCallback = null;
+    let onEndCallback = null;
+    let onErrorCallback = (err) => console.error('Pipeline Error:', err);
+    let pendingWork = Promise.resolve();
+
+    const processChunk = async (visibleText) => {
+        try {
+            let html = await parser.parse(visibleText);
+            renderer.write(visibleText, html);
+        } catch (err) {
+            await onErrorCallback?.(err);
+        }
+    };
+
+    return {
+        attach(container) {
+            if (isRunning) return false;
+            isRunning = true;
+            renderer.start(container);
+        },
+        write(text) {
+            if (!isRunning) return false;
+            pendingWork = processChunk(text);
+            return true;
+        },
+        abort() {
+            if (!isRunning) return false;
+            Promise.resolve().then(() => onAbortCallback?.());
+            return true;
+        },
+        end() {
+            if (!isRunning) return false;
+
+            pendingWork.then(() => { renderer.stop(); onEndCallback?.(); });
+            return true;
+        },
+        onAbort(fn) { onAbortCallback = fn; },
+        onEnd(fn) { onEndCallback = fn; },
+        onError(fn) { onErrorCallback = fn; },
+        reset() {
+        }
+    };
+}

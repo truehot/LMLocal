@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -136,6 +137,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
             {
             }
+
+            public string[] GetFiles(string path, string searchPattern)
+            {
+                string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+                return _files.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+            }
+
+            public string GetFileExtension(string filePath)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool DirectoryExists(string path)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         [Test]
@@ -211,8 +233,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
             var messages = hist.BuildUserMessagesWithHistory("ask", includedContent: "code snippet");
 
-            Assert.That(messages[messages.Count -1].Content, Is.EqualTo("ask"));
-            Assert.That(messages, Has.Exactly(1).Matches<ChatMessage>(m => m.Content.ToString().StartsWith("Reference code:")));
+            Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("Reference code:"));
+            Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("ask"));
         }
 
         [Test]

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,7 +20,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var fs = new InMemoryFileSystem();
             var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
             var manager = new InstructionsManager(fs, settings);
-            var expectedPath = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            _ = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
             var result = await manager.GetAsync();
             Assert.That(result, Is.EqualTo("{}"));
         }
@@ -113,7 +114,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string LocalAppMcpFileName => "mcp.json";
             public string WebViewUserDataFolder => "WebViewData";
             public string ChatHistoryFolder => "ChatHistory";
-            public string ChatHistoryFilePrefix => "chat_";
+            public string ChatHistoryFileLabel => "chat_";
             public string HtmlResourcePath => "Resources/app.html";
             public string VirtualHostName => "app.local";
             public string SystemPrompt => string.Empty;
@@ -123,6 +124,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string SnapshotFolder => "Snapshots";
             public string LocalSnapshotsFileName => "manifest.json";
             public string UserAgent => "LMLocalChat/1.0";
+
+            public string AssistantPlaceholder => throw new NotImplementedException();
         }
 
         private class ThrowingReadFileSystem : IFileSystem
@@ -148,7 +151,26 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
             {
+            }
 
+            public string[] GetFiles(string path, string searchPattern)
+            {
+                return _inner.GetFiles(path, searchPattern);
+            }
+
+            public string GetFileExtension(string filePath)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool DirectoryExists(string path)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
             }
         }
 
@@ -176,7 +198,26 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
             {
+            }
 
+            public string[] GetFiles(string path, string searchPattern)
+            {
+                return Array.Empty<string>();
+            }
+
+            public string GetFileExtension(string filePath)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool DirectoryExists(string path)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
             }
         }
     }

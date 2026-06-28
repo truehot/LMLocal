@@ -12,9 +12,6 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to create new file with content.
-    /// </summary>
     internal interface ICreateFile : IBuiltInTool
     {
     }
@@ -41,13 +38,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Models/Customer.cs\",\"content\":\"public class Customer {}\"} → {\"success\":true,\"file_path\":\"Models/Customer.cs\",\"created_successfully\":true,\"error_message\":null}.",
+                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Models/Customer.cs\",\"content\":\"public class Customer {}\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Absolute or relative path to file to create." } },
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file to create." } },
                         { "content", new ToolDetails { Type = "string", Description = "Initial content for the file." } }
                     },
                     Required = new List<string> { "file_path", "content" }
@@ -62,6 +59,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var (filePath, content, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
                     return Error(error);
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (!_vsDependencies.IsSolutionOpen)
                     return Error("No solution is currently open.");
@@ -82,7 +81,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 if (_fileSystem.FileExists(absolutePath))
                     return Error($"File already exists: {filePath}");
-                
+
+
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeCreate, cancellationToken).ConfigureAwait(false);
 
                 _fileSystem.EnsureDirectoryExistsForFile(absolutePath);

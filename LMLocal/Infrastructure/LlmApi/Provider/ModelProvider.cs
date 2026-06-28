@@ -38,6 +38,11 @@ namespace LMLocal.Infrastructure.LlmApi.Provider
         /// <summary>
         /// Github Models cloud
         /// </summary>
-        GithubModelsAzure
+        GithubModelsAzure,
+
+        /// <summary>
+        /// llama.cpp local server backend
+        /// </summary>
+        LlamaCpp
     }
 }

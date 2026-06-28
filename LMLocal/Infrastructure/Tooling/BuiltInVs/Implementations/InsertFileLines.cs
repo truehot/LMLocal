@@ -82,45 +82,41 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_fileSystem.FileExists(absolutePath))
                     return Error($"File not found: {filePath}");
 
-                string[] newLines = newLinesText.Replace("\r", "").Split('\n');
+                string originalContent = await _fileSystem.ReadAllTextWithSharedReadAsync(absolutePath, cancellationToken);
 
-                var resultLines = new List<string>();
-                int lineNumber = 0;
-                bool inserted = false;
-
-                await _fileSystem.ReadLinesAsync(absolutePath, (_, line) =>
-                {
-                    lineNumber++;
-                    resultLines.Add(line);
-
-                    if (!inserted && position == lineNumber)
-                    {
-                        resultLines.AddRange(newLines);
-                        inserted = true;
-                    }
-                }, cancellationToken).ConfigureAwait(false);
-
-                if (!inserted && position == 0)
-                {
-                    resultLines.InsertRange(0, newLines);
-                    inserted = true;
-                }
-
-                while (resultLines.Count < position)
-                    resultLines.Add("");
-
-                if (!inserted)
-                {
-                    resultLines.AddRange(newLines);
-                    inserted = true;
-                }
-
-                string originalContent = await _fileSystem.ReadAllTextWithSharedReadAsync(absolutePath, cancellationToken).ConfigureAwait(false);
                 string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
-                string newContent = string.Join(separator, resultLines);
 
-                await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken).ConfigureAwait(false);
-                await _fileSystem.WriteAllBytesAsync(absolutePath, Encoding.UTF8.GetBytes(newContent), cancellationToken).ConfigureAwait(false);
+                string[] lines = originalContent.Split(new[] { separator }, StringSplitOptions.None);
+                var linesList = new List<string>(lines);
+
+                bool hadTrailingNewline = linesList.Count > 0 && linesList[linesList.Count - 1] == "" && originalContent.EndsWith(separator);
+                if (hadTrailingNewline)
+                {
+                    linesList.RemoveAt(linesList.Count - 1);
+                }
+
+                string normalizedInsert = newLinesText.Replace("\r\n", "\n").Replace("\r", "\n");
+                string[] newLines = normalizedInsert.Split('\n');
+
+                while (linesList.Count < position)
+                    linesList.Add("");
+
+                bool isAppendingToEnd = position >= linesList.Count;
+
+                if (position == 0)
+                    linesList.InsertRange(0, newLines);
+                else
+                    linesList.InsertRange(position, newLines);
+
+                if (hadTrailingNewline || isAppendingToEnd)
+                {
+                    linesList.Add("");
+                }
+
+                string newContent = string.Join(separator, linesList);
+
+                await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
+                await _fileSystem.WriteAllBytesAsync(absolutePath, Encoding.UTF8.GetBytes(newContent), cancellationToken);
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
                 return new InsertLinesResponse
@@ -164,14 +160,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (filePath, position, newLines, null);
         }
 
-        private static bool TryParseInt(object value, out int result)
-        {
-            result = 0;
-            if (value is int i) { result = i; return true; }
-            if (value is long l && l >= int.MinValue && l <= int.MaxValue) { result = (int)l; return true; }
-            if (value is string s && int.TryParse(s, out result)) return true;
-            return false;
-        }
+        private bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {

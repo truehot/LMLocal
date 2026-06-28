@@ -10,6 +10,7 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -46,6 +47,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters?.TryGetValue("project_path", out var pp) != true || !(pp is string projectPathParam) || string.IsNullOrEmpty(projectPathParam))
                 return ErrorResponse("Parameter 'project_path' is required (relative or absolute path to .csproj).");
 
+
+            bool includeFullOutput = false;
+            if (parameters?.TryGetValue("include_full_output", out var fullOutObj) == true && fullOutObj is bool fullOut)
+                includeFullOutput = fullOut;
+
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (!_pathResolver.TryResolveFilePath(projectPathParam, solutionDir, out string absoluteProjectPath))
                 return ErrorResponse($"Cannot resolve project path: {projectPathParam}");
@@ -56,7 +62,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!absoluteProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                 return ErrorResponse($"Specified file is not a .csproj: {absoluteProjectPath}");
 
-            var (Success, Output, Total, Passed, Failed, Skipped) = await RunDotnetTestAsync(absoluteProjectPath, solutionDir, cancellationToken);
+            await TaskScheduler.Default;
+
+            var (Success, Output, Total, Passed, Failed, Skipped) = await RunDotnetTestAsync(
+                absoluteProjectPath, solutionDir, includeFullOutput, cancellationToken);
 
             return new RunProjectTestsResponse
             {
@@ -87,21 +96,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunDotnetTestAsync(
             string projectPath,
             string workingDirectory,
+            bool includeFullOutput,
             CancellationToken cancellationToken)
         {
             bool isSdk = await IsSdkStyleProjectAsync(projectPath, cancellationToken);
             return isSdk
-                ? await RunSdkProjectTestsAsync(projectPath, workingDirectory, cancellationToken)
-                : await RunLegacyProjectTestsAsync(projectPath, workingDirectory, cancellationToken);
+                ? await RunSdkProjectTestsAsync(projectPath, workingDirectory, includeFullOutput, cancellationToken)
+                : await RunLegacyProjectTestsAsync(projectPath, workingDirectory, includeFullOutput, cancellationToken);
         }
 
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunSdkProjectTestsAsync(string projectPath, string workingDirectory, CancellationToken cancellationToken)
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunSdkProjectTestsAsync(
+            string projectPath,
+            string workingDirectory,
+            bool includeFullOutput,
+            CancellationToken cancellationToken)
         {
-            string arguments = $"test \"{projectPath}\" --no-build --no-restore --logger \"console;verbosity=detailed\"";
-            return await RunDotNetProcessAsync(arguments, workingDirectory, cancellationToken);
+            string arguments = $"test \"{projectPath}\" --no-restore --verbosity normal";
+            return await RunDotNetProcessAsync(arguments, workingDirectory, includeFullOutput, cancellationToken);
         }
 
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunLegacyProjectTestsAsync(string projectPath, string workingDirectory, CancellationToken cancellationToken)
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunLegacyProjectTestsAsync(
+            string projectPath,
+            string workingDirectory,
+            bool includeFullOutput,
+            CancellationToken cancellationToken)
         {
             string projectDir = Path.GetDirectoryName(projectPath);
             string dllPath = Path.Combine(projectDir, "bin", "Debug", Path.GetFileNameWithoutExtension(projectPath) + ".dll");
@@ -116,11 +134,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return (false, $"Test DLL not found after build: {dllPath}", 0, 0, 0, 0);
             }
 
-            string arguments = $"vstest \"{dllPath}\" --logger:console;verbosity=detailed";
-            return await RunDotNetProcessAsync(arguments, workingDirectory, cancellationToken);
+            string arguments = $"vstest \"{dllPath}\" --logger:console;verbosity=normal";
+            return await RunDotNetProcessAsync(arguments, workingDirectory, includeFullOutput, cancellationToken);
         }
 
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunDotNetProcessAsync(string arguments, string workingDirectory, CancellationToken cancellationToken)
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunDotNetProcessAsync(
+            string arguments,
+            string workingDirectory,
+            bool includeFullOutput,
+            CancellationToken cancellationToken)
         {
             var startInfo = new ProcessStartInfo
             {
@@ -160,26 +182,84 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string output = await outputTask;
                 string error = await errorTask;
 
-                var fullOutput = new StringBuilder();
-                fullOutput.AppendLine("===== STDOUT =====");
-                fullOutput.AppendLine(output);
-                if (!string.IsNullOrEmpty(error))
-                {
-                    fullOutput.AppendLine("===== STDERR =====");
-                    fullOutput.AppendLine(error);
-                }
-                fullOutput.AppendLine($"===== Exit code: {process.ExitCode} =====");
-
-                string fullOutputStr = fullOutput.ToString();
-
-                var (total, passed, failed, skipped) = ParseTestStatisticsUniversal(fullOutputStr);
+                string fullOutput = output + (string.IsNullOrEmpty(error) ? "" : "\n" + error);
+                var (total, passed, failed, skipped) = ParseTestStatisticsUniversal(fullOutput);
                 bool success = (process.ExitCode == 0) && total > 0 && failed == 0;
 
-                if (total == 0)
-                    fullOutputStr += "\n[WARNING] No tests were executed. Check test adapter and project references.";
+                string resultOutput;
+                if (includeFullOutput)
+                {
+                    var sb = new StringBuilder();
+                    sb.AppendLine("===== STDOUT =====");
+                    sb.AppendLine(output);
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        sb.AppendLine("===== STDERR =====");
+                        sb.AppendLine(error);
+                    }
+                    sb.AppendLine($"===== Exit code: {process.ExitCode} =====");
+                    resultOutput = sb.ToString();
+                }
+                else if (success)
+                {
+                    resultOutput = $"✅ All {total} tests passed. Passed: {passed}, Skipped: {skipped}.";
+                }
+                else
+                {
+                    resultOutput = ExtractFailedDetails(fullOutput);
+                    if (string.IsNullOrWhiteSpace(resultOutput))
+                        resultOutput = "No detailed failure information captured. Check test logs.";
+                }
 
-                return (success, fullOutputStr, total, passed, failed, skipped);
+                if (total == 0 && !includeFullOutput)
+                    resultOutput += "\n[WARNING] No tests were executed. Check test adapter and project references.";
+
+                return (success, resultOutput, total, passed, failed, skipped);
             }
+        }
+
+        /// <summary>
+        /// Extracts from the full output only the blocks related to failed tests (lines with [FAIL] and following details).
+        /// </summary>
+        private string ExtractFailedDetails(string fullOutput)
+        {
+            if (string.IsNullOrWhiteSpace(fullOutput))
+                return null;
+
+            var lines = fullOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            var errorBlocks = new List<string>();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                if (line.Contains("[FAIL]") || line.Contains("Failed:") || line.Contains("  [FAIL]"))
+                {
+                    var sb = new StringBuilder();
+                    sb.AppendLine(line);
+                    for (int j = i + 1; j < lines.Length; j++)
+                    {
+                        string next = lines[j];
+                        if (next.Contains("[FAIL]") || next.Contains("[PASS]") || next.Contains("[SKIP]") ||
+                            next.Contains("  [FAIL]") || next.Contains("  [PASS]") || next.Contains("  [SKIP]") ||
+                            next.Contains("Passed:") || next.Contains("Failed:") || next.Contains("Skipped:"))
+                            break;
+
+                        if (string.IsNullOrWhiteSpace(next))
+                        {
+                            if (j + 1 < lines.Length && string.IsNullOrWhiteSpace(lines[j + 1]))
+                                break;
+                            sb.AppendLine();
+                            continue;
+                        }
+                        sb.AppendLine(next);
+                    }
+                    errorBlocks.Add(sb.ToString().TrimEnd());
+                }
+            }
+
+            if (errorBlocks.Count == 0)
+                return null;
+
+            return string.Join("\n\n", errorBlocks);
         }
 
         private async Task<(bool Success, string Output)> BuildProjectAsync(string projectPath, string workingDirectory, CancellationToken cancellationToken)
@@ -259,7 +339,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var proj = parameters?.TryGetValue("project_path", out var p) == true ? p?.ToString() : "project";
-            return $"Running tests for '{proj}'... ";
+            var fullOutput = false;
+            if (parameters?.TryGetValue("include_full_output", out var fullObj) == true && fullObj is bool full)
+                fullOutput = full;
+            var msg = $"Running tests for '{proj}'";
+            if (fullOutput)
+                msg += " (full output enabled)";
+            return msg + "... ";
         }
 
         public string GetCompletionMessage(object result)
@@ -295,7 +381,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Runs tests for a .NET project. Does NOT build the test project first for SDK-style projects — call build_solution before this if you made code changes. Has a 10-minute timeout per test run. Returns full console output in test_run_output plus parsed statistics: total_tests, passed_tests, failed_tests, skipped_tests. The success field is true only if the process exits with code 0 AND at least one test was found AND no tests failed. Fails if the .csproj does not exist or is not a valid project file. Example: {\"project_path\":\"tests/MyApp.Tests.csproj\"} → {\"success\":true,\"test_run_output\":\"...stdout...\",\"error_message\":null,\"total_tests\":42,\"passed_tests\":40,\"failed_tests\":0,\"skipped_tests\":2}.",
+                Description = "Runs tests for a .NET project. Returns only summary statistics and failure details (if any). Use 'include_full_output': true to get the complete console log.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -305,6 +391,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             Type = "string",
                             Description = "Relative or absolute path to the .csproj file to test."
+                        },
+                        ["include_full_output"] = new ToolDetails
+                        {
+                            Type = "boolean",
+                            Description = "If true, returns the full stdout/stderr log instead of just summary/failures."
                         }
                     },
                     Required = new List<string> { "project_path" }

@@ -11,6 +11,7 @@ using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
@@ -97,12 +98,11 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, CreateFile>();
             services.AddTransient<IBuiltInTool, DeleteFile>();
             services.AddTransient<IBuiltInTool, FindFiles>();
-            services.AddTransient<IBuiltInTool, FindSymbolReferences>();
+            services.AddTransient<IBuiltInTool, GetSymbolInfo>();
             services.AddTransient<IBuiltInTool, FormatDocument>();
             services.AddTransient<IBuiltInTool, GetActiveDocument>();
             services.AddTransient<IBuiltInTool, GetSolutionOverview>();
             services.AddTransient<IBuiltInTool, InsertFileLines>();
-            services.AddTransient<IBuiltInTool, InspectType>();
             services.AddTransient<IBuiltInTool, ListDirectory>();
             services.AddTransient<IBuiltInTool, OptimizeUsings>();
             services.AddTransient<IBuiltInTool, ReadFileLines>();
@@ -115,6 +115,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IGetActiveDocument, GetActiveDocument>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
+            services.AddSingleton<ISyntaxChecker, CSharpSyntaxChecker>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
             services.AddSingleton<IChatPersistenceService, ChatPersistenceService>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();

@@ -254,8 +254,17 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableChatLogging">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable chat logging</span>
+                            <span class="checkbox-title">Save chat history</span>
                             <span class="checkbox-description">Saves all conversations to disk. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code></span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="AutoLoadLastHistory">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Auto-load last history on startup</span>
+                            <span class="checkbox-description">Automatically restores the most recent conversation from saved history (excluding tool execution steps).</span>
                         </span>
                     </label>
                 </div>
@@ -462,6 +471,7 @@
                         <select name="providerType" data-setting="providerType" class="settings-select">
                             <option value="lmstudio">LM Studio (local)</option>
                             <option value="ollama">Ollama (local)</option>
+                            <option value="llamacpp">Llama.cpp (local)</option>
                             <option value="openai" selected>OpenAI compatible</option>
                             <option value="deepseek">DeepSeek (cloud)</option>
                             <option value="gemini">Gemini (cloud)</option>

@@ -9,9 +9,6 @@ using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to read a range of lines from a file inside the current Visual Studio solution.
-    /// </summary>
     internal interface IReadFileLines : IBuiltInTool
     {
     }
@@ -37,15 +34,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25} → {\"success\":true,\"file_path\":\"src/Program.cs\",\"lines\":[{\"line_number\":1,\"text\":\"using System;\"},{\"line_number\":2,\"text\":\"\"},{\"line_number\":3,\"text\":\"namespace App {\"}],\"error_message\":null}.",
+                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Path to the source file (absolute or relative to solution root)." } },
-                        { "start_line", new ToolDetails { Type = "integer", Description = "The starting line number (1-indexed, inclusive). Must be a positive integer (>= 1)." } },
-                        { "end_line", new ToolDetails { Type = "integer", Description = "The ending line number (inclusive). Must be a positive integer (>= 1) and must be >= start_line." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } },
+                        { "start_line", new ToolDetails { Type = "integer", Description = "The starting line number (1-indexed, inclusive, positive integer (>= 1))." } },
+                        { "end_line", new ToolDetails { Type = "integer", Description = "The ending line number (inclusive, positive integer (>= 1) and must be >= start_line)." } }
                     },
                     Required = new List<string> { "file_path", "start_line", "end_line" }
                 }

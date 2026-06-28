@@ -4,15 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to list all files and subdirectories within a specified path.
-    /// </summary>
     internal interface IListDirectory : IBuiltInTool
     {
     }
@@ -21,6 +19,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
+        private readonly IFileSystem _fileSystem;
         private const int MaxEntries = 200;
 
         private static readonly HashSet<string> _excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -35,10 +34,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string ToolName => "list_directory";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public ListDirectory(IVsDependencies vsDependencies, IPathResolver pathResolver)
+        public ListDirectory(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public ToolDefinition GetToolInfo()
@@ -63,7 +63,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-
                 var (directoryPath, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
                     return Error(error, directoryPath);
@@ -76,7 +75,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_pathResolver.TryResolveFilePath(directoryPath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
                     return Error($"Directory not found: {directoryPath}", directoryPath);
 
-                if (!Directory.Exists(absolutePath))
+                if (!_fileSystem.DirectoryExists(absolutePath))
                     return Error($"Directory not found: {absolutePath}", directoryPath);
 
                 if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
@@ -88,7 +87,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (string.IsNullOrEmpty(relativePath))
                     relativePath = ".";
 
-                var result = await Task.Run(() => EnumerateDirectoryContents(absolutePath, solutionDir, cancellationToken), cancellationToken);
+                var result = await EnumerateDirectoryContentsAsync(absolutePath, solutionDir, cancellationToken);
 
                 result.DirectoryPath = relativePath;
                 return result;
@@ -106,7 +105,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private DirectoryContentsResponse EnumerateDirectoryContents(string absolutePath, string solutionDir, CancellationToken cancellationToken)
+        private async Task<DirectoryContentsResponse> EnumerateDirectoryContentsAsync(
+            string absolutePath, string solutionDir, CancellationToken cancellationToken)
         {
             var result = new DirectoryContentsResponse
             {
@@ -118,12 +118,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                var dirInfo = new DirectoryInfo(absolutePath);
+                var entries = await _fileSystem.EnumerateDirectoryAsync(
+                    absolutePath, _excludedDirectories, cancellationToken);
+
                 int entryCount = 0;
-
-                foreach (var dir in dirInfo.EnumerateDirectories()
-                    .Where(d => !_excludedDirectories.Contains(d.Name))
-                    .OrderBy(d => d.Name))
+                foreach (var entry in entries)
                 {
                     if (entryCount >= MaxEntries)
                     {
@@ -133,38 +132,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    var fullPath = dir.FullName;
-                    if (!_pathResolver.TryGetRelativePath(fullPath, solutionDir, out string entryRelativePath))
-                        entryRelativePath = fullPath;
+                    if (!_pathResolver.TryGetRelativePath(entry.FullPath, solutionDir, out string entryRelativePath))
+                        entryRelativePath = entry.FullPath;
 
                     result.Entries.Add(new DirectoryEntry
                     {
-                        Name = dir.Name,
+                        Name = entry.Name,
                         Path = entryRelativePath,
-                        Type = "directory"
-                    });
-                    entryCount++;
-                }
-
-                foreach (var file in dirInfo.EnumerateFiles().OrderBy(f => f.Name))
-                {
-                    if (entryCount >= MaxEntries)
-                    {
-                        result.HasMoreResults = true;
-                        break;
-                    }
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var fullPath = file.FullName;
-                    if (!_pathResolver.TryGetRelativePath(fullPath, solutionDir, out string entryRelativePath))
-                        entryRelativePath = fullPath;
-
-                    result.Entries.Add(new DirectoryEntry
-                    {
-                        Name = file.Name,
-                        Path = entryRelativePath,
-                        Type = "file"
+                        Type = entry.IsDirectory ? "directory" : "file"
                     });
                     entryCount++;
                 }

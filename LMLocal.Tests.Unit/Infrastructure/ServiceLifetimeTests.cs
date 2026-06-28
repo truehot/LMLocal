@@ -27,7 +27,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mock.Setup(s => s.ApplicationName).Returns("LMLocalChat");
             mock.Setup(s => s.LocalAppDataFolder).Returns("LMLocalChat");
             mock.Setup(s => s.ChatHistoryFolder).Returns("ChatHistory");
-            mock.Setup(s => s.ChatHistoryFilePrefix).Returns("chat_");
+            mock.Setup(s => s.ChatHistoryFileLabel).Returns("chat_");
             mock.Setup(s => s.SystemPrompt).Returns("Test system prompt");
             mock.Setup(s => s.VirtualHostName).Returns("app.local");
             mock.Setup(s => s.HtmlResourcePath).Returns("Resources/app.html");

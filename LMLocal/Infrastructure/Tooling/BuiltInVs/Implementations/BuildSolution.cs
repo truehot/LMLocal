@@ -170,7 +170,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Builds the currently opened Visual Studio solution asynchronously. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. Example success: {\"success\":true,\"solution_name\":\"MyApp\",\"solution_path\":\"C:\\dev\\MyApp.sln\",\"error_message\":null,\"build_messages\":[]}. Example failure: {\"success\":false,\"error_message\":\"Build failed. See messages for details.\",\"build_messages\":[{\"file\":\"Program.cs\",\"line\":42,\"column\":10,\"message\":\"error CS0103: 'foo' does not exist\"}]}.",
+                Description = "Builds the currently opened Visual Studio solution asynchronously. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. Example success: {\"success\":true,\"solution_name\":\"DevApp\",\"solution_path\":\"C:\\dev\\DevApp.sln\",\"error_message\":null,\"build_messages\":[]}..",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

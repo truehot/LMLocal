@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -130,7 +132,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
         public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
         {
+        }
 
+        public string[] GetFiles(string path, string searchPattern)
+        {
+            string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+            return _files.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        public string GetFileExtension(string filePath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool DirectoryExists(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -239,7 +261,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
         public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
         {
+        }
 
+        public string[] GetFiles(string path, string searchPattern)
+        {
+            string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+            return _files.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        public string GetFileExtension(string filePath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool DirectoryExists(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -363,7 +405,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
         public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
         {
+        }
 
+        public string[] GetFiles(string path, string searchPattern)
+        {
+            string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+            return _d.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        public string GetFileExtension(string filePath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool DirectoryExists(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -479,7 +541,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
         public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
         {
+        }
 
+        public string[] GetFiles(string path, string searchPattern)
+        {
+            string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+            return _files.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        public string GetFileExtension(string filePath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool DirectoryExists(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 
@@ -585,7 +667,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
         public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
         {
+        }
 
+        public string[] GetFiles(string path, string searchPattern)
+        {
+            string ext = searchPattern.StartsWith("*.") ? searchPattern.Substring(1) : searchPattern;
+            return _files.Keys.Where(k => k.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
+        public string GetFileExtension(string filePath)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool DirectoryExists(string path)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<List<FileSystemEntry>> EnumerateDirectoryAsync(string path, HashSet<string> excludedDirectoryNames, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
         }
     }
 }

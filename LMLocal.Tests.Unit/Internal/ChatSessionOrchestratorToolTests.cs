@@ -37,50 +37,44 @@ namespace LMLocal.Tests.Unit.Internal
         {
             var messages = new List<WebView2ScriptMessage>();
 
-            // First generation produces one tool call
+            int callCount = 0;
             _chatServiceMock.Setup(s => s.GenerateStreamAsync(
                 It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
                 It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, onChunk, onComplete, ct) =>
-                    {
-                        var result = new StreamCompletionResult
-                        {
-                            WasCancelled = false,
-                            ErrorMessage = null,
-                            FinishReason = "tool_calls",
-                            ToolCalls = new[] { new ToolCallRecord { CallId = "call1", FunctionName = "tool1", ArgumentsJson = "{\"a\":1}" } }
-                        };
-
-                        if (onComplete != null)
-                        {
-                            await onComplete(result).ConfigureAwait(false);
-                        }
-                    });
-
-            // Second generation (after tool results) completes normally with no tool calls
-            _chatServiceMock.Setup(s => s.GenerateWithToolResultsAsync(
-                It.IsAny<GenerateStreamContext>(),
-                It.IsAny<System.Collections.Generic.List<ToolResultMessage>>(),
-                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
-                It.IsAny<Func<StreamCompletionResult, Task>>(),
-                It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, System.Collections.Generic.List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
                     async (gctx, toolResults, onChunk, onComplete, ct) =>
                     {
-                        var result = new StreamCompletionResult
+                        callCount++;
+                        if (callCount == 1)
                         {
-                            WasCancelled = false,
-                            ErrorMessage = null,
-                            FinishReason = "stop",
-                            ToolCalls = new ToolCallRecord[0]
-                        };
+                            // First generation produces one tool call
+                            var result = new StreamCompletionResult
+                            {
+                                WasCancelled = false,
+                                ErrorMessage = null,
+                                FinishReason = "tool_calls",
+                                ToolCalls = new[] { new ToolCallRecord { CallId = "call1", FunctionName = "tool1", ArgumentsJson = "{\"a\":1}" } }
+                            };
 
-                        if (onComplete != null)
+                            if (onComplete != null)
+                                await onComplete(result).ConfigureAwait(false);
+                        }
+                        else
                         {
-                            await onComplete(result).ConfigureAwait(false);
+                            // Second generation (after tool results) completes normally with no tool calls
+                            var result = new StreamCompletionResult
+                            {
+                                WasCancelled = false,
+                                ErrorMessage = null,
+                                FinishReason = "stop",
+                                ToolCalls = new ToolCallRecord[0]
+                            };
+
+                            if (onComplete != null)
+                                await onComplete(result).ConfigureAwait(false);
                         }
                     });
 
@@ -120,55 +114,49 @@ namespace LMLocal.Tests.Unit.Internal
         {
             var messages = new List<WebView2ScriptMessage>();
 
+            int callCount = 0;
             _chatServiceMock.Setup(s => s.GenerateStreamAsync(
                 It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
                 It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, ct) =>
                     {
-                        var result = new StreamCompletionResult
+                        callCount++;
+                        if (callCount == 1)
                         {
-                            WasCancelled = false,
-                            ErrorMessage = null,
-                            FinishReason = "tool_calls",
-                            ToolCalls = new[] { new ToolCallRecord { CallId = "call2", FunctionName = "toolErr", ArgumentsJson = "{}" } }
-                        };
+                            // First generation produces tool call
+                            var result = new StreamCompletionResult
+                            {
+                                WasCancelled = false,
+                                ErrorMessage = null,
+                                FinishReason = "tool_calls",
+                                ToolCalls = new[] { new ToolCallRecord { CallId = "call2", FunctionName = "toolErr", ArgumentsJson = "{}" } }
+                            };
 
-                        if (onComplete != null)
+                            if (onComplete != null)
+                                await onComplete(result).ConfigureAwait(false);
+                        }
+                        else
                         {
-                            await onComplete(result).ConfigureAwait(false);
+                            // Second generation should finish normally
+                            var result = new StreamCompletionResult
+                            {
+                                WasCancelled = false,
+                                ErrorMessage = null,
+                                FinishReason = "stop",
+                                ToolCalls = new ToolCallRecord[0]
+                            };
+
+                            if (onComplete != null)
+                                await onComplete(result).ConfigureAwait(false);
                         }
                     });
-
             // When tool executed, return error
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", CompletionMessage = null });
-
-            // Second generation should finish normally
-            _chatServiceMock.Setup(s => s.GenerateWithToolResultsAsync(
-                It.IsAny<GenerateStreamContext>(),
-                It.IsAny<System.Collections.Generic.List<ToolResultMessage>>(),
-                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
-                It.IsAny<Func<StreamCompletionResult, Task>>(),
-                It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, System.Collections.Generic.List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
-                    {
-                        var result = new StreamCompletionResult
-                        {
-                            WasCancelled = false,
-                            ErrorMessage = null,
-                            FinishReason = "stop",
-                            ToolCalls = new ToolCallRecord[0]
-                        };
-
-                        if (onComplete != null)
-                        {
-                            await onComplete(result).ConfigureAwait(false);
-                        }
-                    });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -184,9 +172,12 @@ namespace LMLocal.Tests.Unit.Internal
 
             await orchestrator.RunSessionAsync(context, OnMessage, CancellationToken.None).ConfigureAwait(false);
 
+            var callMsg = messages.FirstOrDefault(m => m.Type == WebView2MessageType.StreamToolCall) as WebView2ToolCallMessage;
             var endMsg = messages.FirstOrDefault(m => m.Type == WebView2MessageType.StreamToolEnd) as WebView2ToolCallMessage;
-            Assert.That(endMsg, Is.Not.Null);
+            Assert.That(callMsg, Is.Not.Null, $"StreamToolCall should exist. Messages: {messages.Count}, types: {string.Join(", ", messages.Take(10).Select(m => m.Type))}");
+            Assert.That(endMsg, Is.Not.Null, $"StreamToolEnd should exist. Messages: {messages.Count}, types: {string.Join(", ", messages.Take(10).Select(m => m.Type))}");
             Assert.That(endMsg.IsError, Is.True);
+            Assert.That(endMsg.Error, Is.EqualTo("failed"));
             Assert.That(endMsg.Error, Is.EqualTo("failed"));
         }
     }

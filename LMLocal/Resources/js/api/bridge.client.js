@@ -41,6 +41,11 @@ class BridgeClient {
         return await this._callHost("ResetHistoryAsync");
     }
 
+    async getLastChatSessionAsync() {
+        const res = await this._callHost("GetLastChatSessionAsync");
+        return JSON.parse(res);
+    }
+
     async copyToClipboardAsync(text) {
         return await this._callHost("CopyToClipboardAsync", text);
     }

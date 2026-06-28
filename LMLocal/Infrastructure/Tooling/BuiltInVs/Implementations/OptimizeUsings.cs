@@ -91,6 +91,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 if (!wasOpen && window != null)
                 {
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                     window.Close(vsSaveChanges.vsSaveChangesNo);
                 }
             }

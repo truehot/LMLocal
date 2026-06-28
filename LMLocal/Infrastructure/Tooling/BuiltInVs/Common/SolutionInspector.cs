@@ -355,6 +355,5 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 SolutionFolders = solutionFolders;
             }
         }
-
     }
 }

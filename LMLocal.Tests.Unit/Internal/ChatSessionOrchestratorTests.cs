@@ -39,12 +39,14 @@ namespace LMLocal.Tests.Unit.Internal
             var messages = new List<WebView2ScriptMessage>();
 
             // Setup chat service to call onChunk and onComplete
+            // Setup chat service to call onChunk and onComplete
             _chatServiceMock.Setup(s => s.GenerateStreamAsync(
                 It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
             {
                 // complete without sending chunks
                 if (onComplete != null)
@@ -86,10 +88,11 @@ namespace LMLocal.Tests.Unit.Internal
 
             _chatServiceMock.Setup(s => s.GenerateStreamAsync(
                 It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
             {
                 // Wait until cancellation is requested
                 try
@@ -137,10 +140,11 @@ namespace LMLocal.Tests.Unit.Internal
 
             _chatServiceMock.Setup(s => s.GenerateStreamAsync(
                 It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
             {
                 if (onComplete != null)
                 {

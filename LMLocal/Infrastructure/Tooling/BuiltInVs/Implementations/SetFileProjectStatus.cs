@@ -206,7 +206,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Includes or excludes a file from a specific .csproj project without deleting the file from disk. Use include=true (default) to add a file to a project via AddFromFile; use include=false to remove a file from the project (the file remains on disk — use delete_file to delete it physically). Both the file and the project must exist. Does not copy or move the file — it only adds/removes the project reference. Example: {\"file_path\":\"src/NewService.cs\",\"project_path\":\"src/MyApp.csproj\",\"include\":true} → {\"success\":true,\"file_path\":\"src/NewService.cs\",\"error_message\":null,\"message\":\"File included successfully.\"}.",
+                Description = "Includes or excludes a file from a specific .csproj project without deleting the file from disk. Use include=true (default) to add a file to a project via AddFromFile; use include=false to remove a file from the project (the file remains on disk — use delete_file to delete it physically). Both the file and the project must exist. Does not copy or move the file — it only adds/removes the project reference. Example: {\"file_path\":\"src/NewService.cs\",\"project_path\":\"src/MyApp.csproj\",\"include\":true}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -215,12 +215,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ["file_path"] = new ToolDetails
                         {
                             Type = "string",
-                            Description = "Absolute or relative path to the file to include/exclude."
+                            Description = "Relative path to the file to include/exclude."
                         },
                         ["project_path"] = new ToolDetails
                         {
                             Type = "string",
-                            Description = "Absolute or relative path to the .csproj file."
+                            Description = "Relative path to the .csproj file."
                         },
                         ["include"] = new ToolDetails
                         {

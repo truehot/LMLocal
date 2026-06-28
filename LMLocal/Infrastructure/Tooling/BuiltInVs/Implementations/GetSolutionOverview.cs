@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
@@ -10,9 +11,6 @@ using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.GetSolutio
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to obtain a high-level summary of the current Visual Studio solution.
-    /// </summary>
     internal interface IGetSolutionOverview : IBuiltInTool
     {
     }
@@ -48,13 +46,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var solution = _vsDependencies.GetSolution();
                 if (solution == null)
                 {
                     return Error("No solution is currently open");
                 }
-
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                
                 var overview = SolutionInspector.GetSolutionOverview(solution, maxProjects: 200);
 
                 var response = new SolutionOverviewResponse
@@ -86,6 +84,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                InternalLogger.Error($"Failed to generate solution overview: {ex}");
                 return Error(ex.Message);
             }
         }

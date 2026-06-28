@@ -8,15 +8,13 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SearchFileContent;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool for performing text search across files in the current Visual Studio solution.
-    /// </summary>
     internal interface ISearchFileContent : IBuiltInTool
     {
     }
@@ -53,15 +51,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Results are paginated by total number of matches (100 matches per page); if next_page_token is not null, call again with page_token set to that value. Limited to scanning the first 1500 files in the solution. Optional filters: extension_filter (e.g., '.cs') and project_filter narrow the scope. The search text is plain substring matching — do not use Regular Expressions or wildcards like '*' or '?'. Example: {\"text\":\"PaymentService\",\"extension_filter\":\".cs\"} → {\"success\":true,\"results\":[{\"file_path\":\"src/OrderHandler.cs\",\"matches\":[{\"line\":12,\"text\":\"var ps = new PaymentService();\"}],\"match_count\":1}],\"total_matches\":3,\"total_files\":2,\"next_page_token\":null}.",
+                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Results are paginated by total number of matches (100 matches per page); if next_page_token is not null, call again with page_token set to that value. Limited to scanning the first 1500 files in the solution. The search text is plain substring matching. Example: {\"text\":\"PaymentService\",\"extension_filter\":\".cs\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive) inside file contents - not file names. Do not use Regular Expressions (Regex) or wildcards (like '*', '?')." } },
-                        { "extension_filter", new ToolDetails { Type = "string", Description = "File extension filter (e.g., '.cs', '.js'). If not specified, searches all file types. Use it to narrow result set." } },
-                        { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. Use it to narrow result set." } },
+                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive) inside file contents." } },
+                        { "extension_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. File extension filter (e.g., '.cs', '.js'). If not specified, searches all file types." } },
+                        { "project_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. " } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use 'next_page_token' from the response as 'page_token' to get next page of results." } }
                     },
                     Required = new List<string> { "text" }
@@ -122,6 +120,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var allFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
+
+                await TaskScheduler.Default;
 
                 var allResults = new List<SearchResult>();
 
@@ -336,7 +336,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 message += " in all files";
 
             if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
-                message += $" (page {pageTokenValue})";
+                message += $" (page {++pageTokenValue})";
 
             message += "... ";
             return message;

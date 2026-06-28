@@ -200,23 +200,12 @@ namespace LMLocal.Application.ChatSession
             GenerateStreamContext generateContext,
             Func<WebView2ScriptMessage, Task> onMessage)
         {
-            if (context.ToolResultsForNextRound.Count > 0)
-            {
-                await _chatService.GenerateWithToolResultsAsync(
-                    generateContext,
-                    context.ToolResultsForNextRound,
-                    async (chunk, stats) => await OnChunkReceivedAsync(chunk, stats, onMessage),
-                    result => OnGenerationCompletedAsync(context, result),
-                    context.SessionCancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await _chatService.GenerateStreamAsync(
-                    generateContext,
-                    async (chunk, stats) => await OnChunkReceivedAsync(chunk, stats, onMessage),
-                    result => OnGenerationCompletedAsync(context, result),
-                    context.SessionCancellationToken).ConfigureAwait(false);
-            }
+            await _chatService.GenerateStreamAsync(
+                generateContext,
+                context.ToolResultsForNextRound.Count > 0 ? context.ToolResultsForNextRound : null,
+                async (chunk, stats) => await OnChunkReceivedAsync(chunk, stats, onMessage),
+                result => OnGenerationCompletedAsync(context, result),
+                context.SessionCancellationToken).ConfigureAwait(false);
 
             context.RoundNumber++;
 

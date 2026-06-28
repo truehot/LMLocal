@@ -5,6 +5,7 @@ import modelStore from '@app/store/model.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import appDataService from '@app/services/app.data.service.js';
 import { startupManager } from '@app/services/startup.manager.js';
+import chatController from '@app/chat/chat.controller.js';
 import bridgeClient from '@app/api/bridge.client.js';
 
 /**
@@ -17,6 +18,13 @@ class AppManager {
 
         try {
             const settings = await this.getSettings();
+
+            if (settings.EnableChatLogging === true && settings.AutoLoadLastHistory === true) {
+                const session = await appDataService.getLastChatSessionAsync();
+                if (session && session.hasSession) {
+                    chatController.renderHistory(session.messages);
+                }
+            }
 
             if (settings.AutoLoadOnStartup === false) {
                 appStore.setState({

@@ -13,6 +13,10 @@ class AppDataService {
         return await bridgeClient.listModelsAsync();
     }
 
+    async getLastChatSessionAsync() {
+        return await bridgeClient.getLastChatSessionAsync();
+    }
+
     async setActiveModel(modelId, modelName, supportsMaxTokens, tokenMax) {
         const result = await bridgeClient.setActiveModelAsync(modelId, tokenMax || 0);
 

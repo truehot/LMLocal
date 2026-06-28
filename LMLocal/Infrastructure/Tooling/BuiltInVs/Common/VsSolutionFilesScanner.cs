@@ -8,11 +8,8 @@ using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScan
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
-
     internal interface IVsSolutionFilesScanner
     {
-        /// <summary>
-        /// Asynchronously enumerates files from the Visual Studio solution. 
         Task<IList<string>> EnumerateSolutionFilesAsync(EnumerateSolutionFilesFilter filter, CancellationToken cancellationToken = default);
     }
 
@@ -42,16 +39,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             _uiThreadGuard.EnsureOnUIThread();
 
-            var ivSolution = _vsDependencies.GetSolution();
-            if (ivSolution == null)
-                throw new InvalidOperationException("No solution is currently open.");
-
+            var ivSolution = _vsDependencies.GetSolution() ?? throw new InvalidOperationException("No solution is currently open.");
             var filesList = _solutionFileProvider.GetFiles(ivSolution, filter.IncludeProjects).ToList();
 
             var normalizedSolutionDir = NormalizeDir(_vsDependencies.GetSolutionDirectory());
             var extensions = ParseExtensions(filter.ExtensionFilter);
-            var returnRelative = filter.ReturnRelative;
-            var fileNameFilter = filter.FileName;
+            var fileNamePattern = filter.FileName;
             var projectFilter = filter.ProjectFilter;
             var limit = filter.Limit;
 
@@ -69,14 +62,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                                         ? file.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
                                         : Path.GetFullPath(file).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
 
-                    if (!IsMatch(normalizedFilePath, extensions, fileNameFilter, projectFilter, normalizedSolutionDir))
+                    if (!IsMatch(normalizedFilePath, extensions, fileNamePattern, projectFilter, normalizedSolutionDir))
                         continue;
 
                     if (seen.Add(normalizedFilePath))
                     {
                         string output = normalizedFilePath;
 
-                        if (returnRelative && !string.IsNullOrEmpty(normalizedSolutionDir))
+                        if (filter.ReturnRelative && !string.IsNullOrEmpty(normalizedSolutionDir))
                         {
                             if (_pathResolver.TryGetRelativeNormalizedPath(normalizedFilePath, normalizedSolutionDir.TrimEnd(Path.DirectorySeparatorChar), out var rel))
                                 output = rel;
@@ -106,24 +99,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             return normalizedSolutionDir;
         }
 
-        private static bool IsMatch(string normalizedFilePath, HashSet<string> extensions, string fileName, string projectFilter, string normalizedSolutionDir)
+        private static bool IsMatch(string normalizedFilePath, HashSet<string> extensions, string fileNamePattern, string projectFilter, string normalizedSolutionDir)
         {
             if (string.IsNullOrEmpty(normalizedFilePath))
                 return false;
 
             if (ShouldExcludePath(normalizedFilePath))
-                return false;
-
-            var fname = Path.GetFileName(normalizedFilePath);
-            if (!string.IsNullOrEmpty(fileName) && (string.IsNullOrEmpty(fname) || fname.IndexOf(fileName, StringComparison.OrdinalIgnoreCase) < 0))
-            {
-                return false;
-            }
-
-            if (IsMinifiedFile(fname))
-                return false;
-
-            if (IsImageFile(fname))
                 return false;
 
             if (extensions != null && extensions.Count > 0)
@@ -133,15 +114,27 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     return false;
             }
 
+            string fname = Path.GetFileName(normalizedFilePath);
+
+            if (!string.IsNullOrEmpty(fileNamePattern))
+            {
+                if (!MatchesPattern(fname, fileNamePattern))
+                    return false;
+            }
+
+            if (IsMinifiedFile(fname))
+                return false;
+
+            if (IsImageFile(fname))
+                return false;
+
             if (!string.IsNullOrEmpty(projectFilter) && !string.IsNullOrEmpty(normalizedSolutionDir))
             {
                 if (normalizedFilePath.StartsWith(normalizedSolutionDir, StringComparison.OrdinalIgnoreCase))
                 {
                     string relativePath = normalizedFilePath.Substring(normalizedSolutionDir.Length).TrimStart(Path.DirectorySeparatorChar);
-
                     string[] pathComponents = relativePath.Split(Path.DirectorySeparatorChar);
                     bool projectFound = false;
-
                     foreach (var component in pathComponents)
                     {
                         if (component.IndexOf(projectFilter, StringComparison.OrdinalIgnoreCase) >= 0)
@@ -150,7 +143,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                             break;
                         }
                     }
-
                     if (!projectFound)
                         return false;
                 }
@@ -163,18 +155,54 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             return true;
         }
 
+        /// <summary>
+        /// Matches a file name against a pattern that may contain '*' wildcards.
+        /// Supports multiple '*' in any position. Uses sequential search for each part.
+        /// If pattern has no '*', performs a case-insensitive substring match.
+        /// </summary>
+        private static bool MatchesPattern(string fileName, string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                return true;
+            if (pattern == "*")
+                return true;
+
+            if (!pattern.Contains("*"))
+                return fileName.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0;
+
+            var parts = pattern.Split(new[] { '*' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return true;
+
+            if (!pattern.StartsWith("*") && !fileName.StartsWith(parts[0], StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (!pattern.EndsWith("*") && !fileName.EndsWith(parts[parts.Length - 1], StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            int currentIndex = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string part = parts[i];
+                int foundIndex = fileName.IndexOf(part, currentIndex, StringComparison.OrdinalIgnoreCase);
+                if (foundIndex == -1)
+                    return false;
+                currentIndex = foundIndex + part.Length;
+            }
+
+            return true;
+        }
+
         private static bool ShouldExcludePath(string normalizedFilePath)
         {
             foreach (var dir in _excludedDirectories)
             {
                 if (normalizedFilePath.IndexOf(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
                     return true;
-                if (normalizedFilePath.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                    return true;
             }
-
             return false;
         }
+
         private static bool IsImageFile(string fileName) => _imageExtensions.Contains(Path.GetExtension(fileName));
         private static bool IsMinifiedFile(string fileName)
         {
@@ -200,45 +228,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 if (!p.StartsWith(".")) p = "." + p;
                 set.Add(p);
             }
-
             return set.Count == 0 ? null : set;
         }
 
         internal class EnumerateSolutionFilesFilter
         {
-            /// <summary>
-            /// Optional extension filter (e.g. ".cs" or ".cs;.xaml"). Null or empty means no extension filtering.
-            /// </summary>
             public string ExtensionFilter { get; set; }
-
-            /// <summary>
-            /// Maximum number of results to return. Pass 0 or a negative value to indicate no limit. Default is 200.
-            /// This limits the number of returned files, not the number of files scanned.
-            /// </summary>
             public int Limit { get; set; } = 200;
-
-            /// <summary>
-            /// Optional file name (or partial name) to match. Case-insensitive substring match.
-            /// </summary>
             public string FileName { get; set; }
-
-            /// <summary>
-            /// If true, returns relative paths from solution directory; if false, returns absolute paths. Default is true.
-            /// </summary>
             public bool ReturnRelative { get; set; } = true;
-
-            /// <summary>
-            /// Optional project name filter. If specified, only files from projects matching this name 
-            /// (case-insensitive substring match) will be returned.
-            /// </summary>
             public string ProjectFilter { get; set; }
-
-            /// <summary>
-            /// If true, includes the project files themselves (e.g., .csproj, .vbproj) in the result.
-            /// Default is false (only source/document files are returned).
-            /// </summary>
             public bool IncludeProjects { get; set; } = false;
         }
-
     }
 }

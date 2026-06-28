@@ -2,59 +2,97 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Api;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 
 namespace LMLocal.Application.Chat
 {
-
     /// <summary>
     /// Keeps track of the chat history, including user and assistant messages, and provides methods to manipulate and retrieve the history.
     /// </summary>
     internal interface IChatHistoryManager
     {
-        void AddUserMessage(string content);
-        void AddAssistantMessage(string content);
+        /// <summary>
+        /// Adds a user message to history and persists it.
+        /// </summary>
+        void AddUserMessage(string content, string activeDocumentContent = null);
+
+        /// <summary>
+        /// Adds an assistant message (optionally with tool calls) to history and persists it.
+        /// </summary>
+        void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls);
+
+        /// <summary>
+        /// Clears all messages from history and marks a new session boundary.
+        /// </summary>
         void Clear();
+
+        /// <summary>
+        /// Returns a snapshot copy of the current in-memory history.
+        /// </summary>
         IReadOnlyList<ChatMessage> GetHistoryCopy();
+
+        /// <summary>
+        /// Atomically replaces history with a summary + recent messages, only if current size matches expectedSize.
+        /// </summary>
         bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize);
+
+        /// <summary>
+        /// Builds a message list for the current provider. 
+        /// </summary>
         List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalPrompt = null);
-        void AddToolExecutionResultMessage(ChatMessage message);
-        void AddAssistantToolRequestMessage(IReadOnlyList<ToolCallRecord> toolCalls);
+
+        /// <summary>
+        /// Adds tool execution result messages to history and persists them.
+        /// </summary>
+        void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages);
+
+        /// <summary>
+        /// Loads the last persisted session into in-memory history (if empty) and returns its messages.
+        /// </summary>
+        Task<List<ChatMessage>> LoadLastSessionAsync();
+        void EnsureHistoryNormalized();
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
     {
         private readonly List<ChatMessage> _history = new List<ChatMessage>();
         private readonly object _lock = new object();
-        private readonly string _systemPrompt;
         private readonly IChatPersistenceService _persistence;
         private readonly ISettingsManager _settingsManager;
+
+        private List<ChatMessage> _cachedNormalized;
+        private int _lastCheckedVersion = 0;
 
         public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
-
-            _systemPrompt = settingsManager?.SystemPrompt ?? "";
-
         }
-
-        public void AddUserMessage(string prompt)
+        public void AddUserMessage(string prompt, string activeDocumentContent = null)
         {
-            if (string.IsNullOrEmpty(prompt)) return;
+            if (string.IsNullOrEmpty(prompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
 
             bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
 
+            string merged = prompt ?? "";
+            if (!string.IsNullOrEmpty(activeDocumentContent))
+                merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + prompt;
+
+            ChatMessage userMessage = new ChatMessage("user", compress ? MarkdownStripper.Strip(merged) : merged);
+
             lock (_lock)
             {
-                _history.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(prompt) : prompt));
+                _history.Add(userMessage);
             }
-            // Save the last user message for persistence, ignore additional prompt and active document content
-            _ = _persistence?.SaveLastMessageAsync(new ChatMessage("user", prompt), CancellationToken.None);
+
+            _ = _persistence?.SaveLastMessageAsync(userMessage, CancellationToken.None);
         }
 
         public void AddAssistantMessage(string content)
@@ -72,56 +110,87 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.SaveLastMessageAsync(assistantMessage, CancellationToken.None);
         }
 
-        public void AddAssistantToolRequestMessage(IReadOnlyList<ToolCallRecord> toolCalls)
+        /// <summary>
+        /// Adds a single assistant message that may contain both text content and tool calls.
+        /// </summary>
+        public void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls)
         {
-            if (toolCalls == null || toolCalls.Count == 0) return;
+            bool hasContent = !string.IsNullOrWhiteSpace(content);
+            bool hasToolCalls = toolCalls != null && toolCalls.Count > 0;
 
-            var toolCallObjects = new List<ToolCall>();
-            foreach (var toolCall in toolCalls)
+            if (!hasContent && !hasToolCalls) return;
+
+            bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
+
+            List<ToolCall> toolCallObjects = null;
+            if (hasToolCalls)
             {
-                // Normalize empty arguments to "{}" (empty JSON object) per OpenAI API spec
-                string normalizedArguments = string.IsNullOrEmpty(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson;
-
-                toolCallObjects.Add(new ToolCall
+                toolCallObjects = new List<ToolCall>(toolCalls.Count);
+                foreach (var toolCall in toolCalls)
                 {
-                    Id = toolCall.CallId,
-                    Type = "function",
-                    Function = new FunctionCallDetails
+                    string normalizedArguments = string.IsNullOrEmpty(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson;
+
+                    toolCallObjects.Add(new ToolCall
                     {
-                        Name = toolCall.FunctionName,
-                        Arguments = normalizedArguments
-                    }
-                });
+                        Id = toolCall.CallId,
+                        Type = "function",
+                        Function = new FunctionCallDetails
+                        {
+                            Name = toolCall.FunctionName,
+                            Arguments = normalizedArguments
+                        }
+                    });
+                }
             }
 
-            var chatMessage = new ChatMessage("assistant", null);
-            chatMessage.ToolCalls = toolCallObjects;
+            var chatMessage = new ChatMessage("assistant",
+                hasContent ? (compress ? MarkdownStripper.Strip(content) : content) : null)
+            {
+                ToolCalls = toolCallObjects
+            };
 
             lock (_lock)
             {
                 _history.Add(chatMessage);
             }
-
             _ = _persistence?.SaveLastMessageAsync(chatMessage, CancellationToken.None);
         }
 
-        public void AddToolExecutionResultMessage(ChatMessage message)
+        public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages)
         {
-            if (message == null) return;
+            if (messages == null) return;
+
+            List<ChatMessage> validMessages = null;
+            foreach (var msg in messages)
+            {
+                if (msg != null)
+                {
+                    if (validMessages == null)
+                        validMessages = new List<ChatMessage>();
+                    validMessages.Add(msg);
+                }
+            }
+
+            if (validMessages == null || validMessages.Count == 0) return;
 
             lock (_lock)
             {
-                _history.Add(message);
+                _history.AddRange(validMessages);
             }
-            _ = _persistence?.SaveLastMessageAsync(message, CancellationToken.None);
+
+            _ = _persistence?.SaveMessagesAsync(validMessages, CancellationToken.None);
         }
+
 
         public void Clear()
         {
             lock (_lock)
             {
                 _history.Clear();
+                InvalidateCacheLocked();
             }
+
+            _ = _persistence?.MarkNewSessionAsync();
         }
 
         public IReadOnlyList<ChatMessage> GetHistoryCopy()
@@ -150,40 +219,229 @@ namespace LMLocal.Application.Chat
                 {
                     _history.AddRange(recent);
                 }
+                InvalidateCacheLocked();
                 return true;
             }
         }
 
-        public List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalSystemPrompt = null)
+        public async Task<List<ChatMessage>> LoadLastSessionAsync()
         {
-            bool compress = _settingsManager.Current?.EnableHistoryCompression ?? false;
+            if (_persistence == null)
+                return new List<ChatMessage>();
 
-            var messages = new List<ChatMessage>();
-            lock (_lock)
+            var messages = await _persistence.LoadLastSessionAsync().ConfigureAwait(false);
+
+            if (messages.Count > 0)
             {
-                if (!string.IsNullOrEmpty(additionalSystemPrompt))
+                lock (_lock)
                 {
-                    messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt));
-                }
-                else if (!string.IsNullOrEmpty(_systemPrompt))
-                {
-                    messages.Add(new ChatMessage("system", compress ? MarkdownStripper.Strip(_systemPrompt) : _systemPrompt));
-                }
-
-                messages.AddRange(_history);
-
-                if (!string.IsNullOrEmpty(includedContent))
-                {
-                    messages.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(FormatIncludedContent(includedContent)) : FormatIncludedContent(includedContent)));
-                }
-
-                if (!string.IsNullOrEmpty(userPrompt))
-                {
-                    messages.Add(new ChatMessage("user", compress ? MarkdownStripper.Strip(userPrompt) : userPrompt));
+                    if (_history.Count == 0)
+                    {
+                        _history.AddRange(messages);
+                        InvalidateCacheLocked();
+                    }
                 }
             }
 
+            return messages
+                .Where(m => m.Role == "user" || (m.Role == "assistant" && m.ToolCallId == null && m.Content != null))
+                .ToList();
+        }
+
+        public void EnsureHistoryNormalized()
+        {
+            var provider = ProviderResolver.ResolveProvider(_settingsManager.Current?.Provider);
+            if (provider != ModelProvider.LlamaCpp) return;
+
+            List<ChatMessage> snapshot;
+            lock (_lock)
+            {
+                if (_history.Count == 0 || _lastCheckedVersion == _history.Count) return;
+                snapshot = _history.ToList();
+            }
+
+            if (_cachedNormalized == null)
+            {
+                _cachedNormalized = new List<ChatMessage>();
+                _lastCheckedVersion = 0;
+            }
+
+            if (snapshot.Count > 0)
+            {
+                var startFrom = _lastCheckedVersion;
+                var isInsidePrompt = false;
+                var isInsideTools = false;
+                var isInsideToolResults = false;
+                for (int i = startFrom; i < snapshot.Count; i++)
+                {
+                    var msg = snapshot[i];
+                    var isLastMessage = (i + 1 >= snapshot.Count);
+                    if (isInsidePrompt)
+                    {
+                        if (isInsideToolResults)
+                        {
+                            if (msg.Role == "tool")
+                            {
+                                if (isLastMessage)
+                                {
+                                    _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
+                                    isInsideToolResults = false;
+                                    isInsideTools = false;
+                                    isInsidePrompt = false;
+                                    //if no next block finishing
+                                    continue;
+                                }
+                                this._cachedNormalized.Add(msg);
+                                continue;
+                            }
+
+                            if (msg.Role == "assistant")
+                            {
+                                //normal finishing
+                                isInsideTools = false;
+                                isInsidePrompt = false;
+                                isInsideToolResults = false;
+                                this._cachedNormalized.Add(msg);
+                                continue;
+                            }
+
+                            _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
+                            isInsideTools = false;
+                            isInsidePrompt = false;
+                            isInsideToolResults = false;
+                            continue;
+                        }
+
+                        if (isInsideTools)
+                        {
+                            if (msg.Role == "tool")
+                            {
+                                if (isLastMessage)
+                                {
+                                    _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
+                                    isInsideToolResults = false;
+                                    isInsideTools = false;
+                                    isInsidePrompt = false;
+                                    //if no next block finishing
+                                    continue;
+                                }
+                                isInsideToolResults = true;
+                                isInsideTools = false;
+                                this._cachedNormalized.Add(msg);
+                                continue;
+                            }
+
+                            _cachedNormalized.RemoveAt(_cachedNormalized.Count - 1);
+                            _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
+                            isInsideTools = false;
+                            isInsidePrompt = false;
+                            isInsideToolResults = false;
+                            continue;
+                        }
+
+                        if (msg.Role == "assistant")
+                        {
+                            if (msg.ToolCalls != null)
+                            {
+                                if (isLastMessage)
+                                {
+                                    _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
+                                    isInsidePrompt = false;
+                                    //if no next block finishing
+                                    continue;
+                                }
+
+                                isInsideTools = true;
+                                this._cachedNormalized.Add(msg);
+                                continue;
+                            }
+                            else
+                            {
+                                //finishing
+                                this._cachedNormalized.Add(msg);
+                                isInsidePrompt = false;
+                                continue;
+                            }
+                        }
+                    }
+
+                    if (msg.Role == "user")
+                    {
+                        if (isLastMessage)
+                        {
+                            //if no next block skipping
+                            continue;
+                        }
+                        isInsidePrompt = true;
+                        this._cachedNormalized.Add(msg);
+                    }
+                }
+                _lastCheckedVersion = snapshot.Count;
+            }
+        }
+
+        /// <summary>
+        /// Builds message list for the current provider backend.
+        public List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalSystemPrompt = null)
+        {
+            bool compress = _settingsManager.Current?.EnableHistoryCompression ?? false;
+            ChatMessage systemMessage = null;
+            if (!string.IsNullOrEmpty(additionalSystemPrompt))
+            {
+                systemMessage = new ChatMessage("system",
+                    compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt);
+            }
+            else
+            {
+                var currentSystemPrompt = _settingsManager.SystemPrompt;
+                if (!string.IsNullOrEmpty(currentSystemPrompt))
+                {
+                    systemMessage = new ChatMessage("system",
+                        compress ? MarkdownStripper.Strip(currentSystemPrompt) : currentSystemPrompt);
+                }
+            }
+
+            ChatMessage userMessage = null;
+            if (!string.IsNullOrEmpty(userPrompt))
+            {
+                var merged = userPrompt;
+                if (!string.IsNullOrEmpty(includedContent))
+                    merged = FormatIncludedContent(includedContent) + "\n\n" + userPrompt;
+                userMessage = new ChatMessage("user",
+                    compress ? MarkdownStripper.Strip(merged) : merged);
+            }
+            else if (!string.IsNullOrEmpty(includedContent))
+            {
+                userMessage = new ChatMessage("user",
+                    compress ? MarkdownStripper.Strip(FormatIncludedContent(includedContent)) : FormatIncludedContent(includedContent));
+            }
+
+            var messages = new List<ChatMessage>(_history.Count + 2);
+            if (systemMessage != null)
+                messages.Add(systemMessage);
+
+            if (_cachedNormalized != null)
+            {
+                var result = new List<ChatMessage>(_cachedNormalized);
+                var toAdd = _history.Skip(_lastCheckedVersion);
+                result.AddRange(toAdd);
+                messages.AddRange(result);
+            }
+            else
+            {
+                messages.AddRange(_history);
+            }
+
+            if (userMessage != null)
+                messages.Add(userMessage);
+
             return messages;
+        }
+
+
+        private void InvalidateCacheLocked()
+        {
+            _cachedNormalized = null;
         }
 
         private static string FormatIncludedContent(string content)
@@ -192,4 +450,79 @@ namespace LMLocal.Application.Chat
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

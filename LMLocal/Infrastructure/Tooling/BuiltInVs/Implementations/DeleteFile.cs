@@ -48,7 +48,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Absolute or relative path to file to delete." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file to delete." } }
                     },
                     Required = new List<string> { "file_path" }
                 }

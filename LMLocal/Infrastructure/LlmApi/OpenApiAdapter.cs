@@ -19,8 +19,7 @@ using Newtonsoft.Json.Linq;
 namespace LMLocal.Infrastructure.LlmApi
 {
     /// <summary>
-    /// Client for communicating with the LM backend API.
-    /// Supports multiple providers: LM Studio, OpenAI-compatible, Ollama, etc.
+    /// Client for communicating with the LLM backend API.
     /// </summary>
     internal interface IOpenApiAdapter
     {
@@ -113,7 +112,6 @@ namespace LMLocal.Infrastructure.LlmApi
 
         /// <summary>
         /// Opens a streaming chat request and returns the response stream.
-        /// The caller must dispose the returned <see cref="StreamingResponse"/>.
         /// </summary>
         public async Task<StreamingResponse> SendChatStreamingAsync(
             MessageContext messageContext,
@@ -203,6 +201,22 @@ namespace LMLocal.Infrastructure.LlmApi
             }
         }
 
+        /// <summary>
+        /// Converts ToolCalls from various types
+        private static List<Requests.ToolCall> ConvertToolCalls(object toolCalls)
+        {
+            if (toolCalls == null)
+                return null;
+
+            if (toolCalls is List<Requests.ToolCall> typed)
+                return typed;
+
+            if (toolCalls is JArray jArray)
+                return jArray.ToObject<List<Requests.ToolCall>>();
+
+            return null;
+        }
+
         private SendChatRequest BuildRequest(
             MessageContext messageContext,
             ModelContext modelContext,
@@ -217,9 +231,8 @@ namespace LMLocal.Infrastructure.LlmApi
                     Role = msg.Role,
                     Content = msg.Content,
                     ToolCallId = msg.ToolCallId,
-                    ToolCalls = msg.ToolCalls as List<Requests.ToolCall>
+                    ToolCalls = ConvertToolCalls(msg.ToolCalls)
                 };
-
                 messages.Add(apiMessage);
             }
             // Google Gemini and Mistral do not support the 'store' parameter.
@@ -247,6 +260,7 @@ namespace LMLocal.Infrastructure.LlmApi
                         var openAiTools = ToolDefinitionConverter.ConvertToOpenAiFormat(vsTools);
                         request.Tools = openAiTools;
                         request.ToolChoice = "auto";
+                        request.ParallelToolCalls = true;
                     }
                 }
                 catch (Exception ex)

@@ -80,15 +80,18 @@
     <Compile Include="Infrastructure\LlmApi\Provider\ModelProvider.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ModelResponseConverter.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\ListModelsResponse.cs" />
+    <Compile Include="Infrastructure\LlmApi\Responses\LlamaCppListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\LmStudioModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\OllamaPsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
+    <Compile Include="Infrastructure\Syntax\SyntaxCheckerExtensions.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
+    <Compile Include="Infrastructure\Syntax\CSharpSyntaxChecker.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectType.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfo.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SetFileProjectStatus.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\OptimizeUsings.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContent.cs" />
@@ -131,7 +134,6 @@
     <Compile Include="Infrastructure\Tooling\CompositeToolProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetActiveDocument.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLines.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindSymbolReferences.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSolutionOverview.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchFileContent.cs" />
     <Compile Include="Infrastructure\Tooling\Abstractions\ToolDefinition.cs" />
@@ -191,6 +193,7 @@
     <Compile Include="Infrastructure\Tooling\ToolsConfigManager.cs" />
     <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\VisualStudio\FileViewer.cs" />
+    <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />

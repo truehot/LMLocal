@@ -31,7 +31,7 @@ namespace LMLocal.Infrastructure.Settings
         string LocalAppMcpFileName { get; }
         string WebViewUserDataFolder { get; }
         string ChatHistoryFolder { get; }
-        string ChatHistoryFilePrefix { get; }
+        string ChatHistoryFileLabel { get; }
         string HtmlResourcePath { get; }
         string VirtualHostName { get; }
         string SystemPrompt { get; }
@@ -41,6 +41,7 @@ namespace LMLocal.Infrastructure.Settings
         string SnapshotFolder { get; }
         string LocalSnapshotsFileName { get; }
         string UserAgent { get; }
+        string AssistantPlaceholder { get; }
     }
 
     internal class SettingsManager : ISettingsManager, IDisposable
@@ -64,10 +65,11 @@ namespace LMLocal.Infrastructure.Settings
         private const string DefaultWebViewUserDataFolder = "WebViewData";
         private const string DefaultChatHistoryFolder = "ChatHistory";
         private const string DefaultSnapshotFolder = "Snapshots";
-        private const string DefaultChatHistoryFilePrefix = "chat_";
+        private const string DefaultChatHistoryLabel = "log";
         private const string DefaultHtmlResourcePath = "Resources/app.html";
         private const string DefaultVirtualHostName = "app.local";
         private const string DefaultSystemPrompt = "You are an expert Senior Software Engineer and Architect. You are integrated as a plugin into Visual Studio. When calling tools, you MUST extract relevant values from the user's input and fill all 'required' parameters.";
+        private const string DefaultAssistantPlacehoder = "The previous response was interrupted.";
         private const string DefaultUserAgent = "LMLocalChat/1.0";
         private const int DefaultBatchIntervalMs = 100;
         private const int DefaultWindowSeconds = 5;
@@ -127,10 +129,11 @@ namespace LMLocal.Infrastructure.Settings
         public string WebViewUserDataFolder => DefaultWebViewUserDataFolder;
         public string ChatHistoryFolder => DefaultChatHistoryFolder;
         public string SnapshotFolder => DefaultSnapshotFolder;
-        public string ChatHistoryFilePrefix => DefaultChatHistoryFilePrefix;
+        public string ChatHistoryFileLabel => DefaultChatHistoryLabel;
         public string HtmlResourcePath => DefaultHtmlResourcePath;
         public string VirtualHostName => DefaultVirtualHostName;
         public string SystemPrompt => DefaultSystemPrompt;
+        public string AssistantPlaceholder => DefaultAssistantPlacehoder;
         public string UserAgent => DefaultUserAgent;
         public int BatchIntervalMs => DefaultBatchIntervalMs;
         public int WindowSeconds => DefaultWindowSeconds;

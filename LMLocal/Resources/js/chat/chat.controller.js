@@ -1,4 +1,4 @@
-﻿import { UIText, Config } from '@app/constants/app.globals.js';
+import { UIText, Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { createCallback } from '@app/lib/callback.js';
 import { createScrollManager } from '@app/lib/scroll.manager.js';
@@ -9,7 +9,7 @@ import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
 
 import { StreamingBuffer } from '@app/streaming/streaming.buffer.js';
-import { createStreamingPipeline } from '@app/streaming/streaming.pipeline.js';
+import { createStreamingPipeline, createImmediatePipeline } from '@app/streaming/streaming.pipeline.js';
 import { createStreamingRenderer, StreamingMode } from '@app/streaming/streaming.renderer.js';
 import { createStreamingScheduler } from '@app/streaming/streaming.scheduler.js';
 /**
@@ -264,6 +264,19 @@ class ChatController {
         return streamingPipeline;
     }
 
+    _createImmediatePipeline(markdownParser) {
+        let streamingRenderer = createStreamingRenderer({
+            mode: StreamingMode.BLOCK_TAIL,
+            onUpdate: () => this.scrollManager.scrollToBottom(),
+        });
+
+        let streamingPipeline = createImmediatePipeline(
+            streamingRenderer,
+            markdownParser,
+        );
+        return streamingPipeline;
+    }
+
     setup() {
         this.reset();
         this.container = this._getContainer();
@@ -276,8 +289,6 @@ class ChatController {
 
         this.highlightParser = createHighlightParser();
         this.highlightParser.start();
-
-
 
         this._attachEvents();
         return this;
@@ -296,6 +307,34 @@ class ChatController {
         this.currentAi?.clear();
         this.currentAi = null;
     }
+
+    renderHistory(messages) {
+        if (!this.container || !messages || messages.length === 0) return;
+
+        for (const msg of messages) {
+            if (!msg || !msg.role) continue;
+
+            if (msg.role === 'user') {
+                createUserMessage(msg.content || '', this.container, this.scrollManager);
+            } else if (msg.role === 'assistant') {
+                this._renderHistoryAiMessage(msg);
+            }
+        }
+        this.scrollManager?.scrollToBottom();
+    }
+
+    _renderHistoryAiMessage(msg) {
+        var localAi = createAiMessage(
+            this.container,
+            this.highlightParser,
+            this._createImmediatePipeline(this.markdownParser)
+        );
+        localAi.updateStreaming(msg.content);
+        localAi.finishStreaming().then(async () => {
+            localAi.finalize();
+        });
+    }
+
 }
 
 const chatController = new ChatController();

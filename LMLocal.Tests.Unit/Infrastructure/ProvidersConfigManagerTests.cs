@@ -160,7 +160,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string LocalAppMcpFileName => "mcp.json";
             public string WebViewUserDataFolder => "WebViewData";
             public string ChatHistoryFolder => "ChatHistory";
-            public string ChatHistoryFilePrefix => "chat_";
+            public string ChatHistoryFileLabel => "chat_";
             public string HtmlResourcePath => "Resources/app.html";
             public string VirtualHostName => "app.local";
             public string SystemPrompt => string.Empty;
@@ -171,6 +171,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string LocalSnapshotsFileName => "manifest.json";
 
             public string UserAgent => "LMLocalChat/1.0";
+
+            public string AssistantPlaceholder => throw new NotImplementedException();
         }
     }
 }

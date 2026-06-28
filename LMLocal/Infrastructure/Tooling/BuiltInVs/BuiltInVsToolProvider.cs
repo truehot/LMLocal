@@ -169,7 +169,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             if (!_toolsByName.TryGetValue(toolName, out var tool))
                 throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
 
-            var result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken);
+            var result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken).ConfigureAwait(false);
 
             if (tool.AccessLevel == ToolAccessLevel.FullAccess)
                 _searchCache.Clear();

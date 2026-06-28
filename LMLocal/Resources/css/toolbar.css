@@ -24,6 +24,8 @@
     font-weight: bold;
     color: var(--success-color);
     white-space: nowrap;
+    max-width:300px;
+    overflow:hidden;
 }
 
 .model-info {

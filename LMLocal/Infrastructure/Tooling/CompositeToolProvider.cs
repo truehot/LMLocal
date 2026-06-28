@@ -155,16 +155,16 @@ namespace LMLocal.Infrastructure.Tooling
             {
                 if (!IsBuiltInToolAccessAllowed(toolName))
                     throw new ArgumentException($"Tool '{toolName}' requires write access (EnableAiWriteTools).", nameof(toolName));
-                return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken);
+                return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken).ConfigureAwait(false);
             }
 
             if (_mcpToolManager.ToolExists(toolName))
             {
                 var mcpTool = _mcpToolManager.GetTool(toolName);
-                return await mcpTool.ExecuteAsync(parameters, cancellationToken);
+                return await mcpTool.ExecuteAsync(parameters, cancellationToken).ConfigureAwait(false);
             }
 
-            throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
+            throw new ArgumentException($"Unknown tool: '{toolName}'.", nameof(toolName));
         }
 
         public string GetProcessingMessage(string toolName, Dictionary<string, object> parameters)

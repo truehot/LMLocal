@@ -11,30 +11,19 @@ using LMLocal.Infrastructure.Settings;
 namespace LMLocal.Application.ChatSessionStream
 {
     /// <summary>
-    /// Manages streaming generation of chat responses from the LM backend.
+    /// Manages streaming generation of chat responses from the provider.
     /// </summary>
     internal interface IChatStreamService
     {
         /// <summary>
-        /// Generates initial response from LLM without tool results.
+        /// Generates a response from the provider, with optional tool execution results for follow-up rounds.
         /// </summary>
         Task GenerateStreamAsync(
-            GenerateStreamContext context,
-            Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
-            Func<StreamCompletionResult, Task> onComplete,
-            CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Generates response from LLM in follow-up round, providing tool execution results.
-        /// </summary>
-        Task GenerateWithToolResultsAsync(
             GenerateStreamContext context,
             List<ToolResultMessage> toolResults,
             Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
             Func<StreamCompletionResult, Task> onComplete,
             CancellationToken cancellationToken);
-
-        Task<bool> ResetHistoryAsync();
     }
 
     internal class ChatStreamService : IChatStreamService
@@ -60,62 +49,6 @@ namespace LMLocal.Application.ChatSessionStream
 
         public async Task GenerateStreamAsync(
             GenerateStreamContext context,
-            Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
-            Func<StreamCompletionResult, Task> onComplete,
-            CancellationToken cancellationToken)
-        {
-            await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-            CancellationTokenSource linkedCts = null;
-
-            try
-            {
-                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-                var messages = _history.BuildUserMessagesWithHistory(
-                    context.Prompt,
-                    context.ActiveDocumentContent,
-                    context.AdditionalPrompt);
-
-                _history.AddUserMessage(context.Prompt);
-
-                var processor = _streamProcessorFactory.Create(linkedCts);
-
-                var messageContext = new MessageContext(messages);
-                var modelContext = new ModelContext(context.ModelId, temperature: context.Temperature);
-
-                using (var streaming = await _openApiAdapter.SendChatStreamingAsync(
-                    messageContext,
-                    modelContext,
-                    linkedCts.Token).ConfigureAwait(false))
-                {
-                    var result = await processor.ProcessStreamAsync(
-                        streaming.Stream,
-                        linkedCts.Token,
-                        onChunk,
-                        _settingsManager.BatchIntervalMs).ConfigureAwait(false);
-
-                    if (!result.WasCancelled && !linkedCts.Token.IsCancellationRequested)
-                    {
-                        _history.AddAssistantMessage(result.ContentResponse);
-                        _history.AddAssistantToolRequestMessage(result.ToolCalls);
-                    }
-
-                    if (onComplete != null)
-                    {
-                        await onComplete(result).ConfigureAwait(false);
-                    }
-                }
-            }
-            finally
-            {
-                linkedCts?.Dispose();
-                _requestLock.Release();
-            }
-        }
-
-        public async Task GenerateWithToolResultsAsync(
-            GenerateStreamContext context,
             List<ToolResultMessage> toolResults,
             Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
             Func<StreamCompletionResult, Task> onComplete,
@@ -129,28 +62,47 @@ namespace LMLocal.Application.ChatSessionStream
             {
                 linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-                var messages = _history.BuildUserMessagesWithHistory("");
+                bool isToolRound = toolResults != null && toolResults.Count > 0;
 
-                foreach (var toolResult in toolResults)
+                if(!isToolRound)
                 {
-                    string toolContent;
-                    if (toolResult.Result == null)
+                    _history.EnsureHistoryNormalized();
+                }
+
+                var messages = _history.BuildUserMessagesWithHistory(
+                    isToolRound ? "" : context.Prompt,
+                    isToolRound ? null : context.ActiveDocumentContent,
+                    isToolRound ? null : context.AdditionalPrompt);
+
+                if (isToolRound)
+                {
+                    var pendingToolMessages = new List<ChatMessage>(toolResults.Count);
+                    foreach (var toolResult in toolResults)
                     {
-                        toolContent = "";
-                    }
-                    else if (toolResult.Result is string str)
-                    {
-                        toolContent = str;
-                    }
-                    else
-                    {
-                        toolContent = toolResult.Result.ToJson();
+                        string toolContent;
+                        if (toolResult.Result == null)
+                        {
+                            toolContent = "";
+                        }
+                        else if (toolResult.Result is string str)
+                        {
+                            toolContent = str;
+                        }
+                        else
+                        {
+                            toolContent = toolResult.Result.ToJson();
+                        }
+
+                        var chatMessage = new ChatMessage("tool", toolContent, toolResult.ToolCallId.ToString());
+                        messages.Add(chatMessage);
+                        pendingToolMessages.Add(chatMessage);
                     }
 
-                    var chatMessage = new ChatMessage("tool", toolContent, toolResult.ToolCallId.ToString());
-                    messages.Add(chatMessage);
-
-                    _history.AddToolExecutionResultMessage(chatMessage);
+                    _history.AddToolExecutionResultMessages(pendingToolMessages);
+                }
+                else
+                {
+                    _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent);
                 }
 
                 var processor = _streamProcessorFactory.Create(linkedCts);
@@ -169,11 +121,7 @@ namespace LMLocal.Application.ChatSessionStream
                         onChunk,
                         _settingsManager.BatchIntervalMs).ConfigureAwait(false);
 
-                    if (!result.WasCancelled && !linkedCts.Token.IsCancellationRequested)
-                    {
-                        _history.AddAssistantMessage(result.ContentResponse);
-                        _history.AddAssistantToolRequestMessage(result.ToolCalls);
-                    }
+                    _history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
 
                     if (onComplete != null)
                     {
@@ -186,23 +134,6 @@ namespace LMLocal.Application.ChatSessionStream
                 linkedCts?.Dispose();
                 _requestLock.Release();
             }
-        }
-
-        public async Task<bool> ResetHistoryAsync()
-        {
-            if (!await _requestLock.WaitAsync(0).ConfigureAwait(false))
-                return false;
-
-            try
-            {
-                _history.Clear();
-            }
-            finally
-            {
-                _requestLock.Release();
-            }
-
-            return true;
         }
     }
 }

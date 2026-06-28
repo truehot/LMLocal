@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
@@ -11,12 +12,6 @@ using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScan
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
-    /// <summary>
-    /// Tool to find files in the Visual Studio solution by name using case-insensitive substring matching.
-    /// Automatically excludes temporary directories (bin, obj, .vs, .git, CopilotBaseline, system temp folders),
-    /// minified files (*.min.js, *.min.css, *.udm.js), and other non-source files.
-    /// </summary>
-
     internal interface IFindFiles : IBuiltInTool
     {
     }
@@ -47,16 +42,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Finds files by name within the current Visual Studio solution using case-insensitive substring matching. Use to locate files when you know part of the name. Results are paginated (100 files per page); if next_page_token is not null, call again with page_token set to that value to get the next page. Limited to scanning first 1500 files. Optional filters: file_extension (e.g., '.cs'), project_filter narrows to a specific project. For all files, pass file_name='.'. Example: {\"file_name\":\"Program\",\"file_extension\":\".cs\"} → {\"success\":true,\"results\":[{\"file_path\":\"src/Program.cs\"}],\"total_files\":1,\"next_page_token\":null}.",
+                Description = "Finds files by name within the current Visual Studio solution using case-insensitive matching. Supports wildcard '*' in any position: 'Program*' (starts with), '*Service' (ends with), 'Chat*Service' (starts with 'Chat' and ends with 'Service'). Use to locate files when you know part of the name. Results are paginated (100 files per page); if next_page_token is not null, call again with page_token set to that value to get the next page. Limited to scanning first 1500 files. Example: {\"file_name\":\"Chat*Service\",\"file_extension\":\".cs\"}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_name", new ToolDetails { Type = "string", Description = "The file name or partial file name to search for (case-insensitive substring match). Do NOT use wildcards like '*'.For all files, use '.'" } },
-                        { "file_extension", new ToolDetails { Type = "string", Description = "File extension filter (e.g., '.cs', '.json'). If not specified, all file extensions are searched." } },
-                        { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. Use it to narrow result set." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use the next_page_token value from the previous response to get the next page." } }
+                        { "file_name", new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'." } },
+                        { "file_extension", new ToolDetails { Type = "string", Description = "Extension filter (e.g., '.cs'). If not specified or file_name='.', all extensions are searched." } },
+                        { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter (substring match)." } },
+                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } }
                     },
                     Required = new List<string> { "file_name" }
                 }
@@ -137,6 +132,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                InternalLogger.Error($"Error in {ToolName}: {ex}");
                 return Error(ex.Message);
             }
         }
@@ -164,7 +160,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!string.IsNullOrEmpty(ext))
                 message += $", with extension '{ext}'";
             if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
-                message += $" (page {pageTokenValue})";
+                message += $" (page {++pageTokenValue})";
 
             message += "... ";
             return message;
@@ -179,7 +175,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 var message = $"Found {fileResults.Results.Count} files";
                 if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
-                    message += $"(total: {fileResults.TotalFiles} files)";
+                    message += $" (total: {fileResults.TotalFiles} files)";
                 message += ".";
                 return message;
             }

@@ -13,13 +13,13 @@ using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
+using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.VisualStudio;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
-using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
@@ -37,6 +37,7 @@ namespace LMLocal.Infrastructure.WebView
         Task<string> ListModelsAsync();
         Task<bool> SetActiveModelAsync(string modelId, int contextLength);
         Task<bool> ResetHistoryAsync();
+        Task<string> GetLastChatSessionAsync();
         Task StopExecutionAsync();
         Task<bool> UpdateSettingsAsync(string newSettingsJson);
         Task<string> GetInstructionsAsync();
@@ -226,6 +227,35 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Returns the last persisted chat session.
+        /// </summary>
+        public async Task<string> GetLastChatSessionAsync()
+        {
+            try
+            {
+                var messages = await _chatHistoryManager.LoadLastSessionAsync().ConfigureAwait(false);
+                var response = new GetLastChatSessionResponse
+                {
+                    HasSession = messages.Count > 0,
+                    Messages = messages.Select(m => new ChatMessageResponse
+                    {
+                        Role = m.Role,
+                        Content = m.Content,
+                        ToolCallId = m.ToolCallId,
+                        ToolCalls = m.ToolCalls
+                    }).ToList()
+                };
+                return response.ToJson();
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetLastChatSessionAsync failed", ex);
+                return new GetLastChatSessionResponse().ToJson();
+            }
+        }
+
+        /// <summary>
         /// <summary>
         /// Stops the current text generation process and active tools.
         /// </summary>

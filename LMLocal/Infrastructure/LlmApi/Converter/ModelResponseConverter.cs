@@ -260,7 +260,6 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
         /// <summary>
         /// Converts Azure/Github Models API response to unified format.
-        /// Filters models by task type (only "chat-completion" models are included).
         /// </summary>
         public static UnifiedListModelsResponse ConvertAzureResponseToUnified(string json)
         {
@@ -305,5 +304,65 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 return new UnifiedListModelsResponse { Error = "Failed to parse Azure response" };
             }
         }
+
+        /// <summary>
+        /// Converts llama.cpp /v1/models response to unified format.
+        /// If only one model returned, marks it as loaded/active.
+        /// </summary>
+        public static UnifiedListModelsResponse ConvertLlamaCppResponseToUnified(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return new UnifiedListModelsResponse { Models = new List<UnifiedModelInfo>() };
+
+            try
+            {
+                var llamaResponse = json.FromJson<LlamaCppListModelsResponse>();
+                if (llamaResponse?.Data == null || llamaResponse.Data.Count == 0)
+                    return new UnifiedListModelsResponse { Error = "No models returned from llama.cpp" };
+
+                var models = new List<UnifiedModelInfo>();
+                bool onlyOne = llamaResponse.Data.Count == 1;
+
+                foreach (var entry in llamaResponse.Data)
+                {
+                    string displayName = !string.IsNullOrEmpty(entry.Id)
+                        ? System.IO.Path.GetFileName(entry.Id)
+                        : "unknown";
+
+                    int? maxTokens = entry.Meta?.NContext > 0
+                        ? entry.Meta.NContext
+                        : (int?)null;
+
+                    long? sizeBytes = entry.Meta?.Size > 0
+                        ? entry.Meta.Size
+                        : (long?)null;
+
+                    models.Add(new UnifiedModelInfo
+                    {
+                        Id = entry.Id ?? "unknown",
+                        Name = displayName,
+                        MaxTokens = maxTokens,
+                        SupportsMaxTokens = maxTokens.HasValue && maxTokens > 0,
+                        IsLoaded = onlyOne,
+                        SupportsToolUse = null,
+                        SizeInBytes = sizeBytes
+                    });
+                }
+
+                return new UnifiedListModelsResponse
+                {
+                    Models = models,
+                    HasActiveModel = onlyOne,
+                    ActiveModel = onlyOne ? models[0] : null
+                };
+            }
+            catch (JsonException ex)
+            {
+                InternalLogger.Warn($"ConvertLlamaCppResponseToUnified: failed to parse llama.cpp response: {ex.Message}");
+                return new UnifiedListModelsResponse { Error = "Failed to parse llama.cpp response" };
+            }
+        }
     }
 }
+
+

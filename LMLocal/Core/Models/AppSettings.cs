@@ -46,6 +46,11 @@ namespace LMLocal.Core.Models
         public bool EnableChatLogging { get; set; } = false;
 
         /// <summary>
+        /// When true, the last chat history session is automatically restored on startup.
+        /// </summary>
+        public bool AutoLoadLastHistory { get; set; } = false;
+
+        /// <summary>
         /// API key for authenticating to remote services. Optional for most local servers.
         /// </summary>
         public string ApiKey { get; set; } = string.Empty;
@@ -82,6 +87,7 @@ namespace LMLocal.Core.Models
                 && Theme == other.Theme
                 && StreamInactivityTimeoutSeconds == other.StreamInactivityTimeoutSeconds
                 && EnableChatLogging == other.EnableChatLogging
+                && AutoLoadLastHistory == other.AutoLoadLastHistory
                 && EnableAiTools == other.EnableAiTools
                 && EnableAiWriteTools == other.EnableAiWriteTools
                 && EnableCodeCollapse == other.EnableCodeCollapse
@@ -103,6 +109,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + Theme.GetHashCode();
                 hash = hash * 23 + StreamInactivityTimeoutSeconds.GetHashCode();
                 hash = hash * 23 + EnableChatLogging.GetHashCode();
+                hash = hash * 23 + AutoLoadLastHistory.GetHashCode();
                 hash = hash * 23 + EnableAiTools.GetHashCode();
                 hash = hash * 23 + EnableAiWriteTools.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
