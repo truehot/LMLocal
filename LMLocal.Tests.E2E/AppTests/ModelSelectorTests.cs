@@ -82,4 +82,44 @@ public class ModelSelectorTests : AppTestBase
             await Expect(Page.Locator("#models-list-container .empty-placeholder")).ToBeVisibleAsync();
         }
     }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task CloseDialog_CloseButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#model-name").ClickAsync();
+
+        var dialog = Page.Locator("#model-selector-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // Click close button
+        await dialog.Locator("#model-selector-close").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task CloseDialog_EscapeKey_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#model-name").ClickAsync();
+
+        var dialog = Page.Locator("#model-selector-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // Press Escape
+        await Page.Keyboard.PressAsync("Escape");
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
 }

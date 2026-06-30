@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -56,16 +57,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!_pathResolver.TryResolveFilePath(projectPathParam, solutionDir, out string absoluteProjectPath))
                 return ErrorResponse($"Cannot resolve project path: {projectPathParam}");
 
+            if (!_pathResolver.IsPathInsideDirectory(absoluteProjectPath, solutionDir))
+                return ErrorResponse($"File '{absoluteProjectPath}' is outside the solution directory.");
+
             if (!_fileSystem.FileExists(absoluteProjectPath))
                 return ErrorResponse($"Project file not found: {absoluteProjectPath}");
 
             if (!absoluteProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                 return ErrorResponse($"Specified file is not a .csproj: {absoluteProjectPath}");
 
-            await TaskScheduler.Default;
-
-            var (Success, Output, Total, Passed, Failed, Skipped) = await RunDotnetTestAsync(
-                absoluteProjectPath, solutionDir, includeFullOutput, cancellationToken);
+            var (Success, Output, Total, Passed, Failed, Skipped) = await RunDotnetTestAsync(absoluteProjectPath, solutionDir, includeFullOutput, cancellationToken).ConfigureAwait(false);
 
             return new RunProjectTestsResponse
             {
@@ -166,14 +167,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     try
                     {
-                        await Task.Run(() => process.WaitForExit(), linkedCts.Token);
+                        await Task.Run(
+                            () =>
+                            {
+                                if (!process.WaitForExit(5000))
+                                {
+                                    try
+                                    {
+                                        process.Kill();
+                                    }
+                                    catch
+                                    {
+                                        InternalLogger.Error("Failed to kill the test process after timeout.");
+                                    }
+                                }
+                            }
+                            , linkedCts.Token);
                     }
                     catch (OperationCanceledException)
                     {
                         if (!process.HasExited)
                         {
                             try { process.Kill(); } catch { }
-                            process.WaitForExit();
+                            process.WaitForExit(5000);
                         }
                         return (false, "Test execution cancelled or timed out.", 0, 0, 0, 0);
                     }
@@ -202,7 +218,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 else if (success)
                 {
-                    resultOutput = $"✅ All {total} tests passed. Passed: {passed}, Skipped: {skipped}.";
+                    resultOutput = $"All {total} tests passed. Passed: {passed}, Skipped: {skipped}.";
                 }
                 else
                 {
@@ -282,14 +298,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     cts.CancelAfter(TimeSpan.FromMinutes(5));
                     try
                     {
-                        await Task.Run(() => buildProcess.WaitForExit(), cts.Token);
+                        await Task.Run(() => buildProcess.WaitForExit(5000), cts.Token);
                     }
                     catch (OperationCanceledException)
                     {
                         if (!buildProcess.HasExited)
                         {
                             try { buildProcess.Kill(); } catch { }
-                            buildProcess.WaitForExit();
+                            buildProcess.WaitForExit(5000);
                         }
                         return (false, "Build cancelled or timed out.");
                     }

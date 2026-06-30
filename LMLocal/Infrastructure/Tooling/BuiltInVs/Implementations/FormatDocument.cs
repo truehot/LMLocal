@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
 using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -20,15 +20,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly IFileSystem _fileSystem;
 
         public string ToolName => "format_document";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public FormatDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager)
+        public FormatDocument(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
@@ -45,7 +47,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absolutePath))
                 return ErrorResponse($"Cannot resolve file path: {filePathParam}");
 
-            if (!File.Exists(absolutePath))
+            if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                return ErrorResponse($"File '{absolutePath}' is outside the solution directory.");
+            if (!_fileSystem.FileExists(absolutePath))
                 return ErrorResponse($"File not found: {absolutePath}");
 
             var dte = _vsDependencies.GetDTE();

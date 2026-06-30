@@ -69,11 +69,6 @@ namespace LMLocal.Application.ChatSessionStream
                     _history.EnsureHistoryNormalized();
                 }
 
-                var messages = _history.BuildUserMessagesWithHistory(
-                    isToolRound ? "" : context.Prompt,
-                    isToolRound ? null : context.ActiveDocumentContent,
-                    isToolRound ? null : context.AdditionalPrompt);
-
                 if (isToolRound)
                 {
                     var pendingToolMessages = new List<ChatMessage>(toolResults.Count);
@@ -94,7 +89,6 @@ namespace LMLocal.Application.ChatSessionStream
                         }
 
                         var chatMessage = new ChatMessage("tool", toolContent, toolResult.ToolCallId.ToString());
-                        messages.Add(chatMessage);
                         pendingToolMessages.Add(chatMessage);
                     }
 
@@ -104,6 +98,9 @@ namespace LMLocal.Application.ChatSessionStream
                 {
                     _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent);
                 }
+
+                var messages = _history.BuildUserMessagesWithHistory(
+                    context.AdditionalPrompt);
 
                 var processor = _streamProcessorFactory.Create(linkedCts);
 
@@ -121,7 +118,18 @@ namespace LMLocal.Application.ChatSessionStream
                         onChunk,
                         _settingsManager.BatchIntervalMs).ConfigureAwait(false);
 
-                    _history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
+                    if (!result.WasCancelled)
+                    {
+                        bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
+                        if (hasToolCalls)
+                        {
+                            _history.SetPendingAssistant(result.ContentResponse, result.ToolCalls);
+                        }
+                        else
+                        {
+                            _history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
+                        }
+                    }
 
                     if (onComplete != null)
                     {

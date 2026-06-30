@@ -104,5 +104,73 @@ public class InstructionsTests : AppTestBase
         var footer = dialog.Locator(".modal-footer");
         await Expect(footer).ToHaveCountAsync(1);
     }
-}
 
+    [Test]
+    [Category("Instructions")]
+    public async Task CloseDialog_CancelButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        // Click Cancel
+        await dialog.Locator("#instructions-dialog-cancel").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task CloseDialog_EscapeKey_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        // Press Escape
+        await Page.Keyboard.PressAsync("Escape");
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task CloseDialog_SaveButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        // Click Save
+        await dialog.Locator("#instructions-dialog-confirm").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+}

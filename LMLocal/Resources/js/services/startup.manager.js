@@ -1,8 +1,8 @@
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
+import { createModelSelectorDialog } from '@app/lib/model-selector.factory.js';
 import appDataService from '@app/services/app.data.service.js';
-import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
 
 /**
  * StartupManager - handles application initialization and model selection logic.
@@ -70,19 +70,7 @@ class StartupManager {
     }
 
     async _showModelSelectorDialog(models) {
-        const dialog = new ModelSelectorDialog(models);
-
-        dialog.onRefresh.on(async () => {
-            return await appDataService.loadModels();
-        });
-
-        dialog.onSelect.on(async (selectedModel) => {
-            if (selectedModel) {
-                await appDataService.setActiveModel(selectedModel.id, selectedModel.name, selectedModel.supportsMaxTokens, selectedModel.maxTokens || 0);
-                return true;
-            }
-            return false;
-        });
+        const dialog = createModelSelectorDialog(models);
 
         try {
             const selectedModel = await dialog.show();
@@ -107,4 +95,3 @@ class StartupManager {
 
 const startupManager = new StartupManager();
 export { startupManager };
-

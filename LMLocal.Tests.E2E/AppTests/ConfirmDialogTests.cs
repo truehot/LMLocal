@@ -64,8 +64,69 @@ public class ConfirmDialogTests : AppTestBase
         await Expect(dialog).ToBeVisibleAsync();
 
         // Verify modal body exists
-        var body = dialog.Locator(".modal-body");
-        await Expect(body).ToHaveCountAsync(1);
+        await Expect(dialog.Locator(".modal-body")).ToHaveCountAsync(1);
+    }
+
+    [Test]
+    [Category("ConfirmDialog")]
+    public async Task CloseDialog_CancelButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Show confirm dialog with click handlers (simulating what ConfirmDialog.confirm() does)
+        await Page.EvaluateAsync("() => { const dialog = document.getElementById('confirm-dialog'); if (dialog) { dialog.querySelector('.modal-body').textContent = 'Are you sure?'; dialog.querySelector('#confirm-dialog-cancel').onclick = () => dialog.close(); dialog.querySelector('#confirm-dialog-confirm').onclick = () => dialog.close(); dialog.showModal(); } }");
+
+        var dialog = Page.Locator("#confirm-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // Click Cancel
+        await dialog.Locator("#confirm-dialog-cancel").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("ConfirmDialog")]
+    public async Task CloseDialog_EscapeKey_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Show confirm dialog via JavaScript
+        await Page.EvaluateAsync("() => { const dialog = document.getElementById('confirm-dialog'); if (dialog) { dialog.querySelector('.modal-body').textContent = 'Are you sure?'; dialog.showModal(); } }");
+
+        var dialog = Page.Locator("#confirm-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // Press Escape
+        await Page.Keyboard.PressAsync("Escape");
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("ConfirmDialog")]
+    public async Task CloseDialog_ConfirmButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Show confirm dialog with click handlers (simulating what ConfirmDialog.confirm() does)
+        await Page.EvaluateAsync("() => { const dialog = document.getElementById('confirm-dialog'); if (dialog) { dialog.querySelector('.modal-body').textContent = 'Are you sure?'; dialog.querySelector('#confirm-dialog-cancel').onclick = () => dialog.close(); dialog.querySelector('#confirm-dialog-confirm').onclick = () => dialog.close(); dialog.showModal(); } }");
+
+        var dialog = Page.Locator("#confirm-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+
+        // Click Confirm
+        await dialog.Locator("#confirm-dialog-confirm").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
     }
 }
-

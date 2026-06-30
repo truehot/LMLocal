@@ -1,4 +1,4 @@
-﻿import { createCallback } from '@app/lib/callback.js';
+import { createCallback } from '@app/lib/callback.js';
 
 export class ProvidersDialog {
     constructor() {
@@ -6,6 +6,7 @@ export class ProvidersDialog {
         this.onSave = createCallback();
         this.onTestConnection = createCallback();
         this._providers = [];
+        this._providerTypes = [];
         this._currentEditingProvider = null;
         this._toggleHandler = null;
         this._addBtnClickHandler = null;
@@ -131,6 +132,7 @@ export class ProvidersDialog {
             this._testBtnTimeout = null;
         }
         this._providers = [];
+        this._providerTypes = [];
         this._currentEditingProvider = null;
         this._toggleHandler = null;
         this._addBtnClickHandler = null;
@@ -145,6 +147,11 @@ export class ProvidersDialog {
     _getNextId() {
         const maxId = this._providers.reduce((max, p) => Math.max(max, p.id || p.Id || 0), 0);
         return maxId + 1;
+    }
+
+    _getDisplayName(typeKey) {
+        const found = this._providerTypes.find(pt => pt.key === typeKey);
+        return found ? found.displayName : typeKey;
     }
 
     _renderList() {
@@ -195,6 +202,7 @@ export class ProvidersDialog {
 
             const pName = provider.name || 'Unnamed';
             const pType = provider.providerType || 'openai';
+            const pDisplayType = this._getDisplayName(pType);
             const pUrl = provider.customBaseUrl || '';
 
             const nameEl = document.createElement('div');
@@ -203,7 +211,7 @@ export class ProvidersDialog {
 
             const typeEl = document.createElement('div');
             typeEl.className = 'provider-card-type';
-            typeEl.textContent = pType;
+            typeEl.textContent = pDisplayType;
 
             const metaEl = document.createElement('div');
             metaEl.className = 'provider-card-meta';
@@ -237,6 +245,16 @@ export class ProvidersDialog {
         });
     }
 
+    _fillTypeSelect(typeSelect) {
+        typeSelect.innerHTML = '';
+        this._providerTypes.forEach(pt => {
+            const option = document.createElement('option');
+            option.value = pt.key;
+            option.textContent = pt.displayName;
+            typeSelect.appendChild(option);
+        });
+    }
+
     _showForm(provider = null) {
         const el = this._getElements();
         const { listView, listActions, formView, formActions, idInput, nameInput, typeSelect, urlInput, keyInput } = el;
@@ -251,6 +269,8 @@ export class ProvidersDialog {
 
         formView.classList.remove('hidden');
         if (formActions) formActions.classList.remove('hidden');
+
+        this._fillTypeSelect(typeSelect);
 
         if (provider) {
             this._currentEditingProvider = { ...provider };
@@ -333,14 +353,18 @@ export class ProvidersDialog {
             if (result && result.success && result.data) {
                 const config = result.data;
                 this._providers = config.providers || [];
+                this._providerTypes = config.providerTypes || [];
             } else if (result && result.providers) {
                 this._providers = result.providers;
+                this._providerTypes = result.providerTypes || [];
             } else {
                 this._providers = [];
+                this._providerTypes = [];
             }
         } catch (e) {
             console.error('Failed to load providers', e);
             this._providers = [];
+            this._providerTypes = [];
         }
 
         this._filterText = '';

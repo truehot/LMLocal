@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -19,15 +20,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly IFileSystem _fileSystem;
 
         public string ToolName => "optimize_usings";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public OptimizeUsings(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager)
+        public OptimizeUsings(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
 
@@ -35,17 +38,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePathParam) || string.IsNullOrEmpty(filePathParam))
+            if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePath) || string.IsNullOrEmpty(filePath))
                 return ErrorResponse("Parameter 'file_path' is required.");
 
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (string.IsNullOrEmpty(solutionDir))
                 return ErrorResponse("Solution directory not available.");
 
-            if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absolutePath))
-                return ErrorResponse($"Cannot resolve file path: {filePathParam}");
+            if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
+                return ErrorResponse($"Cannot resolve file path: {filePath}");
 
-            if (!File.Exists(absolutePath))
+            if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                return ErrorResponse($"File '{filePath}' is outside the solution directory '{solutionDir}'.");
+
+            if (!_fileSystem.FileExists(absolutePath))
                 return ErrorResponse($"File not found: {absolutePath}");
 
             var dte = _vsDependencies.GetDTE();

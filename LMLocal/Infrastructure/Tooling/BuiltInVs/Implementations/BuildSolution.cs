@@ -28,9 +28,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
 
-        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken ct = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
 
             if (!_vsDependencies.IsSolutionOpen)
                 return ErrorResponse("No solution is open.");
@@ -83,14 +83,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 dte.Solution.SolutionBuild.Build(false);
 
-                using (cancellationToken.Register(() => tcs.TrySetCanceled()))
+                using (ct.Register(() => tcs.TrySetCanceled()))
                 {
                     bool buildSucceeded = await tcs.Task;
-                    if (cancellationToken.IsCancellationRequested)
+                    if (ct.IsCancellationRequested)
                         return ErrorResponse("Build was cancelled.");
 
                     var messages = new List<BuildMessage>();
-                    await CollectErrorMessagesAsync(messages, cancellationToken);
+                    await CollectErrorMessagesAsync(messages, ct);
 
                     return new BuildSolutionResponse
                     {

@@ -63,13 +63,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             try
             {
                 if (!_vsDependencies.IsSolutionOpen)
-                    return Error("No solution is currently open.");
+                    return ErrorResponse("No solution is currently open.");
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 var (fileName, fileExtension, projectFilter, pageToken, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
-                    return Error(error);
+                    return ErrorResponse(error);
 
                 int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
                 int skip = pageNumber * DefaultTake;
@@ -133,7 +133,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             catch (Exception ex)
             {
                 InternalLogger.Error($"Error in {ToolName}: {ex}");
-                return Error(ex.Message);
+                return ErrorResponse(ex.Message);
             }
         }
 
@@ -173,7 +173,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!fileResults.Success)
                     return $"Error: {fileResults.ErrorMessage}";
 
-                var message = $"Found {fileResults.Results.Count} files";
+                var message = fileResults.Results.Count == 0 ? "Found no files" : $"Found {fileResults.Results.Count} files";
                 if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
                     message += $" (total: {fileResults.TotalFiles} files)";
                 message += ".";
@@ -198,7 +198,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (fileName, fileExtension, projectFilter, pageToken, null);
         }
 
-        private static FileSearchResultsResponse Error(string message)
+        private static FileSearchResultsResponse ErrorResponse(string message)
         {
             return new FileSearchResultsResponse
             {

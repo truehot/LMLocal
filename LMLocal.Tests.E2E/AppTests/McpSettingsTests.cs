@@ -61,5 +61,70 @@ public class McpSettingsTests : AppTestBase
         await Expect(saveBtn).ToHaveCountAsync(1);
         await Expect(saveBtn).ToHaveTextAsync("Save");
     }
-}
 
+    [Test]
+    [Category("McpSettings")]
+    public async Task CloseDialog_CancelButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open MCP settings dialog via app controller
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='mcp-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#mcp-settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Click Cancel
+        await dialog.Locator("#mcp-dialog-cancel").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("McpSettings")]
+    public async Task CloseDialog_EscapeKey_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open MCP settings dialog via app controller
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='mcp-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#mcp-settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Press Escape
+        await Page.Keyboard.PressAsync("Escape");
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("McpSettings")]
+    public async Task CloseDialog_SaveButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open MCP settings dialog via app controller
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='mcp-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#mcp-settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Click Save
+        await dialog.Locator("#mcp-dialog-confirm").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+}

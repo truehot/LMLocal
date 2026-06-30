@@ -350,7 +350,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Searching failed: {searchResults.ErrorMessage}";
 
                 int pageMatches = searchResults.Results.Sum(r => r.MatchCount);
-                var message = $"Found {pageMatches} matches";
+                var message = pageMatches == 0 ? "Found no matches" : $"Found {pageMatches} matches";
                 if (searchResults.TotalMatches > 0 && pageMatches < searchResults.TotalMatches)
                     message += $" (total: {searchResults.TotalMatches} matches)";
                 message += ".";

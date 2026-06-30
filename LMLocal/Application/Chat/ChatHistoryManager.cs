@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
@@ -10,6 +11,7 @@ using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace LMLocal.Application.Chat
 {
@@ -46,7 +48,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Builds a message list for the current provider. 
         /// </summary>
-        List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalPrompt = null);
+        List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null);
 
         /// <summary>
         /// Adds tool execution result messages to history and persists them.
@@ -57,7 +59,18 @@ namespace LMLocal.Application.Chat
         /// Loads the last persisted session into in-memory history (if empty) and returns its messages.
         /// </summary>
         Task<List<ChatMessage>> LoadLastSessionAsync();
+
+        /// <summary>
+        /// Normalizes history for providers (e.g. LlamaCpp) that require strict
+        /// user/assistant alternation and lack native tool role support.
+        /// </summary>
         void EnsureHistoryNormalized();
+
+        /// <summary>
+        /// Queues an assistant with tool calls to be committed together with
+        /// the next AddToolExecutionResultMessages, ensuring tool call is saved before results.
+        /// </summary>
+        void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls);
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -70,20 +83,23 @@ namespace LMLocal.Application.Chat
         private List<ChatMessage> _cachedNormalized;
         private int _lastCheckedVersion = 0;
 
+        private string _pendingAssistantContent;
+        private IReadOnlyList<ToolCallRecord> _pendingAssistantToolCalls;
+
         public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         }
-        public void AddUserMessage(string prompt, string activeDocumentContent = null)
+        public void AddUserMessage(string userPrompt, string activeDocumentContent = null)
         {
-            if (string.IsNullOrEmpty(prompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
+            if (string.IsNullOrEmpty(userPrompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
 
             bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
 
-            string merged = prompt ?? "";
+            string merged = userPrompt ?? "";
             if (!string.IsNullOrEmpty(activeDocumentContent))
-                merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + prompt;
+                merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + userPrompt;
 
             ChatMessage userMessage = new ChatMessage("user", compress ? MarkdownStripper.Strip(merged) : merged);
 
@@ -143,8 +159,7 @@ namespace LMLocal.Application.Chat
                 }
             }
 
-            var chatMessage = new ChatMessage("assistant",
-                hasContent ? (compress ? MarkdownStripper.Strip(content) : content) : null)
+            var chatMessage = new ChatMessage("assistant", hasContent ? (compress ? MarkdownStripper.Strip(content) : content) : null)
             {
                 ToolCalls = toolCallObjects
             };
@@ -156,8 +171,22 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.SaveLastMessageAsync(chatMessage, CancellationToken.None);
         }
 
+
+        public void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls)
+        {
+            _pendingAssistantContent = content;
+            _pendingAssistantToolCalls = toolCalls;
+        }
+
         public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages)
         {
+            if (_pendingAssistantToolCalls != null && _pendingAssistantToolCalls.Count > 0)
+            {
+                AddAssistantMessage(_pendingAssistantContent, _pendingAssistantToolCalls);
+                _pendingAssistantContent = null;
+                _pendingAssistantToolCalls = null;
+            }
+
             if (messages == null) return;
 
             List<ChatMessage> validMessages = null;
@@ -184,6 +213,9 @@ namespace LMLocal.Application.Chat
 
         public void Clear()
         {
+            _pendingAssistantContent = null;
+            _pendingAssistantToolCalls = null;
+
             lock (_lock)
             {
                 _history.Clear();
@@ -284,27 +316,37 @@ namespace LMLocal.Application.Chat
                             {
                                 if (isLastMessage)
                                 {
+                                    _cachedNormalized.Add(msg);
                                     _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
                                     isInsideToolResults = false;
                                     isInsideTools = false;
                                     isInsidePrompt = false;
-                                    //if no next block finishing
+                                    //wait for next user message
                                     continue;
                                 }
                                 this._cachedNormalized.Add(msg);
+                                //wait for other tools
                                 continue;
                             }
 
                             if (msg.Role == "assistant")
                             {
+                                if (msg.ToolCalls != null)
+                                {
+                                    //assistant with tool calls, wait for next tool results
+                                    this._cachedNormalized.Add(msg);
+                                    continue;
+                                }
                                 //normal finishing
                                 isInsideTools = false;
                                 isInsidePrompt = false;
                                 isInsideToolResults = false;
                                 this._cachedNormalized.Add(msg);
+                                //wait for next user message
                                 continue;
                             }
 
+                            //anything else except tools or assitant, close validation, wait for next user message
                             _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
                             isInsideTools = false;
                             isInsidePrompt = false;
@@ -318,13 +360,15 @@ namespace LMLocal.Application.Chat
                             {
                                 if (isLastMessage)
                                 {
+                                    _cachedNormalized.Add(msg);
                                     _cachedNormalized.Add(new ChatMessage("assistant", _settingsManager.AssistantPlaceholder));
                                     isInsideToolResults = false;
                                     isInsideTools = false;
                                     isInsidePrompt = false;
-                                    //if no next block finishing
+                                    //wait for next user message
                                     continue;
                                 }
+
                                 isInsideToolResults = true;
                                 isInsideTools = false;
                                 this._cachedNormalized.Add(msg);
@@ -336,6 +380,7 @@ namespace LMLocal.Application.Chat
                             isInsideTools = false;
                             isInsidePrompt = false;
                             isInsideToolResults = false;
+                            //wait for next user message
                             continue;
                         }
 
@@ -357,11 +402,19 @@ namespace LMLocal.Application.Chat
                             }
                             else
                             {
-                                //finishing
+                                //finishing, wait for next user message
                                 this._cachedNormalized.Add(msg);
                                 isInsidePrompt = false;
                                 continue;
                             }
+                        }
+
+                        if (msg.Role == "user")
+                        {
+                            //remove prev user message, as it is not followed by assistant
+                            _cachedNormalized.RemoveAt(_cachedNormalized.Count - 1);
+                            isInsidePrompt = false;
+                            continue;
                         }
                     }
 
@@ -369,7 +422,7 @@ namespace LMLocal.Application.Chat
                     {
                         if (isLastMessage)
                         {
-                            //if no next block skipping
+                            //will not appear in history
                             continue;
                         }
                         isInsidePrompt = true;
@@ -382,38 +435,21 @@ namespace LMLocal.Application.Chat
 
         /// <summary>
         /// Builds message list for the current provider backend.
-        public List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalSystemPrompt = null)
+        public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null)
         {
             bool compress = _settingsManager.Current?.EnableHistoryCompression ?? false;
             ChatMessage systemMessage = null;
             if (!string.IsNullOrEmpty(additionalSystemPrompt))
             {
-                systemMessage = new ChatMessage("system",
-                    compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt);
+                systemMessage = new ChatMessage("system", compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt);
             }
             else
             {
                 var currentSystemPrompt = _settingsManager.SystemPrompt;
                 if (!string.IsNullOrEmpty(currentSystemPrompt))
                 {
-                    systemMessage = new ChatMessage("system",
-                        compress ? MarkdownStripper.Strip(currentSystemPrompt) : currentSystemPrompt);
+                    systemMessage = new ChatMessage("system", compress ? MarkdownStripper.Strip(currentSystemPrompt) : currentSystemPrompt);
                 }
-            }
-
-            ChatMessage userMessage = null;
-            if (!string.IsNullOrEmpty(userPrompt))
-            {
-                var merged = userPrompt;
-                if (!string.IsNullOrEmpty(includedContent))
-                    merged = FormatIncludedContent(includedContent) + "\n\n" + userPrompt;
-                userMessage = new ChatMessage("user",
-                    compress ? MarkdownStripper.Strip(merged) : merged);
-            }
-            else if (!string.IsNullOrEmpty(includedContent))
-            {
-                userMessage = new ChatMessage("user",
-                    compress ? MarkdownStripper.Strip(FormatIncludedContent(includedContent)) : FormatIncludedContent(includedContent));
             }
 
             var messages = new List<ChatMessage>(_history.Count + 2);
@@ -431,9 +467,6 @@ namespace LMLocal.Application.Chat
             {
                 messages.AddRange(_history);
             }
-
-            if (userMessage != null)
-                messages.Add(userMessage);
 
             return messages;
         }

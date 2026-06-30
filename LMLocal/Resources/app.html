@@ -327,6 +327,11 @@
             <span>Select Model</span>
         </div>
 
+        <div class="modal-provider-row">
+            <select id="model-provider-select" class="model-header-select" title="Change provider">
+            </select>
+        </div>
+
         <div class="modal-toolbar">
             <div class="toolbar-left">
                 <input type="text" id="model-filter-input" placeholder="Filter models..." autocomplete="off">
@@ -340,7 +345,6 @@
                     <span class="toggle-slider"></span>
                     <span class="toggle-label">Loaded only</span>
                 </label>
-
             </div>
             <button id="model-refresh-btn" class="ui-icon-btn" title="Refresh list">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.53 2.3A6.995 6.995 0 0 0 8 1a7 7 0 1 0 7 7h-1.5a5.5 5.5 0 1 1-1.39-3.64l-1.24 1.24H15V1.47l-1.35 1.35z" /></svg>
@@ -469,13 +473,6 @@
                             Select the API protocol used by your target server.
                         </span>
                         <select name="providerType" data-setting="providerType" class="settings-select">
-                            <option value="lmstudio">LM Studio (local)</option>
-                            <option value="ollama">Ollama (local)</option>
-                            <option value="llamacpp">Llama.cpp (local)</option>
-                            <option value="openai" selected>OpenAI compatible</option>
-                            <option value="deepseek">DeepSeek (cloud)</option>
-                            <option value="gemini">Gemini (cloud)</option>
-                            <option value="githubmodelsazure">Github Models via Azure (cloud)</option>
                         </select>
                     </div>
 

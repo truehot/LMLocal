@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -22,6 +23,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
+        private readonly ISyntaxChecker _syntaxChecker;
 
         public string ToolName => "insert_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
@@ -30,12 +32,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             IVsDependencies vsDependencies,
             IPathResolver pathResolver,
             ISnapshotManager snapshotManager,
-            IFileSystem fileSystem)
+            IFileSystem fileSystem,
+            ISyntaxChecker syntaxChecker)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _syntaxChecker = syntaxChecker ?? throw new ArgumentNullException(nameof(syntaxChecker));
         }
 
         public ToolDefinition GetToolInfo()
@@ -82,7 +86,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_fileSystem.FileExists(absolutePath))
                     return Error($"File not found: {filePath}");
 
-                string originalContent = await _fileSystem.ReadAllTextWithSharedReadAsync(absolutePath, cancellationToken);
+                var (originalContent, fileEncoding, hasBom) = await _fileSystem.ReadAllTextWithDetectedEncodingAsync(absolutePath, cancellationToken);
 
                 string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
 
@@ -116,14 +120,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string newContent = string.Join(separator, linesList);
 
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
-                await _fileSystem.WriteAllBytesAsync(absolutePath, Encoding.UTF8.GetBytes(newContent), cancellationToken);
+                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, newContent, fileEncoding, hasBom, cancellationToken);
+
+                string[] syntaxErrors = null;
+                if (_syntaxChecker.IsSupported(absolutePath))
+                {
+                    if (!_syntaxChecker.IsSyntaxValid(newContent, out var errors))
+                    {
+                        syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                        InternalLogger.Info($"Syntax errors detected after insertion in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
+                    }
+                }
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
                 return new InsertLinesResponse
                 {
                     Success = true,
                     FilePath = relativePath ?? absolutePath,
-                    LinesInserted = newLines.Length
+                    LinesInserted = newLines.Length,
+                    SyntaxErrors = syntaxErrors
                 };
             }
             catch (OperationCanceledException)
@@ -195,5 +210,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("lines_inserted")]
         public int LinesInserted { get; set; }
+
+        [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] SyntaxErrors { get; set; }
     }
 }

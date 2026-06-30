@@ -536,7 +536,13 @@ namespace LMLocal.Infrastructure.WebView
             try
             {
                 var config = await _providersConfigManager.GetAsync().ConfigureAwait(false);
-                return config?.ToJson() ?? "{}";
+                var response = new GetProvidersResponse
+                {
+                    DefaultProviders = config.DefaultProviders,
+                    Providers = config.Providers,
+                    ProviderTypes = Infrastructure.Api.ProviderResolver.GetProviderTypes()
+                };
+                return response.ToJson();
             }
             catch (Exception ex)
             {

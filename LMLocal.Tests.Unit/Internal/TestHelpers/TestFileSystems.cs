@@ -32,6 +32,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _files[Normalize(path)] = data;
             return Task.CompletedTask;
         }
+        public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+        {
+            return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+        }
+
         public Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             var key = Normalize(path);
@@ -103,6 +108,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
             return ReadAllTextAsync(path, cancellationToken);
         }
 
+        public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+        }
+
+        public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+        {
+            return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+        }
+
+
+
         public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {
             if (startLine < 1) throw new ArgumentOutOfRangeException(nameof(startLine), "startLine must be >= 1");
@@ -169,6 +187,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await Task.Delay(200, cancellationToken).ConfigureAwait(false);
             _files[N(path)] = data;
         }
+        public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+        {
+            return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+        }
+
         public async Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             await Task.Delay(200, cancellationToken).ConfigureAwait(false);
@@ -229,6 +252,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             return ReadAllTextAsync(path, cancellationToken);
         }
+
+        public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+        }
+
+        public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+        {
+            return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+        }
+
+
 
         public async Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {
@@ -305,6 +341,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _d[N(path)] = data;
             return Task.CompletedTask;
         }
+        public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+        {
+            return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+        }
+
         public Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             var key = N(path);
@@ -376,6 +417,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
             return ReadAllTextAsync(path, cancellationToken);
         }
 
+        public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+        }
+
+        public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+        {
+            return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+        }
+
+
+
         public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {
             if (startLine < 1) throw new ArgumentOutOfRangeException(nameof(startLine), "startLine must be >= 1");
@@ -446,6 +500,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await _allowWrite.Task.ConfigureAwait(false);
             _files[N(path)] = data;
         }
+        public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+        {
+            return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+        }
+
         public async Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             await _allowWrite.Task.ConfigureAwait(false);
@@ -509,6 +568,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             return ReadAllTextAsync(path, cancellationToken);
         }
+
+        public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+        }
+
+        public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+        {
+            return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+        }
+
+
 
         public async Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {
@@ -578,6 +650,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _files[N(path)] = data;
             return Task.CompletedTask;
         }
+        public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+        {
+            return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+        }
+
         public Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
             var key = N(path);
@@ -637,6 +714,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             return ReadAllTextAsync(path, cancellationToken);
         }
+
+        public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+        {
+            return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+        }
+
+        public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+        {
+            return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+        }
+
+
 
         public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {

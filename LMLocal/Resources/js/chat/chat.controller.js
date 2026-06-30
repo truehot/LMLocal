@@ -334,7 +334,6 @@ class ChatController {
             localAi.finalize();
         });
     }
-
 }
 
 const chatController = new ChatController();

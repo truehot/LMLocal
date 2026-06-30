@@ -39,6 +39,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 await _allowWrite.Task.ConfigureAwait(false);
                 _files[N(path)] = data;
             }
+            public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+            {
+                return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken);
+            }
+
             public async Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
             {
                 await _allowWrite.Task.ConfigureAwait(false);
@@ -104,6 +109,19 @@ namespace LMLocal.Tests.Unit.Infrastructure
             {
                 return ReadAllTextAsync(path, cancellationToken);
             }
+
+            public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+            {
+                return ReadAllTextWithSharedReadAsync(path, cancellationToken)
+                    .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+            }
+
+            public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
+            {
+                return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+            }
+
+
 
             public async Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
             {
@@ -231,7 +249,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
-            var messages = hist.BuildUserMessagesWithHistory("ask", includedContent: "code snippet");
+
+            hist.AddUserMessage("ask", activeDocumentContent: "code snippet");
+            var messages = hist.BuildUserMessagesWithHistory();
 
             Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("Reference code:"));
             Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("ask"));

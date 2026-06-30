@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -19,22 +20,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly IFileSystem _fileSystem;
 
         public string ToolName => "set_file_project_status";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public SetFileProjectStatus(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager)
+        public SetFileProjectStatus(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
 
-            if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePathParam) || string.IsNullOrEmpty(filePathParam))
+            if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePath) || string.IsNullOrEmpty(filePath))
                 return ErrorResponse("Parameter 'file_path' is required.");
 
             if (parameters?.TryGetValue("project_path", out var pp) != true || !(pp is string projectPathParam) || string.IsNullOrEmpty(projectPathParam))
@@ -57,16 +60,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (string.IsNullOrEmpty(solutionDir))
                 return ErrorResponse("Solution directory not available.");
 
-            if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absoluteFilePath))
-                return ErrorResponse($"Cannot resolve file path: {filePathParam}");
+            if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
+                return ErrorResponse($"Cannot resolve file path: {filePath}");
+
+            if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                return ErrorResponse($"File '{filePath}' is outside the solution directory '{solutionDir}'.");
 
             if (!_pathResolver.TryResolveFilePath(projectPathParam, solutionDir, out string absoluteProjectPath))
                 return ErrorResponse($"Cannot resolve project path: {projectPathParam}");
 
-            if (!File.Exists(absoluteFilePath))
-                return ErrorResponse($"File not found: {absoluteFilePath}");
+            if (!_pathResolver.IsPathInsideDirectory(absoluteProjectPath, solutionDir))
+                return ErrorResponse($"Project '{projectPathParam}' is outside the solution directory '{solutionDir}'.");
 
-            if (!File.Exists(absoluteProjectPath))
+            if (!_fileSystem.FileExists(absolutePath))
+                return ErrorResponse($"File not found: {absolutePath}");
+
+            if (!_fileSystem.FileExists(absoluteProjectPath))
                 return ErrorResponse($"Project file not found: {absoluteProjectPath}");
 
             var dte = _vsDependencies.GetDTE();
@@ -92,30 +101,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 if (include)
                 {
-                    ProjectItem existing = FindProjectItem(targetProject, absoluteFilePath);
+                    ProjectItem existing = FindProjectItem(targetProject, absolutePath);
                     if (existing != null)
                     {
                         return new IncludeExcludeResponse
                         {
                             Success = true,
-                            FilePath = absoluteFilePath,
+                            FilePath = absolutePath,
                             Message = "File already included in the project."
                         };
                     }
 
-                    targetProject.ProjectItems.AddFromFile(absoluteFilePath);
+                    targetProject.ProjectItems.AddFromFile(absolutePath);
                     targetProject.Save();
 
                     return new IncludeExcludeResponse
                     {
                         Success = true,
-                        FilePath = absoluteFilePath,
+                        FilePath = absolutePath,
                         Message = "File included successfully."
                     };
                 }
                 else
                 {
-                    ProjectItem item = FindProjectItem(targetProject, absoluteFilePath);
+                    ProjectItem item = FindProjectItem(targetProject, absolutePath);
                     if (item == null)
                         return ErrorResponse("File is not part of the project.");
 
@@ -125,7 +134,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return new IncludeExcludeResponse
                     {
                         Success = true,
-                        FilePath = absoluteFilePath,
+                        FilePath = absolutePath,
                         Message = "File excluded successfully."
                     };
                 }

@@ -19,11 +19,10 @@ import providersStore from '@app/store/providers.store.js';
 import changesStore from '@app/store/changes.store.js';
 import bridgeMessageDispatcher from '@app/api/bridge.message.dispatcher.js';
 import appDataService from '@app/services/app.data.service.js';
-
+import { createModelSelectorDialog } from '@app/lib/model-selector.factory.js';
 import { ConfirmDialog } from '@app/dialogs/confirm.dialog.js';
 import { SettingsDialog } from '@app/dialogs/settings.dialog.js';
 import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
-import { ModelSelectorDialog } from '@app/dialogs/models.list.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
 import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
@@ -235,20 +234,7 @@ class AppController {
         toolbarComponent.onModelNameClick.on(async () => {
             const response = await appDataService.loadModels();
             if (response && response.models && response.models.length > 0) {
-                const dialog = new ModelSelectorDialog(response.models, response.activeModel);
-
-                dialog.onRefresh.on(async () => {
-                    return await appDataService.loadModels();
-                });
-
-                dialog.onSelect.on(async (selectedModel) => {
-                    if (selectedModel) {
-                        await appDataService.setActiveModel(selectedModel.id, selectedModel.name, selectedModel.supportsMaxTokens, selectedModel.maxTokens || 0);
-                        return true;
-                    }
-                    return false;
-                });
-
+                const dialog = createModelSelectorDialog(response.models, response.activeModel);
                 await dialog.show();
             }
         });
@@ -300,6 +286,10 @@ class AppController {
         window.addEventListener('click', this._globalClickHandler);
     }
 
+    get initialized() {
+        return this._initialized;
+    }
+
     _detachEvents() {
         if (this._appStoreListener) {
             appStore.unsubscribe(this._appStoreListener);
@@ -336,12 +326,16 @@ class AppController {
         inputComponent.onTabChanged.off();
         chatController.onCopyCode.off();
         menuComponent.onClick.off();
+        toolbarComponent.onModelNameClick.off();
         statusComponent.onRetry.off();
-        statusComponent.onModelNameClick.off();
-    }
-
-    get initialized() {
-        return this._initialized;
+        statusComponent.onClearChat.off();
+        changesPanelComponent.onDiscardAll.off();
+        changesPanelComponent.onAcceptAll.off();
+        changesPanelComponent.onReviewFile.off();
+        changesPanelComponent.onReviewAll.off();
+        changesPanelComponent.onOpenAll.off();
+        changesPanelComponent.onDiscardSingleFile.off();
+        changesPanelComponent.onAcceptSingleFile.off();
     }
 }
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.CodeAnalysis;
@@ -23,11 +24,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     internal interface IGetSymbolInfo : IBuiltInTool
     {
     }
-
     internal class GetSymbolInfo : IGetSymbolInfo
     {
         private readonly IPathResolver _pathResolver;
         private readonly ISearchResultCache _searchCache;
+        private readonly IFileSystem _fileSystem;
         private const int MaxTotalReferences = 5000;
         private const int DefaultPageSize = 50;
         private const int MaxPageSize = 200;
@@ -36,10 +37,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string ToolName => "get_symbol_info";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public GetSymbolInfo(IPathResolver pathResolver, ISearchResultCache searchCache)
+        public GetSymbolInfo(IPathResolver pathResolver, ISearchResultCache searchCache, IFileSystem fileSystem)
         {
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public ToolDefinition GetToolInfo()
@@ -165,7 +167,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absolutePath))
                         return Error($"Cannot resolve file path: {filePathParam}", symbolName);
-                    if (!File.Exists(absolutePath))
+                    if (!_fileSystem.FileExists(absolutePath))
                         return Error($"File not found: {absolutePath}", symbolName);
                     targetFilePath = absolutePath;
                 }

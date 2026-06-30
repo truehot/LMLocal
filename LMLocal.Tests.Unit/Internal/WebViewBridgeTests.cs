@@ -257,5 +257,49 @@ namespace LMLocal.Tests.Unit
             Assert.That(reset, Is.False);
             mockHistoryManager.Verify(h => h.Clear(), Times.Never);
         }
+
+        [Test]
+        public async Task GetProvidersAsync_ReturnsProviderTypes()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockModelsListService = new Mock<IModelsListService>();
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var mockMcp = new Mock<IMcpConfigManager>();
+            var mockMcpToolManager = new Mock<IMcpToolManager>();
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+
+            var defaultConfig = new ProvidersConfigFile
+            {
+                DefaultProviders = new System.Collections.Generic.List<CustomProvider>
+                {
+                    new CustomProvider { Id = 0, ProviderName = "Test", ProviderType = "lmstudio" }
+                },
+                Providers = new System.Collections.Generic.List<CustomProvider>()
+            };
+
+            var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
+            mockProvidersConfigManager
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(defaultConfig);
+
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object,
+                mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object,
+                mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object,
+                mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object,
+                mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+
+            var json = await bridge.GetProvidersAsync().ConfigureAwait(false);
+
+            Assert.That(json, Is.Not.Null.And.Not.Empty);
+            Assert.That(json, Does.Contain("\"providerTypes\""));
+        }
     }
 }

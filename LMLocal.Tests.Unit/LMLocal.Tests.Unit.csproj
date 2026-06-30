@@ -99,6 +99,12 @@
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFileTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\DeleteFileTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InsertFileLinesTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContentTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileLinesTests.cs" />
+
     <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />

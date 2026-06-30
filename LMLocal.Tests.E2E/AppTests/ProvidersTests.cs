@@ -176,16 +176,16 @@ public class ProvidersTests : AppTestBase
         await urlInput.FillAsync("https://api.openai.com/v1");
         await keyInput.FillAsync("sk-test-key-123");
 
-        // Click Apply/Save button
+        // Click Apply button (form-save — commits to in-memory list, does NOT close dialog)
         var formSaveBtn = dialog.Locator("#provider-form-save");
         await formSaveBtn.ClickAsync();
 
-        // Verify form closes and list view is shown
+        // Verify form closes and list view is shown (dialog still open)
         var listView = dialog.Locator("#providers-list-view");
         await Expect(listView).Not.ToHaveClassAsync("hidden");
         await Expect(formView).ToHaveClassAsync("hidden");
 
-        // Verify the provider was added to the list
+        // Verify the provider was added to the in-memory list
         var listContainer = dialog.Locator("#providers-list-container");
         var providerCards = listContainer.Locator(".provider-card");
         await Expect(providerCards).ToHaveCountAsync(1);
@@ -193,14 +193,99 @@ public class ProvidersTests : AppTestBase
         // Verify provider details in the card
         var providerCard = providerCards.First;
         await Expect(providerCard.Locator(".provider-card-name")).ToHaveTextAsync("Test OpenAI Provider");
-        await Expect(providerCard.Locator(".provider-card-type")).ToHaveTextAsync("openai");
+        await Expect(providerCard.Locator(".provider-card-type")).ToHaveTextAsync("OpenAI");
         await Expect(providerCard.Locator(".provider-card-meta")).ToHaveTextAsync("https://api.openai.com/v1");
 
-        // Verify card has Edit and Remove buttons
-        var editBtn = providerCard.Locator("button").Filter(new() { HasText = "Edit" });
-        var removeBtn = providerCard.Locator("button").Filter(new() { HasText = "Remove" });
+        // Now click the main Save button to persist and close the dialog
+        await dialog.Locator("#providers-modal-confirm").ClickAsync();
 
-        await Expect(editBtn).ToHaveCountAsync(1);
-        await Expect(removeBtn).ToHaveCountAsync(1);
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("Providers")]
+    public async Task CloseDialog_CancelButton_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open providers dialog
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-providers']").ClickAsync();
+
+        var dialog = Page.Locator("#providers-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
+
+        // Click Cancel
+        await dialog.Locator("#providers-modal-cancel").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("Providers")]
+    public async Task CloseDialog_EscapeKey_ClosesDialog()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open providers dialog
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-providers']").ClickAsync();
+
+        var dialog = Page.Locator("#providers-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
+
+        // Press Escape
+        await Page.Keyboard.PressAsync("Escape");
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("Providers")]
+    public async Task CloseDialog_SaveButton_ClosesDialogWithChanges()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Open providers dialog
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-providers']").ClickAsync();
+
+        var dialog = Page.Locator("#providers-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#providers-list-container')?.children.length > 0");
+
+        // Add a provider first (unlike the empty-dialog test above)
+        await dialog.Locator("#provider-add-btn").ClickAsync();
+
+        var nameInput = dialog.Locator("[data-setting='name']");
+        var typeSelect = dialog.Locator("[data-setting='providerType']");
+        var urlInput = dialog.Locator("[data-setting='customBaseUrl']");
+        var keyInput = dialog.Locator("[data-setting='customApiKey']");
+
+        await nameInput.FillAsync("My Ollama Provider");
+        await typeSelect.SelectOptionAsync("ollama");
+        await urlInput.FillAsync("http://localhost:11434");
+        await keyInput.FillAsync("ollama-key");
+
+        // Apply in form (commits to in-memory list, returns to list view)
+        await dialog.Locator("#provider-form-save").ClickAsync();
+        await Expect(dialog.Locator("#providers-list-view")).Not.ToHaveClassAsync("hidden");
+
+        // Click main Save to persist changes and close dialog
+        await dialog.Locator("#providers-modal-confirm").ClickAsync();
+
+        // Verify dialog is closed
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
     }
 }

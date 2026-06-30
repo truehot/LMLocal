@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 
@@ -37,7 +38,7 @@ namespace LMLocal.Infrastructure.VisualStudio
                 if (IsFrameAlive(existingFrame))
                 {
                     int hr = existingFrame.Show();
-                    if (hr == 0)
+                    if (ErrorHandler.Succeeded(hr))
                         return;
                 }
                 _openDiffs.Remove(key);

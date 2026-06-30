@@ -1,9 +1,10 @@
-using LMLocal.Core.Common;
-using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
+using Microsoft.VisualStudio;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 
 namespace LMLocal.Infrastructure.VisualStudio
 {
@@ -27,8 +28,11 @@ namespace LMLocal.Infrastructure.VisualStudio
 
             if (_openFiles.TryGetValue(filePath, out var existingFrame) && IsFrameAlive(existingFrame))
             {
-                existingFrame.Show();
-                return;
+                int hrs = existingFrame.Show();
+                if (ErrorHandler.Succeeded(hrs))
+                    return;
+
+                _openFiles.Remove(filePath);
             }
 
             var openDoc = (IVsUIShellOpenDocument)Package.GetGlobalService(typeof(SVsUIShellOpenDocument)) ?? throw new InvalidOperationException("IVsUIShellOpenDocument not available");

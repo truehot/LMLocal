@@ -1,4 +1,5 @@
 import { createCallback } from '@app/lib/callback.js';
+import { populateProviderSelect } from '@app/lib/populate-provider-select.js';
 
 export class ModelSelectorDialog {
     constructor(models = [], activeModel = null) {
@@ -12,23 +13,32 @@ export class ModelSelectorDialog {
 
         this.onRefresh = createCallback();
         this.onSelect = createCallback();
+        this.onLoadProviders = createCallback();
+        this.onSaveProvider = createCallback();
+
+        this.previousProviderValue = null;
 
         this._onRefreshClick = null;
         this._onCloseClick = null;
         this._onFilterInput = null;
         this._onSortClick = null;
         this._onToggle = null;
+        this._onProviderChange = null;
     }
 
     _getElements() {
+        const dialog = document.getElementById('model-selector-dialog');
+        if (!dialog) return {};
+
         return {
-            dialog: document.getElementById('model-selector-dialog'),
-            container: document.getElementById('models-list-container'),
-            refreshBtn: document.getElementById('model-refresh-btn'),
-            filterInput: document.getElementById('model-filter-input'),
-            sortBtn: document.getElementById('model-sort-btn'),
-            closeBtn: document.getElementById('model-selector-close'),
-            activeToggle: document.getElementById('model-active-only-toggle'),
+            dialog,
+            container: dialog.querySelector('#models-list-container'),
+            refreshBtn: dialog.querySelector('#model-refresh-btn'),
+            filterInput: dialog.querySelector('#model-filter-input'),
+            sortBtn: dialog.querySelector('#model-sort-btn'),
+            closeBtn: dialog.querySelector('#model-selector-close'),
+            activeToggle: dialog.querySelector('#model-active-only-toggle'),
+            providerSelect: dialog.querySelector('#model-provider-select'),
         };
     }
 
@@ -56,7 +66,7 @@ export class ModelSelectorDialog {
     }
 
     _showLoadingState() {
-        if (this.el?.container) {
+        if (this.el.container) {
             this.el.container.innerHTML = `
                 <div class="loading-placeholder">
                     <div class="spinner"></div>
@@ -67,7 +77,7 @@ export class ModelSelectorDialog {
     }
 
     _showErrorState(errorMessage) {
-        if (this.el?.container) {
+        if (this.el.container) {
             this.el.container.innerHTML = `
                 <div class="error-placeholder">
                     <span style="color: var(--danger-color); padding: 20px;">Error: ${this._escapeHtml(errorMessage)}</span>
@@ -77,7 +87,7 @@ export class ModelSelectorDialog {
     }
 
     _showEmptyState() {
-        if (!this.el?.container) return;
+        if (!this.el.container) return;
         const isFiltering = this.filterText.length > 0;
         this.el.container.innerHTML = `
             <div class="empty-placeholder">
@@ -95,7 +105,7 @@ export class ModelSelectorDialog {
     }
 
     _renderModels() {
-        if (!this.el?.container) return;
+        if (!this.el.container) return;
 
         let displayList = this.modelsList.filter(model => {
             const nameMatch = (model.name || model.id).toLowerCase().includes(this.filterText);
@@ -177,7 +187,7 @@ export class ModelSelectorDialog {
             const result = await this.onSelect.emitResult(model);
             if (result?.success !== false) {
                 this.selectedModel = model;
-                if (this.el?.dialog) this.el.dialog.close();
+                if (this.el.dialog) this.el.dialog.close();
             } else {
                 this._showErrorState('Failed to set active model');
             }
@@ -194,16 +204,62 @@ export class ModelSelectorDialog {
         return div.innerHTML;
     }
 
+    _setControlsEnabled(enabled) {
+        this.el.providerSelect.disabled = !enabled;
+        this.el.refreshBtn.disabled = !enabled;
+        this.el.filterInput.disabled = !enabled;
+        this.el.sortBtn.disabled = !enabled;
+        this.el.activeToggle.disabled = !enabled;
+        this.el.closeBtn.disabled = !enabled;
+    }
+
+    async _handleProviderChange() {
+        const select = this.el.providerSelect;
+        const selectedOption = select.options[select.selectedIndex];
+        if (!selectedOption?._providerData) return;
+
+        const providerData = selectedOption._providerData;
+        const previousValue = this.previousProviderValue;
+        this.previousProviderValue = select.value;
+
+        this._setControlsEnabled(false);
+        this._showLoadingState();
+
+        try {
+            const result = await this.onSaveProvider.emitResult({
+                Provider: providerData.providerType || 'openai',
+                LmStudioBaseUrl: providerData.customBaseUrl || '',
+                ApiKey: providerData.customApiKey || '',
+            });
+
+            if (result?.success !== false) {
+                await this._loadModels(false);
+            } else {
+                // Rollback on failure
+                select.value = previousValue;
+                this.previousProviderValue = previousValue;
+                this._showErrorState(result?.error?.message || 'Failed to save provider');
+            }
+        } catch (err) {
+            console.error('Provider change failed:', err);
+            select.value = previousValue;
+            this.previousProviderValue = previousValue;
+            this._showErrorState(`Provider change failed: ${err.message}`);
+        } finally {
+            this._setControlsEnabled(true);
+        }
+    }
+
     _attachEvents() {
         this._onRefreshClick = (e) => {
             e.stopPropagation();
             this.el.refreshBtn.classList.add('spinning');
             this._loadModels(false).finally(() => {
-                this.el?.refreshBtn?.classList.remove('spinning');
+                this.el.refreshBtn.classList.remove('spinning');
             });
         };
         this._onCloseClick = () => {
-            if (this.el?.dialog) this.el.dialog.close();
+            this.el.dialog.close();
         };
         this._onFilterInput = (e) => {
             this.filterText = e.target.value.toLowerCase();
@@ -217,35 +273,31 @@ export class ModelSelectorDialog {
             this.showOnlyActive = e.target.checked;
             this._renderModels();
         };
+        this._onProviderChange = () => {
+            this._handleProviderChange();
+        };
 
-        this.el.activeToggle?.addEventListener('change', this._onToggle);
-        this.el.filterInput?.addEventListener('input', this._onFilterInput);
-        this.el.sortBtn?.addEventListener('click', this._onSortClick);
-        this.el.refreshBtn?.addEventListener('click', this._onRefreshClick);
-        this.el.closeBtn?.addEventListener('click', this._onCloseClick);
+        this.el.activeToggle.addEventListener('change', this._onToggle);
+        this.el.filterInput.addEventListener('input', this._onFilterInput);
+        this.el.sortBtn.addEventListener('click', this._onSortClick);
+        this.el.refreshBtn.addEventListener('click', this._onRefreshClick);
+        this.el.closeBtn.addEventListener('click', this._onCloseClick);
+        this.el.providerSelect.addEventListener('change', this._onProviderChange);
     }
 
     _detachEvents() {
-        if (this.el.filterInput && this._onFilterInput) {
-            this.el.filterInput.removeEventListener('input', this._onFilterInput);
-        }
-        if (this.el.sortBtn && this._onSortClick) {
-            this.el.sortBtn.removeEventListener('click', this._onSortClick);
-        }
-        if (this.el.refreshBtn && this._onRefreshClick) {
-            this.el.refreshBtn.removeEventListener('click', this._onRefreshClick);
-        }
-        if (this.el.closeBtn && this._onCloseClick) {
-            this.el.closeBtn.removeEventListener('click', this._onCloseClick);
-        }
-        if (this.el.activeToggle && this._onToggle) {
-            this.el.activeToggle.removeEventListener('change', this._onToggle);
-        }
+        this.el.filterInput.removeEventListener('input', this._onFilterInput);
+        this.el.sortBtn.removeEventListener('click', this._onSortClick);
+        this.el.refreshBtn.removeEventListener('click', this._onRefreshClick);
+        this.el.closeBtn.removeEventListener('click', this._onCloseClick);
+        this.el.activeToggle.removeEventListener('change', this._onToggle);
+        this.el.providerSelect.removeEventListener('change', this._onProviderChange);
         this._onRefreshClick = null;
         this._onCloseClick = null;
         this._onFilterInput = null;
         this._onSortClick = null;
         this._onToggle = null;
+        this._onProviderChange = null;
     }
 
     async show() {
@@ -256,18 +308,31 @@ export class ModelSelectorDialog {
 
         if (!this.el.dialog) throw new Error('Dialog #model-selector-dialog not found');
 
-        if (this.el.filterInput) {
-            this.el.filterInput.value = '';
-        }
-
-        if (this.el.activeToggle) {
-            this.showOnlyActive = !!this.el.activeToggle.checked;
-        }
+        this.el.filterInput.value = '';
+        this.showOnlyActive = !!this.el.activeToggle.checked;
 
         this._attachEvents();
 
-        if (this.modelsList.length) {
+        try {
+            const providersResult = await this.onLoadProviders.emitResult();
+            if (providersResult?.success) {
+                const data = providersResult.data || {};
 
+                const allProviders = {
+                    defaultProviders: (data.defaultProviders || []).filter(p => p.customBaseUrl),
+                    providers: (data.providers || []).filter(p => p.customBaseUrl),
+                };
+                this.previousProviderValue = populateProviderSelect(
+                    this.el.providerSelect,
+                    allProviders,
+                    data,
+                );
+            }
+        } catch (err) {
+            console.error('Failed to load providers for model dialog:', err);
+        }
+
+        if (this.modelsList.length) {
             this._renderModels();
         } else {
             await this._loadModels();
@@ -278,6 +343,8 @@ export class ModelSelectorDialog {
         return new Promise((resolve) => {
             const onClose = () => {
                 this._detachEvents();
+                this.onLoadProviders.off();
+                this.onSaveProvider.off();
                 this.el.dialog.removeEventListener('close', onClose);
                 resolve(this.selectedModel || null);
                 this.el = null;

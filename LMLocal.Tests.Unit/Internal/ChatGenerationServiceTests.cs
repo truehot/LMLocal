@@ -121,10 +121,11 @@ namespace LMLocal.Tests.Unit
             public void Clear() { }
             public IReadOnlyList<ChatMessage> GetHistoryCopy() => new List<ChatMessage>();
             public bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize) => true;
-            public List<ChatMessage> BuildUserMessagesWithHistory(string userPrompt, string includedContent = null, string additionalSystemPrompt = null) => new List<ChatMessage>();
+            public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null) => new List<ChatMessage>();
             public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages) { }
             public Task<List<ChatMessage>> LoadLastSessionAsync() => Task.FromResult(new List<ChatMessage>());
             public void EnsureHistoryNormalized() { }
+            public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
         }
 
         private class DummyCompactor : IHistoryCompactor
@@ -180,7 +181,7 @@ namespace LMLocal.Tests.Unit
         public async Task GenerateStreamAsync_AddsUserMessage_AndAssistantMessage()
         {
             var messages = new List<ChatMessage>();
-            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(messages);
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
 
             var mockStream = new MemoryStream();
             var mockResponse = new System.Net.Http.HttpResponseMessage();
@@ -212,7 +213,7 @@ namespace LMLocal.Tests.Unit
         public async Task GenerateStreamAsync_ToolRound_AddsToolResultsNotUserMessage()
         {
             var messages = new List<ChatMessage>();
-            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(messages);
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
 
             var mockStream = new MemoryStream();
             var mockResponse = new System.Net.Http.HttpResponseMessage();
@@ -239,8 +240,8 @@ namespace LMLocal.Tests.Unit
             Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
             await _service.GenerateStreamAsync(context, toolResults, onChunk, completion => Task.CompletedTask, CancellationToken.None);
 
-            // Tool round: BuildUserMessagesWithHistory called with empty prompt
-            _historyMock.Verify(h => h.BuildUserMessagesWithHistory("", null, null), Times.Once);
+            // Tool round: BuildUserMessagesWithHistory called (AdditionalPrompt = null)
+            _historyMock.Verify(h => h.BuildUserMessagesWithHistory(null), Times.Once);
 
             // Tool round: AddToolExecutionResultMessages called (not AddUserMessage)
             _historyMock.Verify(h => h.AddToolExecutionResultMessages(It.IsAny<IEnumerable<ChatMessage>>()), Times.Once);
@@ -254,7 +255,7 @@ namespace LMLocal.Tests.Unit
         public async Task GenerateStreamAsync_SavesAssistantWithToolCalls_WhenProcessorReturnsThem()
         {
             var messages = new List<ChatMessage>();
-            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(messages);
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
 
             var mockStream = new MemoryStream();
             var mockResponse = new System.Net.Http.HttpResponseMessage();
@@ -277,11 +278,69 @@ namespace LMLocal.Tests.Unit
 
             await _service.GenerateStreamAsync(context, null, onChunk, completion => Task.CompletedTask, CancellationToken.None);
 
-            // Assistant saved with tool calls
-            _historyMock.Verify(h => h.AddAssistantMessage(
+            // Assistant with tool calls is pending (not yet committed)
+            _historyMock.Verify(h => h.SetPendingAssistant(
                 "using tool",
                 It.Is<IReadOnlyList<ToolCallRecord>>(tc => tc.Count == 1 && tc[0].FunctionName == "find")),
                 Times.Once);
+            _historyMock.Verify(h => h.AddAssistantMessage(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task GenerateStreamAsync_WasCancelled_DoesNotSaveAssistantMessage()
+        {
+            var messages = new List<ChatMessage>();
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
+
+            var mockStream = new MemoryStream();
+            var mockResponse = new System.Net.Http.HttpResponseMessage();
+            var mockRequest = new System.Net.Http.HttpRequestMessage();
+            var mockContent = new System.Net.Http.StringContent("");
+            var streamingResponse = new StreamingResponse(mockStream, mockResponse, mockRequest, mockContent);
+            _clientMock.Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(streamingResponse);
+
+            // Processor returns WasCancelled = true — simulating user hitting Stop
+            _mockProcessor.Setup(p => p.ProcessStreamAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>(),
+                    It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(), It.IsAny<int>()))
+                .ReturnsAsync(new StreamCompletionResult
+                {
+                    ContentResponse = "partial response",
+                    WasCancelled = true,
+                    ToolCalls = new List<ToolCallRecord>
+                    {
+                        new ToolCallRecord { CallId = "c1", FunctionName = "search", ArgumentsJson = "{}" }
+                    }.AsReadOnly()
+                });
+
+            var context = new GenerateStreamContext { Prompt = "query", ModelId = null };
+            Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
+
+            var onCompleteCalled = false;
+            await _service.GenerateStreamAsync(context, null, onChunk, completion =>
+            {
+                onCompleteCalled = true;
+                Assert.That(completion.WasCancelled, Is.True);
+                return Task.CompletedTask;
+            }, CancellationToken.None);
+
+            Assert.That(onCompleteCalled, Is.True, "onComplete should still be invoked even when cancelled");
+
+            // Core assertion: assistant message must NOT be saved to history when cancelled
+            _historyMock.Verify(h => h.AddAssistantMessage(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
+            _historyMock.Verify(h => h.SetPendingAssistant(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
+
+            // User message is added before the streaming call, so it's already in history
+            _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
     }
 }

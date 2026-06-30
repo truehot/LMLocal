@@ -68,10 +68,13 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Core\Models\GetProvidersResponse.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
+    <Compile Include="Core\Models\ProviderTypeInfo.cs" />
     <Compile Include="Core\Models\ToolsConfigFile.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
+    <Compile Include="Infrastructure\LlmApi\Provider\ProviderDisplayAttribute.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\AzureModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\JanModelsResponse.cs" />
@@ -179,6 +182,14 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\dialogs\providers.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\model-selector.factory.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\populate-provider-select.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

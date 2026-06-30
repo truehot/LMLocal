@@ -137,6 +137,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string ReadAllText(string path) => throw new Exception("read error");
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => throw new Exception("read error");
             public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) => _inner.WriteAllBytesAsync(path, data, cancellationToken);
+            public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default)
+                => _inner.WriteAllBytesWithEncodingAsync(path, content, encoding, hasBom, cancellationToken);
+
             public Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) => _inner.AppendAllBytesAsync(path, data, cancellationToken);
             public void Replace(string sourceFileName, string destinationFileName) => _inner.Replace(sourceFileName, destinationFileName);
             public void Move(string sourceFileName, string destinationFileName) => _inner.Move(sourceFileName, destinationFileName);
@@ -146,6 +149,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public void EnsureDirectoryExistsForFile(string filePath) { }
             public Task CopyFileAsync(string sourcePath, string destPath, CancellationToken cancellationToken) => _inner.CopyFileAsync(sourcePath, destPath, cancellationToken);
             public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default) => _inner.ReadAllTextWithSharedReadAsync(path, cancellationToken);
+            public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default) 
+                => ReadAllTextWithSharedReadAsync(path, cancellationToken).ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+            public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path) => (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+
             public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) => _inner.ReadLinesRangeAsync(path, startLine, endLine, cancellationToken);
             public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) => _inner.ReadLinesAsync(path, lineHandler, cancellationToken);
 
@@ -184,6 +191,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public string ReadAllText(string path) => throw new System.IO.FileNotFoundException();
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
             public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) { return Task.CompletedTask; }
+            public Task WriteAllBytesWithEncodingAsync(string path, string content, System.Text.Encoding encoding, bool hasBom, CancellationToken cancellationToken = default) { return WriteAllBytesAsync(path, encoding.GetBytes(content), cancellationToken); }
+
             public Task AppendAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default) { return Task.CompletedTask; }
             public void Replace(string sourceFileName, string destinationFileName) { }
             public void Move(string sourceFileName, string destinationFileName) { }
@@ -195,6 +204,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default) { return Task.FromResult(ReadAllText(path)); }
             public Task<System.Collections.Generic.List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) { return Task.FromResult(new System.Collections.Generic.List<string>()); }
             public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) { return Task.CompletedTask; }
+            public Task<(string content, System.Text.Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
+                => ReadAllTextWithSharedReadAsync(path, cancellationToken).ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
+            public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path) => (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
+
 
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName)
             {

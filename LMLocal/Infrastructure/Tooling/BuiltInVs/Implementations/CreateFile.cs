@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,6 +9,7 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
+using LMLocal.Infrastructure.Syntax;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -22,15 +24,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly ISyntaxChecker _syntaxChecker;
         public string ToolName => "create_file";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public CreateFile(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, ISnapshotManager snapshotManager)
+        public CreateFile(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, ISnapshotManager snapshotManager, ISyntaxChecker syntaxChecker)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _syntaxChecker = syntaxChecker ?? throw new ArgumentNullException(nameof(syntaxChecker));
         }
 
         public ToolDefinition GetToolInfo()
@@ -58,17 +62,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 var (filePath, content, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
-                    return Error(error);
+                    return ErrorReponse(error);
 
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (!_vsDependencies.IsSolutionOpen)
-                    return Error("No solution is currently open.");
+                    return ErrorReponse("No solution is currently open.");
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
-                    return Error($"Failed to resolve file path: {filePath}");
+                    return ErrorReponse($"Failed to resolve file path: {filePath}");
+
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return ErrorReponse($"File '{filePath}' is outside the solution directory '{solutionDir}'.");
 
                 try
                 {
@@ -76,19 +83,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (ArgumentException ex)
                 {
-                    return Error($"Invalid file path: {ex.Message}");
+                    return ErrorReponse($"Invalid file path: {ex.Message}");
                 }
 
                 if (_fileSystem.FileExists(absolutePath))
-                    return Error($"File already exists: {filePath}");
+                    return ErrorReponse($"File already exists: {filePath}");
 
 
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeCreate, cancellationToken).ConfigureAwait(false);
 
                 _fileSystem.EnsureDirectoryExistsForFile(absolutePath);
 
-                byte[] data = Encoding.UTF8.GetBytes(content);
-                await _fileSystem.WriteAllBytesAsync(absolutePath, data, cancellationToken).ConfigureAwait(false);
+                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, content, Encoding.UTF8, hasBom: true, cancellationToken).ConfigureAwait(false);
+
+                string[] syntaxErrors = null;
+                if (_syntaxChecker.IsSupported(absolutePath))
+                {
+                    if (!_syntaxChecker.IsSyntaxValid(content, out var errors))
+                    {
+                        syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                        InternalLogger.Info($"Syntax errors detected after creation in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
+                    }
+                }
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
 
@@ -96,18 +112,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     Success = true,
                     FilePath = relativePath ?? absolutePath,
-                    CreatedSuccessfully = true
+                    CreatedSuccessfully = true,
+                    SyntaxErrors = syntaxErrors
                 };
             }
             catch (OperationCanceledException)
             {
                 InternalLogger.Info($"Operation in {ToolName} was cancelled.");
-                return Error($"Operation in {ToolName} was cancelled.");
+                return ErrorReponse($"Operation in {ToolName} was cancelled.");
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"Error in {ToolName}: {ex}");
-                return Error($"Error: {ex.Message}");
+                return ErrorReponse($"Error: {ex.Message}");
             }
         }
 
@@ -139,7 +156,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return ((string)filePathObj, (string)contentObj, null);
         }
 
-        private static CreateFileResponse Error(string message)
+        private static CreateFileResponse ErrorReponse(string message)
         {
             return new CreateFileResponse
             {
@@ -163,5 +180,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("error_message")]
         public string ErrorMessage { get; set; }
+
+        [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] SyntaxErrors { get; set; }
     }
 }

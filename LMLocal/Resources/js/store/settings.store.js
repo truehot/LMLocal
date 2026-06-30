@@ -12,7 +12,9 @@ class SettingsStoreClass extends BaseStoreClass {
             Theme: 0,
             StreamInactivityTimeoutSeconds: 20,
             EnableChatLogging: false,
+            AutoLoadLastHistory: false,
             EnableAiTools: false,
+            EnableAiWriteTools: false,
             EnableCodeCollapse: false
         });
     }

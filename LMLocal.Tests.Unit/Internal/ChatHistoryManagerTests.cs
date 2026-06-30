@@ -224,12 +224,14 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("world");
+            manager.AddUserMessage("next");
 
-            var messages = manager.BuildUserMessagesWithHistory("next");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             Assert.That(messages.Count, Is.EqualTo(4)); // system, user, assistant, user
             Assert.That(messages[0].Role, Is.EqualTo("system"));
             Assert.That(messages[1].Role, Is.EqualTo("user"));
+            Assert.That(messages[1].Content, Is.EqualTo("hello"));
             Assert.That(messages[2].Role, Is.EqualTo("assistant"));
             Assert.That(messages[3].Role, Is.EqualTo("user"));
             Assert.That(messages[3].Content, Is.EqualTo("next"));
@@ -245,7 +247,8 @@ namespace LMLocal.Tests.Unit
             var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("first prompt");
+            manager.AddUserMessage("first prompt");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             Assert.That(messages.Count, Is.EqualTo(2)); // system + user, no placeholder needed
             Assert.That(messages[0].Role, Is.EqualTo("system"));
@@ -268,9 +271,10 @@ namespace LMLocal.Tests.Unit
                 new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
             });
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("retry");
+            manager.AddUserMessage("retry");
+            var messages = manager.BuildUserMessagesWithHistory();
 
-            // Dangling assistant(tc) removed, user remains → placeholder after user.
+            // Dangling assistant(tc) → placeholder after user.
             // Result: system, user, assistant(pl), user("retry")
             Assert.That(messages.Count, Is.EqualTo(4));
             Assert.That(messages[0].Role, Is.EqualTo("system"));
@@ -287,8 +291,9 @@ namespace LMLocal.Tests.Unit
         public void BuildMessages_LlamaCpp_ConsecutiveUsers_InsertsPlaceholder()
         {
             // Regression: consecutive user messages without assistant between them.
-            // The last user in history is skipped (dangling, no response yet) —
-            // it is picked up from the raw tail in BuildUserMessagesWithHistory.
+            // EnsureHistoryNormalized removes the first lone user (no assistant follows)
+            // and processes the second through the isInsidePrompt path.
+            // The last user added after normalization appears via the raw tail.
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
@@ -297,17 +302,16 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("first");
             manager.AddUserMessage("second");
-
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("third");
+            manager.AddUserMessage("third");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             var roles = messages.Select(m => m.Role).ToList();
-            // "first" → normalized into cache; "second" → last in history, skipped;
-            // "third" → added as current prompt. No placeholders needed (no assistant responses).
+            // "first" removed (no assistant follows), "second" consumed by isInsidePrompt,
+            // "third" added via AddUserMessage after normalization → appears in raw tail.
             Assert.That(roles, Is.EqualTo(new List<string>
-                { "system", "user", "user" }));
-            Assert.That(messages[1].Content, Is.EqualTo("first"));
-            Assert.That(messages[2].Content, Is.EqualTo("third"));
+                { "system", "user" }));
+            Assert.That(messages[1].Content, Is.EqualTo("third"));
         }
 
         [Test]
@@ -330,7 +334,8 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("found file.txt");
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("thanks");
+            manager.AddUserMessage("thanks");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             var roles = messages.Select(m => m.Role).ToList();
             Assert.That(roles, Is.EqualTo(new List<string>
@@ -349,11 +354,12 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("world");
-
             manager.EnsureHistoryNormalized();
-            var first = manager.BuildUserMessagesWithHistory("one");
+            manager.AddUserMessage("one");
+            var first = manager.BuildUserMessagesWithHistory();
             manager.EnsureHistoryNormalized();
-            var second = manager.BuildUserMessagesWithHistory("two");
+            manager.AddUserMessage("two");
+            var second = manager.BuildUserMessagesWithHistory();
 
             Assert.That(first.Select(m => m.Role).ToList(),
                 Is.EqualTo(second.Select(m => m.Role).ToList()));
@@ -374,18 +380,17 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("u1");
             manager.AddAssistantMessage("a1");
             manager.EnsureHistoryNormalized();
-            manager.BuildUserMessagesWithHistory("u2");
+            manager.AddUserMessage("u2");
+            manager.BuildUserMessagesWithHistory();
 
             // Append: real flow is AddUserMessage → BuildMessages → AddAssistantMessage
-            manager.AddUserMessage("u2");
             manager.AddAssistantMessage("a2");
-
             manager.EnsureHistoryNormalized();
-            // This call must extend cache (not rebuild)
-            var result = manager.BuildUserMessagesWithHistory("u3");
+            manager.AddUserMessage("u3");
+            var result = manager.BuildUserMessagesWithHistory();
 
-            // All 4 history messages present + system + user prompt = 6 minimum
-            Assert.That(result.Count, Is.GreaterThanOrEqualTo(6));
+            // All 4 history messages present + system = 5 minimum
+            Assert.That(result.Count, Is.GreaterThanOrEqualTo(5));
             Assert.That(result[0].Role, Is.EqualTo("system"));
             Assert.That(result[result.Count - 1].Role, Is.EqualTo("user"));
             Assert.That(result[result.Count - 1].Content, Is.EqualTo("u3"));
@@ -396,8 +401,7 @@ namespace LMLocal.Tests.Unit
         {
             // Regression: EnsureHistoryNormalized inserts assistant placeholder
             // when tool result is the last message (dangling tool call, no assistant response).
-            // The tool message itself is dropped in this case — llama.cpp format
-            // requires assistant after tool, so we close with a placeholder.
+            // The tool message is preserved, placeholder closes the turn.
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
@@ -414,17 +418,17 @@ namespace LMLocal.Tests.Unit
                 new ChatMessage("tool", "result1", "c1")
             });
             // No assistant response after tool — next is user directly.
-            // Tool at end triggers placeholder insertion (tool dropped, placeholder closes the turn).
-
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("next question");
+            manager.AddUserMessage("next question");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             var roles = messages.Select(m => m.Role).ToList();
             Assert.That(roles, Is.EqualTo(new List<string>
-                { "system", "user", "assistant", "assistant", "user" }));
-            Assert.That(messages[3].Content, Is.EqualTo("INTERRUPTED"));   // placeholder
-            Assert.That(messages[3].ToolCalls, Is.Null);
-            Assert.That(messages[4].Content, Is.EqualTo("next question")); // current prompt
+                { "system", "user", "assistant", "tool", "assistant", "user" }));
+            Assert.That(messages[2].ToolCalls, Is.Not.Null);
+            Assert.That(messages[4].Content, Is.EqualTo("INTERRUPTED"));   // placeholder
+            Assert.That(messages[4].ToolCalls, Is.Null);
+            Assert.That(messages[5].Content, Is.EqualTo("next question"));
         }
 
         [Test]
@@ -452,9 +456,9 @@ namespace LMLocal.Tests.Unit
             });
             // Simulate interrupted generation: error handler added placeholder assistant
             manager.AddAssistantMessage("INTERRUPTED");
-            // User sends follow-up
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("continue please");
+            manager.AddUserMessage("continue please");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             var roles = messages.Select(m => m.Role).ToList();
             // Stale placeholder removed, fresh placeholder inserted between tool and user.
@@ -490,7 +494,8 @@ namespace LMLocal.Tests.Unit
             // Legitimate final response from the model (not the interruption placeholder)
             manager.AddAssistantMessage("found file.txt");
             manager.EnsureHistoryNormalized();
-            var messages = manager.BuildUserMessagesWithHistory("thanks");
+            manager.AddUserMessage("thanks");
+            var messages = manager.BuildUserMessagesWithHistory();
 
             var roles = messages.Select(m => m.Role).ToList();
             // Real assistant response preserved as-is; no placeholder needed.
@@ -501,6 +506,213 @@ namespace LMLocal.Tests.Unit
             Assert.That(messages[4].Content, Is.EqualTo("found file.txt")); // real response kept
             Assert.That(messages[4].ToolCalls, Is.Null);
             Assert.That(messages[5].Content, Is.EqualTo("thanks"));
+        }
+
+
+        // ---------- EnsureHistoryNormalized edge cases ----------
+
+        [Test]
+        public void EnsureHistoryNormalized_SingleUserMessage_SkippedFromCachePresentInTail()
+        {
+            // Single user message with no assistant response: normalization skips it
+            // from cache (it's the last message), and it's also past _lastCheckedVersion
+            // so it won't appear in the raw tail — effectively lost.
+            // Only the user added _after_ normalization survives.
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("lone message");
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("next");
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            var roles = messages.Select(m => m.Role).ToList();
+            // Lone user skipped from cache (isLast in snapshot), also past _lastCheckedVersion.
+            // Only the post-normalization user appears.
+            Assert.That(roles, Is.EqualTo(new List<string>
+                { "system", "user" }));
+            Assert.That(messages[1].Content, Is.EqualTo("next"));
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_MultipleToolRounds_Preserved()
+        {
+            // Multiple sequential assistant(tc)→tool rounds within a single user turn.
+            // user → assistant(tc1) → tool1 → assistant(tc2) → tool2 → assistant(final) → user
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("complex task");
+            manager.AddAssistantMessage("step 1", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "search", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "result1", "c1")
+            });
+            manager.AddAssistantMessage("step 2", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c2", FunctionName = "read", ArgumentsJson = "{\"path\":\"/f\"}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "result2", "c2")
+            });
+            manager.AddAssistantMessage("all done");
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("thanks");
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            var roles = messages.Select(m => m.Role).ToList();
+            // Expected: system, user, assistant(tc1), tool, assistant(tc2), tool, assistant(final), user
+            Assert.That(roles, Is.EqualTo(new List<string>
+                { "system", "user", "assistant", "tool", "assistant", "tool", "assistant", "user" }));
+            Assert.That(messages[2].ToolCalls, Is.Not.Null);
+            Assert.That(((IReadOnlyList<ToolCall>)messages[2].ToolCalls).Count, Is.EqualTo(1));
+            Assert.That(messages[4].ToolCalls, Is.Not.Null);
+            Assert.That(((IReadOnlyList<ToolCall>)messages[4].ToolCalls).Count, Is.EqualTo(1));
+            Assert.That(messages[6].Content, Is.EqualTo("all done"));
+            Assert.That(messages[6].ToolCalls, Is.Null);
+            Assert.That(messages[7].Content, Is.EqualTo("thanks"));
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_DanglingToolResults_PlaceholderAdded()
+        {
+            // assistant(tc) → tool (last in history, no assistant after).
+            // Normalization adds placeholder to close the tool→assistant gap.
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("find files");
+            manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "result1", "c1")
+            });
+            // No assistant response — tool is last.
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("next");
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            var roles = messages.Select(m => m.Role).ToList();
+            Assert.That(roles, Is.EqualTo(new List<string>
+                { "system", "user", "assistant", "tool", "assistant", "user" }));
+            Assert.That(messages[4].Content, Is.EqualTo("INTERRUPTED"));
+            Assert.That(messages[4].ToolCalls, Is.Null);
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_NonLlamaCpp_NoOp()
+        {
+            // EnsureHistoryNormalized is a no-op for non-LlamaCpp providers.
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "openai" });
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+            manager.AddUserMessage("world"); // consecutive users — would be removed by LlamaCpp normalization
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("again");
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            // Non-LlamaCpp: all messages pass through as-is, no normalization.
+            var roles = messages.Select(m => m.Role).ToList();
+            Assert.That(roles, Is.EqualTo(new List<string>
+                { "system", "user", "user", "user" }));
+            Assert.That(messages[1].Content, Is.EqualTo("hello"));
+            Assert.That(messages[2].Content, Is.EqualTo("world"));
+            Assert.That(messages[3].Content, Is.EqualTo("again"));
+        }
+
+        // ---------- SetPendingAssistant ----------
+
+        [Test]
+        public void SetPendingAssistant_FlushedByAddToolExecutionResultMessages()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("find files");
+            manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            });
+
+            // Before flush — history has only user
+            var before = manager.GetHistoryCopy();
+            Assert.That(before.Count, Is.EqualTo(1));
+            Assert.That(before[0].Role, Is.EqualTo("user"));
+
+            // Flush via AddToolExecutionResultMessages
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "result1", "c1")
+            });
+
+            // After flush — assistant+tc, then tool results
+            var after = manager.GetHistoryCopy();
+            Assert.That(after.Count, Is.EqualTo(3));
+            Assert.That(after[0].Role, Is.EqualTo("user"));
+            Assert.That(after[1].Role, Is.EqualTo("assistant"));
+            Assert.That(after[1].ToolCalls, Is.Not.Null);
+            Assert.That(after[2].Role, Is.EqualTo("tool"));
+            Assert.That(after[2].ToolCallId, Is.EqualTo("c1"));
+        }
+
+        [Test]
+        public void SetPendingAssistant_ClearedOnClear()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            });
+            manager.Clear();
+
+            // Clear discards pending — AddToolExecutionResultMessages is a no-op for assistant
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "result1", "c1")
+            });
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(1)); // only tool result, no assistant
+            Assert.That(history[0].Role, Is.EqualTo("tool"));
+        }
+
+        [Test]
+        public void SetPendingAssistant_NotInHistoryUntilFlushed()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+            manager.SetPendingAssistant("response", new List<ToolCallRecord>());
+
+            // Pending should not appear in history copy
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(1));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
         }
     }
 }

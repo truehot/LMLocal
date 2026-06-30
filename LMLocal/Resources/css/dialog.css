@@ -172,7 +172,7 @@
     }
 
 #model-selector-dialog .modal-header {
-    padding: 12px 16px;
+    padding: 10px 12px;
     background-color: var(--top-bar-bg);
     border-bottom: 1px solid var(--border-color);
     display: flex;
@@ -217,7 +217,7 @@
     }
 
 #model-selector-dialog .modal-container {
-    padding: 8px;
+    padding: 0;
     flex: 1;
     overflow-y: auto;
     background-color: var(--bg-color);
@@ -229,7 +229,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 4px;
+    padding: 8px 8px;
 }
 
 #model-selector-dialog .model-card {
@@ -434,6 +434,49 @@
         transform: translateX(12px);
         background-color: var(--accent-color);
     }
+
+#model-selector-dialog .modal-provider-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+    #model-selector-dialog .modal-provider-row .model-header-select {
+        background-color: var(--input-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 4px;
+        padding: 0 24px 0 8px;
+        font-size: 12px;
+        font-weight: 500;
+        outline: none;
+        height: 28px;
+        cursor: pointer;
+        box-sizing: border-box;
+        width: 100%;
+        transition: border-color 0.15s ease;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'><path d='M1 1L5 5L9 1' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+        #model-selector-dialog .modal-provider-row .model-header-select:focus {
+            border-color: var(--accent-color);
+        }
+
+#model-selector-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: var(--panel-bg);
+    border-top: 1px solid var(--border-color);
+    box-sizing: border-box;
+}
 /* ====== Instructions dialog styles ====== */
 
 #instructions-dialog[open] {
@@ -1603,6 +1646,8 @@
         font-size: 11.5px;
         color: var(--muted-color);
         line-height: 1.4;
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }
 
     #tools-dialog .switch-control {

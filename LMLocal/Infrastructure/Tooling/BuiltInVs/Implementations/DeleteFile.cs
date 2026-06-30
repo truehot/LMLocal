@@ -71,6 +71,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
                     return Error($"Failed to resolve file path: {filePath}");
 
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return Error($"File '{filePath}' is outside the solution directory '{solutionDir}'.");
+
                 try
                 {
                     _fileSystem.ValidateFilePath(absolutePath);

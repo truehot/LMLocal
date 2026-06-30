@@ -1,4 +1,5 @@
-﻿import { createCallback } from '@app/lib/callback.js';
+import { createCallback } from '@app/lib/callback.js';
+import { populateProviderSelect } from '@app/lib/populate-provider-select.js';
 
 export class SettingsDialog {
     constructor() {
@@ -106,46 +107,10 @@ export class SettingsDialog {
 
         this._resetTestButton();
 
-        const populateProvidersSelect = async (defaultProviders = [], providers = []) => {
-            try {
-                providerSelect.innerHTML = '';
-
-                if (defaultProviders && defaultProviders.length > 0) {
-                    defaultProviders.forEach(provider => {
-                        const option = document.createElement('option');
-                        option.value = provider.id;
-                        option.textContent = provider.name;
-                        option._providerData = provider;
-                        providerSelect.appendChild(option);
-                    });
-                }
-
-
-                if (providers && providers.length > 0) {
-                    providers.forEach(provider => {
-                        const option = document.createElement('option');
-                        option.value = provider.id;
-                        option.textContent = provider.name;
-                        option._providerData = provider;
-                        providerSelect.appendChild(option);
-                    });
-                }
-
-                const allProviders = [...(defaultProviders || []), ...(providers || [])];
-                return allProviders;
-            } catch (e) {
-                console.error('Failed to load providers for select', e);
-                return [];
-            }
-        };
-
         try {
             const result = await this.onLoad.emitResult();
 
             const settings = result.success ? result.data : {};
-            const defaultProviders = result.success ? (result.data?.defaultProviders || []) : [];
-            const providers = result.success ? (result.data?.providers || []) : [];
-            const allProviders = await populateProvidersSelect(defaultProviders, providers);
 
             if (settings) {
                 const elems = body.querySelectorAll('[data-setting]');
@@ -166,27 +131,9 @@ export class SettingsDialog {
                     }
                 });
 
-                if (settings.Provider && settings.LmStudioBaseUrl && allProviders.length > 0) {
-                    const savedProviderType = settings.Provider;
-                    const savedBaseUrl = settings.LmStudioBaseUrl;
-                    const savedApiKey = settings.ApiKey;
-                    let matchedProviderIdx = null;
-                    for (let i = 0; i < allProviders.length; i++) {
-                        const opt = allProviders[i];
+                populateProviderSelect(providerSelect, result.data || {}, settings);
 
-                        const isMatched = opt && opt.providerType === savedProviderType && opt.customBaseUrl === savedBaseUrl && opt.customApiKey === savedApiKey;
-                        if (isMatched) {
-                            matchedProviderIdx = i;
-                            break;
-                        }
-                    }
-
-                    if (matchedProviderIdx !== null) {
-                        providerSelect.selectedIndex = matchedProviderIdx;
-                        const changeEvent = new Event('change', { bubbles: true });
-                        providerSelect.dispatchEvent(changeEvent);
-                    }
-                }
+                providerSelect.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }
         catch (e) {

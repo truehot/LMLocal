@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi.Provider;
 
 namespace LMLocal.Infrastructure.Api
@@ -36,6 +40,35 @@ namespace LMLocal.Infrastructure.Api
                 default:
                     return ModelProvider.LmStudio;
             }
+        }
+
+        /// <summary>
+        /// Returns all provider types defined in the ModelProvider enum with their keys and human-readable display names.
+        /// </summary>
+        public static List<ProviderTypeInfo> GetProviderTypes()
+        {
+            var values = (ModelProvider[])Enum.GetValues(typeof(ModelProvider));
+            var result = new List<ProviderTypeInfo>(values.Length);
+            foreach (var value in values)
+            {
+                result.Add(new ProviderTypeInfo
+                {
+                    Key = value.ToString().ToLowerInvariant(),
+                    DisplayName = GetDisplayName(value)
+                });
+            }
+            return result;
+        }
+        /// <summary>
+        /// Returns human-readable display name for a ModelProvider value from its ProviderDisplayAttribute. Falls back to enum name.
+        /// </summary>
+        internal static string GetDisplayName(ModelProvider value)
+        {
+            var member = typeof(ModelProvider).GetMember(value.ToString());
+            if (member == null || member.Length == 0)
+                return value.ToString();
+            var attr = member[0].GetCustomAttribute<ProviderDisplayAttribute>();
+            return attr?.DisplayName ?? value.ToString();
         }
 
         /// <summary>

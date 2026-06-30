@@ -8,6 +8,8 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.LlmApi.Provider;
+using LMLocal.Infrastructure.Api;
 
 namespace LMLocal.Infrastructure.Providers
 {
@@ -27,6 +29,21 @@ namespace LMLocal.Infrastructure.Providers
         private readonly ISettingsManager _settingsManager;
         private readonly SemaphoreSlim _fileLock = new SemaphoreSlim(1, 1);
 
+        /// <summary>
+        /// Defines which <see cref="ModelProvider"/> enum values are default (built-in),
+        /// with their stable IDs and default base URLs.
+        /// ProviderName and ProviderType are derived from the enum and its
+        /// <see cref="ProviderDisplayAttribute"/> — do NOT duplicate them here.
+        /// </summary>
+        private static readonly (int Id, ModelProvider Provider, string BaseUrl)[] DefaultProviderDefs =
+        {
+            (0, ModelProvider.LmStudio, "http://localhost:1234"),
+            (1, ModelProvider.Ollama,   "http://localhost:11434"),
+            (2, ModelProvider.Jan,      "http://localhost:1337"),
+            (4, ModelProvider.LlamaCpp, "http://localhost:8080"),
+            (3, ModelProvider.OpenAi,   string.Empty),
+        };
+
         public ProvidersConfigManager(IFileSystem fileSystem, ISettingsManager settingsManager)
         {
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -43,53 +60,28 @@ namespace LMLocal.Infrastructure.Providers
             _filePath = filePath;
         }
 
+        internal static List<CustomProvider> BuildDefaultProviders()
+        {
+            var result = new List<CustomProvider>(DefaultProviderDefs.Length);
+            foreach (var def in DefaultProviderDefs)
+            {
+                result.Add(new CustomProvider
+                {
+                    Id = def.Id,
+                    ProviderName = ProviderResolver.GetDisplayName(def.Provider),
+                    ProviderType = def.Provider.ToString().ToLowerInvariant(),
+                    CustomBaseUrl = def.BaseUrl,
+                    CustomApiKey = string.Empty
+                });
+            }
+            return result;
+        }
+
         private static ProvidersConfigFile GetDefaultProviders()
         {
             return new ProvidersConfigFile
             {
-                DefaultProviders = new List<CustomProvider>
-                {
-                    new CustomProvider
-                    {
-                        Id = 0,
-                        ProviderName = "LM Studio (local)",
-                        ProviderType = "lmstudio",
-                        CustomBaseUrl = "http://localhost:1234",
-                        CustomApiKey = string.Empty
-                    },
-                    new CustomProvider
-                    {
-                        Id = 1,
-                        ProviderName = "Ollama (local)",
-                        ProviderType = "ollama",
-                        CustomBaseUrl = "http://localhost:11434",
-                        CustomApiKey = string.Empty
-                    },
-                    new CustomProvider
-                    {
-                        Id = 2,
-                        ProviderName = "Jan (local)",
-                        ProviderType = "jan",
-                        CustomBaseUrl = "http://localhost:1337",
-                        CustomApiKey = string.Empty
-                    },
-                    new CustomProvider
-                    {
-                        Id = 4,
-                        ProviderName = "Llama.cpp (local)",
-                        ProviderType = "llamacpp",
-                        CustomBaseUrl = "http://localhost:8080",
-                        CustomApiKey = string.Empty
-                    },
-                    new CustomProvider
-                    {
-                        Id = 3,
-                        ProviderName = "OpenAI compatible (custom)",
-                        ProviderType = "openai",
-                        CustomBaseUrl = string.Empty,
-                        CustomApiKey = string.Empty
-                    }
-                },
+                DefaultProviders = BuildDefaultProviders(),
                 Providers = new List<CustomProvider>()
             };
         }

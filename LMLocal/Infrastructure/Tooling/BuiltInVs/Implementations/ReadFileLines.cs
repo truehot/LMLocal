@@ -34,7 +34,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25}.",
+                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Response includes has_more (true if lines exist beyond the requested range). Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25}.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -74,7 +74,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
 
-                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, endLine, cancellationToken).ConfigureAwait(false);
+                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, endLine + 1, cancellationToken).ConfigureAwait(false);
+                bool hasMore = lines.Count > (endLine - startLine + 1);
+                if (hasMore && lines.Count > 0)
+                    lines.RemoveAt(lines.Count - 1);
 
                 var resultLines = new List<FileLineInfo>();
                 for (int i = 0; i < lines.Count; i++)
@@ -90,6 +93,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     Success = true,
                     FilePath = relativePath,
+                    HasMore = hasMore,
                     Lines = resultLines
                 };
             }
@@ -118,7 +122,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             if (result is FileLinesResponse fileResult)
-                return fileResult.Success ? $"Read {fileResult.Lines.Count} lines." : $"Reading lines failed: {fileResult.ErrorMessage}";
+                return fileResult.Success
+                    ? $"Read {fileResult.Lines.Count} lines."
+                    : $"Reading lines failed: {fileResult.ErrorMessage}";
             return "Reading lines finished.";
         }
 
@@ -175,6 +181,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             [JsonProperty("file_path")]
             public string FilePath { get; set; }
+
+            [JsonProperty("has_more")]
+            public bool HasMore { get; set; }
 
             [JsonProperty("lines")]
             public List<FileLineInfo> Lines { get; set; }

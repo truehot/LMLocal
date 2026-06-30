@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -22,16 +23,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
+        private readonly ISyntaxChecker _syntaxChecker;
 
         public string ToolName => "replace_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public ReplaceFileContent(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem)
+        public ReplaceFileContent(IVsDependencies vsDependencies, IPathResolver pathResolver, ISnapshotManager snapshotManager, IFileSystem fileSystem, ISyntaxChecker syntaxChecker)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _syntaxChecker = syntaxChecker ?? throw new ArgumentNullException(nameof(syntaxChecker));
         }
 
         public ToolDefinition GetToolInfo()
@@ -88,13 +91,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
 
-                byte[] data = Encoding.UTF8.GetBytes(newContent);
-                await _fileSystem.WriteAllBytesAsync(absolutePath, data, cancellationToken);
+                var (fileEncoding, hasBom) = _fileSystem.DetectEncoding(absolutePath);
+                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, newContent, fileEncoding, hasBom, cancellationToken);
+
+                string[] syntaxErrors = null;
+                if (_syntaxChecker.IsSupported(absolutePath))
+                {
+                    if (!_syntaxChecker.IsSyntaxValid(newContent, out var errors))
+                    {
+                        syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                        InternalLogger.Info($"Syntax errors detected after replacement in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
+                    }
+                }
 
                 return new ApplyCodeEditResponse
                 {
                     Success = true,
-                    FilePath = relativePath ?? absolutePath
+                    FilePath = relativePath ?? absolutePath,
+                    SyntaxErrors = syntaxErrors
                 };
             }
             catch (Exception ex)
@@ -152,5 +166,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("error_message")]
         public string ErrorMessage { get; set; }
+
+        [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] SyntaxErrors { get; set; }
     }
 }

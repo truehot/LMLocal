@@ -53,6 +53,65 @@ const __mockBridge = {
     UpdateSettingsAsync: async (json) => {
         console.log('[mock] UpdateSettingsAsync called');
         return true;
+    },
+    GetProvidersAsync: async () => {
+        console.log('[mock] GetProvidersAsync called');
+        return JSON.stringify({
+            success: true,
+            data: {
+                providers: [],
+                providerTypes: [
+                    { key: 'openai', displayName: 'OpenAI' },
+                    { key: 'ollama', displayName: 'Ollama' }
+                ]
+            }
+        });
+    },
+    UpdateProvidersAsync: async (json) => {
+        console.log('[mock] UpdateProvidersAsync called with:', json);
+        return true;
+    },
+    TestConnectionAsync: async (json) => {
+        console.log('[mock] TestConnectionAsync called with:', json);
+        return JSON.stringify({ success: true });
+    },
+    GetToolsAsync: async () => {
+        console.log('[mock] GetToolsAsync called');
+        return JSON.stringify({
+            success: true,
+            data: {
+                tools: [
+                    { id: 'tool-1', name: 'read_file', description: 'Read file contents', enabled: true },
+                    { id: 'tool-2', name: 'write_file', description: 'Write file contents', enabled: false },
+                    { id: 'tool-3', name: 'search_files', description: 'Search for files', enabled: true }
+                ]
+            }
+        });
+    },
+    UpdateToolsAsync: async (json) => {
+        console.log('[mock] UpdateToolsAsync called with:', json);
+        return true;
+    },
+    GetMcpConfigAsync: async () => {
+        console.log('[mock] GetMcpConfigAsync called');
+        return JSON.stringify({
+            success: true,
+            data: {
+                EnableMcp: false,
+                McpServersJson: '{}'
+            }
+        });
+    },
+    UpdateMcpConfigAsync: async (json) => {
+        console.log('[mock] UpdateMcpConfigAsync called with:', json);
+        return true;
+    },
+    TestMcpConnectionAsync: async (json) => {
+        console.log('[mock] TestMcpConnectionAsync called with:', json);
+        return JSON.stringify({
+            success: true,
+            data: { servers: [], hasErrors: false, hasSuccesses: false }
+        });
     }
 };
 
