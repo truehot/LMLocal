@@ -99,8 +99,7 @@ namespace LMLocal.Application.ChatSessionStream
                     _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent);
                 }
 
-                var messages = _history.BuildUserMessagesWithHistory(
-                    context.AdditionalPrompt);
+                var messages = _history.BuildUserMessagesWithHistory(context.AdditionalPrompt);
 
                 var processor = _streamProcessorFactory.Create(linkedCts);
 

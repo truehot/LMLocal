@@ -331,6 +331,7 @@ class ChatController {
         );
         localAi.updateStreaming(msg.content);
         localAi.finishStreaming().then(async () => {
+            this.scrollManager.scrollToBottom();
             localAi.finalize();
         });
     }

@@ -116,7 +116,7 @@ namespace LMLocal
                 chatBrowser.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 chatBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 #endif
-
+                chatBrowser.CoreWebView2.NavigationStarting += OnNavigationStarting;
                 chatBrowser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
                 string html = await GetHtmlFromResourceAsync(settingsManager.HtmlResourcePath);
@@ -138,6 +138,14 @@ namespace LMLocal
         private void OnControlLoaded(object sender, RoutedEventArgs e)
         {
             _ = OnControlLoadedAsync(sender, e);
+        }
+
+        private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (e.NavigationKind != CoreWebView2NavigationKind.NewDocument)
+            {
+                e.Cancel = true;
+            }
         }
 
         private void OnNavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)

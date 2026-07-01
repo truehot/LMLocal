@@ -2,8 +2,12 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using LMLocal.Application.ChatSessionStream;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
@@ -12,23 +16,41 @@ namespace LMLocal.Tests.Unit
     [TestFixture]
     public class StreamProcessorTests
     {
-        private class MockStreamInactivityWatcher : IStreamInactivityWatcher
+        private class MockSettingsManager : ISettingsManager
         {
-            public bool IsTimeout => false;
+            public AppSettings Current { get; }
 
-            public Task WatchAsync(Func<long> isActive, CancellationToken cancellationToken)
+            public MockSettingsManager() : this(0) { }
+
+            public MockSettingsManager(int timeoutSeconds)
             {
-                return Task.CompletedTask;
+                Current = new AppSettings { StreamInactivityTimeoutSeconds = timeoutSeconds };
             }
 
-            public void SignalCompletion() { }
+            public string ApplicationName => "";
+            public string SettingsFileName => "";
+            public string LocalAppDataFolder => "";
+            public string LocalAppSettingFileName => "";
+            public string LocalAppInstructionsFileName => "";
+            public string LocalAppMcpFileName => "";
+            public string WebViewUserDataFolder => "";
+            public string ChatHistoryFolder => "";
+            public string ChatHistoryFileLabel => "";
+            public string HtmlResourcePath => "";
+            public string VirtualHostName => "";
+            public string SystemPrompt => "";
+            public int BatchIntervalMs => 100;
+            public int WindowSeconds => 5;
+            public int RequestTimeoutSeconds => 105;
+            public string SnapshotFolder => "";
+            public string LocalSnapshotsFileName => "";
+            public string UserAgent => "";
+            public string AssistantPlaceholder => "";
 
-            public void SignalActivity() { }
+            public event Action<AppSettings> SettingsChanged { add { } remove { } }
 
-            public Task WatchAsync(CancellationToken cancellationToken)
-            {
-                return Task.CompletedTask;
-            }
+            public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Current);
+            public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private class MockTokenSpeedCalculator : ITokenSpeedCalculator
@@ -42,7 +64,7 @@ namespace LMLocal.Tests.Unit
         {
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var json = "data: {\"choices\":[{\"delta\":{\"content\":\"cancel\"}}]}\n";
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
@@ -60,7 +82,7 @@ namespace LMLocal.Tests.Unit
             int chunkCount = 0;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var json = new StringBuilder();
             json.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"a\"}}]}");
@@ -78,7 +100,7 @@ namespace LMLocal.Tests.Unit
             bool chunkCalled = false;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var json = "\n   \ndata: [DONE]\n";
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
@@ -95,7 +117,7 @@ namespace LMLocal.Tests.Unit
             bool errorCalled = false;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var invalid = "data: {not a json}\n";
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(invalid)))
@@ -112,7 +134,7 @@ namespace LMLocal.Tests.Unit
             int reportedTokens = 0;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             // usage typically arrives in a separate chunk; simulate content then usage
             var json = new StringBuilder();
@@ -133,7 +155,7 @@ namespace LMLocal.Tests.Unit
             int chunkCount = 0;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var json = "data: {\"choices\":[{\"delta\":{\"content\":\"final\"}}]}\n";
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
@@ -149,7 +171,7 @@ namespace LMLocal.Tests.Unit
             bool chunkCalled = false;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             using (var stream = new MemoryStream())
             {
@@ -167,7 +189,7 @@ namespace LMLocal.Tests.Unit
             int reportedTokens = 0;
             var processor = new StreamProcessor(
                 new MockTokenSpeedCalculator(),
-                inactivityWatcher: new MockStreamInactivityWatcher()
+                new MockSettingsManager()
             );
             var json = "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n";
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
@@ -179,51 +201,44 @@ namespace LMLocal.Tests.Unit
                 Assert.That(reportedTokens, Is.EqualTo(1));
             }
         }
-
         [Test]
-        public async Task ProcessStreamAsync_UsesInactivityWatcher_WhenProvided()
+        [Timeout(10000)] // 10s safety for CI
+        public async Task ProcessStreamAsync_ReturnsTimeoutError_WhenNetworkStreamHangs()
         {
-            bool watcherCalled = false;
-            var watcherMock = new CustomStreamInactivityWatcher(() => watcherCalled = true);
-
-            var processor = new StreamProcessor(
-                new MockTokenSpeedCalculator(),
-                inactivityWatcher: watcherMock
-            );
-
-            var json = "data: {\"choices\":[{\"delta\":{\"content\":\"test\"}}]}\n";
-            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            try
             {
-                await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { await Task.CompletedTask; });
-                Assert.That(watcherCalled, Is.True);
+                listener.Start();
+                var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+                // Connect a client that never sends data
+                using (var client = new TcpClient())
+                {
+                    await client.ConnectAsync(IPAddress.Loopback, port);
+
+                    using (var server = await listener.AcceptTcpClientAsync())
+                    using (var serverStream = server.GetStream())
+                    {
+                        var processor = new StreamProcessor(
+                            new MockTokenSpeedCalculator(),
+                            new MockSettingsManager(1) // 1 second timeout
+                        );
+
+                        var result = await processor.ProcessStreamAsync(
+                            serverStream,
+                            CancellationToken.None,
+                            null,
+                            batchIntervalMs: 1 // small interval so consumer exits quickly after timeout
+                        );
+
+                        Assert.That(result.ErrorMessage, Is.EqualTo("Stream read timeout"));
+                        Assert.That(result.WasCancelled, Is.False);
+                    }
+                }
             }
-        }
-
-        private class CustomStreamInactivityWatcher : IStreamInactivityWatcher
-        {
-            private readonly Action _onWatchCalled;
-
-            public CustomStreamInactivityWatcher(Action onWatchCalled)
+            finally
             {
-                _onWatchCalled = onWatchCalled;
-            }
-
-            public bool IsTimeout => false;
-
-            public Task WatchAsync(Func<long> isActive, CancellationToken cancellationToken)
-            {
-                _onWatchCalled();
-                return Task.CompletedTask;
-            }
-
-            public void SignalCompletion() { }
-
-            public void SignalActivity() { }
-
-            public Task WatchAsync(CancellationToken cancellationToken)
-            {
-                _onWatchCalled();
-                return Task.CompletedTask;
+                listener.Stop();
             }
         }
     }

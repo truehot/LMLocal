@@ -26,14 +26,7 @@ namespace LMLocal.Application.ChatSessionStream
             int windowSeconds = _settingsManager.WindowSeconds;
             var speedCalculator = new TokenSpeedCalculator(windowSeconds: windowSeconds);
 
-            int timeoutSeconds = _settingsManager.Current?.StreamInactivityTimeoutSeconds ?? 0;
-            IStreamInactivityWatcher watcher;
-            if (timeoutSeconds > 0)
-                watcher = new StreamInactivityWatcher(cts, timeoutSeconds);
-            else
-                watcher = new NoopStreamInactivityWatcher();
-
-            return new StreamProcessor(speedCalculator, watcher);
+            return new StreamProcessor(speedCalculator, _settingsManager);
         }
     }
 }

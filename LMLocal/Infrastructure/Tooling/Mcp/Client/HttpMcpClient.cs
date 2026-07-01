@@ -110,8 +110,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             {
                 cts.CancelAfter(_requestTimeout);
 
-                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token)
-                    .ConfigureAwait(false))
+                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false))
                 {
                     ExtractSessionIdFromResponse(response);
 

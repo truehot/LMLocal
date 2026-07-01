@@ -1,8 +1,11 @@
+using System;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.ChatSessionStream;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
@@ -17,19 +20,37 @@ namespace LMLocal.Tests.Unit
             public double GetTokensPerSecond() => 0.0;
         }
 
-        private class MockWatcher : IStreamInactivityWatcher
+        private class MockSettingsManager : ISettingsManager
         {
-            public bool IsTimeout => false;
-            public void SignalCompletion() { }
-            public void SignalActivity() { }
-            public Task WatchAsync(System.Func<long> activityTimeMs, CancellationToken cancellationToken) => Task.CompletedTask;
-            public Task WatchAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            public AppSettings Current => new AppSettings { StreamInactivityTimeoutSeconds = 0 };
+            public string ApplicationName => "";
+            public string SettingsFileName => "";
+            public string LocalAppDataFolder => "";
+            public string LocalAppSettingFileName => "";
+            public string LocalAppInstructionsFileName => "";
+            public string LocalAppMcpFileName => "";
+            public string WebViewUserDataFolder => "";
+            public string ChatHistoryFolder => "";
+            public string ChatHistoryFileLabel => "";
+            public string HtmlResourcePath => "";
+            public string VirtualHostName => "";
+            public string SystemPrompt => "";
+            public int BatchIntervalMs => 100;
+            public int WindowSeconds => 5;
+            public int RequestTimeoutSeconds => 105;
+            public string SnapshotFolder => "";
+            public string LocalSnapshotsFileName => "";
+            public string UserAgent => "";
+            public string AssistantPlaceholder => "";
+            public event Action<AppSettings> SettingsChanged { add { } remove { } }
+            public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Current);
+            public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         [Test]
         public async Task ProcessStreamAsync_CollectsToolCalls_MetadataAndArguments()
         {
-            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockWatcher());
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
 
             var sb = new StringBuilder();
             sb.AppendLine("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call0\",\"function\":{\"name\":\"fn0\"}}]}}]}");

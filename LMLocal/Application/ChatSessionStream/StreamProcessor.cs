@@ -6,8 +6,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Sockets;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Streaming;
 using Newtonsoft.Json;
 
@@ -21,7 +23,7 @@ namespace LMLocal.Application.ChatSessionStream
     internal class StreamProcessor : IStreamProcessor
     {
         private readonly ITokenSpeedCalculator _tokenSpeedCalculator;
-        private readonly IStreamInactivityWatcher _inactivityWatcher;
+        private readonly ISettingsManager _settingsManager;
 
         private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata =
             new Dictionary<int, (string CallId, string FunctionName)>();
@@ -30,10 +32,10 @@ namespace LMLocal.Application.ChatSessionStream
 
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
-            IStreamInactivityWatcher inactivityWatcher)
+            ISettingsManager settingsManager)
         {
             _tokenSpeedCalculator = tokenSpeedCalculator ?? throw new ArgumentNullException(nameof(tokenSpeedCalculator));
-            _inactivityWatcher = inactivityWatcher ?? throw new ArgumentNullException(nameof(inactivityWatcher));
+            _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
         }
 
         public async Task<StreamCompletionResult> ProcessStreamAsync(
@@ -69,8 +71,6 @@ namespace LMLocal.Application.ChatSessionStream
 
             try
             {
-                var inactivityWatcherTask = _inactivityWatcher.WatchAsync(cancellationToken);
-
                 var consumerTask = Task.Run(async () =>
                 {
                     while (true)
@@ -105,7 +105,6 @@ namespace LMLocal.Application.ChatSessionStream
 
                         if (done || cancellationToken.IsCancellationRequested)
                         {
-                            _inactivityWatcher.SignalCompletion();
                             break;
                         }
 
@@ -124,12 +123,20 @@ namespace LMLocal.Application.ChatSessionStream
                 {
                     try
                     {
+                        int timeoutSeconds = _settingsManager.Current.StreamInactivityTimeoutSeconds;
+                        if (stream.CanTimeout)
+                        {
+                            stream.ReadTimeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : Timeout.Infinite;
+                        }
+
+                        // Deliberately using sync ReadLine with ReadTimeout instead of ReadLineAsync,
+                        // because ReadLineAsync ignores NetworkStream.ReadTimeout on .NET Framework 4.7.2
+#pragma warning disable VSTHRD103
                         string line;
-                        while ((line = await reader.ReadLineAsync().ConfigureAwait(false)) != null)
+                        while ((line = reader.ReadLine()) != null)
+#pragma warning restore VSTHRD103
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-
-                            _inactivityWatcher.SignalActivity();
 
                             if (string.IsNullOrWhiteSpace(line))
                                 continue;
@@ -214,38 +221,34 @@ namespace LMLocal.Application.ChatSessionStream
                         }
 
                         cancelRegistration.Dispose();
-                        _inactivityWatcher.SignalCompletion();
                     }
                 }
 
                 await consumerTask.ConfigureAwait(false);
-                await inactivityWatcherTask.ConfigureAwait(false);
-            }
-            catch (ObjectDisposedException ex)
-            {
-                if (_inactivityWatcher.IsTimeout)
-                {
-                    InternalLogger.Info($"Stream canceled due to inactivity timeout: {ex.Message}");
-                    result.ErrorMessage = "Stream canceled due to inactivity timeout";
-                }
-                else
-                {
-                    InternalLogger.Info($"Stream canceled by user: {ex.Message}");
-                }
-                result.WasCancelled = true;
             }
             catch (OperationCanceledException ex)
             {
-                if (_inactivityWatcher.IsTimeout)
+                InternalLogger.Info($"Stream canceled by user: {ex.Message}");
+                result.WasCancelled = true;
+            }
+            catch (ObjectDisposedException ex)
+            {
+                InternalLogger.Info($"Stream closed by user cancellation: {ex.Message}");
+                result.WasCancelled = true;
+            }
+            catch (IOException ex) when (ex.InnerException is SocketException socketEx && socketEx.SocketErrorCode == SocketError.TimedOut)
+            {
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    InternalLogger.Info($"Stream canceled due to inactivity timeout: {ex.Message}");
-                    result.ErrorMessage = "Stream canceled due to inactivity timeout";
+                    InternalLogger.Info("Stream canceled by user (timeout exception after cancellation)");
+                    result.WasCancelled = true;
                 }
                 else
                 {
-                    InternalLogger.Info($"Stream canceled by user: {ex.Message}");
+                    InternalLogger.Info($"Stream read timeout: {ex.Message}");
+                    result.ErrorMessage = "Stream read timeout";
+                    result.WasCancelled = false;
                 }
-                result.WasCancelled = true;
             }
             catch (Exception ex)
             {
@@ -256,7 +259,6 @@ namespace LMLocal.Application.ChatSessionStream
             finally
             {
                 stream?.Close();
-                _inactivityWatcher.SignalCompletion();
             }
 
             result.ContentResponse = fullResponse.ToString();
@@ -323,10 +325,10 @@ namespace LMLocal.Application.ChatSessionStream
             int contentEnd = trimmed.Length - ToolCallEnd.Length;
             string inner = trimmed.Substring(contentStart, contentEnd - contentStart);
 
-            if (string.IsNullOrWhiteSpace(inner)) {
+            if (string.IsNullOrWhiteSpace(inner))
+            {
                 return;
             }
-            
 
             var funcMatch = Regex.Match(inner, @"<function\s*=\s*([^>]+)>");
             if (!funcMatch.Success)
@@ -354,7 +356,6 @@ namespace LMLocal.Application.ChatSessionStream
             {
                 string argumentsJson = ConvertToolParametersToJson(arguments);
                 toolCallBuffers[toolIndex].Append(argumentsJson);
-
             }
 
             InternalLogger.Info($"[StreamProcessor] Parsed tool: {functionName}, args length={arguments.Length}");

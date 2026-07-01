@@ -5,8 +5,6 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using EnvDTE;
-using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -165,33 +163,36 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10)))
                 using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
                 {
+                    var cancellationTokenForWait = linkedCts.Token;
+
                     try
                     {
                         await Task.Run(
                             () =>
                             {
-                                if (!process.WaitForExit(5000))
+                                while (!process.WaitForExit(3000))
                                 {
-                                    try
-                                    {
-                                        process.Kill();
-                                    }
-                                    catch
-                                    {
-                                        InternalLogger.Error("Failed to kill the test process after timeout.");
-                                    }
+                                    cancellationTokenForWait.ThrowIfCancellationRequested();
                                 }
                             }
-                            , linkedCts.Token);
+                            , cancellationTokenForWait);
                     }
                     catch (OperationCanceledException)
                     {
                         if (!process.HasExited)
                         {
                             try { process.Kill(); } catch { }
-                            process.WaitForExit(5000);
+                            process.WaitForExit(3000);
                         }
-                        return (false, "Test execution cancelled or timed out.", 0, 0, 0, 0);
+
+                        if (cancellationToken.IsCancellationRequested) { 
+                            return (false, "Test execution cancelled by user.", 0, 0, 0, 0);
+                        }
+                        else
+                        {
+                            return (false, "Test execution timed out (10 minutes).", 0, 0, 0, 0);
+                        }
+                            
                     }
                 }
 
@@ -296,16 +297,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
                     cts.CancelAfter(TimeSpan.FromMinutes(5));
+                    var cancellationTokenForWait = cts.Token;
                     try
                     {
-                        await Task.Run(() => buildProcess.WaitForExit(5000), cts.Token);
+                        await Task.Run(
+                            () =>
+                            {
+                                while (!buildProcess.WaitForExit(3000))
+                                {
+                                    cancellationTokenForWait.ThrowIfCancellationRequested();
+                                }
+                            }
+                            , cancellationTokenForWait);
                     }
                     catch (OperationCanceledException)
                     {
                         if (!buildProcess.HasExited)
                         {
                             try { buildProcess.Kill(); } catch { }
-                            buildProcess.WaitForExit(5000);
+                            buildProcess.WaitForExit(3000);
                         }
                         return (false, "Build cancelled or timed out.");
                     }

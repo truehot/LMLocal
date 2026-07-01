@@ -11,11 +11,11 @@ namespace LMLocal.Tests.Unit
     public class StreamProcessorFactoryTests
     {
         [Test]
-        public void Create_Uses_NoopWatcher_WhenTimeoutZero()
+        public void Create_Returns_Processor_With_SettingsManager()
         {
             var settingsMock = new Mock<ISettingsManager>();
             settingsMock.Setup(s => s.WindowSeconds).Returns(5);
-            var app = new AppSettings { StreamInactivityTimeoutSeconds = 0 };
+            var app = new AppSettings { StreamInactivityTimeoutSeconds = 20 };
             settingsMock.Setup(s => s.Current).Returns(app);
 
             var factory = new StreamProcessorFactory(settingsMock.Object);
@@ -23,30 +23,13 @@ namespace LMLocal.Tests.Unit
             var processor = factory.Create(cts);
 
             Assert.That(processor, Is.Not.Null);
-            // we can further assert by reflection that watcher type is NoopStreamInactivityWatcher
-            var field = processor.GetType().GetField("_inactivityWatcher", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.That(processor, Is.InstanceOf<StreamProcessor>());
+
+            // Verify settings manager was passed through
+            var field = processor.GetType().GetField("_settingsManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             Assert.That(field, Is.Not.Null);
-            var watcher = field.GetValue(processor);
-            Assert.That(watcher.GetType().Name, Is.EqualTo("NoopStreamInactivityWatcher"));
-        }
-
-        [Test]
-        public void Create_Uses_StreamInactivityWatcher_WhenTimeoutPositive()
-        {
-            var settingsMock = new Mock<ISettingsManager>();
-            settingsMock.Setup(s => s.WindowSeconds).Returns(5);
-            var app = new AppSettings { StreamInactivityTimeoutSeconds = 3 };
-            settingsMock.Setup(s => s.Current).Returns(app);
-
-            var factory = new StreamProcessorFactory(settingsMock.Object);
-            var cts = new CancellationTokenSource();
-            var processor = factory.Create(cts);
-
-            Assert.That(processor, Is.Not.Null);
-            var field = processor.GetType().GetField("_inactivityWatcher", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            Assert.That(field, Is.Not.Null);
-            var watcher = field.GetValue(processor);
-            Assert.That(watcher.GetType().Name, Is.EqualTo("StreamInactivityWatcher"));
+            var settings = field.GetValue(processor);
+            Assert.That(settings, Is.SameAs(settingsMock.Object));
         }
     }
 }
