@@ -250,6 +250,7 @@ export class SettingsDialog {
                         const selectedOption = providerSelect.options[providerSelect.selectedIndex];
                         if (selectedOption._providerData) {
                             newSettings.Provider = selectedOption._providerData.providerType || 'openai';
+                            newSettings.ProviderId = selectedOption._providerData.id ?? null;
                         }
                     }
 

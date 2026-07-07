@@ -29,6 +29,8 @@ namespace LMLocal.Infrastructure.Api
                     return ModelProvider.OpenAi;
                 case "jan":
                     return ModelProvider.Jan;
+                case "togetherai":
+                    return ModelProvider.TogetherAi;
                 case "deepseek":
                     return ModelProvider.DeepSeek;
                 case "gemini":
@@ -82,6 +84,8 @@ namespace LMLocal.Infrastructure.Api
                 return ApiEndpoints.OllamaRunningModels;
             else if (provider == ModelProvider.Jan)
                 return ApiEndpoints.ListModels;
+            else if (provider == ModelProvider.TogetherAi)
+                return ApiEndpoints.ListModels;
             else if (provider == ModelProvider.DeepSeek)
                 return ApiEndpoints.DeepSeekListModels;
             else if (provider == ModelProvider.Gemini)
@@ -97,7 +101,9 @@ namespace LMLocal.Infrastructure.Api
         /// </summary>
         public static string GetChatCompletionsEndpoint(ModelProvider provider)
         {
-            if (provider == ModelProvider.DeepSeek)
+            if (provider == ModelProvider.TogetherAi)
+                return ApiEndpoints.ChatCompletions;
+            else if (provider == ModelProvider.DeepSeek)
                 return ApiEndpoints.DeepSeekCompletions;
             else if (provider == ModelProvider.Gemini)
                 return ApiEndpoints.GeminiCompletions;

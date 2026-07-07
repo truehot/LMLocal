@@ -67,8 +67,7 @@ namespace LMLocal.Infrastructure.Tooling
         /// <summary>
         /// Checks if built-in tools are enabled (at least read-only).
         /// </summary>
-        private bool AreBuiltInToolsEnabled =>
-            _settingsManager?.Current?.EnableAiTools ?? true;
+        private bool AreBuiltInToolsEnabled => _settingsManager?.Current?.EnableAiTools ?? true;
 
         /// <summary>
         /// Checks if write tools are enabled (full access).

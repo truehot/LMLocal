@@ -126,12 +126,14 @@ namespace LMLocal.Tests.Unit
             public Task<List<ChatMessage>> LoadLastSessionAsync() => Task.FromResult(new List<ChatMessage>());
             public void EnsureHistoryNormalized() { }
             public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
+            public void MoveLastExchangeToNewSession() { }
         }
 
         private class DummyCompactor : IHistoryCompactor
         {
             public Task CompactIfNeededAsync(string modelId, CancellationToken token) => Task.CompletedTask;
             public bool NeedsCompaction() => false;
+            public Task<string> SummarizeAsync(IReadOnlyList<ChatMessage> history, string modelId, CancellationToken ct) => Task.FromResult<string>(null);
         }
 
         [Test]

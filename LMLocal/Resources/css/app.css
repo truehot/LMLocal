@@ -209,9 +209,6 @@ body {
     line-height: 1.6;
     max-width: 100%;
     word-wrap: break-word;
-    content-visibility: auto;
-    contain-intrinsic-size: 1px 200px;
-    contain: layout paint;
 }
 
     .ai-message.completed {
@@ -326,6 +323,16 @@ body {
         background-color: var(--border-color);
         margin: 16px 0;
     }
+
+    .ai-message  h1,
+    .ai-message  h2,
+    .ai-message h3,
+    .ai-message p {
+        line-height: 1.5;
+        margin-top: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
 /* ====== response ====== */
 .ai-response-container.is-generating table {
     table-layout: fixed;
@@ -801,47 +808,7 @@ body {
         content: "■";
         font-size: 10px;
     }
-/* ====== Tool button styles ====== */
-.tool-status, .tool-status-error, .tool-status-completed {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    margin: 10px 0px 10px 0px;
-    padding: 5px 13px;
-    background: transparent;
-    border-left: 2px solid var(--border-color);
-    color: var(--text-color);
-    font-size: 12px;
-    opacity: 0.8;
-}
 
-    .tool-status::before {
-        content: "⚙";
-        font-size: 10px;
-        animation: spin 2s linear infinite;
-    }
-
-    .tool-status-completed::before {
-        content: "✔";
-        color: var(--success-color);
-        font-size: 10px;
-    }
-
-    .tool-status-error::before {
-        content: "✖";
-        color: var(--error-color);
-        font-size: 10px;
-    }
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
 /* ====== Container for textare and button  ====== */
 .input-container {
     width: 100%;

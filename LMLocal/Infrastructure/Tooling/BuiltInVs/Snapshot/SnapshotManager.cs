@@ -557,9 +557,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
+            var remaining = await GetChangedFilesWithStatusAsync(ct).ConfigureAwait(false);
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
+                await handlers.Invoke(remaining);
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)
@@ -708,9 +709,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 await Task.Run(() => Directory.Delete(dirToDelete, recursive: true), ct).ConfigureAwait(false);
             }
 
+            var remaining = await GetChangedFilesWithStatusAsync(ct).ConfigureAwait(false);
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
+                await handlers.Invoke(remaining);
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)

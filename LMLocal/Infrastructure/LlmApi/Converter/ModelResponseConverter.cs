@@ -32,6 +32,8 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     return ConvertOllamaResponseToUnified(json);
                 else if (provider == ModelProvider.Jan)
                     return ConvertJanResponseToUnified(json);
+                else if (provider == ModelProvider.TogetherAi)
+                    return ConvertTogetherAiResponseToUnified(json);
                 else if (provider == ModelProvider.GithubModelsAzure)
                     return ConvertAzureResponseToUnified(json);
                 else
@@ -44,6 +46,9 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
         }
 
+        /// <summary>
+        /// Converts LM Studio /v1/models response to unified format.
+        /// </summary>
         public static UnifiedListModelsResponse ConvertLmStudioResponseToUnified(string json)
         {
             try
@@ -361,6 +366,59 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 InternalLogger.Warn($"ConvertLlamaCppResponseToUnified: failed to parse llama.cpp response: {ex.Message}");
                 return new UnifiedListModelsResponse { Error = "Failed to parse llama.cpp response" };
             }
+        }
+
+        /// <summary>
+        /// Converts Together AI /v1/models response to unified format.
+        /// </summary>
+        public static UnifiedListModelsResponse ConvertTogetherAiResponseToUnified(string json)
+        {
+            try
+            {
+                var models = json.FromJson<List<TogetherAiModelInfo>>();
+                if (models == null || models.Count == 0)
+                {
+                    return new UnifiedListModelsResponse { Error = "No models returned from Together AI" };
+                }
+
+                var result = new UnifiedListModelsResponse { Models = new List<UnifiedModelInfo>() };
+
+                foreach (var model in models)
+                {
+                    int? maxTokens = model.ContextLength > 0 ? model.ContextLength : (int?)null;
+                    bool? supportsTools = HasToolSupportInChatTemplate(model.Config?.ChatTemplate);
+
+                    var unifiedModel = new UnifiedModelInfo
+                    {
+                        Id = model.Id,
+                        Name = model.DisplayName,
+                        MaxTokens = maxTokens,
+                        SupportsMaxTokens = maxTokens.HasValue,
+                        IsLoaded = false,
+                        SupportsToolUse = supportsTools
+                    };
+
+                    result.Models.Add(unifiedModel);
+                }
+
+                return result;
+            }
+            catch (JsonException ex)
+            {
+                InternalLogger.Warn($"ConvertTogetherAiResponseToUnified: failed to parse Together AI response: {ex.Message}");
+                return new UnifiedListModelsResponse { Error = "Failed to parse Together AI response" };
+            }
+        }
+
+        /// <summary>
+        /// Checks whether a Jinja chat template contains tool-calling tokens.
+        /// </summary>
+        private static bool? HasToolSupportInChatTemplate(string chatTemplate)
+        {
+            if (string.IsNullOrEmpty(chatTemplate))
+                return null;
+
+            return chatTemplate.IndexOf("tools", StringComparison.OrdinalIgnoreCase) >= 0 || chatTemplate.IndexOf("tool_calls", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 }

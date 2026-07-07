@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
@@ -54,6 +55,7 @@ namespace LMLocal.Tests.Unit
                 var mockActiveModelContext = new Mock<IActiveModelContext>();
                 mockActiveModelContext.SetupGet(a => a.CurrentModelId).Returns("model1");
                 var mockHistoryManager = new Mock<IChatHistoryManager>();
+                var mockCompactor = new Mock<IHistoryCompactor>();
 
                 var mockInstructions = new Mock<IInstructionsManager>();
                 var mockMcp = new Mock<IMcpConfigManager>();
@@ -62,7 +64,7 @@ namespace LMLocal.Tests.Unit
                 var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
                 var mockToolsConfigManager = new Mock<IToolsConfigManager>();
                 var mockSnapshotManager = new Mock<ISnapshotManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -85,6 +87,7 @@ namespace LMLocal.Tests.Unit
                 mockModelsListService.Setup(o => o.ListModelsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("boom"));
 
                 var mockHistoryManager = new Mock<IChatHistoryManager>();
+                var mockCompactor = new Mock<IHistoryCompactor>();
                 var mockInstructions = new Mock<IInstructionsManager>();
                 var mockMcp = new Mock<IMcpConfigManager>();
                 var mockMcpToolManager = new Mock<IMcpToolManager>();
@@ -92,7 +95,7 @@ namespace LMLocal.Tests.Unit
                 var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
                 var mockToolsConfigManager = new Mock<IToolsConfigManager>();
                 var mockSnapshotManager = new Mock<ISnapshotManager>();
-                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, new Mock<IGetActiveDocument>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+                var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, new Mock<IWebViewScriptExecutor>().Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, new Mock<IGetActiveDocument>().Object, new Mock<ISessionManager>().Object, new Mock<IActiveModelContext>().Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
                 var json = await bridge.ListModelsAsync().ConfigureAwait(false);
 
@@ -109,6 +112,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             var mockInstructions = new Mock<IInstructionsManager>();
             var mockMcp = new Mock<IMcpConfigManager>();
@@ -117,7 +121,7 @@ namespace LMLocal.Tests.Unit
             var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
             var mockToolsConfigManager = new Mock<IToolsConfigManager>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
             await bridge.ExecutePromptAsync(null).ConfigureAwait(false);
             await bridge.ExecutePromptAsync("").ConfigureAwait(false);
@@ -137,6 +141,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             mockActiveDoc.Setup(a => a.GetContentAsync()).ReturnsAsync("file content");
 
@@ -152,7 +157,7 @@ namespace LMLocal.Tests.Unit
             var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
             var mockToolsConfigManager = new Mock<IToolsConfigManager>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
             var req = new LMLocal.Models.ExecutePromptRequest { Prompt = "hello", IncludeContent = true, AdditionalPrompt = "add", ModelId = "m1" };
             var json = req.ToJson();
@@ -179,6 +184,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             var mockInstructions = new Mock<IInstructionsManager>();
             var mockMcp = new Mock<IMcpConfigManager>();
@@ -187,7 +193,7 @@ namespace LMLocal.Tests.Unit
             var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
             var mockToolsConfigManager = new Mock<IToolsConfigManager>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
             var res1 = await bridge.SetActiveModelAsync(null, 0).ConfigureAwait(false);
             Assert.That(res1, Is.False);
@@ -211,6 +217,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
 
@@ -221,9 +228,9 @@ namespace LMLocal.Tests.Unit
             var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
             var mockToolsConfigManager = new Mock<IToolsConfigManager>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
-            var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
+            var reset = await bridge.ResetHistoryWithActionAsync("none").ConfigureAwait(false);
             Assert.That(reset, Is.True);
             mockHistoryManager.Verify(h => h.Clear(), Times.Once);
 
@@ -232,7 +239,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task ResetHistoryAsync_WhenSessionRunning_ReturnsFalse()
+        public async Task ResetHistoryWithAction_WhenSessionRunning_ReturnsFalse()
         {
             var mockSettings = new Mock<ISettingsManager>();
             var mockModelsListService = new Mock<IModelsListService>();
@@ -241,6 +248,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             mockSession.SetupGet(s => s.IsSessionRunning).Returns(true);
 
@@ -251,10 +259,39 @@ namespace LMLocal.Tests.Unit
             var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
             var mockToolsConfigManager = new Mock<IToolsConfigManager>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
-            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
-            var reset = await bridge.ResetHistoryAsync().ConfigureAwait(false);
+            var reset = await bridge.ResetHistoryWithActionAsync("none").ConfigureAwait(false);
             Assert.That(reset, Is.False);
+            mockHistoryManager.Verify(h => h.Clear(), Times.Never);
+        }
+
+        [Test]
+        public async Task ResetHistoryWithAction_LastPrompt_CallsMoveLastExchange()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockModelsListService = new Mock<IModelsListService>();
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
+
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+
+            var mockInstructions = new Mock<IInstructionsManager>();
+            var mockMcp = new Mock<IMcpConfigManager>();
+            var mockMcpToolManager = new Mock<IMcpToolManager>();
+            var mockProvidersConfigManager = new Mock<IProvidersConfigManager>();
+            var mockBuiltInVsToolProvider = new Mock<IBuiltInVsToolProvider>();
+            var mockToolsConfigManager = new Mock<IToolsConfigManager>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object, mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object, mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object, mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            var reset = await bridge.ResetHistoryWithActionAsync("last-prompt").ConfigureAwait(false);
+            Assert.That(reset, Is.True);
+            mockHistoryManager.Verify(h => h.MoveLastExchangeToNewSession(), Times.Once);
             mockHistoryManager.Verify(h => h.Clear(), Times.Never);
         }
 
@@ -268,6 +305,7 @@ namespace LMLocal.Tests.Unit
             var mockSession = new Mock<ISessionManager>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
             var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
 
             var mockInstructions = new Mock<IInstructionsManager>();
             var mockMcp = new Mock<IMcpConfigManager>();
@@ -294,12 +332,118 @@ namespace LMLocal.Tests.Unit
                 mockInstructions.Object, mockMcp.Object, mockMcpToolManager.Object,
                 mockProvidersConfigManager.Object, mockBuiltInVsToolProvider.Object,
                 mockToolsConfigManager.Object, mockActiveDoc.Object, mockSession.Object,
-                mockActiveModelContext.Object, mockHistoryManager.Object, mockSnapshotManager.Object);
+                mockActiveModelContext.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
             var json = await bridge.GetProvidersAsync().ConfigureAwait(false);
 
             Assert.That(json, Is.Not.Null.And.Not.Empty);
             Assert.That(json, Does.Contain("\"providerTypes\""));
+        }
+
+        [Test]
+        public async Task SummarizeAndCompactAsync_SessionRunning_ReturnsFalse()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockModelsListService = new Mock<IModelsListService>();
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
+
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(true);
+
+            var bridge = new WebViewBridge(mockSettings.Object, mockModelsListService.Object, mockScript.Object,
+                new Mock<IInstructionsManager>().Object, new Mock<IMcpConfigManager>().Object,
+                new Mock<IMcpToolManager>().Object, new Mock<IProvidersConfigManager>().Object,
+                new Mock<IBuiltInVsToolProvider>().Object, new Mock<IToolsConfigManager>().Object,
+                mockActiveDoc.Object, mockSession.Object, mockActiveModelContext.Object,
+                mockHistoryManager.Object, mockCompactor.Object, new Mock<ISnapshotManager>().Object);
+
+            var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public async Task SummarizeAndCompactAsync_NoModel_ReturnsFalse()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockSession = new Mock<ISessionManager>();
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+
+            var bridge = new WebViewBridge(mockSettings.Object, new Mock<IModelsListService>().Object,
+                new Mock<IWebViewScriptExecutor>().Object, new Mock<IInstructionsManager>().Object,
+                new Mock<IMcpConfigManager>().Object, new Mock<IMcpToolManager>().Object,
+                new Mock<IProvidersConfigManager>().Object, new Mock<IBuiltInVsToolProvider>().Object,
+                new Mock<IToolsConfigManager>().Object, new Mock<IGetActiveDocument>().Object,
+                mockSession.Object, new Mock<IActiveModelContext>().Object,
+                new Mock<IChatHistoryManager>().Object, new Mock<IHistoryCompactor>().Object,
+                new Mock<ISnapshotManager>().Object);
+
+            var result = await bridge.SummarizeAndCompactAsync(null).ConfigureAwait(false);
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public async Task SummarizeAndCompactAsync_EmptyHistory_ReturnsTrue()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockSession = new Mock<ISessionManager>();
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            mockHistoryManager.Setup(h => h.GetHistoryCopy()).Returns(new List<ChatMessage>());
+
+            var bridge = new WebViewBridge(mockSettings.Object, new Mock<IModelsListService>().Object,
+                new Mock<IWebViewScriptExecutor>().Object, new Mock<IInstructionsManager>().Object,
+                new Mock<IMcpConfigManager>().Object, new Mock<IMcpToolManager>().Object,
+                new Mock<IProvidersConfigManager>().Object, new Mock<IBuiltInVsToolProvider>().Object,
+                new Mock<IToolsConfigManager>().Object, new Mock<IGetActiveDocument>().Object,
+                mockSession.Object, new Mock<IActiveModelContext>().Object,
+                mockHistoryManager.Object, new Mock<IHistoryCompactor>().Object,
+                new Mock<ISnapshotManager>().Object);
+
+            var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
+            Assert.That(result, Is.True);
+            mockHistoryManager.Verify(h => h.Clear(), Times.Once);
+        }
+
+        [Test]
+        public async Task SummarizeAndCompactAsync_Success_AddsPair()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockSession = new Mock<ISessionManager>();
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            mockHistoryManager.Setup(h => h.GetHistoryCopy()).Returns(new List<ChatMessage>
+            {
+                new ChatMessage("user", "hello"),
+                new ChatMessage("assistant", "hi")
+            });
+
+            var mockCompactor = new Mock<IHistoryCompactor>();
+            mockCompactor.Setup(c => c.SummarizeAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), "model1", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("compacted summary");
+
+            var bridge = new WebViewBridge(mockSettings.Object, new Mock<IModelsListService>().Object,
+                new Mock<IWebViewScriptExecutor>().Object, new Mock<IInstructionsManager>().Object,
+                new Mock<IMcpConfigManager>().Object, new Mock<IMcpToolManager>().Object,
+                new Mock<IProvidersConfigManager>().Object, new Mock<IBuiltInVsToolProvider>().Object,
+                new Mock<IToolsConfigManager>().Object, new Mock<IGetActiveDocument>().Object,
+                mockSession.Object, new Mock<IActiveModelContext>().Object,
+                mockHistoryManager.Object, mockCompactor.Object,
+                new Mock<ISnapshotManager>().Object);
+
+            var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
+            Assert.That(result, Is.True);
+
+            mockHistoryManager.Verify(h => h.Clear(), Times.Once);
+            mockHistoryManager.Verify(h => h.AddUserMessage(
+                It.Is<string>(s => s.Contains("Provide a brief summary")), null), Times.Once);
+            mockHistoryManager.Verify(h => h.AddAssistantMessage(
+                "compacted summary", null), Times.Once);
         }
     }
 }

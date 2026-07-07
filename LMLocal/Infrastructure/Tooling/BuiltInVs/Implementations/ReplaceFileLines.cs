@@ -240,7 +240,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return "Replacing lines finished.";
         }
 
-        private static string TruncateForError(string value, int maxLength = 80)
+        private static string TruncateForError(string value, int maxLength = 300)
         {
             if (value == null) return "<null>";
             if (value.Length <= maxLength) return value;

@@ -97,7 +97,8 @@ const __mockBridge = {
         sendNext();
     },
     StopExecutionAsync: async () => {},
-    ResetHistoryAsync: async () => {},
+    ResetHistoryWithActionAsync: async () => true,
+    SummarizeAndCompactAsync: async () => true,
     CopyToClipboardAsync: async (text) => true,
     GetInstructionsAsync: async () => {
         console.log('[mock] GetInstructionsAsync called');

@@ -36,7 +36,8 @@ namespace LMLocal.Infrastructure.WebView
         Task<string> GetSettingsAsync();
         Task<string> ListModelsAsync();
         Task<bool> SetActiveModelAsync(string modelId, int contextLength);
-        Task<bool> ResetHistoryAsync();
+        Task<bool> ResetHistoryWithActionAsync(string action);
+        Task<bool> SummarizeAndCompactAsync(string modelId);
         Task<string> GetLastChatSessionAsync();
         Task StopExecutionAsync();
         Task<bool> UpdateSettingsAsync(string newSettingsJson);
@@ -75,6 +76,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
+        private readonly IHistoryCompactor _historyCompactor;
         private readonly IProvidersConfigManager _providersConfigManager;
         private readonly IBuiltInVsToolProvider _builtInVsToolProvider;
         private readonly IToolsConfigManager _toolsConfigManager;
@@ -94,6 +96,7 @@ namespace LMLocal.Infrastructure.WebView
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
             IChatHistoryManager chatHistoryManager,
+            IHistoryCompactor historyCompactor,
             ISnapshotManager snapshotManager)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
@@ -103,6 +106,7 @@ namespace LMLocal.Infrastructure.WebView
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
+            _historyCompactor = historyCompactor ?? throw new ArgumentNullException(nameof(historyCompactor));
             _instructionsManager = instructionsManager ?? throw new ArgumentNullException(nameof(instructionsManager));
             _mcpConfigManager = mcpConfigManager ?? throw new ArgumentNullException(nameof(mcpConfigManager));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
@@ -204,28 +208,91 @@ namespace LMLocal.Infrastructure.WebView
 
 
         /// <summary>
-        /// Resets the chat history. Returns false if a session is running, true if successful.
+        /// Resets the chat history with the specified action.
+        /// Returns false if a session is running, true if successful.
         /// </summary>
-        public Task<bool> ResetHistoryAsync()
+        public Task<bool> ResetHistoryWithActionAsync(string action)
         {
             try
             {
                 if (_sessionManager.IsSessionRunning)
                 {
-                    InternalLogger.Info("ResetHistoryAsync: Cannot reset while session is running");
+                    InternalLogger.Info("ResetHistoryWithActionAsync: Cannot reset while session is running");
                     return Task.FromResult(false);
                 }
 
-                _chatHistoryManager.Clear();
-                InternalLogger.Info("ResetHistoryAsync: History cleared successfully");
+                switch (action)
+                {
+                    case "last-prompt":
+                        _chatHistoryManager.MoveLastExchangeToNewSession();
+                        InternalLogger.Info("ResetHistoryWithActionAsync: Moved last exchange to new session");
+                        break;
+                    default:
+                        _chatHistoryManager.Clear();
+                        InternalLogger.Info("ResetHistoryWithActionAsync: History cleared successfully");
+                        break;
+                }
+
                 return Task.FromResult(true);
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("ResetHistoryAsync failed", ex);
+                InternalLogger.Error("ResetHistoryWithActionAsync failed", ex);
                 return Task.FromResult(false);
             }
         }
+
+        /// <summary>
+        /// Summarizes the current chat history via LLM, then replaces it with a compact user instruction + summary assistant pair. 
+        /// </summary>
+        public async Task<bool> SummarizeAndCompactAsync(string modelId)
+        {
+            try
+            {
+                if (_sessionManager.IsSessionRunning)
+                {
+                    InternalLogger.Info("SummarizeAndCompactAsync: Cannot run while session is active");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(modelId))
+                {
+                    InternalLogger.Info("SummarizeAndCompactAsync: No active model");
+                    return false;
+                }
+
+                var snapshot = _chatHistoryManager.GetHistoryCopy();
+                if (snapshot.Count == 0)
+                {
+                    _chatHistoryManager.Clear();
+                    return true;
+                }
+
+                var summary = await _historyCompactor.SummarizeAsync(snapshot, modelId, CancellationToken.None).ConfigureAwait(false);
+
+                _chatHistoryManager.Clear();
+
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    _chatHistoryManager.AddUserMessage("Provide a brief summary of our previous session to continue.");
+                    _chatHistoryManager.AddAssistantMessage(summary, null);
+                    InternalLogger.Info("SummarizeAndCompactAsync: History summarized and compacted");
+                }
+                else
+                {
+                    InternalLogger.Warn("SummarizeAndCompactAsync: Summarization failed, history cleared");
+                }
+
+                return !string.IsNullOrWhiteSpace(summary);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("SummarizeAndCompactAsync failed", ex);
+                _chatHistoryManager.Clear();
+                return false;
+            }
+        }
+
 
         /// <summary>
         /// Returns the last persisted chat session.

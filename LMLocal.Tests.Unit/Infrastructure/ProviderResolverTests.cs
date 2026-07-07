@@ -24,6 +24,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [TestCase("ollama", "Ollama")]
         [TestCase("openai", "OpenAi")]
         [TestCase("jan", "Jan")]
+        [TestCase("togetherai", "TogetherAi")]
         [TestCase("deepseek", "DeepSeek")]
         [TestCase("gemini", "Gemini")]
         [TestCase("githubmodelsazure", "GithubModelsAzure")]
@@ -41,7 +42,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var types = ProviderResolver.GetProviderTypes();
 
             Assert.That(types, Is.Not.Null);
-            Assert.That(types.Count, Is.EqualTo(8));
+            Assert.That(types.Count, Is.EqualTo(9));
 
             var enumValues = Enum.GetValues(typeof(ModelProvider)).Cast<ModelProvider>().ToList();
             Assert.That(types.Count, Is.EqualTo(enumValues.Count));
@@ -67,6 +68,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             AssertDisplayName(types, "jan", "Jan (local)");
             AssertDisplayName(types, "llamacpp", "Llama.cpp (local)");
             AssertDisplayName(types, "openai", "OpenAI compatible");
+            AssertDisplayName(types, "togetherai", "Together AI (cloud)");
             AssertDisplayName(types, "deepseek", "DeepSeek (cloud)");
             AssertDisplayName(types, "gemini", "Gemini (cloud)");
             AssertDisplayName(types, "githubmodelsazure", "Github Models via Azure (cloud)");
@@ -106,6 +108,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [TestCase("Jan", "Jan (local)")]
         [TestCase("LlamaCpp", "Llama.cpp (local)")]
         [TestCase("OpenAi", "OpenAI compatible")]
+        [TestCase("TogetherAi", "Together AI (cloud)")]
         [TestCase("DeepSeek", "DeepSeek (cloud)")]
         [TestCase("Gemini", "Gemini (cloud)")]
         [TestCase("GithubModelsAzure", "Github Models via Azure (cloud)")]

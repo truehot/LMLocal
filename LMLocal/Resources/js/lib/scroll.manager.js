@@ -1,15 +1,10 @@
 /**
- * createScrollManager - utility to manage auto-scrolling behavior for a scrollable container.
- * Responsibilities:
- *  - Track whether the container is "stuck" to the bottom (within `thresholdPx`) or if the user has scrolled up.
- *  - Provide a `scrollToBottom` method that scrolls to the bottom if currently stuck, or if forced.
- * Notes:
- *  - Defensive: the implementation cancels pending RAFs on destroy and nulls the internal container reference.
- *  - The default `thresholdPx` controls how close to the bottom the container must be to be considered "stuck".
+ * ScrollManager - manages auto-scrolling behavior for a scrollable container.
  */
 class ScrollManager {
     _container = null;
-    _thresholdPx = 50;
+    _stickThreshold = 50;
+    _detachThreshold = 100;
     _isStuckToBottom = true;
     _scrollScheduled = false;
     _rafId = null;
@@ -21,7 +16,8 @@ class ScrollManager {
     setup(container, thresholdPx = 50) {
         this.reset();
         this._container = container;
-        this._thresholdPx = thresholdPx;
+        this._stickThreshold = thresholdPx;
+        this._detachThreshold = thresholdPx * 2;
         if (this._container) {
             this._updateStuckState();
             this._attachEvents();
@@ -36,7 +32,8 @@ class ScrollManager {
         this._scrollScheduled = false;
         this._detachEvents();
         this._container = null;
-        this._thresholdPx = 50;
+        this._stickThreshold = 50;
+        this._detachThreshold = 100;
         this._isStuckToBottom = true;
     }
 
@@ -55,7 +52,12 @@ class ScrollManager {
     _updateStuckState() {
         if (!this._container) return;
         const distance = this._container.scrollHeight - (this._container.scrollTop + this._container.clientHeight);
-        this._isStuckToBottom = distance <= this._thresholdPx;
+
+        if (this._isStuckToBottom) {
+            this._isStuckToBottom = distance <= this._detachThreshold;
+        } else {
+            this._isStuckToBottom = distance <= this._stickThreshold;
+        }
     }
 
     _handleManualScroll = () => {
@@ -68,30 +70,63 @@ class ScrollManager {
         if (force) {
             if (this._rafId) cancelAnimationFrame(this._rafId);
             this._scrollScheduled = false;
+            this._rafId = null;
             this._isStuckToBottom = true;
         }
 
         if (this._scrollScheduled) return;
 
-        const shouldScroll = force || this._isStuckToBottom;
-        if (!shouldScroll) return;
+        if (!force) {
+            this._scrollScheduled = true;
+            this._rafId = requestAnimationFrame(() => {
+                this._updateStuckState();
 
-        this._scrollScheduled = true;
-        this._rafId = requestAnimationFrame(() => {
-            if (!force && !this._isStuckToBottom) {
-                this._scrollScheduled = false;
-                this._rafId = null;
-                return;
-            }
-            if (this._container) {
-                this._container.scrollTop = this._container.scrollHeight;
-                this._isStuckToBottom = true;
-            }
-            this._scrollScheduled = false;
-            this._rafId = null;
-        });
+                if (!this._isStuckToBottom) {
+                    this._scrollScheduled = false;
+                    this._rafId = null;
+                    return;
+                }
+
+                requestAnimationFrame(() => {
+                    if (!this._container) {
+                        this._scrollScheduled = false;
+                        this._rafId = null;
+                        return;
+                    }
+
+                    try {
+                        this._updateStuckState();
+                        if (!this._isStuckToBottom) return;
+
+                        this._container.scrollTop = this._container.scrollHeight;
+                        this._isStuckToBottom = true;
+                    } finally {
+                        this._scrollScheduled = false;
+                        this._rafId = null;
+                    }
+                });
+            });
+        } else {
+            this._scrollScheduled = true;
+            this._rafId = requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (!this._container) {
+                        this._scrollScheduled = false;
+                        this._rafId = null;
+                        return;
+                    }
+
+                    try {
+                        this._container.scrollTop = this._container.scrollHeight;
+                        this._isStuckToBottom = true;
+                    } finally {
+                        this._scrollScheduled = false;
+                        this._rafId = null;
+                    }
+                });
+            });
+        }
     }
 }
 
 export const createScrollManager = (container, threshold = 50) => new ScrollManager(container, threshold);
-

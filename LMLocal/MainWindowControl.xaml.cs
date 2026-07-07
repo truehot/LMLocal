@@ -118,6 +118,7 @@ namespace LMLocal
 #endif
                 chatBrowser.CoreWebView2.NavigationStarting += OnNavigationStarting;
                 chatBrowser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                chatBrowser.GotFocus+= onGotFocus;
 
                 string html = await GetHtmlFromResourceAsync(settingsManager.HtmlResourcePath);
 
@@ -134,7 +135,13 @@ namespace LMLocal
                 _webViewInitializing = false;
             }
         }
-
+        private void onGotFocus(object sender, RoutedEventArgs e)
+        {
+            if (_webViewInitialized)
+            {
+                _ = chatBrowser.CoreWebView2.ExecuteScriptAsync("document.getElementById('userInput')?.focus()");
+            }
+        }
         private void OnControlLoaded(object sender, RoutedEventArgs e)
         {
             _ = OnControlLoadedAsync(sender, e);
@@ -171,8 +178,6 @@ namespace LMLocal
         {
             if (chatBrowser?.CoreWebView2 == null || !_webViewInitialized)
                 return;
-
-            chatBrowser.Focus();
 
             string keyName = GetKeyName(keyCode);
             if (keyName == null)

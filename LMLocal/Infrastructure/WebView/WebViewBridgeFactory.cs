@@ -37,6 +37,7 @@ namespace LMLocal.Infrastructure.WebView
         private readonly ISessionManager _sessionManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IChatHistoryManager _chatHistoryManager;
+        private readonly IHistoryCompactor _historyCompactor;
         private readonly ISnapshotManager _snapshotManager;
 
         public WebViewBridgeFactory(
@@ -52,6 +53,7 @@ namespace LMLocal.Infrastructure.WebView
             ISessionManager sessionManager,
             IActiveModelContext activeModelContext,
             IChatHistoryManager chatHistoryManager,
+            IHistoryCompactor historyCompactor,
             ISnapshotManager snapshotManager)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
@@ -66,6 +68,7 @@ namespace LMLocal.Infrastructure.WebView
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
+            _historyCompactor = historyCompactor ?? throw new ArgumentNullException(nameof(historyCompactor));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
@@ -76,7 +79,7 @@ namespace LMLocal.Infrastructure.WebView
 
             var scriptExecutor = new WebViewScriptExecutor(coreWebView2);
 
-            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _mcpConfigManager, _mcpToolManager, _providersConfigManager, _builtInVsToolProvider, _toolsConfigManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager, _snapshotManager);
+            return new WebViewBridge(_settingsManager, _modelsListService, scriptExecutor, _instructionsManager, _mcpConfigManager, _mcpToolManager, _providersConfigManager, _builtInVsToolProvider, _toolsConfigManager, _activeDocumentTool, _sessionManager, _activeModelContext, _chatHistoryManager, _historyCompactor, _snapshotManager);
         }
     }
 }

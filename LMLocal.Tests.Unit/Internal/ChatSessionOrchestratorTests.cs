@@ -74,6 +74,9 @@ namespace LMLocal.Tests.Unit.Internal
             // Verify message types sequence contains start, stream end, complete and compaction messages
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionStart), Is.True);
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.StreamEnd), Is.True);
+            Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionIterating
+                && ((WebView2ChatSessionIteratingMessage)m).IsFinalRound), Is.True,
+                "No-tools path should send ChatSessionIterating with IsFinalRound=true");
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionComplete), Is.True);
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.CompactionStart), Is.True);
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.CompactionEnd), Is.True);

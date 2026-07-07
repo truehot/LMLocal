@@ -4,6 +4,7 @@ class SettingsStoreClass extends BaseStoreClass {
     constructor() {
         super({
             Provider: "",
+            ProviderId: null,
             LmStudioBaseUrl: "http://localhost:1234",
             ApiKey: "",
             AutoLoadOnStartup: true,
@@ -15,6 +16,7 @@ class SettingsStoreClass extends BaseStoreClass {
             AutoLoadLastHistory: false,
             EnableAiTools: false,
             EnableAiWriteTools: false,
+            CollapseToolCalls: false,
             EnableCodeCollapse: false
         });
     }

@@ -215,7 +215,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Includes or excludes a file from a specific .csproj project without deleting the file from disk. Use include=true (default) to add a file to a project via AddFromFile; use include=false to remove a file from the project (the file remains on disk — use delete_file to delete it physically). Both the file and the project must exist. Does not copy or move the file — it only adds/removes the project reference. Example: {\"file_path\":\"src/NewService.cs\",\"project_path\":\"src/MyApp.csproj\",\"include\":true}.",
+                Description = "Adds or removes a C# file from a .csproj project. Use this after create_file to register the new file in the project. Preferred over manually editing .csproj XML. Set include=false to exclude without deleting from disk (use delete_file for physical removal). File and project must both exist.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

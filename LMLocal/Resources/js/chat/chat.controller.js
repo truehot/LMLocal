@@ -4,14 +4,11 @@ import { createCallback } from '@app/lib/callback.js';
 import { createScrollManager } from '@app/lib/scroll.manager.js';
 import { createUserMessage } from '@app/chat/user.message.js';
 import { createAiMessage } from '@app/chat/ai.message.js';
-
+import { createAiCollapsibleMessage } from '@app/chat/ai.collapsible.message.js';
 import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
+import { PipelineBuilder } from '@app/chat/chat.pipeline.builder.js';
 
-import { StreamingBuffer } from '@app/streaming/streaming.buffer.js';
-import { createStreamingPipeline, createImmediatePipeline } from '@app/streaming/streaming.pipeline.js';
-import { createStreamingRenderer, StreamingMode } from '@app/streaming/streaming.renderer.js';
-import { createStreamingScheduler } from '@app/streaming/streaming.scheduler.js';
 /**
  * ChatController — manages chat UI and message lifecycle.
  */
@@ -24,6 +21,9 @@ class ChatController {
         this.highlightParser = null;
         this.activeTimeouts = [];
         this.onCopyCode = createCallback();
+        this.collapseToolCalls = false;
+        this._roundInfo = null;
+        this.pipelineBuilder = null;
     }
 
     _getContainer() {
@@ -39,7 +39,6 @@ class ChatController {
         });
     }
 
-    // Event delegation for copy buttons
     _onContainerClick = (e) => {
         const copyBtn = e.target.closest('.header-copy-btn');
         if (copyBtn) {
@@ -113,12 +112,28 @@ class ChatController {
             codeToggleIcon.style.transform = isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
             e.stopPropagation();
         }
+
+        const collapsibleBlock = e.target.closest('.collapsible-block');
+        if (collapsibleBlock) {
+            const isToggleBtn = e.target.classList.contains('toggle-collapsible-btn');
+            const isHeader = e.target.closest('.collapsible-header');
+            if (isToggleBtn || isHeader) {
+                const content = collapsibleBlock.querySelector('.collapsible-content');
+                if (content) {
+                    content.classList.toggle('expanded');
+                    collapsibleBlock.classList.toggle('expanded');
+                }
+                e.stopPropagation();
+                return;
+            }
+        }
     };
 
     _renderMessageFlow(state, prev = {}) {
         if (state.status === prev.status &&
             state.accumulatedText === prev.accumulatedText &&
-            state.accumulatedThoughtText === prev.accumulatedThoughtText) {
+            state.accumulatedThoughtText === prev.accumulatedThoughtText &&
+            state.userMessage === prev.userMessage) {
             return;
         }
 
@@ -127,28 +142,44 @@ class ChatController {
                 if (state.userMessage) {
                     this._enforceMessageLimit();
                     createUserMessage(state.userMessage, this.container, this.scrollManager);
-                    if (this.currentAi) {
-                        this.currentAi.finalize();
-                    }
+                    this.currentAi?.finalize();
+                    this._roundInfo = null;
 
-                    this.currentAi = createAiMessage(
-                        this.container,
-                        this.highlightParser,
-                        this._createPipeline(this.markdownParser)
-                    );
+                    if (this.collapseToolCalls) {
+                        this.currentAi = createAiCollapsibleMessage(
+                            this.container,
+                            this.highlightParser,
+                            this.pipelineBuilder.createStreaming(this.markdownParser),
+                            {
+                                roundNum: this._roundInfo?.roundNumber || 0,
+                                toolCount: this._roundInfo?.toolCount || 0
+                            }
+                        );
+                    } else {
+                        this.currentAi = createAiMessage(
+                            this.container,
+                            this.highlightParser,
+                            this.pipelineBuilder.createStreaming(this.markdownParser),
+                            false
+                        );
+                    }
                 } else {
 
                     //iterating
-                    if (this.currentAi) {
-                        this.currentAi.finalize();
+                    if (this.collapseToolCalls && this.currentAi?.isCollapsible) {
+                        this.currentAi.nextRound(
+                            this._roundInfo?.roundNumber || 0,
+                            this._roundInfo?.toolCount || 0
+                        );
+                    } else {
+                        this.currentAi?.finalize();
+                        this.currentAi = createAiMessage(
+                            this.container,
+                            this.highlightParser,
+                            this.pipelineBuilder.createStreaming(this.markdownParser),
+                            true
+                        );
                     }
-
-                    this.currentAi = createAiMessage(
-                        this.container,
-                        this.highlightParser,
-                        this._createPipeline(this.markdownParser),
-                        true
-                    );
                 }
 
                 this.scrollManager.scrollToBottom(true);
@@ -208,13 +239,18 @@ class ChatController {
                 }
                 this.reset();
                 this.container?.replaceChildren();
-                this.setup(); // Re-setup to reinitialize everything after clearing.
+                this.setup();
 
                 break;
 
             case AppStatus.IDLE:
                 if (this.currentAi && prev.status !== AppStatus.IDLE) {
                     this.currentAi.stopLoadingIndicator();
+                    if (this.currentAi.isCollapsible) {
+                        this.currentAi.finalizeResult();
+                        this.scrollManager.scrollToBottom(true);
+                    }
+                    this._roundInfo = null;
                 }
                 break;
 
@@ -240,43 +276,6 @@ class ChatController {
         this.activeTimeouts = [];
     }
 
-    _createPipeline(markdownParser) {
-        let streamingRenderer = createStreamingRenderer({
-            mode: StreamingMode.BLOCK_TAIL,
-            onUpdate: () => this.scrollManager.scrollToBottom(),
-        });
-
-        let streamBuffer = new StreamingBuffer(2);
-
-        let scheduler = createStreamingScheduler(streamBuffer, {
-            baseIntervalMs: 60,
-            minIntervalMs: 30,
-            maxIntervalMs: 300,
-            targetQueueLength: 2
-        });
-
-        let streamingPipeline = createStreamingPipeline(
-            streamBuffer,
-            streamingRenderer,
-            markdownParser,
-            scheduler
-        );
-        return streamingPipeline;
-    }
-
-    _createImmediatePipeline(markdownParser) {
-        let streamingRenderer = createStreamingRenderer({
-            mode: StreamingMode.BLOCK_TAIL,
-            onUpdate: () => this.scrollManager.scrollToBottom(),
-        });
-
-        let streamingPipeline = createImmediatePipeline(
-            streamingRenderer,
-            markdownParser,
-        );
-        return streamingPipeline;
-    }
-
     setup() {
         this.reset();
         this.container = this._getContainer();
@@ -289,6 +288,9 @@ class ChatController {
 
         this.highlightParser = createHighlightParser();
         this.highlightParser.start();
+        this.pipelineBuilder = new PipelineBuilder({
+            scrollManager: this.scrollManager,
+        });
 
         this._attachEvents();
         return this;
@@ -296,6 +298,14 @@ class ChatController {
 
     updateAppState(state, prev) {
         this._renderMessageFlow(state, prev);
+    }
+
+    updateSettingsState(state, prev) {
+        if (state.status === prev.status &&
+            state.CollapseToolCalls === prev.CollapseToolCalls) {
+            return;
+        }
+        this.collapseToolCalls = state.CollapseToolCalls;
     }
 
     reset() {
@@ -306,34 +316,60 @@ class ChatController {
 
         this.currentAi?.clear();
         this.currentAi = null;
+        this.pipelineBuilder = null;
     }
 
     renderHistory(messages) {
         if (!this.container || !messages || messages.length === 0) return;
 
-        for (const msg of messages) {
+        var stepCount = 0;
+        var pending = [];
+
+        for (var i = 0; i < messages.length; i++) {
+            var msg = messages[i];
             if (!msg || !msg.role) continue;
 
             if (msg.role === 'user') {
+                stepCount = 0;
                 createUserMessage(msg.content || '', this.container, this.scrollManager);
             } else if (msg.role === 'assistant') {
-                this._renderHistoryAiMessage(msg);
+                var hasTools = msg.toolCalls && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0;
+
+                if (hasTools) {
+                    stepCount++;
+                } else {
+                    var content = msg.content || '';
+                    if (stepCount > 0) {
+                        const stepsText = stepCount + ' step' + (stepCount !== 1 ? 's' : '') + ' taken (history)';
+                        content = '`' + stepsText + '`\n\n' + content;
+                    }
+                    pending.push(this._renderHistoryFinal(content));
+                    stepCount = 0;
+                }
             }
         }
-        this.scrollManager?.scrollToBottom();
+
+        var self = this;
+        Promise.all(pending).then(function () { self.scrollManager?.scrollToBottom(true); });
     }
 
-    _renderHistoryAiMessage(msg) {
+    setRoundInfo(roundNumber, toolCount, isFinalRound = false) {
+        this._roundInfo = { roundNumber, toolCount, isFinalRound };
+
+        if (isFinalRound && this.currentAi?.isCollapsible) {
+            this.currentAi.markAsFinalRound();
+        }
+    }
+
+    _renderHistoryFinal(content) {
         var localAi = createAiMessage(
             this.container,
             this.highlightParser,
-            this._createImmediatePipeline(this.markdownParser)
+            this.pipelineBuilder.createImmediate(this.markdownParser),
+            false
         );
-        localAi.updateStreaming(msg.content);
-        localAi.finishStreaming().then(async () => {
-            this.scrollManager.scrollToBottom();
-            localAi.finalize();
-        });
+        localAi.updateStreaming(content);
+        return localAi.finishStreaming();
     }
 }
 

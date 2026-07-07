@@ -12,13 +12,11 @@ export function createUserMessage(text, container, scrollManager) {
     content.textContent = text;
     div.appendChild(content);
 
-    if (text.length > Config.USER_MESSAGE_COLLAPSE_CHAR_LIMIT ||
-        text.split('\n').length > Config.USER_MESSAGE_COLLAPSE_LINES_LIMIT) {
+    if (text.length > Config.USER_MESSAGE_COLLAPSE_CHAR_LIMIT || text.split('\n').length > Config.USER_MESSAGE_COLLAPSE_LINES_LIMIT) {
         const btn = document.createElement('button');
         btn.className = 'show-more-btn';
         div.appendChild(btn);
     }
 
     container.appendChild(div);
-    scrollManager.scrollToBottom();
 }

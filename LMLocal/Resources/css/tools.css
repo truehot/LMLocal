@@ -1,0 +1,205 @@
+﻿/* ====== Tool button styles ====== */
+.tool-status, .tool-status-error, .tool-status-completed {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin: 10px 0px 10px 0px;
+    padding: 5px 13px;
+    background: transparent;
+    border-left: 2px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+    .tool-status::before {
+        content: "⚙";
+        font-size: 10px;
+        animation: spin 2s linear infinite;
+    }
+
+    .tool-status-completed::before {
+        content: "✔";
+        color: var(--success-color);
+        font-size: 10px;
+    }
+
+    .tool-status-error::before {
+        content: "✖";
+        color: var(--error-color);
+        font-size: 10px;
+    }
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ====== Collapsible block (Compact Mode) ====== */
+.collapsible-block {
+    display: block;
+    margin: 4px 0;
+    border-left: 2px solid var(--border-color, #e0e0e0);
+    overflow: hidden;
+    background: transparent;
+    transition: border-color 0.3s ease;
+}
+
+.collapsible-block .thought-container {
+    border-left: none;
+}
+
+.collapsible-block .reasoning-header .expanded {
+    padding: 6px 10px 6px 4px;
+}
+
+.collapsible-block .tool-status,
+.collapsible-block .tool-status-error,
+.collapsible-block .tool-status-completed {
+    border-left: none;
+}
+
+.collapsible-block .collapsible-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 35px 4px 8px;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+
+.collapsible-block .collapsible-title {
+    font-size: 11px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    color: var(--text-color);
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.collapsible-block:hover .collapsible-title {
+    opacity: 1;
+}
+
+.collapsible-block {
+    opacity: 0.9;
+    transition: opacity 0.2s, color 0.2s;
+    margin: 0;
+}
+
+    .collapsible-block:hover {
+        opacity: 1;
+    }
+
+    .collapsible-block .collapsible-content {
+        display: none;
+        font-size: 0.875rem;
+        opacity: 0;
+        padding: 0 8px 0 8px;
+        transition: opacity 0.2s ease;
+    }
+
+        .collapsible-block .collapsible-content.expanded {
+            display: block;
+            opacity: 1;
+            padding: 4px 8px 4px 8px;
+        }
+
+    .collapsible-block .toggle-collapsible-btn {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent !important;
+        border: none !important;
+        cursor: pointer;
+        padding: 4px;
+        opacity: 0;
+        color: var(--quote-text-color, var(--btn-icon-color));
+        transition: opacity 0.2s, transform 0.3s ease, background-color 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 5;
+    }
+
+    .collapsible-block:hover .toggle-collapsible-btn {
+        opacity: 1;
+    }
+
+    .collapsible-block .toggle-collapsible-btn::before {
+        content: "";
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        background-color: currentColor;
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+    }
+
+    .collapsible-block.expanded .toggle-collapsible-btn {
+        transform: translateY(-50%) rotate(180deg);
+    }
+
+    .collapsible-block.expanded .thought-container {
+        margin: 0;
+    }
+
+    .collapsible-block .toggle-collapsible-btn:hover {
+        color: var(--success-color) !important;
+        background: rgba(136, 136, 136, 0.1) !important;
+        border-radius: 4px;
+    }
+
+    .collapsible-block.error {
+        border-left-color: var(--danger-color);
+    }
+
+        .collapsible-block.error .collapsible-title {
+            color: var(--stop-text);
+        }
+
+.collapsible-content div.step:nth-of-type(even) {
+    background-color: var(--table-zebra);
+}
+
+
+.collapsible-block .step {
+    padding: 4px 8px;
+    margin-bottom: 2px;
+    border-radius: 3px;
+}
+
+
+.collapsible-block.no-header .step {
+    padding: 0px;
+}
+
+.collapsible-block.expanded.no-header .collapsible-content.expanded {
+    display: block;
+    opacity: 1;
+    padding: 0px;
+}
+
+.collapsible-block.no-header .thought-container {
+    border-left: none;
+    padding-left: 0px;
+}
+
+.collapsible-block.no-header .ai-response-container {
+    margin-left: 10px;
+}

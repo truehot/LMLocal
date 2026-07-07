@@ -714,5 +714,184 @@ namespace LMLocal.Tests.Unit
             Assert.That(history.Count, Is.EqualTo(1));
             Assert.That(history[0].Role, Is.EqualTo("user"));
         }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_EmptyHistory_DoesNothing()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_NoUser_NothingMoved()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddAssistantMessage("response");
+            manager.AddAssistantMessage("response2");
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0), "No user in history — should clear and keep nothing");
+        }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_UserOnlyNoAssistant_NothingMoved()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0), "User without assistant — should clear and keep nothing");
+        }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_UserAndAssistant_MovesPair()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+            manager.AddAssistantMessage("response");
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[0].Content, Is.EqualTo("hello"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("response"));
+        }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_MultipleExchanges_MovesOnlyLast()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            // First exchange
+            manager.AddUserMessage("q1");
+            manager.AddAssistantMessage("a1");
+            // Second exchange
+            manager.AddUserMessage("q2");
+            manager.AddAssistantMessage("a2");
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Content, Is.EqualTo("q2"));
+            Assert.That(history[1].Content, Is.EqualTo("a2"));
+        }
+
+        [Test]
+        public void MoveLastExchangeToNewSession_WithToolCalls_MovesFullExchange()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("do something");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "search", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "found", "c1")
+            });
+            manager.AddAssistantMessage("done");
+
+            manager.MoveLastExchangeToNewSession();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(4));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[0].Content, Is.EqualTo("do something"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[2].Role, Is.EqualTo("tool"));
+            Assert.That(history[3].Role, Is.EqualTo("assistant"));
+            Assert.That(history[3].Content, Is.EqualTo("done"));
+        }
+
+        [Test]
+        public void ReplaceHistory_Success_AddsUserAssistantPair()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            // Fill with messages so expectedSize matches
+            manager.AddUserMessage("u1");
+            manager.AddAssistantMessage("a1");
+            manager.AddUserMessage("u2");
+            manager.AddAssistantMessage("a2");
+
+            var recent = new List<ChatMessage>
+            {
+                new ChatMessage("user", "recent user"),
+                new ChatMessage("assistant", "recent assistant")
+            };
+
+            var result = manager.ReplaceHistory("compacted summary", recent, expectedSize: 4);
+
+            Assert.That(result, Is.True);
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(4));
+
+            // Pair: user prompt → assistant summary
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[0].Content, Is.EqualTo("Provide a brief summary of our previous session to continue."));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("compacted summary"));
+
+            // Recent messages preserved
+            Assert.That(history[2].Role, Is.EqualTo("user"));
+            Assert.That(history[2].Content, Is.EqualTo("recent user"));
+            Assert.That(history[3].Role, Is.EqualTo("assistant"));
+            Assert.That(history[3].Content, Is.EqualTo("recent assistant"));
+        }
+
+        [Test]
+        public void ReplaceHistory_Success_NullSummary_OnlyAddsRecent()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("a");
+            manager.AddAssistantMessage("b");
+
+            var recent = new List<ChatMessage>
+            {
+                new ChatMessage("user", "recent")
+            };
+
+            var result = manager.ReplaceHistory(null, recent, expectedSize: 2);
+
+            Assert.That(result, Is.True);
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(1));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[0].Content, Is.EqualTo("recent"));
+        }
+
     }
 }

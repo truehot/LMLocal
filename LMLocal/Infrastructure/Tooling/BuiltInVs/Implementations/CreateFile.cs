@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Models/Customer.cs\",\"content\":\"public class Customer {}\"}.",
+                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path relative to solution root. After creating .cs files, use set_file_project_status to register them in the .csproj project.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

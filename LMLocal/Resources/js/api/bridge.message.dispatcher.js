@@ -54,7 +54,7 @@ class BridgeMessageDispatcher {
                 this._handler.handleChatSessionStart();
                 break;
             case 'ChatSessionIterating':
-                this._handler.handleChatSessionIterating();
+                this._handler.handleChatSessionIterating(data);
                 break;
             case 'ChatSessionComplete':
                 this._handler.handleChatSessionComplete(data);

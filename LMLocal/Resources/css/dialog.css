@@ -3,6 +3,43 @@
     width: 320px;
 }
 
+    #confirm-dialog .settings-group {
+        margin-bottom: 20px;
+    }
+
+        #confirm-dialog .settings-group > .settings-label {
+            margin-bottom: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--strong-text);
+            display: block;
+        }
+
+    #confirm-dialog .checkbox-container {
+        margin-bottom: 12px;
+    }
+
+        #confirm-dialog .checkbox-container:last-of-type {
+            margin-bottom: 0;
+        }
+
+    #confirm-dialog input[type="radio"] {
+        accent-color: var(--accent-color);
+        margin-top: 2px;
+    }
+
+    #confirm-dialog .checkbox-container > span {
+        display: block;
+    }
+
+    #confirm-dialog .checkbox-container .settings-label {
+        font-weight: 500;
+        display: block;
+    }
+
+    #confirm-dialog .checkbox-container .settings-description {
+        display: block;
+    }
 /* ====== Setting dialog styles ====== */
 
 #settings-dialog {

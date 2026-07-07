@@ -75,6 +75,8 @@
   <ItemGroup>
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
     <Compile Include="Infrastructure\AzureModelResponseConverterTests.cs" />
+    <Compile Include="Infrastructure\ApiErrorParserTests.cs" />
+    <Compile Include="Infrastructure\ApiRequestBuilderTests.cs" />
     <Compile Include="Infrastructure\ChatPersistenceServiceTests.cs" />
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
@@ -96,6 +98,7 @@
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />
     <Compile Include="Infrastructure\SystemTimeProviderTests.cs" />
     <Compile Include="Infrastructure\TestHttpClientWrapper.cs" />
+    <Compile Include="Infrastructure\TogetherAiModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
@@ -104,7 +107,6 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InsertFileLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContentTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileLinesTests.cs" />
-
     <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />

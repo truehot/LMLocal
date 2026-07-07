@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://app.local/css/toolbar.css">
     <link rel="stylesheet" href="https://app.local/css/codeblock.css">
     <link rel="stylesheet" href="https://app.local/css/component.css">
+    <link rel="stylesheet" href="https://app.local/css/tools.css">
 </head>
 <body>
 
@@ -137,7 +138,43 @@
 
     <dialog id="confirm-dialog">
         <div class="modal-header">Confirmation</div>
-        <div class="modal-body"></div>
+        <div class="modal-body">
+
+            <div class="settings-group">
+                <div class="settings-description">
+                    This will clear all messages in this conversation and open a new chat.
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <span class="settings-label">Clear this conversation and bring what to the new chat?</span>
+
+                <label class="checkbox-container">
+                    <input type="radio" name="clear-action" id="confirm-action-none" checked>
+                    <span>
+                        <span class="settings-label">Start fresh</span>
+                        <span class="settings-description">Clear everything and open a completely empty chat.</span>
+                    </span>
+                </label>
+
+                <label class="checkbox-container">
+                    <input type="radio" name="clear-action" id="confirm-action-last-prompt">
+                    <span>
+                        <span class="settings-label">Move the last prompt and response</span>
+                        <span class="settings-description">Copy your last message along with the AI's answer into the new chat's history.</span>
+                    </span>
+                </label>
+
+                <label class="checkbox-container">
+                    <input type="radio" name="clear-action" id="confirm-action-summarize">
+                    <span>
+                        <span class="settings-label">Summarize and move context</span>
+                        <span class="settings-description">Send a quick request to the AI to summarize this conversation, then save it as the first message in the new chat.</span>
+                    </span>
+                </label>
+            </div>
+
+        </div>
         <div class="modal-footer">
             <button id="confirm-dialog-cancel" class="btn-secondary">Cancel</button>
             <button id="confirm-dialog-confirm" class="btn-primary">Clear</button>
@@ -226,8 +263,19 @@
                             <span class="checkbox-description">
                                 Extends AI tools to allow automatic file editing and applying modifications directly to your solution.
                                 <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
-                                    Recommended only for solutions under source control (Git) so you can easily review and revert any automated changes.
+                                    Recommended only for solutions under source control (Git) so you can review and revert any automated changes.
                                 </span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="CollapseToolCalls">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Collapse tool calls</span>
+                            <span class="checkbox-description">
+                                Groups sequential tool executions into a single compact block and collapses it when finished to reduce chat clutter.
                             </span>
                         </span>
                     </label>

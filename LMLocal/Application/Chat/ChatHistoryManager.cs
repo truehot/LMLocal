@@ -61,16 +61,19 @@ namespace LMLocal.Application.Chat
         Task<List<ChatMessage>> LoadLastSessionAsync();
 
         /// <summary>
-        /// Normalizes history for providers (e.g. LlamaCpp) that require strict
-        /// user/assistant alternation and lack native tool role support.
+        /// Normalizes history for providers (e.g. LlamaCpp) that require strict user/assistant alternation and lack native tool role support.
         /// </summary>
         void EnsureHistoryNormalized();
 
         /// <summary>
-        /// Queues an assistant with tool calls to be committed together with
-        /// the next AddToolExecutionResultMessages, ensuring tool call is saved before results.
+        /// Queues an assistant with tool calls to be committed together with the next AddToolExecutionResultMessages, ensuring tool call is saved before results.
         /// </summary>
         void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls);
+
+        /// <summary>
+        /// Clears history and starts a new session, carrying over the last user message and the full assistant response (including tool calls/results) that followed it.
+        /// </summary>
+        void MoveLastExchangeToNewSession();
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -225,6 +228,51 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.MarkNewSessionAsync();
         }
 
+        public void MoveLastExchangeToNewSession()
+        {
+            const int lookbackLimit = 800;
+
+            List<ChatMessage> historyFragment;
+            lock (_lock)
+            {
+                if (_history.Count == 0)
+                    return;
+
+                int startIdx = Math.Max(0, _history.Count - lookbackLimit);
+                int lastUserIdx = -1;
+                bool seenAssistant = false;
+                for (int i = _history.Count - 1; i >= startIdx; i--)
+                {
+                    if (_history[i].Role == "assistant")
+                    {
+                        seenAssistant = true;
+                    }
+                    else if (_history[i].Role == "user")
+                    {
+                        lastUserIdx = i;
+                        break;
+                    }
+                }
+
+                historyFragment = lastUserIdx != -1 && seenAssistant
+                    ? _history.Skip(lastUserIdx).ToList()
+                    : null;
+            }
+
+            Clear();
+
+            if (historyFragment != null && historyFragment.Count > 0)
+            {
+                lock (_lock)
+                {
+                    _history.AddRange(historyFragment);
+                    InvalidateCacheLocked();
+                }
+                _ = _persistence?.SaveMessagesAsync(historyFragment, CancellationToken.None);
+            }
+        }
+
+
         public IReadOnlyList<ChatMessage> GetHistoryCopy()
         {
             lock (_lock)
@@ -245,6 +293,7 @@ namespace LMLocal.Application.Chat
 
                 if (!string.IsNullOrEmpty(summary))
                 {
+                    _history.Add(new ChatMessage("user", "Provide a brief summary of our previous session to continue."));
                     _history.Add(new ChatMessage("assistant", summary));
                 }
                 if (recent != null)
@@ -275,9 +324,7 @@ namespace LMLocal.Application.Chat
                 }
             }
 
-            return messages
-                .Where(m => m.Role == "user" || (m.Role == "assistant" && m.ToolCallId == null && m.Content != null))
-                .ToList();
+            return messages.ToList();
         }
 
         public void EnsureHistoryNormalized()

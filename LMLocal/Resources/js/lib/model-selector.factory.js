@@ -44,6 +44,7 @@ export function createModelSelectorDialog(models, activeModel = null) {
             defaultProviders: providers.defaultProviders,
             providers: providers.providers,
             Provider: settings.Provider,
+            ProviderId: settings.ProviderId,
             LmStudioBaseUrl: settings.LmStudioBaseUrl,
             ApiKey: settings.ApiKey,
         };

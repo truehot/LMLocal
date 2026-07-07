@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
+using LMLocal.Core.Exceptions;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Persistence;
@@ -297,7 +298,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
-        public async Task GetModelsAsync_ErrorResponse_ReturnsErrorInResponse()
+        public void GetModelsAsync_ErrorResponse_ThrowsApiException()
         {
             var json = "{ \"error\": { \"message\": \"boom\" } }";
             var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(json) };
@@ -306,11 +307,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
 
-            var result = await lm.ListModelsRawAsync("/v1/models", null, null, CancellationToken.None);
+            var ex = Assert.ThrowsAsync<ApiException>(async () =>
+                await lm.ListModelsRawAsync("/v1/models", null, null, CancellationToken.None));
 
-            Assert.That(result, Is.Empty);
+            Assert.That(ex.ErrorInfo.Message, Is.EqualTo("boom"));
+            Assert.That(ex.ErrorInfo.Code, Is.EqualTo(400));
         }
 
         [Test]
@@ -323,7 +326,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
             var cts = new CancellationTokenSource(50);
             Assert.ThrowsAsync<TaskCanceledException>(async () => await lm.SendChatAsync(new MessageContext(new List<ChatMessage>()), new ModelContext("test"), cts.Token));
         }

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
+using LMLocal.Core.Exceptions;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Converter;
@@ -80,7 +81,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new LMLocal.Infrastructure.LlmApi.OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
@@ -113,12 +114,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, toolFactory);
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
 
-            Assert.ThrowsAsync<HttpRequestException>(async () => await adapter.SendChatStreamingAsync(messageContext, modelContext, CancellationToken.None));
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendChatStreamingAsync(messageContext, modelContext, CancellationToken.None));
+            Assert.That(ex.ErrorInfo.Message, Is.EqualTo("Bad things"));
         }
 
         [Test]
@@ -141,7 +143,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { LmStudioBaseUrl = "http://example.com:8080/" });
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, toolFactory);
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");
@@ -242,7 +244,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var mockToolFactory = new Mock<ICompositeToolFactory>();
             mockToolFactory.Setup(t => t.GetAllToolDefinitions()).Returns(new System.Collections.Generic.List<ToolDefinition> { toolDef });
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, mockToolFactory.Object);
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, mockToolFactory.Object));
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");

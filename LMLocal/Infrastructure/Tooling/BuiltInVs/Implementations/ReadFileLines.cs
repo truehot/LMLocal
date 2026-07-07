@@ -34,15 +34,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file. Lines are 1-indexed and returned exactly as they appear, with no limit on how many lines can be read in one request. Both start_line and end_line must be >= 1, and end_line must be >= start_line. Response includes has_more (true if lines exist beyond the requested range). Fails if the file does not exist or is outside the solution directory. Use to read part of a file without loading the entire content. Example: {\"file_path\":\"src/Program.cs\",\"start_line\":1,\"end_line\":25}.",
+                Description = "Reads a specific line range from a file and returns the raw text content. Lines are 1-indexed. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. The response includes the actual start_line and end_line read, plus a 'has_more' flag indicating whether there are more lines beyond the returned range. Use this tool to inspect a fragment of a file without loading the entire content. When you later use replace_file_lines, copy the text from this tool's output directly into the old_lines parameter — do not retype it, as whitespace is significant.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } },
-                        { "start_line", new ToolDetails { Type = "integer", Description = "The starting line number (1-indexed, inclusive, positive integer (>= 1))." } },
-                        { "end_line", new ToolDetails { Type = "integer", Description = "The ending line number (inclusive, positive integer (>= 1) and must be >= start_line)." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to the file." } },
+                        { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, inclusive, >= 1)." } },
+                        { "end_line", new ToolDetails { Type = "integer", Description = "Ending line number (inclusive, >= start_line)." } }
                     },
                     Required = new List<string> { "file_path", "start_line", "end_line" }
                 }
@@ -79,22 +79,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (hasMore && lines.Count > 0)
                     lines.RemoveAt(lines.Count - 1);
 
-                var resultLines = new List<FileLineInfo>();
-                for (int i = 0; i < lines.Count; i++)
-                {
-                    resultLines.Add(new FileLineInfo
-                    {
-                        LineNumber = startLine + i,
-                        Text = lines[i]
-                    });
-                }
+                string text = string.Join(Environment.NewLine, lines);
+                int actualEndLine = startLine + lines.Count - 1;
 
                 return new FileLinesResponse
                 {
                     Success = true,
                     FilePath = relativePath,
-                    HasMore = hasMore,
-                    Lines = resultLines
+                    StartLine = startLine,
+                    EndLine = actualEndLine,
+                    Text = text,
+                    HasMore = hasMore
                 };
             }
             catch (Exception ex)
@@ -104,7 +99,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Success = false,
                     ErrorMessage = ex.Message,
                     FilePath = parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "",
-                    Lines = new List<FileLineInfo>()
+                    Text = null,
+                    StartLine = 0,
+                    EndLine = 0,
+                    HasMore = false
                 };
             }
         }
@@ -123,7 +121,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is FileLinesResponse fileResult)
                 return fileResult.Success
-                    ? $"Read {fileResult.Lines.Count} lines."
+                    ? $"Read lines {fileResult.StartLine}-{fileResult.EndLine}."
                     : $"Reading lines failed: {fileResult.ErrorMessage}";
             return "Reading lines finished.";
         }
@@ -164,17 +162,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Success = false,
                 ErrorMessage = message,
                 FilePath = filePath,
-                Lines = new List<FileLineInfo>()
+                Text = null,
+                StartLine = 0,
+                EndLine = 0,
+                HasMore = false
             };
-        }
-
-        public class FileLineInfo
-        {
-            [JsonProperty("line_number")]
-            public int LineNumber { get; set; }
-
-            [JsonProperty("text")]
-            public string Text { get; set; }
         }
 
         public class FileLinesResponse
@@ -182,11 +174,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("file_path")]
             public string FilePath { get; set; }
 
+            [JsonProperty("start_line")]
+            public int StartLine { get; set; }
+
+            [JsonProperty("end_line")]
+            public int EndLine { get; set; }
+
+            [JsonProperty("text")]
+            public string Text { get; set; }
+
             [JsonProperty("has_more")]
             public bool HasMore { get; set; }
-
-            [JsonProperty("lines")]
-            public List<FileLineInfo> Lines { get; set; }
 
             [JsonProperty("success")]
             public bool Success { get; set; }

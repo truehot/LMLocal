@@ -55,7 +55,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             // Act - Create the complete service chain
             var persistence = new ChatPersistenceService(settingsManager, fileSystem);
             var history = new ChatHistoryManager(settingsManager, persistence);
-            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, toolFactory);
+            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolFactory));
 
             // Assert - Verify all services were created successfully
             Assert.That(persistence, Is.Not.Null, "IChatPersistenceService should be created");

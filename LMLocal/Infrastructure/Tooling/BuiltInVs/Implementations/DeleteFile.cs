@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Deletes a file from disk. Fails if the file does not exist. The file is permanently removed; use set_file_project_status to only exclude from .csproj while keeping it on disk. Path can be absolute or relative to solution root. Example: {\"file_path\":\"Temp/old_code.cs\"} → {\"success\":true,\"file_path\":\"Temp/old_code.cs\",\"deleted_successfully\":true,\"error_message\":null}.",
+                Description = "Deletes a file from disk. Fails if the file does not exist. The file is permanently removed; use set_file_project_status to only exclude from .csproj while keeping it on disk. Path relative to solution root. For .cs files referenced in a project, call set_file_project_status with include=false first \r\nto remove the .csproj reference, otherwise the build will break",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

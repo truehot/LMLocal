@@ -1,5 +1,5 @@
+using LMLocal.Core.Exceptions;
 using System;
-using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -8,13 +8,9 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
-using LMLocal.Infrastructure.LlmApi.Converter;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.LlmApi
 {
@@ -23,8 +19,19 @@ namespace LMLocal.Infrastructure.LlmApi
     /// </summary>
     internal interface IOpenApiAdapter
     {
+        /// <summary>
+        /// Retrieves raw JSON response for models list from a specific backend with explicit credentials.
+        /// </summary>
         Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Opens a streaming chat request and returns the response stream.
+        /// </summary>
         Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Sends chat request and returns the full response content.
+        /// </summary>
         Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken);
     }
 
@@ -33,17 +40,17 @@ namespace LMLocal.Infrastructure.LlmApi
     {
         private readonly IHttpClientWrapper _httpClientWrapper;
         private readonly ISettingsManager _settingsManager;
-        private readonly ICompositeToolFactory _toolFactory;
+        private readonly IApiRequestBuilder _requestBuilder;
         private const string DefaultBaseUrl = "http://localhost:1234";
 
         public OpenApiAdapter(
             IHttpClientWrapper httpClientWrapper,
             ISettingsManager settingsManager,
-            ICompositeToolFactory toolFactory)
+            IApiRequestBuilder requestBuilder)
         {
             _httpClientWrapper = httpClientWrapper ?? throw new ArgumentNullException(nameof(httpClientWrapper));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
-            _toolFactory = toolFactory ?? throw new ArgumentNullException(nameof(toolFactory));
+            _requestBuilder = requestBuilder ?? throw new ArgumentNullException(nameof(requestBuilder));
         }
 
         private string GetBaseUrl()
@@ -60,9 +67,6 @@ namespace LMLocal.Infrastructure.LlmApi
             return ProviderResolver.GetChatCompletionsEndpoint(provider);
         }
 
-        /// <summary>
-        /// Retrieves raw JSON response for models list from a specific backend with explicit credentials.
-        /// </summary>
         public async Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(baseUrl))
@@ -94,31 +98,29 @@ namespace LMLocal.Infrastructure.LlmApi
 
                         if (!response.IsSuccessStatusCode)
                         {
-                            var userMessage = TryExtractErrorMessage(json) ?? $"Request failed with status {response.StatusCode}";
-                            InternalLogger.Warn($"ListModelsRawAsync: backend returned error: {userMessage}");
-                            return string.Empty;
+                            var errorInfo = ApiErrorParser.ParseErrorBody(json);
+                            errorInfo.Code = (int)response.StatusCode;
+                            InternalLogger.Warn($"ListModelsRawAsync: backend returned error: {errorInfo}");
+                            throw new ApiException(errorInfo, (int)response.StatusCode);
                         }
 
                         return json;
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!(ex is ApiException) && !(ex is OperationCanceledException))
             {
                 InternalLogger.Warn($"ListModelsRawAsync failed: {ex.Message}");
                 throw;
             }
         }
 
-        /// <summary>
-        /// Opens a streaming chat request and returns the response stream.
-        /// </summary>
         public async Task<StreamingResponse> SendChatStreamingAsync(
             MessageContext messageContext,
             ModelContext modelContext,
             CancellationToken cancellationToken)
         {
-            var openAiRequest = BuildRequest(messageContext, modelContext, stream: true);
+            var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: true);
 
             var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json");
             HttpRequestMessage request = null;
@@ -139,8 +141,10 @@ namespace LMLocal.Infrastructure.LlmApi
                 if (!response.IsSuccessStatusCode)
                 {
                     var rawError = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var userMessage = TryExtractErrorMessage(rawError) ?? $"Failed to send chat request: {response.StatusCode}";
-                    throw new HttpRequestException(userMessage);
+                    var errorInfo = ApiErrorParser.ParseErrorBody(rawError);
+                    errorInfo.Code = (int)response.StatusCode;
+                    InternalLogger.Warn($"SendChatStreamingAsync: API error: {errorInfo}");
+                    throw new ApiException(errorInfo, (int)response.StatusCode);
                 }
 
                 var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -160,15 +164,12 @@ namespace LMLocal.Infrastructure.LlmApi
             }
         }
 
-        /// <summary>
-        /// Sends chat request and returns the full response content.
-        /// </summary>
         public async Task<SendChatResponse> SendChatAsync(
             MessageContext messageContext,
             ModelContext modelContext,
             CancellationToken cancellationToken)
         {
-            var openAiRequest = BuildRequest(messageContext, modelContext, stream: false, useTools: false);
+            var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: false, useTools: false);
 
             using (var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json"))
             using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content })
@@ -184,8 +185,10 @@ namespace LMLocal.Infrastructure.LlmApi
                     var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
-                        var userMessage = TryExtractErrorMessage(json) ?? $"Generation failed: {response.StatusCode}";
-                        throw new HttpRequestException(userMessage);
+                        var errorInfo = ApiErrorParser.ParseErrorBody(json);
+                        errorInfo.Code = (int)response.StatusCode;
+                        InternalLogger.Warn($"SendChatAsync: API error: {errorInfo}");
+                        throw new ApiException(errorInfo, (int)response.StatusCode);
                     }
 
                     try
@@ -198,115 +201,6 @@ namespace LMLocal.Infrastructure.LlmApi
                     }
                     return null;
                 }
-            }
-        }
-
-        /// <summary>
-        /// Converts ToolCalls from various types
-        private static List<Requests.ToolCall> ConvertToolCalls(object toolCalls)
-        {
-            if (toolCalls == null)
-                return null;
-
-            if (toolCalls is List<Requests.ToolCall> typed)
-                return typed;
-
-            if (toolCalls is JArray jArray)
-                return jArray.ToObject<List<Requests.ToolCall>>();
-
-            return null;
-        }
-
-        private SendChatRequest BuildRequest(
-            MessageContext messageContext,
-            ModelContext modelContext,
-            bool stream, bool useTools = true)
-        {
-            var messages = new List<Message>();
-
-            foreach (var msg in messageContext.Input)
-            {
-                var apiMessage = new Message
-                {
-                    Role = msg.Role,
-                    Content = msg.Content,
-                    ToolCallId = msg.ToolCallId,
-                    ToolCalls = ConvertToolCalls(msg.ToolCalls)
-                };
-                messages.Add(apiMessage);
-            }
-            // Google Gemini and Mistral do not support the 'store' parameter.
-            var request = new SendChatRequest
-            {
-                Model = modelContext.ModelId,
-                Messages = messages,
-                Stream = stream,
-                Temperature = modelContext.Temperature,
-                TopP = modelContext.TopP,
-                MaxCompletionTokens = modelContext.MaxOutputTokens,
-                PresencePenalty = modelContext.PresencePenalty,
-                FrequencyPenalty = modelContext.FrequencyPenalty,
-                ReasoningEffort = modelContext.Reasoning,
-                StreamOptions = stream ? new StreamOptions { IncludeUsage = stream } : null // Usage depends if stream is enabled.
-            };
-
-            if (_settingsManager.Current.EnableAiTools && useTools)
-            {
-                try
-                {
-                    var vsTools = _toolFactory.GetAllToolDefinitions();
-                    if (vsTools.Count > 0)
-                    {
-                        var openAiTools = ToolDefinitionConverter.ConvertToOpenAiFormat(vsTools);
-                        request.Tools = openAiTools;
-                        request.ToolChoice = "auto";
-                        request.ParallelToolCalls = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"BuildRequest: failed to add tools to request: {ex.Message}");
-                }
-            }
-
-
-            return request;
-        }
-
-        internal static string TryExtractErrorMessage(string rawResponse)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(rawResponse)) return null;
-
-                var parsed = JObject.Parse(rawResponse);
-                var parsedError = parsed["error"];
-                if (parsedError == null) return null;
-
-                if (parsedError.Type == JTokenType.Object)
-                {
-                    var msgToken = parsedError["message"];
-                    if (msgToken != null && msgToken.Type == JTokenType.String)
-                    {
-                        var text = msgToken.ToString();
-                        return string.IsNullOrWhiteSpace(text) ? null : text;
-                    }
-
-                    return null;
-                }
-
-                if (parsedError.Type == JTokenType.String)
-                {
-                    var text = parsedError.ToString();
-                    return string.IsNullOrWhiteSpace(text) ? null : text;
-                }
-
-                return null;
-            }
-            catch (JsonException ex)
-            {
-                InternalLogger.Warn($"TryExtractErrorMessage: invalid JSON response: {rawResponse} {ex.Message}");
-                return string.IsNullOrWhiteSpace(rawResponse) ? null : rawResponse.Trim();
             }
         }
     }

@@ -53,6 +53,12 @@ namespace LMLocal.Infrastructure.LlmApi.Provider
         /// Github Models cloud
         /// </summary>
         [ProviderDisplay("Github Models via Azure (cloud)")]
-        GithubModelsAzure
+        GithubModelsAzure,
+
+        /// <summary>
+        /// Together AI cloud
+        /// </summary>
+        [ProviderDisplay("Together AI (cloud)")]
+        TogetherAi,
     }
 }

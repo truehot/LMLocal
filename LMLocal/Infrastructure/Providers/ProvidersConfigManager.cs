@@ -30,10 +30,7 @@ namespace LMLocal.Infrastructure.Providers
         private readonly SemaphoreSlim _fileLock = new SemaphoreSlim(1, 1);
 
         /// <summary>
-        /// Defines which <see cref="ModelProvider"/> enum values are default (built-in),
-        /// with their stable IDs and default base URLs.
-        /// ProviderName and ProviderType are derived from the enum and its
-        /// <see cref="ProviderDisplayAttribute"/> — do NOT duplicate them here.
+        /// Defines which ModelProvider enum values are default (built-in), with their stable IDs and default base URLs.
         /// </summary>
         private static readonly (int Id, ModelProvider Provider, string BaseUrl)[] DefaultProviderDefs =
         {

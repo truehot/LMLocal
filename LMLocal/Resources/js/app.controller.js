@@ -26,7 +26,7 @@ import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
 import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
-import { UIText } from '@app/constants/app.globals.js';
+import { providerResolver } from '@app/lib/provider.resolver.js';
 
 /**
  * AppController - central initializer and event router.
@@ -42,6 +42,7 @@ class AppController {
         this._instructionsStoreListener = null;
         this._settingsStoreListener = null;
         this._changesStoreListener = null;
+        this._providerResolverUnsubscribe = null;
         this._globalClickHandler = null;
     }
 
@@ -105,6 +106,7 @@ class AppController {
             themeComponent.updateSettingsState(state, prev);
             chatComponent.updateSettingsState(state, prev);
             statusComponent.updateSettingsState(state, prev);
+            chatController.updateSettingsState(state, prev);
         };
         settingsStore.subscribe(this._settingsStoreListener);
 
@@ -112,6 +114,10 @@ class AppController {
             changesPanelComponent.updateChangesState(state, prev);
         };
         changesStore.subscribe(this._changesStoreListener);
+
+        this._providerResolverUnsubscribe = providerResolver.subscribe((name) => {
+            statusComponent.updateProviderName(name);
+        });
 
         themeComponent.setup();
 
@@ -241,9 +247,14 @@ class AppController {
 
         statusComponent.onClearChat.on(async () => {
             const confirmDialog = new ConfirmDialog();
-            const isConfirmed = await confirmDialog.confirm(UIText.CONFIRM_CLEAR_CONVERSATION);
-            if (!isConfirmed) return false;
-            await appManager.performClearChat();
+            const hasModel = !!modelStore.getState().modelId;
+            const result = await confirmDialog.confirm(hasModel);
+            if (!result.confirmed) return false;
+            if (result.action === 'summarize') {
+                await appManager.performSummarizeAndClear();
+            } else {
+                await appManager.performClearChat(result.action);
+            }
             return true;
         });
 
@@ -314,6 +325,11 @@ class AppController {
         if (this._changesStoreListener) {
             changesStore.unsubscribe(this._changesStoreListener);
             this._changesStoreListener = null;
+        }
+
+        if (this._providerResolverUnsubscribe) {
+            this._providerResolverUnsubscribe();
+            this._providerResolverUnsubscribe = null;
         }
 
         if (this._globalClickHandler) {

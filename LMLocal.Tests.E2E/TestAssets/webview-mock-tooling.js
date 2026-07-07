@@ -142,7 +142,8 @@ const __mockBridge = {
             }));
         }, 50));
     },
-    ResetHistoryAsync: async () => {},
+    ResetHistoryWithActionAsync: async () => true,
+    SummarizeAndCompactAsync: async () => true,
     CopyToClipboardAsync: async (text) => true,
     GetInstructionsAsync: async () => {
         console.log('[mock] GetInstructionsAsync called');

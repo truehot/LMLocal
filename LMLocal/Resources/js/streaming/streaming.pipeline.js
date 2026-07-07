@@ -119,7 +119,7 @@ export function createImmediatePipeline(renderer, parser) {
             renderer.start(container);
         },
         write(text) {
-            if (!isRunning) return false;
+            if (!isRunning || !text) return false;
             pendingWork = processChunk(text);
             return true;
         },

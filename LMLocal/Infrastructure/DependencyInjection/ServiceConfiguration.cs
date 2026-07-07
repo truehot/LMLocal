@@ -124,6 +124,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
             services.AddSingleton<ICompositeToolFactory, CompositeToolProvider>();
 
+            services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
             services.AddSingleton<IModelsListService, ModelsListService>();
 

@@ -193,7 +193,10 @@ export class ModelSelectorDialog {
             }
         } catch (error) {
             console.error('Model selection failed:', error);
-            this._showErrorState(`Model selection failed: ${error.message}`);
+
+            if (this.el?.container) {
+                this._showErrorState(`Model selection failed: ${error.message}`);
+            }
         }
     }
 
@@ -228,6 +231,7 @@ export class ModelSelectorDialog {
         try {
             const result = await this.onSaveProvider.emitResult({
                 Provider: providerData.providerType || 'openai',
+                ProviderId: providerData.id ?? null,
                 LmStudioBaseUrl: providerData.customBaseUrl || '',
                 ApiKey: providerData.customApiKey || '',
             });

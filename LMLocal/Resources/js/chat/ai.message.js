@@ -1,26 +1,28 @@
 ﻿/**
- * Factory that creates an message DOM element, caches its internal blocks,
- * and returns an API to manipulate the message.
+ * Factory that creates a message DOM element, caches its internal blocks and returns an API to manipulate the message.
  */
-export function createAiMessage(container, highlightWorkerClient, streamingPipeline, iterating = false) {
+export function createAiMessage(container, highlightWorkerClient, currentPipeline, iterating = false) {
+
+    const thoughtHtml = `<div class="thought-container" style="display: none;" data-element="thought-container">
+        <div class="reasoning-header">
+            <div class="reasoning-title">Thoughts
+                <div class="loading-indicator" data-element="thought-loader">
+                    <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+                </div>
+            </div>
+            <button class="toggle-thought-btn"></button>
+        </div>
+        <div class="thought-content" data-element="thought-content"></div>
+    </div>`;
+    const toolHtml = `<div class="ai-tool-container" data-element="ai-tool-container"></div>`;
+    const respHtml = `<div class="ai-response-container" style="display: none;" data-element="response-container"></div>`;
 
     const html = `<div>
         <div class="loading-indicator" data-element="loading-indicator"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <div class="thought-container" style="display: none;" data-element="thought-container">
-            <div class="reasoning-header">
-                <div class="reasoning-title">Thoughts
-                    <div class="loading-indicator" data-element="thought-loader">
-                        <div class="dot"></div><div class="dot"></div><div class="dot"></div>
-                    </div>
-                </div>
-                <button class="toggle-thought-btn"></button>
-            </div>
-            <div class="thought-content" data-element="thought-content"></div>
-        </div>
-        <div class="ai-response-container" style="display: none;" data-element="response-container"></div>
-        <div data-element="ai-tool-container"></div>
-        </div>
-    `;
+        ${thoughtHtml}
+        ${respHtml}
+        ${toolHtml}
+        </div>`;
 
     let element;
     if (iterating) {
@@ -40,19 +42,35 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
         thoughtContent: element.querySelector('[data-element="thought-content"]'),
         responseContainer: element.querySelector('[data-element="response-container"]'),
         toolContainer: element.querySelector('[data-element="ai-tool-container"]'),
-        thoughtLoader: element.querySelector('[data-element="thought-loader"]')
+        thoughtLoader: element.querySelector('[data-element="thought-loader"]'),
     };
 
     let isStreaming = false;
 
+    function stopLoadingIndicator() {
+        if (elements.loadingIndicator) elements.loadingIndicator.remove();
+        elements.loadingIndicator = null;
+    }
+
+    function stopThoughts() {
+        if (elements.thoughtContainer) elements.thoughtContainer.classList.remove('is-thinking');
+        if (elements.thoughtLoader) elements.thoughtLoader.style.display = 'none';
+    }
+
+    function resetState() {
+        elements = null;
+        isStreaming = false;
+    }
+
     const api = {
+        isCollapsible: false,
+
         stopLoadingIndicator: () => {
-            if (elements.loadingIndicator) elements.loadingIndicator.remove();
-            elements.loadingIndicator = null;
+            stopLoadingIndicator();
         },
 
         updateThought: (text) => {
-            api.stopLoadingIndicator();
+            stopLoadingIndicator();
             if (elements.thoughtContent) elements.thoughtContent.textContent = text;
             if (elements.thoughtContainer) {
                 elements.thoughtContainer.style.display = 'block';
@@ -61,17 +79,16 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
         },
 
         stopThoughts: () => {
-            if (elements.thoughtContainer) elements.thoughtContainer.classList.remove('is-thinking');
-            if (elements.thoughtLoader) elements.thoughtLoader.style.display = 'none';
+            stopThoughts();
         },
 
         startStreaming: (text) => {
-            api.stopLoadingIndicator();
+            stopLoadingIndicator();
             if (elements.responseContainer) {
                 elements.responseContainer.classList.add('is-generating');
                 elements.responseContainer.style.display = 'block';
                 if (!isStreaming) {
-                    streamingPipeline.attach(elements.responseContainer);
+                    currentPipeline.attach(elements.responseContainer);
                 }
             }
             isStreaming = true;
@@ -79,14 +96,14 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
 
         updateStreaming: (text) => {
             if (!isStreaming) api.startStreaming(text);
-            streamingPipeline.write(text);
-
+            currentPipeline.write(text);
         },
 
         finishStreaming: () => {
             const responseContainer = elements?.responseContainer;
+            const pipeline = currentPipeline;
             return new Promise((resolve) => {
-                streamingPipeline.onEnd(async () => {
+                pipeline.onEnd(async () => {
                     element?.classList.add('completed');
                     try {
                         await highlightWorkerClient.highlightContainer(responseContainer);
@@ -95,13 +112,13 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
                     }
 
                     if (responseContainer?.isConnected) {
-                        elements.responseContainer.classList.remove('is-generating');
+                        responseContainer.classList.remove('is-generating');
                     }
 
                     resolve();
                 });
 
-                const wasActive = streamingPipeline.end();
+                const wasActive = pipeline.end();
                 if (!wasActive) {
                     resolve();
                 }
@@ -109,7 +126,7 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
         },
 
         startTooling: (callId, message) => {
-            api.stopLoadingIndicator();
+            stopLoadingIndicator();
 
             const toolDiv = document.createElement('div');
             toolDiv.className = 'tool-status';
@@ -132,11 +149,11 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
 
         stopStreaming: (message) => {
             if (isStreaming) {
-                streamingPipeline.abort();
+                currentPipeline.abort();
                 isStreaming = false;
             }
-            api.stopLoadingIndicator();
-            api.stopThoughts();
+            stopLoadingIndicator();
+            stopThoughts();
             if (elements.responseContainer) {
                 elements.responseContainer.classList.remove('is-generating');
                 elements.responseContainer.style.display = 'block';
@@ -148,24 +165,33 @@ export function createAiMessage(container, highlightWorkerClient, streamingPipel
             }
             element.classList.add('stopped');
         },
+
         finalize: () => {
+            stopLoadingIndicator();
+            stopThoughts();
             if (isStreaming) {
                 isStreaming = false;
-                streamingPipeline?.abort();
-                streamingPipeline = null;
-                container = null;
-                highlightWorkerClient = null;
-                element = null;
+                currentPipeline?.abort();
             }
         },
+
         clear: () => {
+            stopLoadingIndicator();
+            stopThoughts();
+            if (isStreaming) {
+                isStreaming = false;
+                currentPipeline?.abort();
+            }
             if (element) {
                 element.replaceChildren();
                 element.remove();
                 element = null;
             }
-            api.finalize();
-        }
+            resetState();
+            currentPipeline = null;
+            container = null;
+            highlightWorkerClient = null;
+        },
     };
 
     return api;

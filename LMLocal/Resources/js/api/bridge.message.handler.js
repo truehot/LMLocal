@@ -4,6 +4,7 @@ import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js'
 import changesStore from '@app/store/changes.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
+import chatController from '@app/chat/chat.controller.js';
 
 class BridgeMessageHandler {
     constructor() {
@@ -81,7 +82,12 @@ class BridgeMessageHandler {
         });
     }
 
-    handleChatSessionIterating() {
+    handleChatSessionIterating(data) {
+        const isFinal = !!data.IsFinalRound;
+        chatController.setRoundInfo(data.RoundNumber, data.ToolCount || 0, isFinal);
+
+        if (isFinal) return;
+
         appStore.setState({
             status: AppStatus.PROCESSING,
             accumulatedText: "",

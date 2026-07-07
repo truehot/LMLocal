@@ -1,4 +1,5 @@
 using System.Net.Http;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
@@ -12,14 +13,14 @@ namespace LMLocal.Tests.Unit.Internal
     public class LMStudioClientTests
     {
         [TestCase("{\"error\":{\"message\":\"Something went wrong\"}}", "Something went wrong")]
-        [TestCase("{\"error\":{}}", null)]
-        [TestCase("{}", null)]
-        [TestCase("", null)]
+        [TestCase("{\"error\":{}}", "{}")]
+        [TestCase("{}", "{}")]
+        [TestCase("", "Empty response")]
         [TestCase("invalid json", "invalid json")]
-        public void TryExtractErrorMessage_HandlesVariousInputs(string raw, string expected)
+        public void ParseErrorBody_HandlesVariousInputs(string raw, string expected)
         {
-            string result = OpenApiAdapter.TryExtractErrorMessage(raw);
-            Assert.That(result, Is.EqualTo(expected));
+            var result = ApiErrorParser.ParseErrorBody(raw);
+            Assert.That(result.Message, Is.EqualTo(expected));
         }
 
         /// <summary>
@@ -38,7 +39,7 @@ namespace LMLocal.Tests.Unit.Internal
             var mockToolFactory = new Mock<ICompositeToolFactory>();
 
             // Act
-            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, mockToolFactory.Object);
+            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, new ApiRequestBuilder(mockSettingsManager.Object, mockToolFactory.Object));
 
             // Assert
             Assert.That(client, Is.Not.Null);

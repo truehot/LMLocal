@@ -127,8 +127,7 @@ namespace LMLocal.Application.ChatSession
 
                     try
                     {
-                        if (sessionContext.CurrentState != ChatSessionState.Error &&
-                            sessionContext.CurrentState != ChatSessionState.Cancelled)
+                        if (sessionContext.CurrentState != ChatSessionState.Error && sessionContext.CurrentState != ChatSessionState.Cancelled)
                         {
                             sessionToken.ThrowIfCancellationRequested();
                         }
@@ -193,7 +192,6 @@ namespace LMLocal.Application.ChatSession
 
         /// <summary>
         /// Generating state: Calls LLM to generate response (with or without tool context).
-        /// Transitions to ProcessingResult to analyze the response.
         /// </summary>
         private async Task<ChatSessionState> HandleGeneratingStateAsync(
             SessionStateContext context,
@@ -256,6 +254,15 @@ namespace LMLocal.Application.ChatSession
             {
                 InternalLogger.Info($"ChatSessionOrchestrator: No tool calls detected in generation result. Completing session.");
                 context.ConsecutiveToolIterationCount = 0;
+
+                await onMessage(new WebView2ChatSessionIteratingMessage
+                {
+                    Type = WebView2MessageType.ChatSessionIterating,
+                    RoundNumber = context.RoundNumber,
+                    ToolCount = 0,
+                    IsFinalRound = true
+                }).ConfigureAwait(false);
+
                 return ChatSessionState.Completing;
             }
 
@@ -342,6 +349,15 @@ namespace LMLocal.Application.ChatSession
             {
                 InternalLogger.Info($"ChatSessionOrchestrator: Reached max consecutive tool iterations ({MAX_TOOL_ITERATIONS}). Ending session to prevent infinite loop.");
                 context.ConsecutiveToolIterationCount = 0;
+
+                await onMessage(new WebView2ChatSessionIteratingMessage
+                {
+                    Type = WebView2MessageType.ChatSessionIterating,
+                    RoundNumber = context.RoundNumber,
+                    ToolCount = 0,
+                    IsFinalRound = true
+                }).ConfigureAwait(false);
+
                 return ChatSessionState.Completing;
             }
 
@@ -349,10 +365,13 @@ namespace LMLocal.Application.ChatSession
             {
                 InternalLogger.Info($"ChatSessionOrchestrator: Starting tool iteration {context.ConsecutiveToolIterationCount + 1} of {MAX_TOOL_ITERATIONS}");
 
-                await onMessage(new WebView2ScriptMessage
+                int completedToolCount = context.LastResult?.ToolCalls?.Count ?? 0;
+                await onMessage(new WebView2ChatSessionIteratingMessage
                 {
                     Type = WebView2MessageType.ChatSessionIterating,
-                    Payload = null
+                    RoundNumber = context.RoundNumber,
+                    ToolCount = completedToolCount,
+                    IsFinalRound = false
                 }).ConfigureAwait(false);
 
                 return ChatSessionState.Generating;

@@ -71,10 +71,20 @@ namespace LMLocal.Core.Models
         public bool EnableCodeCollapse { get; set; } = false;
 
         /// <summary>
+        /// When true, sequential model tool executions are grouped into a single compact UI block to reduce chat clutter.
+        /// </summary>
+        public bool CollapseToolCalls { get; set; } = false;
+
+        /// <summary>
         /// AI provider backend: "lmstudio" (local), "ollama" (local), "openai" (custom compatible), etc..
         /// </summary>
         [Required(ErrorMessage = "Provider is required.")]
         public string Provider { get; set; } = "lmstudio";
+
+        /// <summary>
+        /// Id of the selected provider profile. Null when no specific profile is selected (legacy).
+        /// </summary>
+        public int? ProviderId { get; set; }
 
         public bool Equals(AppSettings other)
         {
@@ -91,8 +101,10 @@ namespace LMLocal.Core.Models
                 && EnableAiTools == other.EnableAiTools
                 && EnableAiWriteTools == other.EnableAiWriteTools
                 && EnableCodeCollapse == other.EnableCodeCollapse
+                && CollapseToolCalls == other.CollapseToolCalls
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
-                && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase)
+                && ProviderId == other.ProviderId;
         }
 
         public override bool Equals(object obj) => Equals(obj as AppSettings);
@@ -113,8 +125,10 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + EnableAiTools.GetHashCode();
                 hash = hash * 23 + EnableAiWriteTools.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
+                hash = hash * 23 + CollapseToolCalls.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
+                hash = hash * 23 + ProviderId.GetHashCode();
                 return hash;
             }
         }

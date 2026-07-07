@@ -100,8 +100,11 @@ namespace LMLocal.Tests.Unit.Internal
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.StreamToolCall && (m as WebView2ToolCallMessage)?.FunctionName == "tool1"), Is.True);
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.StreamToolEnd && (m as WebView2ToolCallMessage)?.FunctionName == "tool1"), Is.True);
 
-            // Check that iteration marker was sent
-            Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionIterating), Is.True);
+            // Check that iteration markers were sent (one per round, final round with IsFinalRound=true)
+            var iterMsgs = messages.OfType<WebView2ChatSessionIteratingMessage>().ToList();
+            Assert.That(iterMsgs.Count, Is.EqualTo(2), "Should send 2 iteration messages: round1 (tools) + final round2 (no tools)");
+            Assert.That(iterMsgs[0].IsFinalRound, Is.False, "First round should not be final");
+            Assert.That(iterMsgs[1].IsFinalRound, Is.True, "Second (final) round should be marked final");
 
             // Final completion and compaction messages present
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionComplete), Is.True);

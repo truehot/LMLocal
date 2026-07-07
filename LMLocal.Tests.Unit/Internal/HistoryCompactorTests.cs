@@ -30,7 +30,6 @@ namespace LMLocal.Tests.Unit
 
             var mockClient = new Mock<IOpenApiAdapter>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
-            // Use a smaller max context so compaction threshold is exceeded by the test messages
             mockActiveModelContext.SetupGet(a => a.MaxContextLength).Returns(100);
             var compactor = new HistoryCompactor(history, mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
 
@@ -46,7 +45,6 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompaction = true });
 
-            // Prepare a snapshot of history with many messages
             var snapshot = new System.Collections.Generic.List<ChatMessage>();
             for (int i = 0; i < 50; i++)
             {
@@ -58,7 +56,6 @@ namespace LMLocal.Tests.Unit
 
             var mockClient = new Mock<IOpenApiAdapter>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
-            // Use small max context to force compaction
             mockActiveModelContext.SetupGet(a => a.MaxContextLength).Returns(100);
 
             var response = new SendChatResponse
@@ -70,19 +67,14 @@ namespace LMLocal.Tests.Unit
             };
 
             mockClient.Setup(c => c.SendChatAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
-
-            // Expect ReplaceHistory to be called with summary and recent messages
             mockHistory.Setup(h => h.ReplaceHistory(It.IsAny<string>(), It.IsAny<System.Collections.Generic.IEnumerable<ChatMessage>>(), It.IsAny<int>())).Returns(true).Verifiable();
 
             var compactor = new HistoryCompactor(mockHistory.Object, mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
-
-            // run compaction
             compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
 
-            // Verify ReplaceHistory was called with parsed summary
             mockHistory.Verify(h => h.ReplaceHistory(
                 It.Is<string>(s => s == "summary content"),
-                It.IsAny<System.Collections.Generic.IEnumerable<ChatMessage>>(),
+                It.Is<System.Collections.Generic.IEnumerable<ChatMessage>>(r => r.Count() == 10),
                 It.Is<int>(n => n == snapshot.Count)), Times.Once);
         }
 
@@ -118,7 +110,6 @@ namespace LMLocal.Tests.Unit
             var compactor = new HistoryCompactor(mockHistory.Object, new Mock<IOpenApiAdapter>().Object, mockSettings.Object, mockActiveModelContext.Object);
 
             var result = compactor.NeedsCompaction();
-
             Assert.That(result, Is.False);
         }
 
@@ -137,8 +128,97 @@ namespace LMLocal.Tests.Unit
             var compactor = new HistoryCompactor(mockHistory.Object, new Mock<IOpenApiAdapter>().Object, mockSettings.Object, mockActiveModelContext.Object);
 
             var result = compactor.NeedsCompaction();
-
             Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public void SummarizeAsync_NullOrEmptyHistory_ReturnsNull()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockClient = new Mock<IOpenApiAdapter>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            mockActiveModelContext.SetupGet(a => a.MaxContextLength).Returns(16384);
+            var compactor = new HistoryCompactor(
+                new Mock<IChatHistoryManager>().Object,
+                mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
+
+            var r1 = compactor.SummarizeAsync(null, "m", CancellationToken.None).GetAwaiter().GetResult();
+            var r2 = compactor.SummarizeAsync(new List<ChatMessage>(), "m", CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(r1, Is.Null);
+            Assert.That(r2, Is.Null);
+        }
+
+        [Test]
+        public void SummarizeAsync_Success_ReturnsSummary()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            mockActiveModelContext.SetupGet(a => a.MaxContextLength).Returns(16384);
+
+            var mockClient = new Mock<IOpenApiAdapter>();
+            mockClient.Setup(c => c.SendChatAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SendChatResponse
+                {
+                    Choices = new List<ChatChoice>
+                    {
+                        new ChatChoice { Message = new AssistantMessage { Content = "summary text" } }
+                    }
+                });
+
+            var history = new List<ChatMessage>
+            {
+                new ChatMessage("user", "hello"),
+                new ChatMessage("assistant", "hi")
+            };
+
+            var compactor = new HistoryCompactor(
+                new Mock<IChatHistoryManager>().Object,
+                mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
+
+            var result = compactor.SummarizeAsync(history, "m", CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(result, Is.EqualTo("summary text"));
+        }
+
+        [Test]
+        public void SummarizeAsync_SkipsToolsAndEmptyAssistant()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            var mockActiveModelContext = new Mock<IActiveModelContext>();
+            mockActiveModelContext.SetupGet(a => a.MaxContextLength).Returns(16384);
+
+            MessageContext captured = null;
+            var mockClient = new Mock<IOpenApiAdapter>();
+            mockClient.Setup(c => c.SendChatAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .Callback<MessageContext, ModelContext, CancellationToken>((ctx, mc, ct) => captured = ctx)
+                .ReturnsAsync(new SendChatResponse
+                {
+                    Choices = new List<ChatChoice>
+                    {
+                        new ChatChoice { Message = new AssistantMessage { Content = "ok" } }
+                    }
+                });
+
+            var history = new List<ChatMessage>
+            {
+                new ChatMessage("user", "hello"),
+                new ChatMessage("assistant", null) { ToolCalls = new List<ToolCall>() },
+                new ChatMessage("tool", "{}", "c1"),
+                new ChatMessage("assistant", "answer"),
+            };
+
+            var compactor = new HistoryCompactor(
+                new Mock<IChatHistoryManager>().Object,
+                mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
+
+            compactor.SummarizeAsync(history, "m", CancellationToken.None).GetAwaiter().GetResult();
+
+            var text = captured.Input[1].Content.ToString();
+            Assert.That(text, Does.Contain("user: hello"));
+            Assert.That(text, Does.Contain("assistant: answer"));
+            Assert.That(text, Does.Not.Contain("tool"));
+            Assert.That(text, Does.Not.Contain("{}"));
         }
     }
 }

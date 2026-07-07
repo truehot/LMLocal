@@ -68,11 +68,15 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Core\Exceptions\ApiException.cs" />
+    <Compile Include="Core\Models\ApiErrorInfo.cs" />
     <Compile Include="Core\Models\GetProvidersResponse.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
     <Compile Include="Core\Models\ProviderTypeInfo.cs" />
     <Compile Include="Core\Models\ToolsConfigFile.cs" />
+    <Compile Include="Infrastructure\LlmApi\ApiErrorParser.cs" />
+    <Compile Include="Infrastructure\LlmApi\ApiRequestBuilder.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderDisplayAttribute.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
@@ -86,6 +90,7 @@
     <Compile Include="Infrastructure\LlmApi\Responses\LlamaCppListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\LmStudioModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\OllamaPsResponse.cs" />
+    <Compile Include="Infrastructure\LlmApi\Responses\TogetherAiModelInfo.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
@@ -161,6 +166,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\chat\ai.collapsible.message.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\chat\chat.pipeline.builder.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\components\changes.panel.component.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -193,6 +206,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\lib\provider.resolver.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\services\app.data.service.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -208,6 +225,7 @@
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />
+    <Compile Include="Infrastructure\WebView\Models\WebView2ChatSessionIteratingMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2MessageType.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ScriptMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ScriptMessageWithCount.cs" />
@@ -432,6 +450,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\dialogs\tools.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\css\tools.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

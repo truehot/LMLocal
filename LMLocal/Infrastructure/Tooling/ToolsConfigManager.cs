@@ -53,7 +53,7 @@ namespace LMLocal.Infrastructure.Tooling
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     settingsManager.LocalAppDataFolder ?? "LMLocalChat",
                     "tools.json"
-                );
+            );
 
             _fileSystem.ValidateFilePath(filePath);
             _fileSystem.EnsureDirectoryExistsForFile(filePath);

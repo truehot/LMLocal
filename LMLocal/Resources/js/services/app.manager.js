@@ -116,37 +116,72 @@ class AppManager {
         }
     }
 
-    async performClearChat() {
-        if (!appSelectors.isBusy(appStore.getState().status)) {
+    async performSummarizeAndClear() {
+        if (appSelectors.isBusy(appStore.getState().status)) return;
 
-            appStore.setState({
-                status: AppStatus.CLEARING,
-                error: null
-            });
+        const modelId = modelStore.getState().modelId;
+        if (!modelId) {
+            return await this.performClearChat('none');
+        }
 
-            try {
-                await bridgeClient.resetHistoryAsync();
+        appStore.setState({ status: AppStatus.COMPACTING, error: null });
 
+        try {
+            const ok = await bridgeClient.summarizeAndCompactAsync(modelId);
+            if (!ok) {
                 appStore.setState({
                     status: AppStatus.IDLE,
-                    tokenUsed: 0,
-                    tokenSpeed: 0,
-                    accumulatedText: "",
-                    accumulatedThoughtText: "",
-                    userMessage: "",
-                    error: null
+                    tokenUsed: 0, tokenSpeed: 0,
+                    accumulatedText: "", accumulatedThoughtText: "",
+                    userMessage: "", error: null
                 });
-            } catch (error) {
-                appStore.setState({
-                    status: AppStatus.ERROR,
-                    error: "Failed to clear chat history",
-                    accumulatedText: "",
-                    accumulatedThoughtText: "",
-                    userMessage: "",
-                    tokenUsed: 0,
-                    tokenSpeed: 0
-                });
+                return;
             }
+        } catch (error) {
+            appStore.setState({
+                status: AppStatus.IDLE,
+                tokenUsed: 0, tokenSpeed: 0,
+                accumulatedText: "", accumulatedThoughtText: "",
+                userMessage: "", error: null
+            });
+            return;
+        }
+
+        appStore.setState({ status: AppStatus.IDLE });
+        return await this.performClearChat('last-prompt');
+    }
+
+    async performClearChat(action = 'none') {
+        if (appSelectors.isBusy(appStore.getState().status)) return;
+
+        appStore.setState({
+            status: AppStatus.CLEARING,
+            error: null
+        });
+
+        try {
+            await bridgeClient.resetHistoryWithActionAsync(action);
+
+            appStore.setState({
+                status: AppStatus.IDLE,
+                tokenUsed: 0, tokenSpeed: 0,
+                accumulatedText: "", accumulatedThoughtText: "",
+                userMessage: "", error: null
+            });
+
+            if (action !== 'none') {
+                const session = await appDataService.getLastChatSessionAsync();
+                if (session && session.hasSession) {
+                    chatController.renderHistory(session.messages);
+                }
+            }
+        } catch (error) {
+            appStore.setState({
+                status: AppStatus.ERROR,
+                error: "Failed to clear chat history",
+                accumulatedText: "", accumulatedThoughtText: "",
+                userMessage: "", tokenUsed: 0, tokenSpeed: 0
+            });
         }
     }
 

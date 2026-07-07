@@ -37,9 +37,14 @@ class BridgeClient {
         return await this._callHost("StopExecutionAsync");
     }
 
-    async resetHistoryAsync() {
-        return await this._callHost("ResetHistoryAsync");
+    async resetHistoryWithActionAsync(action) {
+        return await this._callHost("ResetHistoryWithActionAsync", action);
     }
+
+    async summarizeAndCompactAsync(modelId) {
+        return await this._callHost("SummarizeAndCompactAsync", modelId);
+    }
+
 
     async getLastChatSessionAsync() {
         const res = await this._callHost("GetLastChatSessionAsync");

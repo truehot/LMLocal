@@ -4,11 +4,7 @@ import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
 
 /**
- * StatusComponent
- *
- * UI component that displays application connection and token usage status.
- * The component wires DOM elements, updates visual state from the application
- * store, and exposes an `onRetry` callback for retrying connections.
+ * UI component that displays application connection and token usage status. The component wires DOM elements, updates visual state from the application store, and exposes an `onRetry` callback for retrying connections.
  **/
 class StatusComponent {
     constructor() {
@@ -18,6 +14,8 @@ class StatusComponent {
         this.onRetry = createCallback();
         this.onConnect = createCallback();
         this.onClearChat = createCallback();
+        this._providerName = null;
+        this._currentAppState = null;
     }
 
     _getElements() {
@@ -65,7 +63,7 @@ class StatusComponent {
             case AppStatus.COMPACTING:
             case AppStatus.STOPPING:
             case AppStatus.ERROR:
-                connText = UIText.STATUS_ONLINE;
+                connText = this._providerName || UIText.STATUS_ONLINE;
                 connClass = 'status-label online';
                 break;
             default:
@@ -237,13 +235,25 @@ class StatusComponent {
             this.connectTimeout = null;
         }
         this.elements = {};
+        this._providerName = null;
+        this._currentAppState = null;
     }
 
     updateAppState(appState, prevAppState) {
+        this._currentAppState = appState;
         this._updateConnectionStatus(appState, prevAppState);
         this._updateTokenCounter(appState, prevAppState);
         this._updateStatusText(appState, prevAppState);
         this._updateGeneratingAnimation(appState, prevAppState);
+    }
+
+    updateProviderName(name) {
+        if (this._providerName === name) return;
+        this._providerName = name;
+
+        if (this._currentAppState) {
+            this._updateConnectionStatus(this._currentAppState, null);
+        }
     }
 
     updateSettingsState(settingsState, prevSettingsState) {
