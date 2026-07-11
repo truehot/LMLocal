@@ -163,7 +163,9 @@ body {
     background-color: var(--selection-bg);
     color: var(--selection-text);
 }
-
+::-webkit-scrollbar-corner {
+    background: transparent; 
+}
 /* ====== Icon buttons ====== */
 .btn-clear-icon {
     margin-left: auto;

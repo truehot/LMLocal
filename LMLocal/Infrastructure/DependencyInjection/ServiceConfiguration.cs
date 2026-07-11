@@ -4,6 +4,7 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Instructions;
@@ -22,6 +23,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.WebView;
+using LMLocal.Infrastructure.WebView.Controllers;
 using LMLocal.Services.Tool;
 using Microsoft.Extensions.DependencyInjection;
 namespace LMLocal.Infrastructure.DependencyInjection
@@ -76,9 +78,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IMcpConfigManager, McpConfigManager>();
             services.AddSingleton<IProvidersConfigManager, ProvidersConfigManager>();
             services.AddSingleton<IToolsConfigManager, ToolsConfigManager>();
-
             services.AddSingleton<IMcpToolManager, McpToolManager>();
-
             services.AddSingleton<ISettingsManager, SettingsManager>();
             services.AddSingleton<IPathResolver, PathResolver>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
@@ -115,7 +115,10 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IGetActiveDocument, GetActiveDocument>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
-            services.AddSingleton<ISyntaxChecker, CSharpSyntaxChecker>();
+            services.AddSingleton<CSharpSyntaxChecker>();
+            services.AddSingleton<ISyntaxCheckerFactory>(sp =>
+                new SyntaxCheckerFactory(
+                    sp.GetRequiredService<CSharpSyntaxChecker>()));
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
             services.AddSingleton<IChatPersistenceService, ChatPersistenceService>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
@@ -123,6 +126,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
             services.AddSingleton<ICompositeToolFactory, CompositeToolProvider>();
+            services.AddSingleton<IToolResultMarkdownFormatter, ToolResultMarkdownFormatter>();
 
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
@@ -133,10 +137,19 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IActiveModelContext, ActiveModelContext>();
             services.AddSingleton<IHistoryCompactor, HistoryCompactor>();
 
+            services.AddSingleton<IToolCallLoopDetector, ToolCallLoopDetector>();
+
             services.AddSingleton<IChatSessionOrchestrator, ChatSessionOrchestrator>();
             services.AddSingleton<IChatStreamService, ChatStreamService>();
             services.AddSingleton<IToolExecutionManager, ToolExecutionManager>();
             services.AddSingleton<ISessionManager, SessionManager>();
+
+            services.AddSingleton<IInstructionsController, InstructionsController>();
+            services.AddSingleton<IProvidersController, ProvidersController>();
+            services.AddSingleton<IToolsController, ToolsController>();
+            services.AddSingleton<ISettingsController>(sp => new SettingsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>()));
+            services.AddSingleton<IMcpController>(sp => new McpController(sp.GetRequiredService<IMcpConfigManager>(), sp.GetRequiredService<IMcpToolManager>(), sp.GetRequiredService<ISettingsManager>()));
+            services.AddSingleton<IModelsController>(sp => new ModelsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>(), sp.GetRequiredService<IActiveModelContext>()));
         }
 
         /// <summary>

@@ -13,27 +13,28 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Reasoning or internal monologue (reasoning_content field).
-        /// For Nemotron, may contain XML-formatted tool calls: &lt;tool_call&gt;...&lt;/tool_call&gt;
         /// </summary>
         Reasoning,
 
         /// <summary>
         /// Tool call arguments in JSON format (OpenAI-compatible format for Qwen/Gemma/OpenAI).
-        /// Accumulated from delta.tool_calls[i].function.arguments across multiple chunks.
         /// </summary>
         ToolCallArguments,
 
         /// <summary>
         /// Raw tool call block (complete &lt;tool_call&gt;...&lt;/tool_call&gt; from Nemotron/DeepSeek).
-        /// StreamProcessor will parse this to extract function name and arguments.
         /// </summary>
         ToolCallRaw,
 
         /// <summary>
         /// Completion metadata: finish_reason, token usage, refusal.
-        /// Arrives once at the end of the stream.
         /// </summary>
-        Completion
+        Completion,
+
+        /// <summary>
+        /// Server-side error from SSE stream (OpenAI-compatible format).
+        /// </summary>
+        Error
     }
 
     /// <summary>
@@ -66,8 +67,6 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Tool call index for parallel function invocations.
-        /// Only populated when Kind is ToolCallArguments.
-        /// Indicates which tool call this arguments chunk belongs to.
         /// </summary>
         public int? ToolCallIndex { get; }
 
@@ -90,15 +89,12 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Helper property to detect XML-formatted tool calls from Nemotron models.
-        /// Returns true if this is reasoning content containing &lt;tool_call&gt; tags.
         /// </summary>
         public bool IsXmlToolCall => Kind == ChunkKind.Reasoning && Text?.Contains("<tool_call>") == true;
     }
 
     /// <summary>
     /// Tool call metadata chunk (index, id, function name).
-    /// Arrives once at the beginning of a tool_calls sequence.
-    /// May include initial arguments fragment if they arrive in the same chunk.
     /// </summary>
     internal class ToolCallMetadataChunk : StreamChunk
     {
@@ -109,7 +105,6 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Unique identifier for this tool call (e.g., "call_abc123").
-        /// Used to correlate the tool result back to this specific invocation.
         /// </summary>
         public string CallId { get; }
 
@@ -120,7 +115,6 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Initial fragment of tool call arguments if they arrive in the same chunk as metadata.
-        /// May be null if arguments arrive in subsequent chunks or are not present in this chunk.
         /// </summary>
         public string InitialArguments { get; }
 
@@ -148,8 +142,6 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Total tokens consumed in this request (prompt + completion).
-        /// Used for billing and quota tracking.
-        /// Only populated when usage data is present.
         /// </summary>
         public int? TotalTokens { get; }
 
@@ -175,7 +167,6 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// Server-side fingerprint of the model configuration.
-        /// Useful for detecting backend changes that might affect determinism during testing.
         /// </summary>
         public string SystemFingerprint { get; }
 
@@ -203,5 +194,37 @@ namespace LMLocal.Core.Models
             !TotalTokens.HasValue &&
             string.IsNullOrEmpty(Refusal) &&
             string.IsNullOrEmpty(SystemFingerprint);
+    }
+
+    /// <summary>
+    /// Error event received from SSE stream (OpenAI-compatible format).
+    /// </summary>
+    internal class ErrorStreamChunk : StreamChunk
+    {
+        /// <summary>
+        /// Human-readable error description (e.g. "Cannot find model ...").
+        /// </summary>
+        public string Message { get; }
+
+        /// <summary>
+        /// Error type from the server (e.g. "invalid_request_error", "server_error").
+        /// Null if not provided.
+        /// </summary>
+        public string ErrorType { get; }
+
+        /// <summary>
+        /// Error code from the server (e.g. "model_not_found", "rate_limit_exceeded").
+        /// </summary>
+        public string ErrorCode { get; }
+
+        public ErrorStreamChunk(string message, string errorType, string errorCode)
+            : base(ChunkKind.Error)
+        {
+            Message = message;
+            ErrorType = errorType;
+            ErrorCode = errorCode;
+        }
+
+        public override bool IsEmpty => string.IsNullOrEmpty(Message);
     }
 }

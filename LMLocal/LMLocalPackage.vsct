@@ -39,6 +39,10 @@
       <Group guid="guidLMLocalPackageCmdSet" id="MyMenuGroup" priority="0x0600">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" />
       </Group>
+      <!-- Context menu group inside the code editor context menu (IDM_VS_CTXT_CODEWIN) -->
+      <Group guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0010">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN"/>
+      </Group>
     </Groups>
 
     <!--Buttons section. -->
@@ -66,11 +70,21 @@
           <ButtonText>LM Local Chat</ButtonText>
         </Strings>
       </Button>
+
+      <!-- Context menu button "Ask LM Local" for the code editor -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidAskLMLocal" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" />
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send to LM Local</ButtonText>
+        </Strings>
+      </Button>
     </Buttons>
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
     <Bitmaps>
-      <Bitmap guid="guidMyIconSet" href="Resources\icon.png" usedList="iconLMLocal"/>
+      <Bitmap guid="guidMyIconSet" href="Resources\icon.ico" usedList="iconLMLocal"/>
     </Bitmaps>
   </Commands>
 
@@ -78,7 +92,7 @@
     <GuidSymbol name="guidMyIconSet" value="{dc60de45-6b26-4b00-b969-92c6dd30dc08}">
       <IDSymbol name="iconLMLocal" value="1" />
     </GuidSymbol>
-    
+
     <!-- This is the package guid. -->
     <GuidSymbol name="guidLMLocalPackage" value="{d2b7ae34-5422-4af0-bfc3-6129fd2641d0}" />
 
@@ -87,6 +101,8 @@
       <IDSymbol name="MyMenuGroup" value="0x1020" />
       <IDSymbol name="ShowMainWindowId" value="0x0100" />
       <IDSymbol value="4129" name="cmdidMainWindowCommand" />
+      <IDSymbol name="EditorContextGroup" value="0x1030" />
+      <IDSymbol name="cmdidAskLMLocal" value="0x0200" />
     </GuidSymbol>
   </Symbols>
 </CommandTable>

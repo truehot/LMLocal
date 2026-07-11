@@ -15,7 +15,7 @@ namespace LMLocal.Infrastructure.Tooling
     /// Manager for built-in tools configuration stored in a local JSON file.
     /// Provides cached access to tools configuration, similar to SettingsManager.
     /// </summary>
-    internal interface IToolsConfigManager
+    public interface IToolsConfigManager
     {
         /// <summary>
         /// Gets the current cached tools configuration. Must call LoadAsync first.

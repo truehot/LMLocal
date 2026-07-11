@@ -186,6 +186,15 @@ namespace LMLocal.Application.ChatSessionStream
                                             toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
                                         }
                                     }
+                                    else if (chunk is ErrorStreamChunk errChunk)
+                                    {
+                                        result.ErrorMessage = errChunk.Message;
+                                        result.ErrorType = errChunk.ErrorType;
+                                        result.ErrorCode = errChunk.ErrorCode;
+                                        result.FinishReason = "error";
+                                        isReading = false;
+                                    }
+
                                     else if (chunk is CompletionStreamChunk completion)
                                     {
                                         if (!string.IsNullOrEmpty(completion.FinishReason))

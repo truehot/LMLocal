@@ -396,5 +396,66 @@ namespace LMLocal.Tests.Unit
             var results = _parser.ExtractDeltas(json);
             Assert.That(results, Is.Empty);
         }
+
+        [Test]
+        public void ExtractDeltas_ReturnsErrorChunk_OnOpenAiError()
+        {
+            var json = "data: {\"error\":{\"message\":\"Cannot find model\",\"type\":\"invalid_request_error\",\"code\":\"model_not_found\"}}";
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results, Is.Not.Empty);
+            Assert.That(results[0] is ErrorStreamChunk);
+            var err = (ErrorStreamChunk)results[0];
+            Assert.That(err.Message, Is.EqualTo("Cannot find model"));
+            Assert.That(err.ErrorType, Is.EqualTo("invalid_request_error"));
+            Assert.That(err.ErrorCode, Is.EqualTo("model_not_found"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ReturnsErrorChunk_WithDuplicateMessageField()
+        {
+            // LM Studio format: message duplicated at root level
+            var json = "data: {\"error\":{\"message\":\"Cannot find model\"},\"message\":\"Cannot find model\"}";
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results, Is.Not.Empty);
+            Assert.That(results[0] is ErrorStreamChunk);
+            var err = (ErrorStreamChunk)results[0];
+            Assert.That(err.Message, Does.Contain("Cannot find model"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ErrorChunk_TakesPriorityOverChoices()
+        {
+            // Error + choices in same JSON — error must win
+            var json = "data: {\"error\":{\"message\":\"Rate limit exceeded\"},\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}";
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0] is ErrorStreamChunk);
+            var err = (ErrorStreamChunk)results[0];
+            Assert.That(err.Message, Is.EqualTo("Rate limit exceeded"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ErrorChunk_ClearsBufferedToolCall()
+        {
+            // Partial tool call in buffer — error should clear it, not flush it
+            var line1 = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"<tool_call>Search\"}}]}";
+            var line2 = "data: {\"error\":{\"message\":\"Server error\"}}";
+
+            _parser.ExtractDeltas(line1); // buffers the incomplete tool call
+            var results2 = _parser.ExtractDeltas(line2);
+
+            Assert.That(results2.Count, Is.EqualTo(1));
+            Assert.That(results2[0] is ErrorStreamChunk);
+
+            // After error, parser should be clean — no leftover buffer
+            var line3 = "data: {\"choices\":[{\"delta\":{\"content\":\"fresh\"}}]}";
+            var results3 = _parser.ExtractDeltas(line3);
+            Assert.That(results3.Count, Is.EqualTo(1));
+            Assert.That(results3[0] is TextStreamChunk);
+            Assert.That(((TextStreamChunk)results3[0]).Text, Is.EqualTo("fresh"));
+        }
     }
 }

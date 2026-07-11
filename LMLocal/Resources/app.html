@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="https://app.local/css/codeblock.css">
     <link rel="stylesheet" href="https://app.local/css/component.css">
     <link rel="stylesheet" href="https://app.local/css/tools.css">
+    <link rel="stylesheet" href="https://app.local/css/print.css" media="print">
 </head>
 <body>
 
@@ -161,7 +162,15 @@
                     <input type="radio" name="clear-action" id="confirm-action-last-prompt">
                     <span>
                         <span class="settings-label">Move the last prompt and response</span>
-                        <span class="settings-description">Copy your last message along with the AI's answer into the new chat's history.</span>
+                        <span class="settings-description">Copy your last message, the AI's answer, and all associated tool data into the new chat's history.</span>
+                    </span>
+                </label>
+
+                <label class="checkbox-container">
+                    <input type="radio" name="clear-action" id="confirm-action-last-exchange">
+                    <span>
+                        <span class="settings-label">Consolidate last exchange</span>
+                        <span class="settings-description">Merge your last message, tool results (code lines), and AI response into a single clean starting history.</span>
                     </span>
                 </label>
 

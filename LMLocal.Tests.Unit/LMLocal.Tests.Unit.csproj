@@ -110,6 +110,7 @@
     <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
+    <Compile Include="InstructionsControllerTests.cs" />
     <Compile Include="Internal\ChatGenerationServiceTests.cs" />
     <Compile Include="Internal\ChatHistoryManagerTests.cs" />
     <Compile Include="Internal\ChatSessionOrchestratorTests.cs" />
@@ -125,6 +126,7 @@
     <Compile Include="Internal\StreamProcessorToolCallsTests.cs" />
     <Compile Include="Internal\StreamProcessorUsageTests.cs" />
     <Compile Include="Internal\TestHelpers\TestFileSystems.cs" />
+    <Compile Include="Internal\ToolCallLoopDetectorTests.cs" />
     <Compile Include="Internal\WebViewBridgeTests.cs" />
     <Compile Include="Services\Tool\ToolExecutionManagerTests.cs" />
     <Reference Include="System.Net.Http" />

@@ -16,7 +16,7 @@ namespace LMLocal.Infrastructure.Providers
     /// <summary>
     /// Manager for custom providers stored in a local JSON file.
     /// </summary>
-    internal interface IProvidersConfigManager
+    public interface IProvidersConfigManager
     {
         Task<ProvidersConfigFile> GetAsync(CancellationToken cancellationToken = default);
         Task UpdateAsync(ProvidersConfigFile config, CancellationToken cancellationToken = default);

@@ -22,6 +22,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         private Mock<ISnapshotManager> _snapshotMock;
         private Mock<IFileSystem> _fileSystemMock;
         private Mock<ISyntaxChecker> _syntaxMock;
+        private Mock<ISyntaxCheckerFactory> _syntaxFactoryMock;
         private InsertFileLines _tool;
 
         private const string SolutionDir = @"C:\solution";
@@ -36,6 +37,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _snapshotMock = new Mock<ISnapshotManager>();
             _fileSystemMock = new Mock<IFileSystem>();
             _syntaxMock = new Mock<ISyntaxChecker>();
+            _syntaxFactoryMock = new Mock<ISyntaxCheckerFactory>();
 
             _vsMock.Setup(v => v.IsSolutionOpen).Returns(true);
             _vsMock.Setup(v => v.GetSolutionDirectory()).Returns(SolutionDir);
@@ -55,11 +57,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _fileSystemMock.Setup(f => f.FileExists(AbsolutePath)).Returns(true);
             _fileSystemMock.Setup(f => f.ValidateFilePath(AbsolutePath));
 
-            _syntaxMock.Setup(s => s.IsSupported(AbsolutePath)).Returns(false);
+            _syntaxFactoryMock.Setup(f => f.GetChecker(It.IsAny<string>())).Returns((ISyntaxChecker)null);
 
             _tool = new InsertFileLines(
                 _vsMock.Object, _pathResolverMock.Object, _snapshotMock.Object,
-                _fileSystemMock.Object, _syntaxMock.Object);
+                _fileSystemMock.Object, _syntaxFactoryMock.Object);
         }
 
         private void SetupFileContent(string content)
@@ -72,14 +74,18 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         private static Dictionary<string, object> CreateParams(
             string filePath = FilePath,
             int position = 1,
-            string newLines = "inserted")
+            string newLines = "inserted",
+            string expectedLine = null)
         {
-            return new Dictionary<string, object>
+            var dict = new Dictionary<string, object>
             {
                 ["file_path"] = filePath,
                 ["position"] = position,
                 ["new_lines"] = newLines
             };
+            if (expectedLine != null)
+                dict["expected_line"] = expectedLine;
+            return dict;
         }
 
         // ── Parameter validation ──────────────────────────────────────────────
@@ -185,7 +191,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.ErrorMessage, Does.Contain("outside the solution directory"));
         }
 
-        // ── Insert scenarios ──────────────────────────────────────────────────
+        // ── Insert scenarios (without expected_line) ──────────────────────────
 
         [Test]
         public async Task ExecuteAsync_Success_InsertsAtPositionZero()
@@ -264,7 +270,6 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public async Task ExecuteAsync_Success_AppendsAtEndMaintainsTrailingNewline()
         {
-            // File ends with \r\n → hadTrailingNewline=true → trailing preserved
             SetupFileContent("a\r\nb\r\n");
 
             var result = await _tool.ExecuteAsync(CreateParams(position: 2, newLines: "c"));
@@ -294,6 +299,159 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                     Encoding.UTF8, false, It.IsAny<CancellationToken>()));
         }
 
+        // ── expected_line: matches ────────────────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_Matches_InsertHappensNormally()
+        {
+            SetupFileContent("a\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 1, newLines: "x", expectedLine: "a"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+            Assert.That(resp.LinesInserted, Is.EqualTo(1));
+            _fileSystemMock.Verify(f =>
+                f.WriteAllBytesWithEncodingAsync(AbsolutePath,
+                    "a\nx\nb\nc",
+                    Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task ExpectedLine_Matches_MultiLineFile()
+        {
+            SetupFileContent("line1\nline2\nline3\nline4\nline5");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 3, newLines: "inserted", expectedLine: "line3"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+        }
+
+        // ── expected_line: auto-correct ───────────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_Shifted_AutoCorrectsPosition()
+        {
+            // "targetLine" is at line 4, agent thinks position=2
+            SetupFileContent("a\nb\nc\ntargetLine\nd\ne");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "inserted", expectedLine: "targetLine"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.True);
+            Assert.That(resp.OriginalPosition, Is.EqualTo(2));
+            Assert.That(resp.AppliedPosition, Is.EqualTo(4));
+            _fileSystemMock.Verify(f =>
+                f.WriteAllBytesWithEncodingAsync(AbsolutePath,
+                    "a\nb\nc\ntargetLine\ninserted\nd\ne",
+                    Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task ExpectedLine_ShiftedDown_AutoCorrects()
+        {
+            // "marker" was at 2, now at 3 (due to previous insert adding line at 0)
+            SetupFileContent("header\na\nmarker\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "inserted", expectedLine: "marker"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.True);
+            Assert.That(resp.AppliedPosition, Is.EqualTo(3));
+        }
+
+        // ── expected_line: multiple matches ───────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_MultipleMatches_ReturnsCandidates()
+        {
+            SetupFileContent("a\ndup\nc\nd\ndup\nf");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 1, newLines: "x", expectedLine: "dup"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("matches 2 locations"));
+            Assert.That(resp.Candidates, Is.Not.Null);
+            Assert.That(resp.Candidates.Count, Is.EqualTo(2));
+            Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(2));
+            Assert.That(resp.Candidates[0].Text, Is.EqualTo("a\ndup\nc\nd"));
+            Assert.That(resp.Candidates[1].StartLine, Is.EqualTo(5));
+            Assert.That(resp.Candidates[1].Text, Is.EqualTo("c\nd\ndup\nf"));
+        }
+
+        // ── expected_line: not found ──────────────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_NotFound_ReturnsError()
+        {
+            SetupFileContent("a\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "x", expectedLine: "zzz_not_in_file"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("expected_line not found"));
+        }
+
+        // ── expected_line: edge cases ─────────────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_PositionZero_Ignored()
+        {
+            SetupFileContent("a\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 0, newLines: "header", expectedLine: "a"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.LinesInserted, Is.EqualTo(1));
+            // expected_line is ignored for position=0, normal insert before first line
+        }
+
+        [Test]
+        public async Task ExpectedLine_PositionBeyondFile_PadsWithoutChecking()
+        {
+            // position > file length → padding, expected_line not checked
+            SetupFileContent("a");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 5, newLines: "new", expectedLine: "anything"));
+
+            var resp = result as InsertLinesResponse;
+            // position(5) > linesList.Count(1) → padding happens before expected_line check
+            // position is still 5 which exceeds padded linesList.Count → isAppendingToEnd
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+        }
+
+        [Test]
+        public async Task ExpectedLine_Missing_DifferentThanMismatchAtPosition()
+        {
+            // expected_line provided but not matching: "c" is at position 3, not "b"
+            SetupFileContent("a\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 3, newLines: "x", expectedLine: "b"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.True);
+            Assert.That(resp.AppliedPosition, Is.EqualTo(2));
+        }
+
         [Test]
         public async Task ExecuteAsync_Cancellation_ReturnsError()
         {
@@ -304,6 +462,71 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             var resp = result as InsertLinesResponse;
             Assert.That(resp.Success, Is.False);
+        }
+
+        // ── Trailing whitespace tolerance (step 1) ────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_HasTrailingSpaces_MatchesAndInserts()
+        {
+            // expected_line has trailing spaces, file line does not — should still match
+            SetupFileContent("a\nb\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "x", expectedLine: "b   "));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+        }
+
+        [Test]
+        public async Task ExpectedLine_FileLineHasTrailingSpaces_MatchesAndInserts()
+        {
+            // File line has trailing spaces, expected_line does not — should still match
+            SetupFileContent("a\nb   \nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "x", expectedLine: "b"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+        }
+
+        [Test]
+        public async Task ExpectedLine_TrailingSpaces_AutoCorrectsToCorrectPosition()
+        {
+            // "target   " in file at line 4, agent says position=2, expected_line="target"
+            SetupFileContent("a\nb\nc\ntarget   \nd");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "inserted", expectedLine: "target"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.AutoCorrected, Is.True);
+            Assert.That(resp.AppliedPosition, Is.EqualTo(4));
+        }
+
+        // ── Candidate context (step 2) ────────────────────────────────────────
+
+        [Test]
+        public async Task ExpectedLine_MultipleMatches_CandidatesIncludeContextLines()
+        {
+            // "dup" at lines 2 and 5; Text should include surrounding lines
+            SetupFileContent("before\ndup\nafter\nd\nbefore\ndup\nafter");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 1, newLines: "x", expectedLine: "dup"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.Candidates, Is.Not.Null);
+            Assert.That(resp.Candidates.Count, Is.EqualTo(2));
+            Assert.That(resp.Candidates[0].Text, Does.Contain("before"));
+            Assert.That(resp.Candidates[0].Text, Does.Contain("dup"));
+            Assert.That(resp.Candidates[0].Text, Does.Contain("after"));
         }
     }
 }

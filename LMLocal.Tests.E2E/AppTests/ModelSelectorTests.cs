@@ -32,8 +32,8 @@ public class ModelSelectorTests : AppTestBase
         await Expect(Page.Locator("#conn-status"))
             .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
 
-        // Instrument bridge mock to capture the model id passed to SetActiveModelAsync
-        await Page.EvaluateAsync("() => { window.__capturedModelId = null; if(window.__bridgeOverride){ const orig = window.__bridgeOverride.SetActiveModelAsync; window.__bridgeOverride.SetActiveModelAsync = async (modelId, name, supportsMaxTokens, maxTokens) => { window.__capturedModelId = modelId; return orig(modelId, name, supportsMaxTokens, maxTokens); } } }");
+        // Instrument models mock to capture the model id passed to SetActiveModelAsync
+        await Page.EvaluateAsync("() => { window.__capturedModelId = null; if(window.__modelsOverride){ const orig = window.__modelsOverride.SetActiveModelAsync; window.__modelsOverride.SetActiveModelAsync = async (modelId, contextLength) => { window.__capturedModelId = modelId; return orig(modelId, contextLength); } } }");
 
         await Page.Locator("#model-name").ClickAsync();
 

@@ -24,17 +24,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
         private readonly ISnapshotManager _snapshotManager;
-        private readonly ISyntaxChecker _syntaxChecker;
+        private readonly ISyntaxCheckerFactory _syntaxFactory;
         public string ToolName => "create_file";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
 
-        public CreateFile(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, ISnapshotManager snapshotManager, ISyntaxChecker syntaxChecker)
+        public CreateFile(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, ISnapshotManager snapshotManager, ISyntaxCheckerFactory syntaxFactory)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _syntaxChecker = syntaxChecker ?? throw new ArgumentNullException(nameof(syntaxChecker));
+            _syntaxFactory = syntaxFactory ?? throw new ArgumentNullException(nameof(syntaxFactory));
         }
 
         public ToolDefinition GetToolInfo()
@@ -97,13 +97,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, content, Encoding.UTF8, hasBom: true, cancellationToken).ConfigureAwait(false);
 
                 string[] syntaxErrors = null;
-                if (_syntaxChecker.IsSupported(absolutePath))
+                var checker = _syntaxFactory.GetChecker(absolutePath);
+                if (checker != null && !checker.IsSyntaxValid(content, out var errors))
                 {
-                    if (!_syntaxChecker.IsSyntaxValid(content, out var errors))
-                    {
-                        syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
-                        InternalLogger.Info($"Syntax errors detected after creation in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
-                    }
+                    syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                    InternalLogger.Info($"Syntax errors detected after creation in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
                 }
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
@@ -137,7 +135,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             if (result is CreateFileResponse response)
-                return response.Success ? "File created." : $"File creation failed: {response.ErrorMessage}";
+            {
+                if (!response.Success)
+                    return $"File creation failed: {response.ErrorMessage}";
+
+                string msg = "File created";
+                if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
+                    msg += $" with {response.SyntaxErrors.Length} syntax error(s)";
+                msg += ".";
+
+                return msg;
+            }
             return "File creation finished.";
         }
 

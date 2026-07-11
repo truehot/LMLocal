@@ -66,6 +66,7 @@ namespace LMLocal
 
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
+            await AskLMLocalCommand.InitializeAsync(this);
 
 #if DEBUG
             //Should enable IPC in debug builds to allow testing without needing to set environment variable

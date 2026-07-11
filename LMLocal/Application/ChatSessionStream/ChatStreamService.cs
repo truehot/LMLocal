@@ -117,7 +117,7 @@ namespace LMLocal.Application.ChatSessionStream
                         onChunk,
                         _settingsManager.BatchIntervalMs).ConfigureAwait(false);
 
-                    if (!result.WasCancelled)
+                    if (!result.WasCancelled && string.IsNullOrEmpty(result.ErrorMessage))
                     {
                         bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
                         if (hasToolCalls)

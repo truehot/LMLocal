@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -48,11 +49,13 @@ namespace LMLocal.Application.ChatSession
         private readonly IToolExecutionManager _toolManager;
         private readonly IHistoryCompactor _compactor;
         private readonly ISnapshotManager _snapshotManager;
+        private readonly IToolCallLoopDetector _loopDetector;
         private readonly object _resetLock = new object();
 
         private const int MAX_TOOL_ITERATIONS = 400;
         private const int MAX_STATE_ITERATIONS = 400;
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
+        private const int MAX_DUPLICATE_TOOL_ROUNDS = 3;
 
         private delegate Task<ChatSessionState> StateHandler(
             ChatSessionOrchestrator instance,
@@ -83,12 +86,14 @@ namespace LMLocal.Application.ChatSession
             IChatStreamService chatService,
             IToolExecutionManager toolManager,
             IHistoryCompactor compactor,
-            ISnapshotManager snapshotManager)
+            ISnapshotManager snapshotManager,
+            IToolCallLoopDetector loopDetector)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
             _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
             _compactor = compactor ?? throw new ArgumentNullException(nameof(compactor));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+            _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
         }
 
         public async Task RunSessionAsync(
@@ -254,6 +259,7 @@ namespace LMLocal.Application.ChatSession
             {
                 InternalLogger.Info($"ChatSessionOrchestrator: No tool calls detected in generation result. Completing session.");
                 context.ConsecutiveToolIterationCount = 0;
+                context.ConsecutiveDuplicateToolRounds = 0;
 
                 await onMessage(new WebView2ChatSessionIteratingMessage
                 {
@@ -282,6 +288,44 @@ namespace LMLocal.Application.ChatSession
             if (context.LastResult?.ToolCalls == null || context.LastResult.ToolCalls.Count == 0)
             {
                 return ChatSessionState.Completing;
+            }
+
+            var currentTools = context.LastResult.ToolCalls;
+            IReadOnlyList<ToolCallRecord> previousTools = null;
+
+            if (context.AllResults.Count >= 2)
+            {
+                previousTools = context.AllResults[context.AllResults.Count - 2]?.ToolCalls;
+            }
+
+            if (previousTools != null && _loopDetector.AreSameToolCalls(currentTools, previousTools))
+            {
+                context.ConsecutiveDuplicateToolRounds++;
+
+                if (context.ConsecutiveDuplicateToolRounds >= MAX_DUPLICATE_TOOL_ROUNDS)
+                {
+                    var names = string.Join(", ", currentTools.Select(t => t.FunctionName));
+
+                    InternalLogger.Error(
+                        $"ChatSessionOrchestrator: Tool call loop detected. " +
+                        $"Tool(s) [{names}] called with identical arguments " +
+                        $"{context.ConsecutiveDuplicateToolRounds} times in a row. Halting.");
+
+                    context.LastException = new InvalidOperationException(
+                        $"Execution halted: tool(s) [{names}] called with identical arguments " +
+                        $"{context.ConsecutiveDuplicateToolRounds} times in a row. " +
+                        $"The model appears to be stuck in a loop.");
+
+                    return ChatSessionState.Error;
+                }
+
+                InternalLogger.Warn(
+                    $"ChatSessionOrchestrator: Duplicate tool round #{context.ConsecutiveDuplicateToolRounds}. " +
+                    $"Threshold is {MAX_DUPLICATE_TOOL_ROUNDS}.");
+            }
+            else
+            {
+                context.ConsecutiveDuplicateToolRounds = 0;
             }
 
             context.ConsecutiveToolIterationCount++;

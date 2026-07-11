@@ -124,6 +124,9 @@ class BridgeMessageHandler {
     }
 
     handleChatSessionError(errorMessage) {
+        this.contentBuffer.reset();
+        this.thoughtBuffer.reset();
+
         appStore.setState({
             status: AppStatus.ERROR,
             error: errorMessage,

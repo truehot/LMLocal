@@ -22,6 +22,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         private Mock<IFileSystem> _fileSystemMock;
         private Mock<ISnapshotManager> _snapshotMock;
         private Mock<ISyntaxChecker> _syntaxMock;
+        private Mock<ISyntaxCheckerFactory> _syntaxFactoryMock;
         private CreateFile _tool;
 
         private const string SolutionDir = @"C:\solution";
@@ -37,6 +38,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _fileSystemMock = new Mock<IFileSystem>();
             _snapshotMock = new Mock<ISnapshotManager>();
             _syntaxMock = new Mock<ISyntaxChecker>();
+            _syntaxFactoryMock = new Mock<ISyntaxCheckerFactory>();
 
             _vsMock.Setup(v => v.IsSolutionOpen).Returns(true);
             _vsMock.Setup(v => v.GetSolutionDirectory()).Returns(SolutionDir);
@@ -55,11 +57,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             _fileSystemMock.Setup(f => f.FileExists(AbsolutePath)).Returns(false);
             _fileSystemMock.Setup(f => f.ValidateFilePath(AbsolutePath));
-            _syntaxMock.Setup(s => s.IsSupported(AbsolutePath)).Returns(false);
+            _syntaxFactoryMock.Setup(f => f.GetChecker(It.IsAny<string>())).Returns((ISyntaxChecker)null);
 
             _tool = new CreateFile(
                 _vsMock.Object, _pathResolverMock.Object, _fileSystemMock.Object,
-                _snapshotMock.Object, _syntaxMock.Object);
+                _snapshotMock.Object, _syntaxFactoryMock.Object);
         }
 
         private static Dictionary<string, object> CreateParams(

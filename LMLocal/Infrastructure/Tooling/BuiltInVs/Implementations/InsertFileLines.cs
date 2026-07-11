@@ -23,7 +23,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IFileSystem _fileSystem;
-        private readonly ISyntaxChecker _syntaxChecker;
+        private readonly ISyntaxCheckerFactory _syntaxFactory;
 
         public string ToolName => "insert_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
@@ -33,13 +33,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             IPathResolver pathResolver,
             ISnapshotManager snapshotManager,
             IFileSystem fileSystem,
-            ISyntaxChecker syntaxChecker)
+            ISyntaxCheckerFactory syntaxFactory)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _syntaxChecker = syntaxChecker ?? throw new ArgumentNullException(nameof(syntaxChecker));
+            _syntaxFactory = syntaxFactory ?? throw new ArgumentNullException(nameof(syntaxFactory));
         }
 
         public ToolDefinition GetToolInfo()
@@ -47,26 +47,46 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Inserts lines at a specific position in a file. Lines are 1-indexed: position=0 inserts before the first line, position=5 inserts after line 5. Automatically pads the file with empty lines if position exceeds the current line count. The new_lines string can contain multiple lines separated by \\n or \\r\\n. Must not be empty. Fails if the file does not exist or is outside the solution directory. Example: {\"file_path\":\"src/Program.cs\",\"position\":10,\"new_lines\":\"Console.WriteLine(\\\"Hello\\\");\\nConsole.ReadLine();\"} → {\"success\":true,\"file_path\":\"src/Program.cs\",\"lines_inserted\":2,\"error_message\":null}.",
+                Description = "Inserts lines at a specific position in a file. "
+                    + "Lines are 1-indexed: position=0 inserts before the first line, "
+                    + "position=5 inserts after line 5. Automatically pads the file "
+                    + "with empty lines if position exceeds the current line count. "
+                    + "The new_lines string can contain multiple lines separated by "
+                    + "\\n or \\r\\n. Must not be empty. Fails if the file does not "
+                    + "exist or is outside the solution directory. "
+                    + "If expected_line is provided and the line at 'position' doesn't "
+                    + "match, the tool searches nearby lines (±50) and auto-corrects "
+                    + "the position.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Absolute or relative path to file." } },
-                        { "position", new ToolDetails { Type = "integer", Description = "Line number after which to insert (1-indexed). Use 0 to insert before the first line. Must be >= 0." } },
-                        { "new_lines", new ToolDetails { Type = "string", Description = "Text to insert. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty." } },
+                        { "file_path", new ToolDetails
+                            { Type = "string", Description = "Absolute or relative path to file." }
+                        },
+                        { "position", new ToolDetails
+                            { Type = "integer",Description = "Line number after which to insert (1-indexed). Use 0 to insert before the first line. Must be >= 0." }
+                        },
+                        { "new_lines", new ToolDetails
+                            { Type = "string",Description = "Text to insert. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty." }
+                        },
+                        { "expected_line", new ToolDetails
+                            { Type = "string",Description = "Optional. The exact text of the line AFTER which to insert. If provided and the line has shifted, the tool searches nearby and auto-corrects position. Ignored when position=0." }
+                        }
                     },
                     Required = new List<string> { "file_path", "position", "new_lines" }
                 }
             };
         }
 
-        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
+        public async Task<object> ExecuteAsync(
+            Dictionary<string, object> parameters,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var (filePath, position, newLinesText, error) = ExtractAndValidateParameters(parameters);
+                var (filePath, position, newLinesText, expectedLine, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
                     return Error(error);
 
@@ -74,6 +94,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return Error("No solution is currently open.");
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
+
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
                     return Error($"Failed to resolve file path: {filePath}");
 
@@ -81,7 +102,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return Error($"File '{absolutePath}' is outside the solution directory.");
 
                 try { _fileSystem.ValidateFilePath(absolutePath); }
-                catch (ArgumentException ex) { return Error($"Invalid file path: {ex.Message}"); }
+                catch (ArgumentException ex)
+                {
+                    return Error($"Invalid file path: {ex.Message}");
+                }
 
                 if (!_fileSystem.FileExists(absolutePath))
                     return Error($"File not found: {filePath}");
@@ -95,12 +119,45 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 bool hadTrailingNewline = linesList.Count > 0 && linesList[linesList.Count - 1] == "" && originalContent.EndsWith(separator);
                 if (hadTrailingNewline)
-                {
                     linesList.RemoveAt(linesList.Count - 1);
-                }
 
                 string normalizedInsert = newLinesText.Replace("\r\n", "\n").Replace("\r", "\n");
+
                 string[] newLines = normalizedInsert.Split('\n');
+
+                int originalPosition = position;
+                bool autoCorrected = false;
+
+                if (!string.IsNullOrEmpty(expectedLine)
+                    && position > 0
+                    && position <= linesList.Count)
+                {
+                    int checkIdx = position - 1;
+                    if (checkIdx >= linesList.Count || !LineMatcher.LinesEqual(linesList[checkIdx], expectedLine))
+                    {
+                        var matches = LineMatcher.FindMatches(linesList, expectedLine, position);
+
+                        if (matches.Count == 1)
+                        {
+                            position = matches[0];
+                            autoCorrected = true;
+                        }
+                        else if (matches.Count > 1)
+                        {
+                            return Error(new InsertLinesResponse
+                            {
+                                Success = false,
+                                FilePath = filePath,
+                                ErrorMessage = $"expected_line matches {matches.Count} locations. Re-read the file or use a more specific expected_line.",
+                                Candidates = LineMatcher.BuildCandidates(linesList, matches)
+                            });
+                        }
+                        else
+                        {
+                            return Error("expected_line not found. The file may have changed. Re-read the file with read_file_lines.");
+                        }
+                    }
+                }
 
                 while (linesList.Count < position)
                     linesList.Add("");
@@ -108,38 +165,49 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 bool isAppendingToEnd = position >= linesList.Count;
 
                 if (position == 0)
+                {
                     linesList.InsertRange(0, newLines);
+                }
                 else
+                {
                     linesList.InsertRange(position, newLines);
+                }
 
                 if (hadTrailingNewline || isAppendingToEnd)
-                {
                     linesList.Add("");
-                }
 
                 string newContent = string.Join(separator, linesList);
 
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
+
                 await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, newContent, fileEncoding, hasBom, cancellationToken);
 
                 string[] syntaxErrors = null;
-                if (_syntaxChecker.IsSupported(absolutePath))
+                var checker = _syntaxFactory.GetChecker(absolutePath);
+                if (checker != null && !checker.IsSyntaxValid(newContent, out var errors))
                 {
-                    if (!_syntaxChecker.IsSyntaxValid(newContent, out var errors))
-                    {
-                        syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
-                        InternalLogger.Info($"Syntax errors detected after insertion in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");
-                    }
+                    syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                    InternalLogger.Info($"Syntax errors detected after insertion in {absolutePath}:\n" + string.Join("\n", syntaxErrors));
                 }
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
-                return new InsertLinesResponse
+
+                var response = new InsertLinesResponse
                 {
                     Success = true,
                     FilePath = relativePath ?? absolutePath,
                     LinesInserted = newLines.Length,
                     SyntaxErrors = syntaxErrors
                 };
+
+                if (autoCorrected)
+                {
+                    response.AutoCorrected = true;
+                    response.OriginalPosition = originalPosition;
+                    response.AppliedPosition = position;
+                }
+
+                return response;
             }
             catch (OperationCanceledException)
             {
@@ -152,27 +220,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private (string filePath, int position, string newLines, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
+        private (string filePath, int position, string newLines, string expectedLine,
+            string error) ExtractAndValidateParameters(
+                Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, 0, null, "Parameters cannot be null.");
+                return (null, 0, null, null, "Parameters cannot be null.");
 
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string filePath))
-                return (null, 0, null, "file_path parameter is required and must be a string.");
+                return (null, 0, null, null, "file_path parameter is required and must be a string.");
 
             if (!parameters.TryGetValue("position", out object posObj) || !TryParseInt(posObj, out int position))
-                return (null, 0, null, "position parameter is required and must be an integer.");
+                return (null, 0, null, null, "position parameter is required and must be an integer.");
 
             if (!parameters.TryGetValue("new_lines", out object newLinesObj) || !(newLinesObj is string newLines))
-                return (null, 0, null, "new_lines parameter is required and must be a string.");
+                return (null, 0, null, null, "new_lines parameter is required and must be a string.");
 
             if (position < 0)
-                return (null, 0, null, "position must be >= 0.");
+                return (null, 0, null, null, "position must be >= 0.");
 
             if (string.IsNullOrEmpty(newLines))
-                return (null, 0, null, "new_lines must not be empty.");
+                return (null, 0, null, null, "new_lines must not be empty.");
 
-            return (filePath, position, newLines, null);
+            string expectedLine = null;
+            if (parameters.TryGetValue("expected_line", out object expectedObj) && expectedObj is string el && !string.IsNullOrEmpty(el))
+            {
+                expectedLine = el;
+            }
+
+            return (filePath, position, newLines, expectedLine, null);
         }
 
         private bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
@@ -187,13 +263,31 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             if (result is InsertLinesResponse response)
-                return response.Success ? $"{response.LinesInserted} line(s) inserted." : $"Inserting lines failed: {response.ErrorMessage}";
+            {
+                if (!response.Success)
+                    return $"Inserting lines failed: {response.ErrorMessage}";
+
+                string msg = $"{response.LinesInserted} line(s) inserted";
+                if (response.AutoCorrected == true)
+                    msg += $" (auto-corrected from position {response.OriginalPosition} to {response.AppliedPosition})";
+                if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
+                    msg += $" with {response.SyntaxErrors.Length} syntax error(s)";
+
+                msg += ".";
+                return msg;
+            }
             return "Inserting lines finished.";
         }
 
         private static InsertLinesResponse Error(string message)
         {
-            return new InsertLinesResponse { Success = false, ErrorMessage = message };
+            return new InsertLinesResponse
+            { Success = false, ErrorMessage = message };
+        }
+
+        private static InsertLinesResponse Error(InsertLinesResponse response)
+        {
+            return response;
         }
     }
 
@@ -213,5 +307,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
         public string[] SyntaxErrors { get; set; }
+
+        [JsonProperty("auto_corrected", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? AutoCorrected { get; set; }
+
+        [JsonProperty("original_position", NullValueHandling = NullValueHandling.Ignore)]
+        public int? OriginalPosition { get; set; }
+
+        [JsonProperty("applied_position", NullValueHandling = NullValueHandling.Ignore)]
+        public int? AppliedPosition { get; set; }
+
+        [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
+        public List<LineCandidate> Candidates { get; set; }
     }
 }

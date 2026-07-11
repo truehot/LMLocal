@@ -28,6 +28,12 @@ namespace LMLocal.Application.ChatSession
         public int ConsecutiveToolIterationCount { get; set; }
 
         /// <summary>
+        /// Number of consecutive rounds where the model called the same tools
+        /// with identical arguments. Reset when tool set changes or session ends.
+        /// </summary>
+        public int ConsecutiveDuplicateToolRounds { get; set; }
+
+        /// <summary>
         /// Last LLM generation result.
         /// </summary>
         public StreamCompletionResult LastResult { get; set; }

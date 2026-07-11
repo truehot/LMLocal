@@ -32,8 +32,8 @@ public class SettingsTests : AppTestBase
         await Expect(Page.Locator("#conn-status"))
             .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
 
-        // Instrument bridge mock to capture the settings passed to UpdateSettingsAsync
-        await Page.EvaluateAsync("() => { window.__capturedSettings = null; if(window.__bridgeOverride){ const orig = window.__bridgeOverride.UpdateSettingsAsync; window.__bridgeOverride.UpdateSettingsAsync = async (json) => { window.__capturedSettings = json; return orig(json); } } }");
+        // Instrument settings mock to capture the settings passed to UpdateSettingsAsync
+        await Page.EvaluateAsync("() => { window.__capturedSettings = null; if(window.__settingsOverride){ const orig = window.__settingsOverride.UpdateSettingsAsync; window.__settingsOverride.UpdateSettingsAsync = async (json) => { window.__capturedSettings = json; return orig(json); } } }");
 
         await Page.Locator("#menu-btn").ClickAsync();
         await Page.Locator("button[data-action='open-settings']").ClickAsync();

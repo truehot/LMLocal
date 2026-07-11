@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Microsoft.VisualStudio.Shell;
 
@@ -24,6 +25,14 @@ namespace LMLocal
             this.Content = _control;
 
             _control.PreviewKeyDown += OnControlPreviewKeyDown;
+        }
+
+        /// <summary>
+        /// Injects markdown text into the chat input field. Used by the "Ask LM Local" context menu command.
+        /// </summary>
+        public async Task InjectPromptAsync(string markdownText)
+        {
+            await _control.InjectTextIntoInputAsync(markdownText);
         }
 
         private void OnControlPreviewKeyDown(object sender, KeyEventArgs e)

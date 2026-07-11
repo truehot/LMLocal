@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Forms;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
@@ -11,7 +10,7 @@ using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
-using static System.Net.Mime.MediaTypeNames;
+using LMLocal.Infrastructure.Tooling;
 
 namespace LMLocal.Application.Chat
 {
@@ -74,6 +73,11 @@ namespace LMLocal.Application.Chat
         /// Clears history and starts a new session, carrying over the last user message and the full assistant response (including tool calls/results) that followed it.
         /// </summary>
         void MoveLastExchangeToNewSession();
+
+        /// <summary>
+        /// Clears history and starts a new session, consolidating the last exchange.
+        /// </summary>
+        void ConsolidateLastExchange();
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -82,6 +86,7 @@ namespace LMLocal.Application.Chat
         private readonly object _lock = new object();
         private readonly IChatPersistenceService _persistence;
         private readonly ISettingsManager _settingsManager;
+        private readonly IToolResultMarkdownFormatter _formatter;
 
         private List<ChatMessage> _cachedNormalized;
         private int _lastCheckedVersion = 0;
@@ -89,10 +94,11 @@ namespace LMLocal.Application.Chat
         private string _pendingAssistantContent;
         private IReadOnlyList<ToolCallRecord> _pendingAssistantToolCalls;
 
-        public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null)
+        public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null, IToolResultMarkdownFormatter formatter = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
+            _formatter = formatter;
         }
         public void AddUserMessage(string userPrompt, string activeDocumentContent = null)
         {
@@ -272,6 +278,122 @@ namespace LMLocal.Application.Chat
             }
         }
 
+
+        public void ConsolidateLastExchange()
+        {
+            const int lookbackLimit = 800;
+            var allowedTools = new HashSet<string>
+            {
+                "read_file_lines", "get_solution_overview", "get_active_document"
+            };
+
+            List<ChatMessage> consolidatedFragment;
+            lock (_lock)
+            {
+                if (_history.Count == 0)
+                    return;
+
+                int startIdx = Math.Max(0, _history.Count - lookbackLimit);
+                int lastUserIdx = -1;
+                bool seenAssistant = false;
+                for (int i = _history.Count - 1; i >= startIdx; i--)
+                {
+                    if (_history[i].Role == "assistant")
+                    {
+                        seenAssistant = true;
+                    }
+                    else if (_history[i].Role == "user")
+                    {
+                        lastUserIdx = i;
+                        break;
+                    }
+                }
+
+                if (lastUserIdx == -1 || !seenAssistant)
+                {
+                    consolidatedFragment = null;
+                }
+                else
+                {
+                    var fragment = _history.Skip(lastUserIdx).ToList();
+
+                    var userMessage = fragment[0];
+
+                    int finalAssistantIdx = -1;
+                    for (int i = fragment.Count - 1; i >= 1; i--)
+                    {
+                        if (fragment[i].Role == "assistant")
+                        {
+                            finalAssistantIdx = i;
+                            break;
+                        }
+                    }
+
+                    if (finalAssistantIdx == -1)
+                    {
+                        consolidatedFragment = null;
+                    }
+                    else
+                    {
+                        var toolCallFuncMap = new Dictionary<string, string>();
+                        var toolResults = new List<(string FunctionName, string Json)>();
+
+                        for (int i = 1; i < finalAssistantIdx; i++)
+                        {
+                            var msg = fragment[i];
+
+                            if (msg.Role == "assistant" && msg.ToolCalls is List<ToolCall> calls)
+                            {
+                                foreach (var call in calls)
+                                {
+                                    if (call?.Function != null && allowedTools.Contains(call.Function.Name))
+                                        toolCallFuncMap[call.Id] = call.Function.Name;
+                                }
+                            }
+                            else if (msg.Role == "tool"
+                                     && msg.Content is string content
+                                     && !string.IsNullOrEmpty(content)
+                                     && msg.ToolCallId != null
+                                     && toolCallFuncMap.TryGetValue(msg.ToolCallId, out var funcName))
+                            {
+                                toolResults.Add((funcName, content));
+                            }
+                        }
+
+                        var originalContent = userMessage.Content as string ?? "";
+                        string consolidatedUserContent;
+
+                        if (toolResults.Count > 0 && _formatter != null)
+                        {
+                            var formattedTools = _formatter.FormatToolResults(toolResults);
+                            consolidatedUserContent = originalContent + "\n\n---\n\n" + formattedTools;
+                        }
+                        else
+                        {
+                            consolidatedUserContent = originalContent;
+                        }
+
+                        consolidatedFragment = new List<ChatMessage>
+                        {
+                            new ChatMessage("user", consolidatedUserContent),
+                            fragment[finalAssistantIdx]
+                        };
+                    }
+                }
+            }
+
+            Clear();
+
+            if (consolidatedFragment != null && consolidatedFragment.Count > 0)
+            {
+                lock (_lock)
+                {
+                    _history.AddRange(consolidatedFragment);
+                    InvalidateCacheLocked();
+                }
+                _ = _persistence?.SaveMessagesAsync(consolidatedFragment, CancellationToken.None);
+            }
+        }
 
         public IReadOnlyList<ChatMessage> GetHistoryCopy()
         {

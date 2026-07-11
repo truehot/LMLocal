@@ -5,6 +5,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.LlmApi.Requests;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
 
@@ -891,6 +892,275 @@ namespace LMLocal.Tests.Unit
             Assert.That(history.Count, Is.EqualTo(1));
             Assert.That(history[0].Role, Is.EqualTo("user"));
             Assert.That(history[0].Content, Is.EqualTo("recent"));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_EmptyHistory_DoesNothing()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_NoUser_NothingMoved()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddAssistantMessage("response");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0), "No user in history — should clear and keep nothing");
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_UserOnlyNoAssistant_NothingMoved()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(0), "User without assistant — should clear and keep nothing");
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_UserAndAssistant_NoTools_KeepsBoth()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello");
+            manager.AddAssistantMessage("response");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[0].Content, Is.EqualTo("hello"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("response"));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_WithToolResults_MergesIntoUser()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+
+            // Simulate: user → tool call → tool result → final assistant
+            manager.AddUserMessage("read file Program.cs");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "read_file_lines", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool",
+                    "{\"file_path\":\"src/Program.cs\",\"text\":\"using System;\\nclass Program {}\",\"success\":true}",
+                    "c1")
+            });
+            manager.AddAssistantMessage("Here is the file content.");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("Here is the file content."));
+
+            // User message should contain original text + formatted tool results
+            var userContent = history[0].Content as string;
+            Assert.That(userContent, Does.Contain("read file Program.cs"));
+            Assert.That(userContent, Does.Contain("## Tool Results"));
+            Assert.That(userContent, Does.Contain("src/Program.cs"));
+            Assert.That(userContent, Does.Contain("```csharp"));
+            Assert.That(userContent, Does.Contain("using System;"));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_MultipleExchanges_ConsolidatesOnlyLast()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            // First exchange
+            manager.AddUserMessage("q1");
+            manager.AddAssistantMessage("a1");
+            // Second exchange
+            manager.AddUserMessage("q2");
+            manager.AddAssistantMessage("a2");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Content, Is.EqualTo("q2"));
+            Assert.That(history[1].Content, Is.EqualTo("a2"));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_MultipleToolResults_AllMerged()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+
+            // Simulate multiple tool results (e.g., read_file + get_solution_overview)
+            manager.AddUserMessage("analyze the project");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "get_solution_overview", ArgumentsJson = "{}" },
+                new ToolCallRecord { Index = 1, CallId = "c2", FunctionName = "read_file_lines", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool",
+                    "{\"solution_name\":\"MyApp\",\"total_projects\":2,\"total_files\":100,\"projects\":[{\"name\":\"MyApp\",\"language\":\"C#\",\"file_count\":80}],\"success\":true}",
+                    "c1"),
+                new ChatMessage("tool",
+                    "{\"file_path\":\"src/Program.cs\",\"text\":\"using System;\",\"success\":true}",
+                    "c2")
+            });
+            manager.AddAssistantMessage("Here is the analysis.");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            var userContent = history[0].Content as string;
+
+            // Both tool results should be present
+            Assert.That(userContent, Does.Contain("analyze the project"));
+            Assert.That(userContent, Does.Contain("MyApp"));
+            Assert.That(userContent, Does.Contain("src/Program.cs"));
+            Assert.That(userContent, Does.Contain("```csharp"));
+
+            // Final assistant preserved
+            Assert.That(history[1].Content, Is.EqualTo("Here is the analysis."));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_UnknownToolJson_Skipped()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+
+            manager.AddUserMessage("run custom tool");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "custom_tool", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool",
+                    "{\"custom_key\":\"custom_value\",\"status\":\"ok\"}",
+                    "c1")
+            });
+            manager.AddAssistantMessage("Done.");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            var userContent = history[0].Content as string;
+
+            // Unknown tool JSON is silently skipped — no raw JSON block
+            Assert.That(userContent, Does.Not.Contain("custom_key"));
+            Assert.That(userContent, Does.Not.Contain("```json"));
+            Assert.That(userContent, Is.EqualTo("run custom tool"));
+        }
+
+
+        [Test]
+        public void ConsolidateLastExchange_ActiveDocument_MergedIntoUser()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+
+            // Simulate: user → assistant with tool call → tool result (get_active_document) → final assistant
+            manager.AddUserMessage("what is in the active file?");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "get_active_document", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool",
+                    "{\"file_path\":\"src/Program.cs\",\"content\":\"using System;\\nclass Program {}\",\"success\":true}",
+                    "c1")
+            });
+            manager.AddAssistantMessage("Here is the active document content.");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("Here is the active document content."));
+
+            var userContent = history[0].Content as string;
+            Assert.That(userContent, Does.Contain("what is in the active file?"));
+            Assert.That(userContent, Does.Contain("## Tool Results"));
+            Assert.That(userContent, Does.Contain("Active Document"));
+            Assert.That(userContent, Does.Contain("src/Program.cs"));
+            Assert.That(userContent, Does.Contain("```csharp"));
+            Assert.That(userContent, Does.Contain("using System;"));
+        }
+
+        [Test]
+        public void ConsolidateLastExchange_SearchResults_Skipped()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+
+            // Simulate: user → assistant with tool call → tool result (search_file_content) → final assistant
+            manager.AddUserMessage("find references");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { Index = 0, CallId = "c1", FunctionName = "search_file_content", ArgumentsJson = "{\"text\":\"Program\"}" }
+            });
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool",
+                    "{\"results\":[{\"file_path\":\"src/Program.cs\",\"matches\":[{\"line\":1,\"text\":\"class Program\"}],\"match_count\":1}],\"total_matches\":1,\"total_files\":1,\"success\":true}",
+                    "c1")
+            });
+            manager.AddAssistantMessage("Found 1 match.");
+
+            manager.ConsolidateLastExchange();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            var userContent = history[0].Content as string;
+
+            // search_file_content is NOT an allowed tool — should be skipped entirely
+            Assert.That(userContent, Does.Not.Contain("Program.cs"));
+            Assert.That(userContent, Does.Not.Contain("class Program"));
+            Assert.That(userContent, Does.Not.Contain("## Tool Results"));
+            Assert.That(userContent, Is.EqualTo("find references"));
         }
 
     }

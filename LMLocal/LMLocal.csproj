@@ -68,6 +68,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
+    <Compile Include="AskLMLocalCommand.cs" />
+    <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
     <Compile Include="Core\Models\ApiErrorInfo.cs" />
     <Compile Include="Core\Models\GetProvidersResponse.cs" />
@@ -94,9 +97,11 @@
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
-    <Compile Include="Infrastructure\Syntax\SyntaxCheckerExtensions.cs" />
+    <Compile Include="Infrastructure\Syntax\ISyntaxChecker.cs" />
+    <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactory.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
     <Compile Include="Infrastructure\Syntax\CSharpSyntaxChecker.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\LineMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfo.cs" />
@@ -162,9 +167,17 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\css\print.css">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Resources\css\toolbar.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\icon.ico">
+      <IncludeInVSIX>true</IncludeInVSIX>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Resources\js\chat\ai.collapsible.message.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -218,9 +231,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Compile Include="Infrastructure\Tooling\ToolResultMarkdownFormatter.cs" />
     <Compile Include="Infrastructure\Tooling\ToolsConfigManager.cs" />
     <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\VisualStudio\FileViewer.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\InstructionsController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\McpController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\ModelsController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\ProvidersController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\SettingsController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\ToolsController.cs" />
     <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
@@ -232,6 +252,7 @@
     <Compile Include="Infrastructure\WebView\Models\WebView2SessionCompleteMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2SnapshotMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ToolCallMessage.cs" />
+    <Compile Include="Infrastructure\WebView\WebViewBridge.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridgeFactory.cs" />
     <Compile Include="Infrastructure\Ipc\IpcCommandHandler.cs" />
     <Compile Include="Infrastructure\Ipc\VsIpcServer.cs" />
@@ -274,7 +295,6 @@
     <Compile Include="Application\ChatSessionStream\StreamProcessorFactory.cs" />
     <Compile Include="Infrastructure\Streaming\TokenSpeedCalculator.cs" />
     <Compile Include="Infrastructure\WebView\WebViewScriptExecutor.cs" />
-    <Compile Include="Infrastructure\WebView\WebViewBridge.cs" />
     <Compile Include="MainWindow.cs" />
     <Compile Include="MainWindowCommand.cs" />
     <Compile Include="MainWindowControl.xaml.cs">
@@ -296,10 +316,6 @@
     </Content>
     <Content Include="Resources\css\hljs.mid.light.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <IncludeInVSIX>true</IncludeInVSIX>
-    </Content>
-    <Content Include="Resources\icon.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\components\theme.component.js">
@@ -479,7 +495,7 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\logo.png">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
   </ItemGroup>

@@ -22,6 +22,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         private Mock<ISnapshotManager> _snapshotMock;
         private Mock<IFileSystem> _fileSystemMock;
         private Mock<ISyntaxChecker> _syntaxMock;
+        private Mock<ISyntaxCheckerFactory> _syntaxFactoryMock;
         private ReplaceFileContent _tool;
 
         private const string SolutionDir = @"C:\solution";
@@ -37,6 +38,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _snapshotMock = new Mock<ISnapshotManager>();
             _fileSystemMock = new Mock<IFileSystem>();
             _syntaxMock = new Mock<ISyntaxChecker>();
+            _syntaxFactoryMock = new Mock<ISyntaxCheckerFactory>();
 
             _vsMock.Setup(v => v.IsSolutionOpen).Returns(true);
             _vsMock.Setup(v => v.GetSolutionDirectory()).Returns(SolutionDir);
@@ -59,11 +61,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 .Setup(f => f.DetectEncoding(AbsolutePath))
                 .Returns((Encoding.UTF8, false));
 
-            _syntaxMock.Setup(s => s.IsSupported(AbsolutePath)).Returns(false);
+            _syntaxFactoryMock.Setup(f => f.GetChecker(It.IsAny<string>())).Returns((ISyntaxChecker)null);
 
             _tool = new ReplaceFileContent(
                 _vsMock.Object, _pathResolverMock.Object, _snapshotMock.Object,
-                _fileSystemMock.Object, _syntaxMock.Object);
+                _fileSystemMock.Object, _syntaxFactoryMock.Object);
         }
 
         private static Dictionary<string, object> CreateParams(

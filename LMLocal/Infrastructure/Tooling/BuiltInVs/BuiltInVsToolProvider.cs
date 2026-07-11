@@ -14,7 +14,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
     /// <summary>
     /// Interface for built-in VS tool provider.
     /// </summary>
-    internal interface IBuiltInVsToolProvider
+    public interface IBuiltInVsToolProvider
     {
         /// <summary>
         /// Returns all registered tool definitions for the LLM (filtered by enabled status).

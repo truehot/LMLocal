@@ -57,6 +57,18 @@ namespace LMLocal.Core.Models
         /// Null if processing completed successfully or was cancelled without error.
         /// </summary>
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Error type from the server (e.g. "invalid_request_error", "server_error").
+        /// Null if no server-side error occurred.
+        /// </summary>
+        public string ErrorType { get; set; }
+
+        /// <summary>
+        /// Error code from the server (e.g. "model_not_found", "rate_limit_exceeded").
+        /// Null if no server-side error occurred.
+        /// </summary>
+        public string ErrorCode { get; set; }
     }
     /// <summary>
     /// Token usage breakdown for a single generation request.

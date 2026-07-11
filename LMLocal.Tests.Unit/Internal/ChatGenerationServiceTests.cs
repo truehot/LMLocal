@@ -127,6 +127,7 @@ namespace LMLocal.Tests.Unit
             public void EnsureHistoryNormalized() { }
             public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
             public void MoveLastExchangeToNewSession() { }
+            public void ConsolidateLastExchange() { }
         }
 
         private class DummyCompactor : IHistoryCompactor
@@ -343,6 +344,57 @@ namespace LMLocal.Tests.Unit
 
             // User message is added before the streaming call, so it's already in history
             _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        }
+
+        [Test]
+        public async Task GenerateStreamAsync_WithError_DoesNotSaveAssistantMessage()
+        {
+            var messages = new List<ChatMessage>();
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
+
+            var mockStream = new MemoryStream();
+            var mockResponse = new System.Net.Http.HttpResponseMessage();
+            var mockRequest = new System.Net.Http.HttpRequestMessage();
+            var mockContent = new System.Net.Http.StringContent("");
+            var streamingResponse = new StreamingResponse(mockStream, mockResponse, mockRequest, mockContent);
+            _clientMock.Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(streamingResponse);
+
+            // Processor returns ErrorMessage — simulating SSE error event
+            _mockProcessor.Setup(p => p.ProcessStreamAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>(),
+                    It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(), It.IsAny<int>()))
+                .ReturnsAsync(new StreamCompletionResult
+                {
+                    ContentResponse = "partial content",
+                    ErrorMessage = "Rate limit exceeded",
+                    ErrorType = "server_error",
+                    ErrorCode = "rate_limit_exceeded",
+                    WasCancelled = false,
+                    ToolCalls = new List<ToolCallRecord>().AsReadOnly()
+                });
+
+            var context = new GenerateStreamContext { Prompt = "query", ModelId = null };
+            Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
+
+            var onCompleteCalled = false;
+            await _service.GenerateStreamAsync(context, null, onChunk, completion =>
+            {
+                onCompleteCalled = true;
+                Assert.That(completion.ErrorMessage, Is.EqualTo("Rate limit exceeded"));
+                return Task.CompletedTask;
+            }, CancellationToken.None);
+
+            Assert.That(onCompleteCalled, Is.True);
+
+            // Core assertion: assistant message must NOT be saved to history when error
+            _historyMock.Verify(h => h.AddAssistantMessage(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
+            _historyMock.Verify(h => h.SetPendingAssistant(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
         }
     }
 }

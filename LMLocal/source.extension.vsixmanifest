@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="2.3" Language="en-US" Publisher="Aleksandrs Kornevs" />
+        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="2.3.5" Language="en-US" Publisher="Aleksandrs Kornevs" />
         <DisplayName>LM Local</DisplayName>
         <Description xml:space="preserve">Lightweight, secure AI chat window for Visual Studio 2022/2026. Stream responses from cloud providers and local engines like LM Studio, Ollama, Jan and Llama.cpp with full code context, expandable reasoning thoughts, customized system roles, and extendable MCP toolkits (stdio/http).</Description>
         <MoreInfo>https://github.com/truehot/LMLocal</MoreInfo>

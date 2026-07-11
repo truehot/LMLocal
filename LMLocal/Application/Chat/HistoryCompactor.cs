@@ -79,7 +79,7 @@ namespace LMLocal.Application.Chat
             {
                 var summaryRequest = new List<ChatMessage>
                 {
-                    new ChatMessage("system", "Summarize the following conversation briefly, preserving key facts, decisions and code details."),
+                    new ChatMessage("system", "Summarize this conversation briefly, preserving key decisions and full code blocks completely intact so I can continue it later."),
                     new ChatMessage("user", FormatForSummary(toSummarize))
                 };
 

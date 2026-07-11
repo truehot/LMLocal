@@ -65,6 +65,18 @@ namespace LMLocal.Infrastructure.Streaming
                 return chunks;
             }
 
+            if (json["error"] is JObject err)
+            {
+                _toolCallBuffer.Clear();
+                _insideToolCall = false;
+                chunks.Add(new ErrorStreamChunk(
+                    err["message"]?.ToString() ?? json["message"]?.ToString(),
+                    err["type"]?.ToString(),
+                    err["code"]?.ToString()));
+                return chunks;
+            }
+
+
             var contentChunks = ExtractStreamContents(json);
             if (contentChunks.Count > 0)
             {
