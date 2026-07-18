@@ -29,8 +29,6 @@ namespace LMLocal
         private static readonly SemaphoreSlim _envLock = new SemaphoreSlim(1, 1);
 
         private bool _disposed;
-        // AsyncLazy<T> integrates with JoinableTaskFactory — no VSTHRD102 warnings,
-        // thread-safe single-execution, cancellation-aware via GetValueAsync(ct).
         private readonly AsyncLazy<CoreWebView2> _webViewLazy;
         private readonly CancellationTokenSource _initCts = new CancellationTokenSource();
 
@@ -122,6 +120,7 @@ namespace LMLocal
             chatBrowser.CoreWebView2.AddHostObjectToScript("settings", ServiceConfiguration.GetService<ISettingsController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("mcp", ServiceConfiguration.GetService<IMcpController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("models", ServiceConfiguration.GetService<IModelsController>());
+            chatBrowser.CoreWebView2.AddHostObjectToScript("autocompletions", ServiceConfiguration.GetService<IAutocompletionsController>());
 
             chatBrowser.HorizontalAlignment = HorizontalAlignment.Stretch;
             chatBrowser.VerticalAlignment = VerticalAlignment.Stretch;

@@ -79,6 +79,15 @@
                     </svg>
                     MCP Extensions...
                 </button>
+                <button data-action="open-fim">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M2 4.5l3 3-3 3.5" />
+                        <circle cx="7.5" cy="11" r="0.7" fill="currentColor" stroke="none" />
+                        <circle cx="10.5" cy="11" r="0.7" fill="currentColor" stroke="none" />
+                        <circle cx="13.5" cy="11" r="0.7" fill="currentColor" stroke="none" />
+                    </svg>
+                    Autocompletions...
+                </button>
             </div>
         </div>
     </div>
@@ -268,7 +277,7 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableAiWriteTools">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable built-in AI tools (beta, write/modify)</span>
+                            <span class="checkbox-title">Enable built-in AI tools (write/modify)</span>
                             <span class="checkbox-description">
                                 Extends AI tools to allow automatic file editing and applying modifications directly to your solution.
                                 <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
@@ -611,6 +620,89 @@
         <div class="modal-footer">
             <button type="button" id="tools-modal-close" class="btn-secondary">Cancel</button>
             <button type="button" id="tools-modal-save" class="btn-primary">Save</button>
+        </div>
+    </dialog>
+
+    <dialog id="autocompletions-selector-dialog" class="model-modal">
+        <div class="modal-header">
+            <span>Autocompletions</span>
+        </div>
+
+        <div id="autocompletions-info-view" class="modal-view-wrapper">
+            <div class="modal-body">
+                <div class="settings-group checkbox-group" style="margin-bottom: 16px;">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="Enabled" id="autocompletions-dialog-enable-checkbox">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Enable autocompletions (beta)</span>
+                            <span class="checkbox-description">
+                                Real‑time code prediction as you type. The AI analyzes both the code before and after the cursor (Fill-In-the-Middle) and suggests the next line or block. Suggestions appear as ghost text – press  to accept.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="autocompletions-inline-status-row">
+                    <div class="status-meta-text">
+                        <div class="status-meta-line"><span class="status-label-spec">Provider</span> <span class="provider-val" id="autocompletions-provider-name">—</span></div>
+                        <div class="status-meta-line"><span class="status-label-spec">Model</span> <span class="model-val" id="autocompletions-model-name">—</span></div>
+                    </div>
+
+                    <div class="status-inline-actions">
+                        <button type="button" id="autocompletions-change-btn" class="btn-compact-action">Change</button>
+                        <button type="button" id="autocompletions-test-btn" class="btn-compact-action" title="Test autocomplete">
+                            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 3px; vertical-align: middle;">
+                                <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
+                            </svg>
+                            <span>Test</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" id="autocompletions-cancel-btn" class="btn-secondary">Cancel</button>
+                <button type="button" id="autocompletions-save-btn" class="btn-primary">Save</button>
+            </div>
+        </div>
+
+        <div id="autocompletions-selection-view" class="modal-view-wrapper hidden">
+            <div class="modal-provider-row">
+                <select id="autocompletions-provider-select" class="model-header-select"></select>
+            </div>
+
+            <div class="models-filter-bar">
+                <input type="text" id="autocompletions-model-search" class="settings-input" placeholder="Filter models...">
+
+                <button type="button" class="ui-icon-btn" id="autocompletions-sort-btn" title="Sort models">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4 2.5a.5.5 0 0 1 1 0v9.793l2.646-2.647a.5.5 0 0 1 .708.708l-3.5 3.5a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 0 1 .708-.708L4 12.293V2.5zm6 1a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm0 3a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5z" />
+                    </svg>
+                </button>
+
+                <label class="toggle-container">
+                    <input type="checkbox" id="autocompletions-loaded-only">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">Loaded only</span>
+                </label>
+
+                <button type="button" class="ui-icon-btn" id="autocompletions-refresh-models" title="Refresh models">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.53 2.3A6.995 6.995 0 0 0 8 1a7 7 0 1 0 7 7h-1.5a5.5 5.5 0 1 1-1.39-3.64l-1.24 1.24H15V1.47l-1.35 1.35z" /></svg>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div id="autocompletions-models-container" class="models-grid">
+                    <div class="loading-placeholder">
+                        <div class="spinner"></div>
+                        <span>Loading models...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" id="autocompletions-back-btn" class="btn-secondary">Back</button>
+            </div>
         </div>
     </dialog>
 

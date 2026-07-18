@@ -48,6 +48,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private string _solutionDirectory;
         private IVsSolution _solution;
         private bool _initialized;
+        private uint _solutionEventsCookie;
         private readonly ISearchResultCache _searchCache;
         private DTE2 _dte;
 
@@ -106,7 +107,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                         _solutionDirectory = solutionDirectory?.TrimEnd('\\');
                     }
 
-                    _solution.AdviseSolutionEvents(this, out _);
+                    _solution.AdviseSolutionEvents(this, out _solutionEventsCookie);
                 }
             }
             catch (Exception ex)
@@ -117,6 +118,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             _initialized = true;
 
+        }
+
+        public void Uninitialize()
+        {
+            Microsoft.VisualStudio.Shell.ThreadHelper.ThrowIfNotOnUIThread();
+            if (_solution != null && _solutionEventsCookie != 0)
+            {
+                try
+                {
+                    
+                    _solution.UnadviseSolutionEvents(_solutionEventsCookie);
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"VsDependencies: Failed to unadvise solution events: {ex}");
+                }
+                _solutionEventsCookie = 0;
+            }
         }
 
         public int OnAfterOpenProject(IVsHierarchy pHierarchy, int fAdded)

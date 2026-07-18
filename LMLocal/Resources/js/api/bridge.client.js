@@ -225,6 +225,38 @@ class BridgeClient {
         return await this._callInstructions("UpdateInstructionsSelectedTabAsync", selectedTabId);
     }
 
+    _getAutocompletionsHost() {
+        return window.__autocompletionsOverride ?? window.chrome?.webview?.hostObjects?.autocompletions;
+    }
+
+    async _callAutocompletions(method, ...args) {
+        const host = this._getAutocompletionsHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`Autocompletions method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
+    async getAutocompletionsConfigAsync() {
+        const res = await this._callAutocompletions("GetConfigAsync");
+        return JSON.parse(res);
+    }
+
+    async updateAutocompletionsConfigAsync(configJson) {
+        return await this._callAutocompletions("UpdateConfigAsync", configJson);
+    }
+
+    async listAutocompletionsModelsAsync(providerType, baseUrl, apiKey) {
+        const json = JSON.stringify({ providerType, baseUrl, apiKey });
+        const res = await this._callAutocompletions("ListModelsForProviderAsync", json);
+        return JSON.parse(res);
+    }
+
+    async testAutocompletionsCompletionAsync(providerType, baseUrl, apiKey, modelId) {
+        const json = JSON.stringify({ providerType, baseUrl, apiKey, modelId });
+        return await this._callAutocompletions("TestCompletionAsync", json);
+    }
+
 }
 
 const bridgeClient = new BridgeClient();

@@ -46,9 +46,9 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: { Type: 'StreamContent', Payload: 'Based on the search results: ', Count: 5, TokensPerSecond: 10.0 }
             }));
-        }, 100));
+        }, 300));
 
-        // Emit ToolEnd message (successful)
+        // Emit ToolEnd message (successful) — 550ms after ToolCall for reliable test detection
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: {
@@ -59,7 +59,7 @@ const __mockBridge = {
                     IsError: false
                 }
             }));
-        }, 150));
+        }, 600));
 
         // Emit second tool call (with error)
         _timers.push(setTimeout(() => {
@@ -72,9 +72,9 @@ const __mockBridge = {
                     Message: 'Finding symbol references...'
                 }
             }));
-        }, 200));
+        }, 650));
 
-        // Emit ToolEnd message (error)
+        // Emit ToolEnd message (error) — 550ms after second ToolCall
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: {
@@ -86,28 +86,28 @@ const __mockBridge = {
                     IsError: true
                 }
             }));
-        }, 250));
+        }, 1200));
 
         // Emit content
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: { Type: 'StreamContent', Payload: 'here is the summary.', Count: 5, TokensPerSecond: 12.0 }
             }));
-        }, 300));
+        }, 1300));
 
         // End streaming
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: { Type: 'StreamEnd' }
             }));
-        }, 350));
+        }, 1400));
 
         // Session complete
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: { Type: 'ChatSessionComplete', Payload: {} }
             }));
-        }, 400));
+        }, 1500));
     },
     StopExecutionAsync: async () => {
         _timers.push(setTimeout(() => {

@@ -26,6 +26,8 @@ import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
 import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
+import { AutocompletionsDialog } from '@app/dialogs/autocompletions.dialog.js';
+
 import { providerResolver } from '@app/lib/provider.resolver.js';
 
 /**
@@ -231,6 +233,27 @@ class AppController {
                     });
                     menuComponent.hideMenu();
                     await toolsDialog.show();
+                    return true;
+                case 'open-fim':
+                    const autocompletionsDialog = new AutocompletionsDialog();
+                    autocompletionsDialog.onLoad.on(async () => {
+                        const config = await appDataService.getAutocompletionsConfigAsync();
+                        const providers = await appDataService.getProvidersForAutocompletionsAsync();
+                        return { success: true, data: config, providers: providers };
+                    });
+                    autocompletionsDialog.onSave.on(async (config) => {
+                        return await appDataService.updateAutocompletionsConfigAsync(config);
+                    });
+                    autocompletionsDialog.onTest.on(async (payload) => {
+                        return await appDataService.testAutocompletionsCompletionAsync(
+                            payload.providerType, payload.baseUrl, payload.apiKey, payload.modelId
+                        );
+                    });
+                    autocompletionsDialog.onListModels.on(async (providerType, baseUrl, apiKey) => {
+                        return await appDataService.listAutocompletionsModelsAsync(providerType, baseUrl, apiKey);
+                    });
+                    menuComponent.hideMenu();
+                    await autocompletionsDialog.show();
                     return true;
                 default:
                     return false;

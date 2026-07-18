@@ -7,7 +7,7 @@ namespace LMLocal.Core.Common
         public static string Strip(string text)
         {
             if (string.IsNullOrEmpty(text)) return text;
-            text = Regex.Replace(text, @"(?s)```[\w-]*(?:\s+[^\r\n]*)?\r?\n(.*?)\r?\n```", "$1");
+
             text = Regex.Replace(text, @"#{1,6}\s+", "");
             text = Regex.Replace(text, @"\*\*(.+?)\*\*", "$1");
             text = Regex.Replace(text, @"__(.+?)__", "$1");

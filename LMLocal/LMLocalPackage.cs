@@ -31,6 +31,7 @@ namespace LMLocal
     [Guid(PackageGuidString)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
     [ProvideToolWindow(typeof(MainWindow))]
+
     public sealed class LMLocalPackage : AsyncPackage
     {
         /// <summary>

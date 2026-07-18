@@ -1,16 +1,17 @@
-using LMLocal.Core.Exceptions;
-using System;
-using System.Net.Http;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Core.Common;
+using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Settings;
 using Newtonsoft.Json;
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LMLocal.Infrastructure.LlmApi
 {
@@ -33,8 +34,13 @@ namespace LMLocal.Infrastructure.LlmApi
         /// Sends chat request and returns the full response content.
         /// </summary>
         Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken);
-    }
 
+        /// <summary>
+        /// Sends a text completion request (FIM - Fill In the Middle) and returns the generated text.
+        /// </summary>
+        Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken);
+
+    }
 
     internal class OpenApiAdapter : IOpenApiAdapter
     {
@@ -200,6 +206,66 @@ namespace LMLocal.Infrastructure.LlmApi
                         InternalLogger.Error("SendChatAsync: failed to parse response JSON", ex);
                     }
                     return null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sends a text completion request (FIM) to the LLM backend and returns the generated text.
+        /// </summary>
+        public async Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken)
+        {
+            var body = new
+            {
+                model = context.ModelId,
+                prompt = context.Prompt,
+                suffix = context.Suffix,
+                max_tokens = context.MaxTokens,
+                temperature = context.Temperature,
+                stop = context.Stop
+            };
+
+            var jsonBody = body.ToJson();
+            var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+            var provider = ProviderResolver.ResolveProvider(context.ProviderType);
+            var endpoint = ProviderResolver.GetCompletionsEndpoint(provider);
+
+            var url = string.IsNullOrWhiteSpace(context.BaseUrl) ? DefaultBaseUrl : context.BaseUrl.TrimEnd('/');
+
+            using (var request = new HttpRequestMessage(HttpMethod.Post, url + endpoint) { Content = content })
+            {
+                if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
+                    request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
+                if (!string.IsNullOrEmpty(context.ApiKey))
+                    request.Headers.Add("Authorization", $"Bearer {context.ApiKey}");
+
+                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false))
+                {
+                    var rawJson = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var errorInfo = ApiErrorParser.ParseErrorBody(rawJson);
+                        errorInfo.Code = (int)response.StatusCode;
+                        InternalLogger.Warn($"SendCompletionAsync: API error: {errorInfo}");
+                        throw new ApiException(errorInfo, (int)response.StatusCode);
+                    }
+
+                    try
+                    {
+                        var result = rawJson.FromJson<CompletionResponse>();
+                        if (result?.Choices != null && result.Choices.Count > 0)
+                        {
+                            return result.Choices[0].Text;
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        InternalLogger.Error("SendCompletionAsync: failed to parse response JSON", ex);
+                    }
+
+                    return string.Empty;
                 }
             }
         }

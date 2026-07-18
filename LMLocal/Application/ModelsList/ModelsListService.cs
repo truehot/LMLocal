@@ -18,6 +18,7 @@ namespace LMLocal.Application.ModelsList
     internal interface IModelsListService
     {
         Task<UnifiedListModelsResponse> ListModelsAsync(string currentActiveModelId, CancellationToken cancellationToken);
+        Task<UnifiedListModelsResponse> ListModelsForProviderAsync(string providerType, string baseUrl, string apiKey, CancellationToken cancellationToken);
         Task<bool> TestConnectionAsync(string baseUrl, string providerName, string apiKey, CancellationToken cancellationToken);
     }
 
@@ -106,6 +107,25 @@ namespace LMLocal.Application.ModelsList
             {
                 response.ActiveModel = currentModel;
                 response.HasActiveModel = true;
+            }
+        }
+
+        public async Task<UnifiedListModelsResponse> ListModelsForProviderAsync(string providerType, string baseUrl, string apiKey, CancellationToken cancellationToken)
+        {
+            try
+            {
+                ModelProvider provider = ProviderResolver.ResolveProvider(providerType);
+                string endpoint = ProviderResolver.GetListModelsEndpoint(provider);
+
+                var json = await _openApiAdapter.ListModelsRawAsync(endpoint, baseUrl, apiKey, cancellationToken);
+                var response = ModelResponseConverter.ConvertToUnified(json, provider);
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("ListModelsForProviderAsync failed", ex);
+                return new UnifiedListModelsResponse { Error = ex.Message };
             }
         }
 

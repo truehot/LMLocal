@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Core.Models;
 using LMLocal.Core.Exceptions;
 using LMLocal.Infrastructure.LlmApi;
@@ -73,7 +74,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 _files[d] = data;
             }
             public void Delete(string path) => _files.TryRemove(N(path), out _);
-            private static string N(string p) => p?.Replace('\\','/').ToLowerInvariant();
+            private static string N(string p) => p?.Replace('\\', '/').ToLowerInvariant();
 
             public void Seed(string path, string content) => _files[N(path)] = Encoding.UTF8.GetBytes(content);
 
@@ -282,6 +283,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
             public Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => throw new NotImplementedException();
             public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => Task.FromResult<SendChatResponse>(null);
+            public Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
         }
 
 

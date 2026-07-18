@@ -1,65 +1,58 @@
 ﻿# 🤖 LMLocal
 
-**LMLocal** is a local AI chat assistant for Visual Studio 2022/2026. It integrates with LM Studio, Ollama, Jan, Llama.cpp and any OpenAI-compatible APIs to provide context-aware assistance.
+**LMLocal** is a local AI chat assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow.
 
 ![Visual Studio](https://img.shields.io/badge/Visual%20Studio-2022%20%2F%202026-purple?style=flat&logo=visual-studio)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Preview-orange)
 
 ---
 
 > [!NOTE]
-> **Safe & Controlled:** LMLocal is strictly read-only by default. Writing tools are completely optional, must be turned on in Settings, and can be rolled back in one click. The codebase is open-source, so you can inspect the code, review security, or contribute on [GitHub](https://github.com/truehot/LMLocal).
+> **Safe & Controlled:** By default, write/modify tools are **disabled** – the AI can read files but cannot change anything. Writing tools are optional, must be explicitly turned on in Settings, and all changes are tracked in the Changes panel with one‑click rollback. The codebase is open‑source – inspect it or contribute on [GitHub](https://github.com/truehot/LMLocal).
 
 ---
 
-## ✨ Features
+## 📸 Screenshots
 
-**Interface & User Experience**
-- ☁️ **In-IDE Chat UI** – Tool window for LLM interaction without switching applications.
-- 🌊 **Streaming Responses** – Real-time token delivery for low-latency feedback.
-- 🤖 **Model Selection** – Quick access to switch between available AI models directly from the chat interface.
-- 🎨 **Visual Themes** – Multi-theme support (Dark, Mid-Dark, Mid-Light, Light).
-- 📋 **Quick Copy** – A button above code blocks that copies the code to your clipboard.
-- ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
-- 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
+<a href="https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/2022.png" target="_blank">
+  <img src="https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/2022.png" alt="VS 2022 - mid dark" width="10%" />
+</a>
 
-**Context & Solution Awareness**
-- 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
-- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is invoked with identical arguments three times consecutively, preventing token wastage and infinite model loops.
-- 📝 **Automated Code Editing** – Enabled tools can automatically create, delete, or modify code files directly inside Visual Studio.
-- 🛡️ **Changes & Rollback Manager** – Shows all file modifications in a dedicated real-time panel above the chat, allowing you to review diffs, accept changes, or roll them back in one click.
-- ➕ **Active Window Context** – Dedicated "+" button to instantly include active editor content in the request.
-- 🧠 **Thought/Reasoning Support** – Support for reasoning models; "thoughts" are displayed in expandable blocks.
-- 🛡️ **Smart History Buffering** – Automatically removes the oldest messages from the chat UI once the history exceeds 200 entries to prevent rendering lag, without affecting the underlying conversation data.
-- 🎯 **Context Menu Integration** – Right-click context menu command ("Send to LM Local") that copies text directly into the chat prompt without auto-submitting. If text is highlighted, it sends the selection; if nothing is selected, it falls back to sending the entire active document.
+<a href="https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/2026.png" target="_blank">
+  <img src="https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/2026.png" alt="VS 2026 - mid light" width="10%" />
+</a>
 
-**Efficiency & Token Management**
-- 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
-- 🧹 **History Optimization** – Strips markdown formatting and trims extra whitespace to reduce token usage.
-- 📊 **Live Stats** – Status bar metrics: real-time speed (tokens/sec) and total token count.
+- [ChangePanelTreeMode.png](https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/ChangePanelTreeMode.png)
+- [ChangesPanelListMode.png](https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/ChangesPanelListMode.png)
+- [OpenFromChangePanel.png](https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/OpenFromChangePanel.png)
+- [ReviewFromChangesPanel.png](https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/ReviewFromChangesPanel.png)
 
-**Infrastructure & Settings**
-- ⚙️ **Persistent Settings** – Centralized configuration for API URLs, stream timeouts, and history management.
-- 🔌 **Connect on Startup** – Automatically connects to the LLM server on extension startup.
-- 🔄 **Auto-Load History on Startup** – Automatically restores the most recent conversation from saved history.
-- ⏳ **Customizable Timeout** – Adjustable streaming inactivity limit for slower local models (0 = never timeout).
-- 📂 **Local Chat Logging** – Appends all conversation events to .jsonl files in `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. This persistent log serves as the data source for session recovery on application startup.
-- 🌐 **Streamable MCP Support** – Supports the Model Context Protocol to dynamically scale the AI's toolkit via both local process-based (`stdio`) and remote network-based (`http`) transports.
+---
+
+## ⚡ Core Features
+
+- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, rollback, **and real‑time code autocompletions** as you type.
+- **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, and any OpenAI‑compatible API.
+- **🔌 MCP Extensibility** – Add external tools via Model Context Protocol (stdio/http).
+- **📂 Flexible Workspace Context** – Quickly pass code to the AI: use the **`+`** button to attach the active file in the background, or right-click to send specific text selections.
+- **🧩 Reasoning, Roles & Efficiency** – Expandable thoughts, collapsible tool calls, custom system presets, token optimization (summarization, stripping, live stats).
+- **⚙️ Built-in Provider Integrations** – Pre-configured internal handlers for specific AI platforms (including Ollama, Groq, OpenRouter, Google AI Studio, DeepSeek, and GitHub Models). The extension natively manages each provider's protocol variations and stream parsing — enter your target API Base URL and personal API Key to connect.
+- **💾 Persistent & Reliable** – Auto‑connects on startup, restores your last session from local logs, configurable timeout, centralized settings.
+- **🔄 Hot-Swappable LLMs** – Switch between local models or cloud providers on the fly without clearing the chat. The new model seamlessly continues the conversation using the existing history and context.
 
 ---
 
 ## 🛠 Requirements
 
-To use LMLocal, ensure you have:
+To use LMLocal, you need:
 - [x] **Visual Studio 2022 or 2026**
-- [x] **One of the following backends** (installed and running):
-  - **LM Studio** with local server at `http://127.0.0.1:1234`
-  - **Ollama** with server at `http://127.0.0.1:11434` and a loaded model
-  - **Jan** with server at `http://127.0.0.1:1337`
-  - **Llama.cpp** with server at `http://127.0.0.1:8080` and a loaded model
-  - **Any OpenAI-compatible API** (custom URL and optional key)
-- [x] A chat-capable LLM loaded
+- [x] **An AI Backend / Provider** (choose one):
+  * **Cloud Providers:** Any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Google AI Studio, etc. — requires an API key).
+  * **Local Engines** (must be installed and running with a loaded model):
+    * **LM Studio** (local server at `http://127.0.0.1:1234`)
+    * **Ollama** (local server at `http://127.0.0.1:11434`)
+    * **Jan** (local server at `http://127.0.0.1:1337`)
+    * **Llama.cpp** (local server at `http://127.0.0.1:8080`)
 
 ---
 
@@ -68,7 +61,7 @@ To use LMLocal, ensure you have:
 ### Option 1: Visual Studio Marketplace (Recommended)
 1. Open Visual Studio.
 2. Go to `Extensions` > `Manage Extensions`.
-3. Search for **LM Local** and click **Download**.
+3. Search for **LMLocal** and click **Download**.
 4. Restart Visual Studio to complete the installation.
 
 ### Option 2: Manual VSIX
@@ -84,7 +77,7 @@ To use LMLocal, ensure you have:
 1. **Launch:** Open the **LM Local Chat** tool window using one of the following methods:
    * **Method A:** Open it directly from the top **Extensions** menu.
    * **Method B:** In the top menu, go to **View ➔ Other Windows ➔ LM Local Chat**.
-2. **Position the Window (Optional):** Click and drag the opened window to dock it wherever is most convenient for your workflow—for example, right next to the **Solution Explorer**.
+2. **Position the Window (Optional):** Click and drag the opened window to dock it wherever fits your workflow best — for example, right next to the **Solution Explorer**.
 3. **Configure Your Provider:** 
    * Click the menu icon (**`…`**) and open **Settings...**.
    * Under the **AI Provider** section, select your preferred backend from the dropdown menu:
@@ -121,7 +114,7 @@ To use LMLocal, ensure you have:
 * **Model Reasoning:** The model's internal thinking process is neatly hidden inside the collapsible **`Thoughts`** block at the beginning of the response. Click it anytime to expand and view the full logic.
 * **Token & Context Tracking:** Hover your mouse over the top connection bar (where the model name is shown). If supported by your provider (like LM Studio), a tooltip will appear showing exactly how many tokens have been consumed out of the maximum available context limit.
 * **Model & Provider Selection:** Click the model name in the top header to open the **Select Model** window. Here you can switch between different AI providers, search or filter models, toggle the "Loaded only" view, and quickly change your active LLM.
-* ➕ **Active Window Context:** Click the **`+`** button to instantly include the entire content of the file currently open in the active document. 
+* ➕ **Active Window Context:** Click the **`+`** button to include the entire content of the file currently open in the active document. 
   * *Auto-turn off:* The button automatically deactivates after the request is sent, as the document becomes part of the active chat history.
   * *UI & Logs:* The attached file content is kept hidden to avoid cluttering the chat UI, but it is tracked and visible in the extension logs.
 * ⏹️ **Stop** – Cancel an active generation.
@@ -133,24 +126,40 @@ To use LMLocal, ensure you have:
 
 ---
 
-### 🎭 AI Instructions & Modes
+## ✨ All features
 
-The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, and **Tests**.
+**Interface & User Experience**
+- ☁️ **In-IDE Chat UI** – Tool window for LLM interaction without switching applications.
+- 🌊 **Streaming Responses** – Real-time token delivery for instant visual feedback.
+- 🤖 **Model & Provider Hot-Swapping** – Switch between AI models or providers on the fly directly from the chat header, automatically preserving your active session context.
+- 🎨 **Visual Themes** – Multi-theme support (Dark, Mid-Dark, Mid-Light, Light).
+- 📋 **Quick Copy** – A button above code blocks that copies the code to your clipboard.
+- ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
+- 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
+- ⌨️ **AI Inline Autocompletions** – Real‑time code prediction as you type. The AI analyzes code before and after the cursor (Fill‑In‑the‑Middle) and suggests the next line or block as ghost text. Press `Tab` to accept.
 
-> [!TIP]
-> **Performance & Accuracy Tip:** For the best results, always select your desired mode (e.g., `Bugfix`, `Review`, `Explain`) **before sending your message**.
+**Context & Solution Awareness**
+- 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
+- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked three times with identical arguments, preventing infinite loops and token waste.
+- 📝 **Automated Code Editing** – Enabled tools can automatically create, delete, or modify code files directly inside Visual Studio.
+- 🛡️ **Changes & Rollback Manager** – Shows all file modifications in a dedicated real-time panel above the chat, allowing you to review diffs, accept changes, or roll them back in one click.
+- ➕ **Active Window Context** – Dedicated "+" button to include active editor content in the request.
+- 🧠 **Thought/Reasoning Support** – Support for reasoning models; "thoughts" are displayed in expandable blocks.
+- 🛡️ **Smart History Buffering** – Automatically removes the oldest messages from the chat UI once the history exceeds 200 entries to prevent rendering lag, without affecting the underlying conversation data.
+- 🎯 **Context Menu Integration** – Right-click context menu command ("Send to LM Local") that copies text directly into the chat prompt without auto-submitting. If text is highlighted, it sends the selection; if nothing is selected, it falls back to sending the entire active document.
 
-Once configured, you can instantly switch between these system roles using the dropdown menu directly in the main chat bar. Selecting a preset updates the AI's system prompt and temperature for that conversation.
+**Efficiency & Token Management**
+- 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
+- 🧹 **History Optimization** – Optionally strips markdown formatting and trims extra whitespace from background history entries to reduce token usage.
+- 📊 **Live Stats** – Status bar metrics: real-time speed (tokens/sec) and total token count.
 
-#### How to Customize Modes:
-1. Click the menu icon (**`…`**) and select **"AI Instructions..."**.
-2. Select a target mode/role from the left panel (e.g., `Review` or `Bugfix`).
-3. Configure its behavior in the right panel:
-   * **Mode Toggle Checkbox:** Check or uncheck this box to show or hide this specific mode in your main chat bar dropdown.
-   * **System Prompt:** Enter the base instructions that define the AI's role, processing rules, and operational constraints (e.g., telling the `Tests` mode to act as a QA Engineer and strictly generate xUnit tests in C#).
-   * **Temperature:** Set the randomness/creativity threshold. Use values closer to `0` (e.g., `0.1` or `0.2`) for rigid, deterministic tasks like compiling and bug fixing, and closer to `1` for architectural planning or brainstorming.
-   > 💡 **Note:** Always check your specific model's official documentation for recommended temperature settings, as some local models require strict defaults or a value of `0` to function properly without breaking formatting or structure.
-4. Click **Save** to apply the changes to your chat environment.
+**Infrastructure & Settings**
+- ⚙️ **Persistent Settings** – Centralized configuration for API URLs, stream timeouts, and history management.
+- 🔌 **Connect on Startup** – Automatically connects to the LLM server on extension startup.
+- 🔄 **Auto-Load History on Startup** – Automatically restores the most recent conversation from saved history.
+- ⏳ **Customizable Timeout** – Adjustable streaming inactivity limit for slower local models (0 = never timeout).
+- 📂 **Local Chat Logging** – Appends all conversation events to .jsonl files in `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. This persistent log serves as the data source for session recovery when Visual Studio starts.
+- 🌐 **Streamable MCP Support** – Supports the Model Context Protocol to dynamically scale the AI's toolkit via both local process-based (`stdio`) and remote network-based (`http`) transports.
 
 ---
 
@@ -217,14 +226,18 @@ The built‑in tools let the AI read, edit, build, and test your code. You contr
 - **`Enable built‑in AI tools (read‑only)`** – The AI can open and read files, but cannot change anything.
 - **`Enable built‑in AI tools (write/modify)`** – The AI can create, change, or delete files.
 
-> **Tip:** Enabling write/modify is recommended only for projects under version control (e.g., Git) to track and revert automated changes via repository history.
+> 💡 **Tip 1: Version Control Recommended**
+> If you enable write/modify tools, using version control (e.g., Git) is strongly advised – it makes it easy to track, diff, and revert automated changes.
+>
+> 🧠 **Tip 2: Model Size & Capabilities**
+> Built-in AI tools and MCP extensions heavily rely on advanced **Tool Calling (Function Calling)**. For a stable experience, it is recommended to use larger or specialized models (e.g., 14B+ parameters). Smaller models (like 7B/8B) may occasionally struggle with JSON formatting, hallucinate arguments, or trigger loop prevention.
 
 **In the Built‑in Tools… dialog (list of built‑in tools):**  
 Open this from the extension's main menu. You’ll see all built‑in tools (for example, `delete_file`, `replace_file_content`). Each tool can be enabled or disabled individually. Even if the global write/modify checkbox is on, you can still turn off specific tools like `delete_file`. Use “Enable All” or “Disable All” to change many at once, then click Save.
 
 ### Changes panel – see what was changed and revert if needed
 
-When a tool edits a file, the changes are applied immediately to the actual files in your solution. LMLocal tracks all modified files and shows them in a collapsible **Changes** panel inside the chat window. This list persists across solution reloads and Visual Studio restarts, so you can always review what the AI did.
+When a tool edits a file, the changes are applied to the actual files in your solution. LMLocal tracks all modified files and shows them in a collapsible **Changes** panel inside the chat window. This list persists across solution reloads and Visual Studio restarts, so you can always review what the AI did.
 
 The panel lets you:
 - Click any file to see a diff of the changes.
@@ -271,6 +284,27 @@ The panel lets you:
 
 ---
 
+### 🎭 AI Instructions & Modes
+
+The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, and **Tests**.
+
+> [!TIP]
+> **Prompt Caching Optimization:** Select your desired mode (e.g., Bugfix, Review, Explain) before sending your message. Changing the mode mid-conversation modifies the system prompt, which invalidates the server's prompt cache, increasing token costs and latency.
+
+Once configured, you can instantly switch between these system roles using the dropdown menu directly in the main chat bar. Selecting a preset updates the AI's system prompt and temperature for that conversation.
+
+#### How to Customize Modes:
+1. Click the menu icon (**`…`**) and select **"AI Instructions..."**.
+2. Select a target mode/role from the left panel (e.g., `Review` or `Bugfix`).
+3. Configure its behavior in the right panel:
+   * **Mode Toggle Checkbox:** Check or uncheck this box to show or hide this specific mode in your main chat bar dropdown.
+   * **System Prompt:** Enter the base instructions that define the AI's role, processing rules, and operational constraints (e.g., telling the `Tests` mode to act as a QA Engineer and strictly generate xUnit tests in C#).
+   * **Temperature:** Set the randomness/creativity threshold. Use values closer to `0` (e.g., `0.1` or `0.2`) for rigid, deterministic tasks like compiling and bug fixing, and closer to `1` for architectural planning or brainstorming.
+   > 💡 **Note:** Always check your specific model's official documentation for recommended temperature settings, as some local models require strict defaults or a value of `0` to function properly without breaking formatting or structure.
+4. Click **Save** to apply the changes to your chat environment.
+
+---
+
 ## 📉 History Optimization: Strip Formatting
 
 When the **"Strip formatting from history"** option is enabled in the extension settings, LMLocal automatically runs a cleanup pass on previous conversation turns before forwarding the payload to your AI backend. This reduces token overhead for local models by flattening structural Markdown syntax into lightweight plain text.
@@ -279,7 +313,7 @@ When the **"Strip formatting from history"** option is enabled in the extension 
 > **Under the Hood Only:** This optimization is **invisible** in the user interface. Your active chat window will always display responses with full Markdown rendering, code highlighting, and structural styling. The stripping process only alters the raw background history array sent to the model to save context tokens.
 
 ### 🧹 What Gets Removed / Transformed:
-* **Code Block Enclosures:** Triple backticks (\`\`\`) are stripped; code contents remain as plain text.
+* **Code Blocks:** Kept fully intact with their enclosures (```) to preserve code structure and syntax boundaries for the model.
 * **Headers:** Heading markers (`#`, `##`, etc.) are removed, keeping only the text content.
 * **Text Emphasis:** Bold (`**text**` → `text`), italics (`*text*` → `text`), and strikethroughs (`~~text~~` → `text`) are flattened.
 * **Inline Code:** Inline backticks (`code` → `code`) are dropped.
@@ -302,8 +336,96 @@ LMLocal supports external tool integration via the **Model Context Protocol (MCP
 ### ⚠️ Scope & Supported Transports
 * **Protocol Version:** Compatible with the **MCP `2025-11-25`** specification standard.
 * **Tools-Only Support:** LMLocal **exclusively** loads and registers **Tools** exposed by your MCP servers. These are separate from the built‑in tools and are configured independently. Other MCP features like custom *Prompts* or *Resources* are currently ignored and will not be utilized by the assistant.
-* **Transports:** Supports HTTP-based streamable protocols (`http`) and (`stdio`).
+* **Transports:** Supports both local process-based (stdio) and network-based streamable (http) transports.
 * **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported.
+
+---
+## 💡 Smart Workflows & Best Practices
+
+
+### 🧠 Which model series are worth trying right now?
+If you are new to local LLMs and don't know where to start, trying these model families:
+
+* **Qwen 3.x series**
+* **Gemma 4.x series**
+* **Mistral 3.x series**
+* **Nemotron 3.x series**
+* **GPT OSS series**
+
+
+---
+### 🤔 Model can't find what you're looking for?
+
+The AI doesn't have a full filesystem index — it relies on the context you provide. If the model fails to find a specific file, class, or code block:
+
+- **Use the "+" button** – Click the `+` button to include the entire active document in the request. This gives the AI immediate access to the current file.
+- **Use "Send to LM Local"** – Right-click in the editor and select **"Send to LM Local"**. If you highlight code, it sends only the selection; if nothing is highlighted, it sends the entire active document.
+- **Be specific in your prompt** – Mention the exact file name and extension. For example: `"Find the CalculateTotal method in OrderService.cs"` — this gives the AI a clear target, making it easier to locate the relevant code.
+
+---
+
+### 🎯 How can I improve my development plans by hot-swapping models?
+
+LMLocal allows you to switch the active LLM on the fly **without clearing the chat**. You can use this to pass the conversation history from one model to another **sequentially** – each model builds on or critiques the previous output, refining the plan step by step.
+
+It's simple. Just ask one AI model to write a plan, then switch to a different model in the same chat and tell it: "Critique this and update the plan." The new model reads the whole conversation and gives you a fresh perspective, catching edge cases the first one missed.
+
+**Why it works:**  It’s like bringing in two experts one after another. The first drafts a strategy. The second walks into the room, reads the finished document, and says: "Here’s where you went wrong," without ever seeing the first expert’s rough drafts. By swapping models, you collect the best from each perspective — and you never have to copy-paste or start a new chat, because the entire history stays right there.
+
+
+---
+
+#### 📉 Managing Context Window Spills
+If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LMLocal's cleanup feature instead of losing your work:
+* Click the **"Clear chat"** button next to the menu.
+* Choose **"Summarize and move context"** or **"Consolidate last exchange"** or **Move last prompt and response**. 
+* This will automatically compress the entire debate or pull just your final refined plan into a fresh, clean chat session, resetting your active token usage back to the baseline.
+
+---
+
+### 💰 How can I reduce token usage and lower API costs?
+Context window accumulation can lead to high API costs or local performance drops. You can optimize your budget by applying these patterns:
+
+* **The "Smart Context Collector" Tiering:** Don't waste your expensive cloud tokens on reading massive files or building initial context. Instead, start the session with a lighter, cheaper model (like *GPT-4o-mini* or a local *Ministral 3.x*) to read your code files, list directories, and pull together the initial workspace data. Once the heavy context is captured and a baseline draft is formed in the history, hot-swap to a premium OpenAI-compatible model (like *DeepSeek V4-Pro* or *GPT-5.5*) to run the high-level analysis and critical edits.
+* **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LMLocal continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
+* **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LMLocal to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
+* **Enable History Stripping:** If you hit a VRAM ceiling on local models, toggle **"Strip formatting from history"** in the settings. This flattens Markdown structural syntax in the background context payload, saving valuable tokens without ruining the rich text rendering in your chat UI.
+
+---
+
+### ⚡ How do I maximize model speed (even with a quality drop)?
+When you just need to generate straightforward boilerplate, repetitive CRUD methods, or standard unit tests at maximum speed:
+* **Hardware VRAM Optimization:** Choose quantized weights (e.g., `Q4_K_M` GGUF formats) that **fully fit into your GPU VRAM**. As soon as layers spill over into system RAM (CPU fallback), streaming speed drops significantly.
+* **Tweak Backend Inference Settings:** Open your server configurations and check the parameters that directly impact processing and generation speed. Pay close attention to:
+    * **GPU Offload** & **CPU Thread Pool Size**
+    * **Flash Attention** & **Unified KV Cache**
+    * **K/V Cache Quantization Type** & **Offload KV Cache to GPU Memory**
+    * **Evaluation / Physical Batch Size**
+    * **Keep Model in Memory**
+* **Drop the Temperature:** Lower your active preset temperature closer to `0.0` or `0.1`. This stops the model from creatively wandering around, forcing it to stream short, direct, and deterministic code structures.
+---
+
+### Auto-Completions
+
+Provides fast, single-line **ghost completions** (inline grey text code suggestions) as you type, powered by Fill-in-the-Middle (FIM) prompting on local base models.
+
+**How to Enable:**
+Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
+
+#### Supported Models
+
+For optimal results, use base models trained natively on Fill-in-the-Middle (FIM) tokens. The following models or series have been verified to work perfectly:
+
+*   **Qwen2.5-Coder (1.5B)**
+*   **DeepSeek-Coder (1.3B-Base)**
+*   **CodeGemma (2B)**
+*   **StarCoderBase (1B)**
+*   **Refact (1.6B-FIM)**
+*   **Stable-Code (3B)**
+
+> 💡 **Tip:** After selecting your provider and model in the settings, you can click the **Test** button to easily verify the connection and ensure the model is responding correctly.
+
+> ⚠️ **Note:** Make sure you are using the **Base** versions of these models rather than the Instruct/Chat versions, as base models are specifically optimized for raw code completion.
 
 ---
 
@@ -382,6 +504,7 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 `https://github.com/modelcontextprotocol/csharp-sdk`
 
 ---
+
 
 ## 🔧 Troubleshooting
 

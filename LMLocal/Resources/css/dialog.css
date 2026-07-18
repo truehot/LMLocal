@@ -1753,3 +1753,466 @@
         text-align: center;
         font-size: 12px;
     }
+
+/* ====== Autocompletions Dialog (Unified & Fixed Layout) ====== */
+
+#autocompletions-selector-dialog.model-modal {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 500px;
+    height: 600px;
+    max-height: 90vh;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    overflow: hidden;
+    margin: auto;
+    display: none;
+    flex-direction: column;
+}
+
+    #autocompletions-selector-dialog.model-modal[open] {
+        display: flex;
+    }
+
+    #autocompletions-selector-dialog.model-modal::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+#autocompletions-selector-dialog .modal-view-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+    #autocompletions-selector-dialog .modal-view-wrapper.hidden {
+        display: none !important;
+    }
+
+#autocompletions-selector-dialog .modal-header {
+    padding: 10px 12px;
+    background-color: var(--top-bar-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--strong-text);
+    font-size: 14px;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+#autocompletions-selector-dialog .modal-provider-row {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+#autocompletions-selector-dialog .model-header-select {
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    padding: 0 24px 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+    outline: none;
+    height: 28px;
+    cursor: pointer;
+    box-sizing: border-box;
+    width: 100%;
+    transition: border-color 0.15s ease;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'><path d='M1 1L5 5L9 1' stroke='%23d4d4d4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+    #autocompletions-selector-dialog .model-header-select:focus {
+        border-color: var(--accent-color);
+    }
+
+#autocompletions-selector-dialog .models-filter-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+#autocompletions-selector-dialog .settings-input {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    outline: none;
+    flex-grow: 1;
+    max-width: 200px;
+    height: 26px;
+    box-sizing: border-box;
+}
+
+    #autocompletions-selector-dialog .settings-input:focus {
+        border-color: var(--accent-color);
+    }
+
+#autocompletions-selector-dialog .modal-body {
+    padding: 0;
+    background-color: var(--bg-color);
+    overflow-y: auto;
+    flex: 1;
+}
+
+#autocompletions-info-view .modal-body {
+    padding: 12px;
+}
+
+#autocompletions-selector-dialog .checkbox-group {
+    padding: 4px 0;
+}
+
+#autocompletions-selector-dialog .checkbox-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#autocompletions-selector-dialog .checkbox-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--strong-text);
+}
+
+#autocompletions-selector-dialog .checkbox-description {
+    font-size: 12px;
+    color: var(--muted-color);
+    line-height: 1.4;
+}
+
+#autocompletions-selector-dialog .inline-kbd {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+    color: var(--strong-text);
+    display: inline-block;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 1.2;
+    padding: 1px 4px;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+/* Inline status on info screen */
+#autocompletions-selector-dialog .autocompletions-inline-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 8px;
+}
+
+#autocompletions-selector-dialog .status-meta-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    min-width: 0;
+}
+
+#autocompletions-selector-dialog .status-meta-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#autocompletions-selector-dialog .status-label-spec {
+    color: var(--muted-color);
+    width: 60px;
+    font-weight: 500;
+}
+
+#autocompletions-selector-dialog .provider-val {
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+#autocompletions-selector-dialog .model-val {
+    color: var(--strong-text);
+    font-weight: 600;
+}
+
+#autocompletions-selector-dialog .status-inline-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+#autocompletions-selector-dialog .btn-compact-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    transition: background 0.15s, border-color 0.15s;
+    min-width: 65px;
+}
+
+    #autocompletions-selector-dialog .btn-compact-action:hover {
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--muted-color);
+        color: var(--strong-text);
+    }
+
+    #autocompletions-selector-dialog .btn-compact-action.success {
+        color: var(--success-color);
+        border-color: var(--success-color);
+    }
+
+    #autocompletions-selector-dialog .btn-compact-action.error {
+        color: var(--danger-color, #c75050);
+        border-color: var(--danger-color, #c75050);
+    }
+
+    #autocompletions-selector-dialog .btn-compact-action svg {
+        flex-shrink: 0;
+        fill: currentColor;
+    }
+
+#autocompletions-selector-dialog .ui-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted-color);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+    #autocompletions-selector-dialog .ui-icon-btn:hover {
+        background: var(--hover-bg-alpha);
+        color: var(--strong-text);
+    }
+
+#autocompletions-selector-dialog .toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+    #autocompletions-selector-dialog .toggle-container input {
+        display: none;
+    }
+
+#autocompletions-selector-dialog .toggle-slider {
+    position: relative;
+    width: 28px;
+    height: 16px;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+    #autocompletions-selector-dialog .toggle-slider::before {
+        content: "";
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        left: 2px;
+        top: 2px;
+        background-color: var(--muted-color);
+        border-radius: 50%;
+        transition: all 0.2s ease;
+    }
+
+#autocompletions-selector-dialog .toggle-container input:checked + .toggle-slider {
+    background-color: var(--active-bg-alpha);
+    border-color: var(--accent-color);
+}
+
+    #autocompletions-selector-dialog .toggle-container input:checked + .toggle-slider::before {
+        transform: translateX(12px);
+        background-color: var(--accent-color);
+    }
+
+#autocompletions-selector-dialog .toggle-label {
+    font-size: 11px;
+    color: var(--muted-color);
+    white-space: nowrap;
+}
+
+#autocompletions-selector-dialog .models-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+}
+
+#autocompletions-selector-dialog .model-card {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: autocomp_fadeIn 0.2s ease-out;
+    position: relative;
+}
+
+    #autocompletions-selector-dialog .model-card:hover {
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--muted-color);
+    }
+
+    #autocompletions-selector-dialog .model-card.active::before {
+        content: "";
+        position: absolute;
+        left: -1px;
+        top: -1px;
+        bottom: -1px;
+        width: 3px;
+        background-color: var(--accent-color);
+        border-radius: 4px 0 0 4px;
+    }
+
+    #autocompletions-selector-dialog .model-card.active .model-name {
+        color: var(--strong-text);
+    }
+
+#autocompletions-selector-dialog .model-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+#autocompletions-selector-dialog .model-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--strong-text);
+    word-break: break-all;
+}
+
+#autocompletions-selector-dialog .model-id {
+    font-size: 11px;
+    color: var(--muted-color);
+    opacity: 0.6;
+    word-break: break-all;
+}
+
+#autocompletions-selector-dialog .model-status-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+
+    #autocompletions-selector-dialog .model-status-badge.status-loaded {
+        background-color: transparent;
+        color: var(--success-color);
+        border: 1px solid var(--success-color);
+    }
+
+    #autocompletions-selector-dialog .model-status-badge.status-unloaded {
+        background-color: transparent;
+        color: var(--muted-color);
+        border: 1px solid var(--border-color);
+        opacity: 0.5;
+    }
+
+#autocompletions-selector-dialog .loading-placeholder,
+#autocompletions-selector-dialog .empty-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--muted-color);
+    gap: 12px;
+    text-align: center;
+}
+
+#autocompletions-selector-dialog .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--accent-color);
+    border-radius: 50%;
+    animation: autocomp_spin 1s linear infinite;
+}
+
+#autocompletions-selector-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: var(--panel-bg);
+    border-top: 1px solid var(--border-color);
+    box-sizing: border-box;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+@keyframes autocomp_spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes autocomp_fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

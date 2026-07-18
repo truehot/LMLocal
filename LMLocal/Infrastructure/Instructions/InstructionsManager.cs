@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
 using Newtonsoft.Json.Linq;
@@ -56,7 +57,7 @@ namespace LMLocal.Infrastructure.Instructions
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error reading instructions: {ex}");
+                InternalLogger.Warn("Error reading instructions: " + ex.Message);
                 return "{}";
             }
             finally

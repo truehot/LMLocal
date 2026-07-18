@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
@@ -112,6 +113,10 @@ namespace LMLocal.Tests.Unit
 
             public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken)
                 => Task.FromResult<SendChatResponse>(null);
+
+
+            public Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken)
+                => Task.FromResult(string.Empty);
         }
 
         private class DummyHistory : IChatHistoryManager

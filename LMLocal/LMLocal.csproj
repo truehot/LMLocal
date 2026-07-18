@@ -24,6 +24,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <SignAssembly>false</SignAssembly>
+    <NoWarn>MSB3277</NoWarn>
   </PropertyGroup>
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -68,22 +69,37 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
+    <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="AskLMLocalCommand.cs" />
     <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
     <Compile Include="Core\Models\ApiErrorInfo.cs" />
+    <Compile Include="Core\Models\AutocompletionsConfig.cs" />
+    <Compile Include="Core\Models\CompletionParameters.cs" />
     <Compile Include="Core\Models\GetProvidersResponse.cs" />
+    <Compile Include="Core\Models\ListModelsParameters.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
     <Compile Include="Core\Models\ProviderTypeInfo.cs" />
     <Compile Include="Core\Models\ToolsConfigFile.cs" />
+    <Compile Include="Infrastructure\Autocompletions\AutocompletionsConfigManager.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\CompletionCache.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\EscapeCommandHandler.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\GhostTextAdornment.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\GhostTextAdornmentLayer.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionPostProcessor.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTagger.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTextViewCreationListener.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\TabCommandHandler.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiErrorParser.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiRequestBuilder.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderDisplayAttribute.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\AzureModelsResponse.cs" />
+    <Compile Include="Infrastructure\LlmApi\Responses\CompletionResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\JanModelsResponse.cs" />
     <Compile Include="Infrastructure\DependencyInjection\ServiceConfiguration.cs" />
     <Compile Include="Infrastructure\HttpWrapper\HttpClientWrapper.cs" />
@@ -199,6 +215,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\dialogs\autocompletions.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\dialogs\mcp.settings.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -235,6 +255,7 @@
     <Compile Include="Infrastructure\Tooling\ToolsConfigManager.cs" />
     <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\VisualStudio\FileViewer.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\AutocompletionsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\InstructionsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\McpController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ModelsController.cs" />
@@ -243,6 +264,7 @@
     <Compile Include="Infrastructure\WebView\Controllers\ToolsController.cs" />
     <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
+    <Compile Include="Infrastructure\WebView\Models\TestCompletionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ChatSessionIteratingMessage.cs" />

@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="2.3.5" Language="en-US" Publisher="Aleksandrs Kornevs" />
+        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="2.4" Language="en-US" Publisher="Aleksandrs Kornevs" />
         <DisplayName>LM Local</DisplayName>
-        <Description xml:space="preserve">Lightweight, secure AI chat window for Visual Studio 2022/2026. Stream responses from cloud providers and local engines like LM Studio, Ollama, Jan and Llama.cpp with full code context, expandable reasoning thoughts, customized system roles, and extendable MCP toolkits (stdio/http).</Description>
+        <Description xml:space="preserve">Lightweight, secure AI chat assistant for Visual Studio with agentic capabilities. Works with local (Ollama, LM Studio, Jan, Llama.cpp) and cloud LLMs. You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow. Full code context, reasoning steps, custom roles, MCP toolkits.</Description>
         <MoreInfo>https://github.com/truehot/LMLocal</MoreInfo>
         <License>LICENSE.txt</License>
         <GettingStartedGuide>GettingStarted.txt</GettingStartedGuide>
         <Icon>Resources\logo.png</Icon>
-        <Tags>LM Studio, LLM, Local AI, Chat, Ollama, Jan, Llama.cpp, MCP</Tags>
+        <Tags>AI Agent, Local AI, Ollama, LM Studio, LLM, Code Generation, Refactoring, MCP, Chat, OpenAI</Tags>
     </Metadata>
     <Installation>
         <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0, 19.0)">
@@ -23,5 +23,6 @@
     </Prerequisites>
     <Assets>
         <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%;PkgdefProjectOutputGroup|" />
+        <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%|" />
     </Assets>
 </PackageManifest>

@@ -264,6 +264,44 @@ class AppDataService {
         return await bridgeClient.discardFileAsync(filePath);
     }
 
+
+    async getAutocompletionsConfigAsync() {
+        return await bridgeClient.getAutocompletionsConfigAsync();
+    }
+
+    async updateAutocompletionsConfigAsync(config) {
+        const json = JSON.stringify(config);
+        return await bridgeClient.updateAutocompletionsConfigAsync(json);
+    }
+
+    async listAutocompletionsModelsAsync(providerType, baseUrl, apiKey) {
+        return await bridgeClient.listAutocompletionsModelsAsync(providerType, baseUrl, apiKey);
+    }
+
+    async testAutocompletionsCompletionAsync(providerType, baseUrl, apiKey, modelId) {
+        const result = await bridgeClient.testAutocompletionsCompletionAsync(providerType, baseUrl, apiKey, modelId);
+        return JSON.parse(result);
+    }
+
+    async getProvidersForAutocompletionsAsync() {
+        const storeState = providersStore.getState();
+        let result;
+        if (storeState.loaded) {
+            result = {
+                defaultProviders: storeState.defaultProviders,
+                providers: storeState.providers,
+            };
+        } else {
+            result = await this.getProvidersAsync();
+        }
+
+        const allowedTypes = ['lmstudio', 'llamacpp'];
+        return (result.defaultProviders || []).filter(
+            p => p && p.providerType && allowedTypes.includes(p.providerType.toLowerCase())
+        );
+    }
+
+
     async acceptFileAsync(filePath) {
         return await bridgeClient.acceptFileAsync(filePath);
     }

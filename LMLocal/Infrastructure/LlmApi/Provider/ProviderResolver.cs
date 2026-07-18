@@ -112,5 +112,13 @@ namespace LMLocal.Infrastructure.Api
             else
                 return ApiEndpoints.ChatCompletions;
         }
+
+        /// <summary>
+        /// Gets the API endpoint for text completions (FIM) based on the provider type.
+        /// </summary>
+        public static string GetCompletionsEndpoint(ModelProvider _)
+        {
+                return ApiEndpoints.Completions;
+        }
     }
 }

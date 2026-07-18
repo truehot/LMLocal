@@ -4,6 +4,7 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
@@ -22,6 +23,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
+using LMLocal.Infrastructure.Autocompletions;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Infrastructure.WebView.Controllers;
 using LMLocal.Services.Tool;
@@ -84,6 +86,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
             services.AddSingleton<ISearchResultCache, SearchResultCache>();
+            services.AddSingleton<IAutocompletionsConfigManager, AutocompletionsConfigManager>();
 
             services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();
             services.AddTransient<IVsSolutionFilesScanner, VsSolutionFilesScanner>();
@@ -130,6 +133,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
+            services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
 
             services.AddSingleton<IWebViewBridgeFactory, WebViewBridgeFactory>();
@@ -150,6 +154,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISettingsController>(sp => new SettingsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>()));
             services.AddSingleton<IMcpController>(sp => new McpController(sp.GetRequiredService<IMcpConfigManager>(), sp.GetRequiredService<IMcpToolManager>(), sp.GetRequiredService<ISettingsManager>()));
             services.AddSingleton<IModelsController>(sp => new ModelsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>(), sp.GetRequiredService<IActiveModelContext>()));
+            services.AddSingleton<IAutocompletionsController>(sp => new AutocompletionsController(sp.GetRequiredService<IAutocompletionsConfigManager>(), sp.GetRequiredService<IAutocompletionsService>(), sp.GetRequiredService<IModelsListService>()));
         }
 
         /// <summary>

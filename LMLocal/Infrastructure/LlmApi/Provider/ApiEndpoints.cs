@@ -55,5 +55,9 @@ namespace LMLocal.Infrastructure.LlmApi.Provider
         /// </summary>
         public const string GithubModelsAzureListModels = "/models";
 
+        /// <summary>
+        /// OpenAI-compatible endpoint for text completions (FIM - Fill In the Middle).
+        /// </summary>
+        public const string Completions = "/v1/completions";
     }
 }
