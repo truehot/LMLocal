@@ -134,6 +134,9 @@
     <Compile Include="Infrastructure\InlineCompletion\CompletionCacheTests.cs" />
     <Compile Include="Infrastructure\InlineCompletion\SuggestionPostProcessTests.cs" />
 
+    <Compile Include="Commands\CodeCommandHelperTests.cs" />
+    <Compile Include="Commands\SendToLMFromSolutionExplorerCommandTests.cs" />
+
     <Reference Include="System.Net.Http" />
     <Compile Include="Infrastructure\AdditionalCriticalTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientAdditionalTests.cs" />

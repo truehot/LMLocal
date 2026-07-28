@@ -331,8 +331,49 @@ namespace LMLocal
         }
 
         /// <summary>
-        /// Releases all resources used by the <see cref="MainWindowControl"/> instance.
+        /// Injects markdown text into the chat input and automatically clicks Send.
         /// </summary>
+        public async Task InjectTextAndSendAsync(string markdownText, string instructionTabId = null)
+        {
+            CoreWebView2 core;
+            try
+            {
+                core = await _webViewLazy.GetValueAsync(_initCts.Token);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("WebView2 initialization failed.", ex);
+                return;
+            }
+
+            string escaped = JsonConvert.SerializeObject(markdownText);
+            string escapedTabId = instructionTabId != null ? JsonConvert.SerializeObject(instructionTabId) : "null";
+
+            // JS execution: select instruction tab (if specified), inject text, resize, then click Send
+            string script = $@"
+(function() {{
+    const tabId = {escapedTabId};
+    if (tabId) {{
+        const item = document.querySelector('.dropdown-item[data-value=""' + tabId + '""]');
+        if (item) {{
+            item.click();
+        }}
+    }}
+    const el = document.getElementById('userInput');
+    if (!el) return;
+    el.value = {escaped};
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+    const wrapper = el.closest('.input-wrapper');
+    if (wrapper) wrapper.classList.add('expanded');
+    const btn = document.getElementById('mainBtn');
+    if (btn) btn.click();
+}})();
+";
+            await core.ExecuteScriptAsync(script);
+        }
+
         public void Dispose()
         {
             if (_disposed)

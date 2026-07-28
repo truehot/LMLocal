@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,11 @@ namespace LMLocal.Infrastructure.Instructions
         Task<string> GetAsync(CancellationToken cancellationToken = default);
         Task UpdateAsync(string jsonInstructions, CancellationToken cancellationToken = default);
         Task UpdateSelectedTabAsync(string selectedTabId, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Finds the tab id (as string) of the first enabled instruction tab whose displayName matches the specified name (case-insensitive). Returns null if not found or disabled.
+        /// </summary>
+        Task<string> GetInstructionTabIdByDisplayNameAsync(string displayName, CancellationToken cancellationToken = default);
     }
 
     internal class InstructionsManager : IInstructionsManager
@@ -115,6 +121,43 @@ namespace LMLocal.Infrastructure.Instructions
             finally
             {
                 _fileLock.Release();
+            }
+        }
+
+        public async Task<string> GetInstructionTabIdByDisplayNameAsync(string displayName, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+                return null;
+
+            string json = await GetAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                JObject jObject = JObject.Parse(json);
+                if (!(jObject["tabs"] is JArray tabs))
+                    return null;
+
+                foreach (JToken tab in tabs)
+                {
+                    string name = tab["displayName"]?.Value<string>();
+                    bool enabled = tab["enabled"]?.Value<bool>() ?? false;
+                    string id = tab["id"]?.Value<string>();
+
+                    if (enabled &&
+                        !string.IsNullOrWhiteSpace(name) &&
+                        !string.IsNullOrWhiteSpace(id) &&
+                        string.Equals(name, displayName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return id;
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn("Error searching instructions by displayName: " + ex.Message);
+                return null;
             }
         }
     }

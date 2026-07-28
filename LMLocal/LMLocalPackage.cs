@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using LMLocal.Commands;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -67,7 +68,15 @@ namespace LMLocal
 
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
-            await AskLMLocalCommand.InitializeAsync(this);
+            await SendToLMFromEditorCommand.InitializeAsync(this);
+            await SendToLMFromSolutionExplorerCommand.InitializeAsync(this);
+            await BaseCodeCommand.InitializeAsync<ReviewCommand>(this);
+            await BaseCodeCommand.InitializeAsync<BugFixCommand>(this);
+            await BaseCodeCommand.InitializeAsync<AddUnitTestsCommand>(this);
+            await BaseCodeCommand.InitializeAsync<AddSummaryCommand>(this);
+            await BaseCodeCommand.InitializeAsync<ImproveCommand>(this);
+            await BaseCodeCommand.InitializeAsync<ExplainCommand>(this);
+
 
 #if DEBUG
             //Should enable IPC in debug builds to allow testing without needing to set environment variable

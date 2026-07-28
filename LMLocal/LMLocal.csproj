@@ -72,7 +72,16 @@
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
-    <Compile Include="AskLMLocalCommand.cs" />
+    <Compile Include="Commands\AddSummaryCommand.cs" />
+    <Compile Include="Commands\AddUnitTestsCommand.cs" />
+    <Compile Include="Commands\BaseCodeCommand.cs" />
+    <Compile Include="Commands\BugFixCommand.cs" />
+    <Compile Include="Commands\CodeCommandHelper.cs" />
+    <Compile Include="Commands\ExplainCommand.cs" />
+    <Compile Include="Commands\ImproveCommand.cs" />
+    <Compile Include="Commands\ReviewCommand.cs" />
+    <Compile Include="Commands\SendToLMFromEditorCommand.cs" />
+    <Compile Include="Commands\SendToLMFromSolutionExplorerCommand.cs" />
     <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
     <Compile Include="Core\Models\ApiErrorInfo.cs" />
@@ -231,6 +240,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\lib\file.fence.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\lib\model-selector.factory.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -318,7 +331,7 @@
     <Compile Include="Infrastructure\Streaming\TokenSpeedCalculator.cs" />
     <Compile Include="Infrastructure\WebView\WebViewScriptExecutor.cs" />
     <Compile Include="MainWindow.cs" />
-    <Compile Include="MainWindowCommand.cs" />
+    <Compile Include="Commands\MainWindowCommand.cs" />
     <Compile Include="MainWindowControl.xaml.cs">
       <DependentUpon>MainWindowControl.xaml</DependentUpon>
     </Compile>

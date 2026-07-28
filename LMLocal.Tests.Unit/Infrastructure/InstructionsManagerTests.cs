@@ -101,6 +101,133 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             public AppSettings Current => new AppSettings();
             public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsId_WhenFoundAndEnabled()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var content = @"{
+                ""tabs"": [
+                    { ""id"": ""5"", ""displayName"": ""Review"", ""enabled"": true, ""temperature"": 0.1, ""prompt"": ""review prompt"" },
+                    { ""id"": ""3"", ""displayName"": ""Tests"", ""enabled"": true, ""temperature"": 0.1, ""prompt"": ""test prompt"" },
+                    { ""id"": ""7"", ""displayName"": ""Explain"", ""enabled"": false, ""temperature"": 0.4, ""prompt"": ""explain prompt"" }
+                ]
+            }";
+            var expectedPath = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, System.Text.Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
+
+            var result = await manager.GetInstructionTabIdByDisplayNameAsync("Tests");
+
+            Assert.That(result, Is.EqualTo("3"));
+        }
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsNull_WhenDisabled()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var content = @"{
+                ""tabs"": [
+                    { ""id"": ""7"", ""displayName"": ""Explain"", ""enabled"": false, ""temperature"": 0.4, ""prompt"": ""explain prompt"" }
+                ]
+            }";
+            var expectedPath = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, System.Text.Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
+
+            var result = await manager.GetInstructionTabIdByDisplayNameAsync("Explain");
+
+            Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsNull_WhenNotFound()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var content = @"{
+                ""tabs"": [
+                    { ""id"": ""1"", ""displayName"": ""Default"", ""enabled"": true, ""temperature"": 0.2, ""prompt"": ""default prompt"" }
+                ]
+            }";
+            var expectedPath = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, System.Text.Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
+
+            var result = await manager.GetInstructionTabIdByDisplayNameAsync("NonExistent");
+
+            Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_IsCaseInsensitive()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var content = @"{
+                ""tabs"": [
+                    { ""id"": ""2"", ""displayName"": ""Bugfix"", ""enabled"": true, ""temperature"": 0.1, ""prompt"": ""bugfix prompt"" }
+                ]
+            }";
+            var expectedPath = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, System.Text.Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
+
+            var resultLower = await manager.GetInstructionTabIdByDisplayNameAsync("bugfix");
+            var resultUpper = await manager.GetInstructionTabIdByDisplayNameAsync("BUGFIX");
+            var resultMixed = await manager.GetInstructionTabIdByDisplayNameAsync("BugFix");
+
+            Assert.That(resultLower, Is.EqualTo("2"));
+            Assert.That(resultUpper, Is.EqualTo("2"));
+            Assert.That(resultMixed, Is.EqualTo("2"));
+        }
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsNull_WhenNullOrEmpty()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var manager = new InstructionsManager(fs, settings);
+
+            var resultNull = await manager.GetInstructionTabIdByDisplayNameAsync(null);
+            var resultEmpty = await manager.GetInstructionTabIdByDisplayNameAsync("");
+
+            Assert.That(resultNull, Is.Null);
+            Assert.That(resultEmpty, Is.Null);
+        }
+
+        [Test]
+        public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsFirstMatch_WhenMultipleTabsHaveSameName()
+        {
+            var fs = new InMemoryFileSystem();
+            var settings = new TestSettingsManager { LocalAppDataFolder = "", LocalAppInstructionsFileName = "instructions.json" };
+            var content = @"{
+                ""tabs"": [
+                    { ""id"": ""10"", ""displayName"": ""Review"", ""enabled"": true, ""temperature"": 0.1, ""prompt"": ""first"" },
+                    { ""id"": ""20"", ""displayName"": ""Review"", ""enabled"": true, ""temperature"": 0.2, ""prompt"": ""second"" }
+                ]
+            }";
+            var expectedPath = System.IO.Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData),
+                settings.LocalAppDataFolder, settings.LocalAppInstructionsFileName);
+            await fs.WriteAllBytesAsync(expectedPath, System.Text.Encoding.UTF8.GetBytes(content));
+            var manager = new InstructionsManager(fs, settings);
+
+            var result = await manager.GetInstructionTabIdByDisplayNameAsync("Review");
+
+            Assert.That(result, Is.EqualTo("10"));
+        }
+
             public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
             #pragma warning disable 0067 // event required by interface but not used in tests
             public event Action<AppSettings> SettingsChanged;

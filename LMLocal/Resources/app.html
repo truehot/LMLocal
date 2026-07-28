@@ -125,6 +125,7 @@
 
     <div class="input-container">
         <div class="input-wrapper">
+            <div id="drag-resizer" title="Drag to resize"></div>
             <textarea id="userInput" placeholder="Ask LM Local..." rows="1" autofocus></textarea>
             <div class="input-footer">
                 <div class="input-footer-left">
@@ -640,6 +641,13 @@
                             </span>
                         </span>
                     </label>
+                </div>
+                <div class="settings-group" style=" margin-left: 23px;">
+                    <label for="autocompletions-debounce" class="settings-label">Debounce delay (ms)</label>
+                    <span class="settings-description">
+                        How long to wait after you stop typing before triggering a suggestion.
+                    </span>
+                    <input type="number" id="autocompletions-debounce" class="settings-input" min="50" max="5000" step="50" placeholder="300" autocomplete="off">
                 </div>
 
                 <div class="autocompletions-inline-status-row">

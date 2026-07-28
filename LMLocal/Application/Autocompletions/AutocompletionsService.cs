@@ -38,7 +38,7 @@ namespace LMLocal.Application.Autocompletions
         private const string TestPrompt = "/* Csharp code */ using System;\nnamespace TesteCSharp {\n class Program {\n static void Main(string[] args) {\n public int Add(int one, int two) {";
         private const string TestSuffix = "}";
         private const int TestMaxTokens = 80;
-        private const double TestTemperature = 0.5;
+        private const double TestTemperature = 0;
         private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(15);
 
         private readonly IAutocompletionsConfigManager _configManager;

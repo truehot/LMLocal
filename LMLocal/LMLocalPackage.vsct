@@ -20,6 +20,7 @@
   <!--This header contains the command ids for the menus provided by the shell. -->
   <Extern href="vsshlids.h" />
 
+
   <!--The Commands section is where commands, menus, and menu groups are defined.
       This section uses a Guid to identify the package that provides the command defined inside it. -->
   <Commands package="guidLMLocalPackage">
@@ -30,6 +31,18 @@
     called "command set" and is used to group different command inside a logically related
     group; your package should define its own command set in order to avoid collisions
     with command ids defined by other packages. -->
+
+    <!-- Menus section: defines submenus used in context menus -->
+    <Menus>
+      <!-- Submenu "LM Local Commands" inside the code editor context menu -->
+      <Menu guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" priority="0x0011" type="Menu">
+        <Parent guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" />
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <Strings>
+          <ButtonText>LM Local Commands</ButtonText>
+        </Strings>
+      </Menu>
+    </Menus>
 
     <!-- In this section you can define new menu groups. A menu group is a container for
          other menus or buttons (commands); from a visual point of view you can see the
@@ -42,6 +55,24 @@
       <!-- Context menu group inside the code editor context menu (IDM_VS_CTXT_CODEWIN) -->
       <Group guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0010">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN"/>
+      </Group>
+      <!-- Group inside the "LM Local Commands" submenu to hold all code commands -->
+      <Group guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" priority="0x0010">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" />
+      </Group>
+
+      <!-- Solution Explorer context menu groups -->
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerItemGroup" priority="0x0010">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
+      </Group>
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerFolderGroup" priority="0x0010">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_FOLDERNODE"/>
+      </Group>
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerProjectGroup" priority="0x0010">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
+      </Group>
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerSolutionGroup" priority="0x0010">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
       </Group>
     </Groups>
 
@@ -80,11 +111,90 @@
           <ButtonText>Send to LM Local</ButtonText>
         </Strings>
       </Button>
+
+      <!-- All code-specific commands inside the "LM Local Commands" submenu -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidReviewCode" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Review Code</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidBugFixCode" priority="0x110" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>BugFix Code</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidAddUnitTests" priority="0x120" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Add Unit Tests</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidAddSummary" priority="0x130" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Add Summary</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidImproveCode" priority="0x150" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Improve Code</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidExplainCode" priority="0x160" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Explain Code</ButtonText>
+        </Strings>
+      </Button>
+
+      <!-- Solution Explorer context menu buttons "Send to LM Local" -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendToLMFromSE_Item" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SolutionExplorerItemGroup"/>
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send File to LM Local</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendToLMFromSE_Folder" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SolutionExplorerFolderGroup"/>
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send Folder to LM Local</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendToLMFromSE_Project" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SolutionExplorerProjectGroup"/>
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send Project to LM Local</ButtonText>
+        </Strings>
+      </Button>
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendToLMFromSE_Solution" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SolutionExplorerSolutionGroup"/>
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send Solution to LM Local</ButtonText>
+        </Strings>
+      </Button>
+
     </Buttons>
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
     <Bitmaps>
-      <Bitmap guid="guidMyIconSet" href="Resources\icon.ico" usedList="iconLMLocal"/>
+      <Bitmap guid="guidMyIconSet" href="Resources\\icon.ico" usedList="iconLMLocal"/>
     </Bitmaps>
   </Commands>
 
@@ -92,6 +202,7 @@
     <GuidSymbol name="guidMyIconSet" value="{dc60de45-6b26-4b00-b969-92c6dd30dc08}">
       <IDSymbol name="iconLMLocal" value="1" />
     </GuidSymbol>
+
 
     <!-- This is the package guid. -->
     <GuidSymbol name="guidLMLocalPackage" value="{d2b7ae34-5422-4af0-bfc3-6129fd2641d0}" />
@@ -102,7 +213,27 @@
       <IDSymbol name="ShowMainWindowId" value="0x0100" />
       <IDSymbol value="4129" name="cmdidMainWindowCommand" />
       <IDSymbol name="EditorContextGroup" value="0x1030" />
+      <IDSymbol name="LMLocalSubMenu" value="0x2000" />
+      <IDSymbol name="LMLocalCommandsGroup" value="0x1040" />
       <IDSymbol name="cmdidAskLMLocal" value="0x0200" />
+      <IDSymbol name="cmdidReviewCode" value="0x0201" />
+      <IDSymbol name="cmdidBugFixCode" value="0x0202" />
+      <IDSymbol name="cmdidAddUnitTests" value="0x0203" />
+      <IDSymbol name="cmdidAddSummary" value="0x0204" />
+      <IDSymbol name="cmdidImproveCode" value="0x0206" />
+      <IDSymbol name="cmdidExplainCode" value="0x0207" />
+
+      <!-- Solution Explorer group IDs -->
+      <IDSymbol name="SolutionExplorerItemGroup" value="0x1050" />
+      <IDSymbol name="SolutionExplorerFolderGroup" value="0x1051" />
+      <IDSymbol name="SolutionExplorerProjectGroup" value="0x1052" />
+      <IDSymbol name="SolutionExplorerSolutionGroup" value="0x1053" />
+
+      <!-- Solution Explorer command IDs -->
+      <IDSymbol name="cmdidSendToLMFromSE_Item" value="0x0208" />
+      <IDSymbol name="cmdidSendToLMFromSE_Folder" value="0x0209" />
+      <IDSymbol name="cmdidSendToLMFromSE_Project" value="0x020A" />
+      <IDSymbol name="cmdidSendToLMFromSE_Solution" value="0x020B" />
     </GuidSymbol>
   </Symbols>
 </CommandTable>

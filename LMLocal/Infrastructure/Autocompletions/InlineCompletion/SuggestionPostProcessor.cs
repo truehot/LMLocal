@@ -1,5 +1,3 @@
-using System;
-
 namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 {
     /// <summary>
@@ -7,10 +5,8 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
     /// </summary>
     internal static class SuggestionPostProcessor
     {
-        internal static string[] Process(
+        internal static string Process(
             string raw,
-            string prefix,
-            string suffix,
             int maxLines)
         {
             if (string.IsNullOrEmpty(raw))
@@ -22,15 +18,19 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (string.IsNullOrEmpty(result))
                 return null;
 
-            var allLines = result.Split('\n');
-            if (allLines.Length > maxLines)
+            if (maxLines <= 0)
+                return string.Empty;
+
+            int pos = -1;
+            for (int i = 0; i < maxLines; i++)
             {
-                var capped = new string[maxLines];
-                Array.Copy(allLines, capped, maxLines);
-                return capped;
+                int idx = result.IndexOf('\n', pos + 1);
+                if (idx == -1)
+                    return result;
+                pos = idx;
             }
 
-            return allLines;
+            return result.Substring(0, pos);
         }
     }
 }

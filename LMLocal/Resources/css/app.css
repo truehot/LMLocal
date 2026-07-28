@@ -950,6 +950,45 @@ body {
     .input-container .btn-main:hover {
         filter: brightness(1.1);
     }
+
+.input-wrapper.drag-over {
+    border-color: var(--accent-color) !important;
+    background: var(--hover-bg-alpha);
+    box-shadow: 0 0 8px rgba(0, 122, 204, 0.3);
+}
+
+#drag-resizer {
+    display: none;
+    height: 6px;
+    width: 100%;
+    cursor: ns-resize;
+    position: relative;
+    z-index: 10;
+    margin-bottom: -3px;
+    justify-content: center;
+    align-items: center;
+}
+
+.input-wrapper.expanded #drag-resizer {
+    display: flex;
+}
+
+#drag-resizer::before {
+    content: '';
+    width: 36px;
+    height: 3px;
+    background: var(--border-color);
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+#drag-resizer:hover::before,
+#drag-resizer.is-resizing::before {
+    opacity: 1;
+    background: var(--accent-color);
+}
+
 /* ====== Instructions dropdown  ====== */
 .input-container .input-wrapper:not(.expanded) .input-footer-left {
     display: none;

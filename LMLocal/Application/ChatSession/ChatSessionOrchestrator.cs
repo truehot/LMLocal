@@ -353,8 +353,7 @@ namespace LMLocal.Application.ChatSession
                     {
                         toolCts.CancelAfter(TOOL_EXECUTION_TIMEOUT_MS);
 
-                        var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token)
-                            .ConfigureAwait(false);
+                        var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token).ConfigureAwait(false);
 
                         context.ToolResultsForNextRound.Add(new ToolResultMessage
                         {

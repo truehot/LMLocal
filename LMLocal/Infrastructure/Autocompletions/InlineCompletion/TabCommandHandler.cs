@@ -25,19 +25,13 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 
         public void ExecuteCommand(TabKeyCommandArgs args, Action nextCommandHandler, CommandExecutionContext executionContext)
         {
-            if (TryGetTagger(args.TextView, out var tagger) && tagger.HasSuggestion)
+            if (SuggestionTagger.TryGet(args.TextView, out var tagger) && tagger.HasSuggestion)
             {
                 tagger.AcceptSuggestion();
                 return; // consumed
             }
 
             nextCommandHandler();
-        }
-
-        private static bool TryGetTagger(ITextView textView, out SuggestionTagger tagger)
-        {
-            tagger = null;
-            return textView.Properties.TryGetProperty(typeof(SuggestionTagger), out tagger);
         }
     }
 }

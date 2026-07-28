@@ -94,11 +94,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 _fileSystem.EnsureDirectoryExistsForFile(absolutePath);
 
-                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, content, Encoding.UTF8, hasBom: true, cancellationToken).ConfigureAwait(false);
+                string normalizedContent = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+
+                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, normalizedContent, Encoding.UTF8, hasBom: true, cancellationToken).ConfigureAwait(false);
 
                 string[] syntaxErrors = null;
                 var checker = _syntaxFactory.GetChecker(absolutePath);
-                if (checker != null && !checker.IsSyntaxValid(content, out var errors))
+                if (checker != null && !checker.IsSyntaxValid(normalizedContent, out var errors))
                 {
                     syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
                     InternalLogger.Info($"Syntax errors detected after creation in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");

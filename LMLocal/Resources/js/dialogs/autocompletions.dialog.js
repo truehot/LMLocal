@@ -16,6 +16,8 @@ export class AutocompletionsDialog {
         this._sortAsc = true;
         this._testBtnTimeout = null;
         this._searchDebounce = null;
+        this._onProviderChange = null;
+        this._onModelCardClick = null;
         this.el = null;
     }
 
@@ -40,6 +42,7 @@ export class AutocompletionsDialog {
             loadedOnly: dialog.querySelector('#autocompletions-loaded-only'),
             refreshBtn: dialog.querySelector('#autocompletions-refresh-models'),
             sortBtn: dialog.querySelector('#autocompletions-sort-btn'),
+            debounceInput: dialog.querySelector('#autocompletions-debounce'),
         };
     }
 
@@ -60,6 +63,9 @@ export class AutocompletionsDialog {
     _updateInfoDisplay() {
         if (!this._config) return;
         this.el.enableCheckbox.checked = this._config.enabled || false;
+        if (this.el.debounceInput) {
+            this.el.debounceInput.value = this._config.debounceDelayMs ?? 300;
+        }
         if (this._selectedProvider) {
             this.el.providerName.textContent = this._selectedProvider.name || this._selectedProvider.providerType || '—';
         } else {
@@ -71,8 +77,6 @@ export class AutocompletionsDialog {
     _populateProviderSelect() {
         const select = this.el.providerSelect;
         select.innerHTML = '';
-        const changeHandler = select._acChangeHandler;
-        if (changeHandler) select.removeEventListener('change', changeHandler);
         this._providers.forEach(p => {
             const opt = document.createElement('option');
             opt.value = p.id;
@@ -85,7 +89,6 @@ export class AutocompletionsDialog {
             }
             select.appendChild(opt);
         });
-        if (changeHandler) select.addEventListener('change', changeHandler);
     }
 
     async _loadModels() {
@@ -117,6 +120,7 @@ export class AutocompletionsDialog {
             let raw = result;
             if (result?.success && result.data) raw = result.data;
             this._models = Array.isArray(raw?.models) ? raw.models : [];
+            if (!this.el) return;
             this._renderModels();
         } catch (err) {
             console.error('Failed to load models:', err);
@@ -177,16 +181,6 @@ export class AutocompletionsDialog {
                 <div class="model-id">${this._escapeHtml(modelId)}</div>
             </div>`;
         }).join('');
-
-        container.querySelectorAll('.model-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const modelId = card.dataset.modelId;
-                this._config.modelId = modelId;
-                this._config.providerType = this._selectedProvider.providerType;
-                this._config.providerId = this._selectedProvider.id;
-                this._showInfoView();
-            });
-        });
     }
 
     _escapeHtml(text) {
@@ -209,13 +203,20 @@ export class AutocompletionsDialog {
     }
 
     async show() {
+        if (this.el?.dialog?.open) {
+            this.el.dialog.close();
+        }
+
         this.el = this._getElements();
-        const { dialog, enableCheckbox, changeBtn, backBtn, testBtn, cancelBtn, saveBtn, providerSelect, modelSearch, loadedOnly, refreshBtn, sortBtn } = this.el;
+        const { dialog, enableCheckbox, changeBtn, backBtn, testBtn, cancelBtn, saveBtn, providerSelect, modelSearch, loadedOnly, refreshBtn, sortBtn, modelsContainer } = this.el;
         if (!dialog) throw new Error('Dialog #autocompletions-selector-dialog not found');
 
+        this._searchFilter = '';
+        this._loadedOnly = false;
+        this._sortAsc = true;
         this._resetTestButton();
+        if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
 
-        // Load config and providers
         try {
             const result = await this.onLoad.emitResult();
             if (result?.success && result.data) {
@@ -230,7 +231,7 @@ export class AutocompletionsDialog {
             }
         } catch (e) {
             console.error('Failed to load autocompletions config', e);
-            this._config = { enabled: false, providerId: 0, providerType: 'lmstudio', modelId: '' };
+            this._config = { enabled: false, providerId: 0, providerType: 'lmstudio', modelId: '', debounceDelayMs: 300 };
             this._providers = [];
         }
 
@@ -241,15 +242,24 @@ export class AutocompletionsDialog {
         };
         enableCheckbox.addEventListener('change', onEnableChange);
 
+        const onDebounceChange = () => {
+            if (this._config && this.el.debounceInput) {
+                const val = parseInt(this.el.debounceInput.value, 10);
+                this._config.debounceDelayMs = !isNaN(val) && val > 0 ? val : 300;
+            }
+        };
+        if (this.el.debounceInput) {
+            this.el.debounceInput.addEventListener('input', onDebounceChange);
+        }
+
         const onChangeClick = () => { this._showSelectionView(); this._loadModels(); };
         changeBtn.addEventListener('click', onChangeClick);
 
         const onBackClick = () => { this._showInfoView(); };
         backBtn.addEventListener('click', onBackClick);
 
-        const onProviderChange = () => { this._loadModels(); };
-        providerSelect.addEventListener('change', onProviderChange);
-        providerSelect._acChangeHandler = onProviderChange;
+        this._onProviderChange = () => { this._loadModels(); };
+        providerSelect.addEventListener('change', this._onProviderChange);
 
         const onModelSearchInput = () => {
             if (this._searchDebounce) clearTimeout(this._searchDebounce);
@@ -313,17 +323,41 @@ export class AutocompletionsDialog {
         };
         testBtn.addEventListener('click', onTestClick);
 
+        this._onModelCardClick = (e) => {
+            const card = e.target.closest('.model-card');
+            if (!card) return;
+            const modelId = card.dataset.modelId;
+            this._config.modelId = modelId;
+            this._config.providerType = this._selectedProvider.providerType;
+            this._config.providerId = this._selectedProvider.id;
+            this._showInfoView();
+        };
+        modelsContainer.addEventListener('click', this._onModelCardClick);
+
         dialog.showModal();
 
         return new Promise((resolve) => {
             const onCancel = () => { cleanup(); resolve(null); };
-            const onSave = async () => { await this.onSave.emit(this._config); cleanup(); resolve(this._config); };
+            const onSave = async () => {
+                try {
+                    await this.onSave.emit(this._config);
+                    resolve(this._config);
+                } catch (err) {
+                    console.error('Failed to save autocompletions config:', err);
+                    resolve(null);
+                } finally {
+                    cleanup();
+                }
+            };
             const cleanup = () => {
                 enableCheckbox.removeEventListener('change', onEnableChange);
                 changeBtn.removeEventListener('click', onChangeClick);
                 backBtn.removeEventListener('click', onBackClick);
-                providerSelect.removeEventListener('change', onProviderChange);
+                providerSelect.removeEventListener('change', this._onProviderChange);
                 testBtn.removeEventListener('click', onTestClick);
+                if (this.el.debounceInput) {
+                    this.el.debounceInput.removeEventListener('input', onDebounceChange);
+                }
                 cancelBtn.removeEventListener('click', onCancel);
                 saveBtn.removeEventListener('click', onSave);
                 dialog.removeEventListener('close', onClose);
@@ -331,9 +365,17 @@ export class AutocompletionsDialog {
                 if (loadedOnly) loadedOnly.removeEventListener('change', onLoadedOnlyChange);
                 if (sortBtn) sortBtn.removeEventListener('click', onSortClick);
                 if (refreshBtn) refreshBtn.removeEventListener('click', onRefreshClick);
+                if (modelsContainer && this._onModelCardClick) {
+                    modelsContainer.removeEventListener('click', this._onModelCardClick);
+                }
                 if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
                 if (this._testBtnTimeout) { clearTimeout(this._testBtnTimeout); this._testBtnTimeout = null; }
-                delete providerSelect._acChangeHandler;
+                this._onProviderChange = null;
+                this._onModelCardClick = null;
+                this.onLoad.off();
+                this.onSave.off();
+                this.onTest.off();
+                this.onListModels.off();
                 this.el = null;
                 dialog.close();
             };

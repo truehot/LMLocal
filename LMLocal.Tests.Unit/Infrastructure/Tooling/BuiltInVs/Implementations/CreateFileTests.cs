@@ -206,5 +206,21 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var resp = result as CreateFileResponse;
             Assert.That(resp.Success, Is.False);
         }
+
+        [Test]
+        public async Task ExecuteAsync_NormalizesLineEndings_ContentWithLfBecomesCrlf()
+        {
+            const string contentWithLf = "public class NewClass {}\npublic class AlsoNew {}";
+            const string expectedContent = "public class NewClass {}\r\npublic class AlsoNew {}";
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: contentWithLf));
+
+            var resp = result as CreateFileResponse;
+            Assert.That(resp.Success, Is.True);
+
+            _fileSystemMock.Verify(f =>
+                f.WriteAllBytesWithEncodingAsync(AbsolutePath, expectedContent, Encoding.UTF8, true,
+                    It.IsAny<CancellationToken>()));
+        }
     }
 }

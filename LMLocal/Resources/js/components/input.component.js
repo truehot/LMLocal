@@ -1,7 +1,8 @@
-﻿import { UIText } from '@app/constants/app.globals.js';
+﻿import { UIText, Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
+import { wrapAsCodeFence } from '@app/lib/file.fence.js';
 
 /**
  * InputComponent - manages the user input area and submit controls.
@@ -10,12 +11,18 @@ import { createCallback } from '@app/lib/callback.js';
  * Provides `setup` and `reset` methods to (re)initialize or clean up DOM connections.
  */
 class InputComponent {
+    static RESIZE_MIN = 80;
+    static RESIZE_MAX = 600;
+
     constructor() {
         this.elements = {};
 
         this.onClick = createCallback();
         this.onEnter = createCallback();
         this.onTabChanged = createCallback();
+
+        this._resizeState = { active: false, startY: 0, startHeight: 0 };
+        this._resizerBound = { down: null, move: null, up: null };
     }
 
     _getElements() {
@@ -91,7 +98,117 @@ class InputComponent {
         this.onTabChanged.emit(tabId);
     };
 
+    // ─── Drag-and-drop file handling ────────────────────────────────────────
+
+    _preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    _handleDragEnter = () => {
+        if (this.elements.inputWrapper) {
+            this.elements.inputWrapper.classList.add('drag-over');
+        }
+    };
+
+    _handleDragOver = () => {
+        if (this.elements.inputWrapper) {
+            this.elements.inputWrapper.classList.add('drag-over');
+        }
+    };
+
+    _handleDragLeave = () => {
+        if (this.elements.inputWrapper) {
+            this.elements.inputWrapper.classList.remove('drag-over');
+        }
+    };
+
+    _handleDrop = async (e) => {
+        if (this.elements.inputWrapper) {
+            this.elements.inputWrapper.classList.remove('drag-over');
+        }
+
+        const dt = e.dataTransfer;
+
+        if (dt.files && dt.files.length > 0) {
+            const files = Array.from(dt.files).slice(0, Config.DRAG_DROP_MAX_FILES);
+            const results = [];
+
+            for (const file of files) {
+                const ext = file.name.split('.').pop()?.toLowerCase();
+                if (!ext) continue;
+
+                if (!Config.DRAG_DROP_ALLOWED_EXTENSIONS.test('.' + ext)) {
+                    console.warn(`[DragDrop] Skipped unsupported file: ${file.name}`);
+                    continue;
+                }
+
+                if (file.size > Config.DRAG_DROP_MAX_FILE_SIZE_BYTES) {
+                    console.warn(`[DragDrop] Skipped oversized file: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+                    continue;
+                }
+
+                try {
+                    const text = await file.text();
+                    results.push(wrapAsCodeFence(file.name, text));
+                } catch (err) {
+                    console.warn(`[DragDrop] Failed to read file: ${file.name}`, err);
+                }
+            }
+
+            if (results.length === 0) return;
+
+            const el = this.elements.userInput;
+            if (!el) return;
+
+            const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
+            el.value += separator + results.join('\n');
+            this._handleInput();
+
+            return;
+        }
+
+        const text = dt.getData('text/plain');
+        if (text) {
+            const el = this.elements.userInput;
+            if (!el) return;
+            const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
+            el.value += separator + text;
+            this._handleInput();
+        }
+    };
+
+    _attachDragDrop() {
+        const wrapper = this.elements.inputWrapper;
+        if (!wrapper) return;
+
+        const events = ['dragenter', 'dragover', 'dragleave', 'drop'];
+        for (const name of events) {
+            wrapper.addEventListener(name, this._preventDefaults, false);
+        }
+        wrapper.addEventListener('dragenter', this._handleDragEnter, false);
+        wrapper.addEventListener('dragover', this._handleDragOver, false);
+        wrapper.addEventListener('dragleave', this._handleDragLeave, false);
+        wrapper.addEventListener('drop', this._handleDrop, false);
+    }
+
+    _detachDragDrop() {
+        const wrapper = this.elements.inputWrapper;
+        if (!wrapper) return;
+
+        const events = ['dragenter', 'dragover', 'dragleave', 'drop'];
+        for (const name of events) {
+            wrapper.removeEventListener(name, this._preventDefaults, false);
+        }
+        wrapper.removeEventListener('dragenter', this._handleDragEnter, false);
+        wrapper.removeEventListener('dragover', this._handleDragOver, false);
+        wrapper.removeEventListener('dragleave', this._handleDragLeave, false);
+        wrapper.removeEventListener('drop', this._handleDrop, false);
+    }
+
+
     _attachEvents() {
+
         const { userInput, mainBtn, contextToggleBtn, dropdownTrigger, dropdown } = this.elements;
         if (!userInput || !mainBtn || !contextToggleBtn || !dropdownTrigger || !dropdown) return;
 
@@ -156,9 +273,76 @@ class InputComponent {
         const el = this.elements.userInput;
         if (!el) return;
         el.value = '';
+        el.style.removeProperty('min-height');
+        el.style.removeProperty('height');
         el.style.height = 'auto';
         if (this.elements.inputWrapper) this.elements.inputWrapper.classList.remove('expanded');
         if (this.elements.contextToggleBtn) this.elements.contextToggleBtn.classList.remove('active');
+    }
+
+    _initResizer() {
+        const resizer = document.getElementById('drag-resizer');
+        if (!resizer) return;
+        this._resizerBound.down = this._onResizerMouseDown.bind(this);
+        resizer.addEventListener('mousedown', this._resizerBound.down);
+    }
+
+    _onResizerMouseDown(e) {
+        const wrapper = this.elements.inputWrapper;
+        const el = this.elements.userInput;
+        if (!wrapper || !el || !wrapper.classList.contains('expanded')) return;
+
+        this._resizeState.active = true;
+        this._resizeState.startY = e.clientY;
+        this._resizeState.startHeight = el.getBoundingClientRect().height;
+
+        wrapper.classList.remove('expanded-full');
+
+        const resizer = document.getElementById('drag-resizer');
+        if (resizer) resizer.classList.add('is-resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+
+        this._resizerBound.move = this._onResizerMouseMove.bind(this);
+        this._resizerBound.up = this._onResizerMouseUp.bind(this);
+        document.addEventListener('mousemove', this._resizerBound.move);
+        document.addEventListener('mouseup', this._resizerBound.up);
+    }
+
+    _onResizerMouseMove(e) {
+        if (!this._resizeState.active) return;
+
+        const deltaY = e.clientY - this._resizeState.startY;
+        const newHeight = Math.min(
+            InputComponent.RESIZE_MAX,
+            Math.max(InputComponent.RESIZE_MIN, this._resizeState.startHeight - deltaY)
+        );
+        this.elements.userInput.style.setProperty('min-height', `${newHeight}px`, 'important');
+    }
+
+    _onResizerMouseUp() {
+        this._resizeState.active = false;
+
+        const resizer = document.getElementById('drag-resizer');
+        if (resizer) resizer.classList.remove('is-resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+
+        document.removeEventListener('mousemove', this._resizerBound.move);
+        document.removeEventListener('mouseup', this._resizerBound.up);
+        this._resizerBound.move = null;
+        this._resizerBound.up = null;
+    }
+
+    _destroyResizer() {
+        const resizer = document.getElementById('drag-resizer');
+        if (resizer && this._resizerBound.down)
+            resizer.removeEventListener('mousedown', this._resizerBound.down);
+        if (this._resizerBound.move)
+            document.removeEventListener('mousemove', this._resizerBound.move);
+        if (this._resizerBound.up)
+            document.removeEventListener('mouseup', this._resizerBound.up);
+        this._resizerBound = { down: null, move: null, up: null };
     }
 
     setup() {
@@ -169,6 +353,8 @@ class InputComponent {
             return this;
         }
         this._attachEvents();
+        this._attachDragDrop();
+        this._initResizer();
         return this;
     }
 
@@ -179,6 +365,8 @@ class InputComponent {
     }
 
     reset() {
+        this._detachDragDrop();
+        this._destroyResizer();
         this._detachEvents();
         this.clearInput();
         this.elements = {};

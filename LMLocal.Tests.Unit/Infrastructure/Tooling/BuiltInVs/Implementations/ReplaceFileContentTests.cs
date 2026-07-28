@@ -58,8 +58,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _fileSystemMock.Setup(f => f.FileExists(AbsolutePath)).Returns(true);
             _fileSystemMock.Setup(f => f.ValidateFilePath(AbsolutePath));
             _fileSystemMock
-                .Setup(f => f.DetectEncoding(AbsolutePath))
-                .Returns((Encoding.UTF8, false));
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(("public class OldClass {}\r\n", Encoding.UTF8, false));
 
             _syntaxFactoryMock.Setup(f => f.GetChecker(It.IsAny<string>())).Returns((ISyntaxChecker)null);
 
@@ -176,6 +176,27 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                     It.IsAny<CancellationToken>()));
             _fileSystemMock.Verify(f =>
                 f.WriteAllBytesWithEncodingAsync(AbsolutePath, NewContent, Encoding.UTF8, false,
+                    It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task ExecuteAsync_NormalizesLineEndings_WhenContentHasLfButFileHasCrlf()
+        {
+            // File uses CRLF
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(("public class OldClass {}\r\n", Encoding.UTF8, false));
+
+            const string contentWithLf = "public class NewClass {}\npublic class AlsoNew {}";
+            const string expectedContent = "public class NewClass {}\r\npublic class AlsoNew {}";
+
+            var result = await _tool.ExecuteAsync(CreateParams(newContent: contentWithLf));
+
+            var resp = result as ApplyCodeEditResponse;
+            Assert.That(resp.Success, Is.True);
+
+            _fileSystemMock.Verify(f =>
+                f.WriteAllBytesWithEncodingAsync(AbsolutePath, expectedContent, Encoding.UTF8, false,
                     It.IsAny<CancellationToken>()));
         }
 

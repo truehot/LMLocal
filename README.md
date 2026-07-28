@@ -29,6 +29,27 @@
 
 ---
 
+## 📖 Table of Contents
+
+- [Core Features](#core-features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+- [All Features](#all-features)
+- [Providers](#providers)
+- [Built‑in AI Tools](#built‑in-ai-tools)
+- [MCP Support](#model-context-protocol-mcp-support)
+- [Smart Workflows](#smart-workflows--best-practices)
+- [Auto‑Completions](#auto-completions)
+- [Context Menu Commands](#context-menu-commands)
+- [Configuration](#how-to-configure-mcp-servers)
+- [Troubleshooting](#troubleshooting)
+- [Data & Configuration](#data--configuration)
+- [License](#license--third-party)
+
+
+---
+
 ## ⚡ Core Features
 
 - **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, rollback, **and real‑time code autocompletions** as you type.
@@ -136,7 +157,8 @@ To use LMLocal, you need:
 - 📋 **Quick Copy** – A button above code blocks that copies the code to your clipboard.
 - ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
-- ⌨️ **AI Inline Autocompletions** – Real‑time code prediction as you type. The AI analyzes code before and after the cursor (Fill‑In‑the‑Middle) and suggests the next line or block as ghost text. Press `Tab` to accept.
+- ⌨️ **AI Inline Autocompletions** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
+- 📄 ** Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
 
 **Context & Solution Awareness**
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
@@ -340,6 +362,7 @@ LMLocal supports external tool integration via the **Model Context Protocol (MCP
 * **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported.
 
 ---
+
 ## 💡 Smart Workflows & Best Practices
 
 
@@ -352,8 +375,8 @@ If you are new to local LLMs and don't know where to start, trying these model f
 * **Nemotron 3.x series**
 * **GPT OSS series**
 
-
 ---
+
 ### 🤔 Model can't find what you're looking for?
 
 The AI doesn't have a full filesystem index — it relies on the context you provide. If the model fails to find a specific file, class, or code block:
@@ -403,11 +426,12 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
     * **Evaluation / Physical Batch Size**
     * **Keep Model in Memory**
 * **Drop the Temperature:** Lower your active preset temperature closer to `0.0` or `0.1`. This stops the model from creatively wandering around, forcing it to stream short, direct, and deterministic code structures.
+
 ---
 
-### Auto-Completions
+## Auto-Completions
 
-Provides fast, single-line **ghost completions** (inline grey text code suggestions) as you type, powered by Fill-in-the-Middle (FIM) prompting on local base models.
+Provides fast, single-line **ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
 
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
@@ -429,7 +453,55 @@ For optimal results, use base models trained natively on Fill-in-the-Middle (FIM
 
 ---
 
-### ⚙️ How to Configure MCP Servers
+## Context Menu Commands
+
+LM Local adds two groups of commands to Visual Studio — in the **code editor** context menu
+and in the **Solution Explorer** context menu. All commands open the LM Local chat window
+(if not already visible) and inject the relevant content.
+
+---
+
+### Editor Context Menu (right-click inside a code file)
+
+| Command | Behavior |
+|---|---|
+| **Send to LM Local** | Injects the selected text (or the entire file if nothing is selected) into the chat input as a code-fenced markdown block. The prompt is **not** sent automatically — you can edit or add instructions before sending. |
+| **LM Local Commands → Review Code** | Auto-sends the selected code with a review prompt: _"Identify potential bugs, security issues, performance problems, and code smells. Provide specific, actionable recommendations."_ Selects the **Review** instruction tab. |
+| **LM Local Commands → BugFix Code** | Auto-sends the selected code with a bugfix prompt. Selects the **Bugfix** instruction tab. |
+| **LM Local Commands → Add Unit Tests** | Auto-sends the selected code with a test-generation prompt. Selects the **Tests** instruction tab. |
+| **LM Local Commands → Add Summary** | Auto-sends the selected code with a prompt to add `///` XML documentation comments. No instruction tab is selected. |
+| **LM Local Commands → Improve Code** | Auto-sends the selected code with an improvement prompt focused on performance, readability, and C# best practices. Selects the **Improve** instruction tab. |
+| **LM Local Commands → Explain Code** | Auto-sends the selected code with a detailed explanation prompt. Selects the **Explain** instruction tab. |
+
+All editor commands are **disabled** while a chat session is running. If no text is selected,
+the entire document content is used.
+
+---
+
+### Solution Explorer Context Menu (right-click any node)
+
+| Selection | Command | What Gets Injected |
+|---|---|---|
+| **1 file** | Send to LM Local | Full file content in a code fence with its absolute path |
+| **2–10 files** (Ctrl+Click) | Send to LM Local | Each file's content, up to **200 KB** total |
+| **Folder (≤20 flat files)** | Send to LM Local Folder | Content of all immediate files (1 level deep, non-recursive) |
+| **Folder (>20 files)** | Send to LM Local Folder | Truncated — file tree with paths only, no content |
+| **Project node** | Send to LM Local Project | Hierarchical tree of folders and files (no content) |
+| **Solution node** | Send to LM Local Solution | Aggregated tree of all projects |
+
+#### Limits & Safety
+
+- **Max 10 files** with full content per operation
+- **Max 200 KB** total content; excess files appear as `(content truncated)`
+- Directories automatically excluded: `bin`, `obj`, `.vs`, `.git`, `CopilotBaseline`, `node_modules`, `packages`
+- Binary / image files (`.exe`, `.dll`, `.pdb`, `.png`, `.jpg`, `.gif`, etc.) are skipped
+- Button is disabled while a chat session is in progress
+
+> **Note:** Solution Explorer commands do **not** auto-send — content is injected into the chat input so you can review or add instructions before submitting. Files are read directly from disk and do not need to be open in the editor.
+
+---
+
+## ⚙️ How to Configure MCP Servers
 
 You can set up and manage connections to external MCP servers directly inside the configuration dialog:
 

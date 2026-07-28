@@ -91,12 +91,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
 
-                var (fileEncoding, hasBom) = _fileSystem.DetectEncoding(absolutePath);
-                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, newContent, fileEncoding, hasBom, cancellationToken);
+                var (originalContent, fileEncoding, hasBom) = await _fileSystem.ReadAllTextWithDetectedEncodingAsync(absolutePath, cancellationToken).ConfigureAwait(false);
+
+                string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
+                string normalizedContent = newContent.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", separator);
+
+                await _fileSystem.WriteAllBytesWithEncodingAsync(absolutePath, normalizedContent, fileEncoding, hasBom, cancellationToken);
 
                 string[] syntaxErrors = null;
                 var checker = _syntaxFactory.GetChecker(absolutePath);
-                if (checker != null && !checker.IsSyntaxValid(newContent, out var errors))
+                if (checker != null && !checker.IsSyntaxValid(normalizedContent, out var errors))
                 {
                     syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
                     InternalLogger.Info($"Syntax errors detected after replacement in {absolutePath}:\n{string.Join("\n", syntaxErrors)}");

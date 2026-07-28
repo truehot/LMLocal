@@ -2195,6 +2195,11 @@
     flex-shrink: 0;
 }
 
+#autocompletions-debounce::-webkit-inner-spin-button {
+    appearance: none;
+}
+
+
 @keyframes autocomp_spin {
     from {
         transform: rotate(0deg);

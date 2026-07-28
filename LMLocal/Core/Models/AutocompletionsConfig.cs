@@ -4,7 +4,6 @@ namespace LMLocal.Core.Models
 {
     /// <summary>
     /// Configuration for the autocomplete (FIM) feature.
-    /// Controls whether autocomplete is enabled, which provider and model to use.
     /// </summary>
     public class AutocompletionsConfig
     {
@@ -29,9 +28,14 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// The model ID to use for autocomplete (e.g. "ibm/granite-4-micro").
-        /// Passed as "model" in the /v1/completions request body.
         /// </summary>
         [JsonProperty("modelId")]
         public string ModelId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Debounce delay in milliseconds before triggering an autocomplete request after the user stops typing.
+        /// </summary>
+        [JsonProperty("debounceDelayMs")]
+        public int DebounceDelayMs { get; set; } = 300;
     }
 }

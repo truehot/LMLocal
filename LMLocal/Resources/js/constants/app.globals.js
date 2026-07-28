@@ -44,7 +44,12 @@ export const Config = {
     MAX_TOKENS: 16384,
     COPY_STATUS_RESET_MS: 2000,
     SCROLL_THRESHOLD_PX: 150,
-    STREAM_INACTIVITY_TIMEOUT_MS: 30000
+    STREAM_INACTIVITY_TIMEOUT_MS: 30000,
+
+    // Drag-and-drop file upload
+    DRAG_DROP_MAX_FILES: 10,
+    DRAG_DROP_MAX_FILE_SIZE_BYTES: 200 * 1024,
+    DRAG_DROP_ALLOWED_EXTENSIONS: /\.(cs|json|js|ts|html|css|md|xml|txt|yaml|yml|py|java|cpp|c|h|sql|env|config|ini|log|sh|bat|ps1|rb|go|rs|php|vue|svelte|scss|less)$/i,
 };
 
 

@@ -261,7 +261,7 @@ namespace LMLocal.Infrastructure.Persistence
 
         public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 4096, useAsync: true))
             {
                 await fs.WriteAsync(data, 0, data.Length, cancellationToken).ConfigureAwait(false);
             }

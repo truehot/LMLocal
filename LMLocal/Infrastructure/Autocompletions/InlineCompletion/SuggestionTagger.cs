@@ -12,7 +12,6 @@ using Microsoft.VisualStudio.Text;
 using Microsoft.VisualStudio.Text.Editor;
 
 
-
 namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 {
     /// <summary>
@@ -20,19 +19,23 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
     /// </summary>
     internal class SuggestionTagger : IDisposable
     {
+        internal const int MaxAdorments = 1;
         internal const int MaxSuggestionLines = 1;
 
-        private const int DebounceDelayMs = 300;
-        private const int MaxPrefixLength = 800;
-        private const int MaxSuffixLength = 50;
-        private const int DefaultMaxTokens = 80;
+        private const int MaxPrefixLength = 400;
+        private const int MaxSuffixLength = 200;
+        private const int DefaultMaxTokens = 350;
+        private const int DefaultDebounceDelayMs = 300;
 
         private readonly ITextView _textView;
         private readonly IWpfTextView _wpfTextView;
         private readonly CompletionCache _cache;
         private readonly ICompletionBroker _completionBroker;
 
+        private int? _debounceDelayMs;
         private SuggestionState _state;
+        private IAutocompletionsService _autocompletionsService;
+
 
         private Timer _debounceTimer;
         private volatile CancellationTokenSource _operationCts;
@@ -62,17 +65,67 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
         }
 
+        internal static bool TryGet(ITextView textView, out SuggestionTagger tagger)
+        {
+            return textView.Properties.TryGetProperty(typeof(SuggestionTagger), out tagger);
+        }
+
+        private int GetDebounceDelayMs()
+        {
+            if (_debounceDelayMs.HasValue)
+                return _debounceDelayMs.Value;
+
+            _ = FetchDebounceDelayAsync();
+
+            return DefaultDebounceDelayMs;
+        }
+
+        private async Task FetchDebounceDelayAsync()
+        {
+            try
+            {
+                var configManager = ServiceConfiguration.GetService<IAutocompletionsConfigManager>();
+                if (configManager != null)
+                {
+                    var config = await configManager.GetAsync().ConfigureAwait(false);
+                    _debounceDelayMs = config?.DebounceDelayMs ?? DefaultDebounceDelayMs;
+                }
+                else
+                {
+                    _debounceDelayMs = DefaultDebounceDelayMs;
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn("FetchDebounceDelayAsync failed: " + ex.Message);
+                _debounceDelayMs = DefaultDebounceDelayMs;
+            }
+        }
+
+        private async Task<IAutocompletionsService> GetAutocompletionsServiceAsync()
+        {
+            if (_autocompletionsService != null)
+                return _autocompletionsService;
+
+            await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+            _autocompletionsService = ServiceConfiguration.GetService<IAutocompletionsService>();
+            return _autocompletionsService;
+        }
+
+
         internal void ScheduleSuggestion()
         {
             if (_disposed || _suppressNextSuggestion) return;
 
+            int delay = GetDebounceDelayMs();
+
             if (_debounceTimer == null)
             {
-                _debounceTimer = new Timer(OnDebounceElapsed, null, DebounceDelayMs, Timeout.Infinite);
+                _debounceTimer = new Timer(OnDebounceElapsed, null, delay, Timeout.Infinite);
             }
             else
             {
-                _debounceTimer.Change(DebounceDelayMs, Timeout.Infinite);
+                _debounceTimer.Change(delay, Timeout.Infinite);
             }
         }
 
@@ -113,7 +166,9 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 _state = null;
 
                 foreach (var ad in _adornments)
+                {
                     ad.Hide();
+                }
 
                 var edit = _textView.TextBuffer.CreateEdit();
                 edit.Insert(currentCaret.Position, suggestion);
@@ -142,6 +197,57 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 ad.Remove();
 
             _adornments.Clear();
+        }
+
+        /// <summary>
+        /// Called on each text change.
+        /// </summary>
+        internal void HandleTextChanged(TextContentChangedEventArgs e)
+        {
+            if (_disposed || _suppressNextSuggestion) return;
+            if (e.Changes.Count == 0) return;
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var state = _state;
+            if (state != null && state.HasValue && !string.IsNullOrEmpty(state.Text))
+            {
+                if (e.Changes.Count == 1)
+                {
+                    var change = e.Changes[0];
+                    if (change.OldLength == 0 && change.NewLength > 0)
+                    {
+                        string insertedText = e.After.GetText(change.NewPosition, change.NewLength);
+                        if (!string.IsNullOrEmpty(insertedText) && state.Text.StartsWith(insertedText, StringComparison.OrdinalIgnoreCase))
+                        {
+                            string trimmed = state.Text.Substring(insertedText.Length);
+
+                            if (string.IsNullOrEmpty(trimmed))
+                            {
+                                ClearSuggestion();
+                                return;
+                            }
+
+                            int newPos = change.NewPosition + change.NewLength;
+                            var caretPoint = new SnapshotPoint(e.After, newPos);
+                            _state = new SuggestionState(trimmed, caretPoint);
+
+                            string prefix = GetPrefix(e.After, newPos);
+                            string suffix = GetSuffix(e.After, newPos);
+                            var filePath = GetFilePath(e.After);
+                            int lineNumber = e.After.GetLineNumberFromPosition(newPos);
+                            int column = newPos - e.After.GetLineFromPosition(newPos).Start.Position;
+
+                            var cacheKey = CompletionCache.BuildKey(filePath, lineNumber, column, prefix, suffix);
+                            _cache.Set(cacheKey, trimmed);
+                        }
+                    }
+                }
+            }
+
+            if (_completionBroker != null && _completionBroker.IsCompletionActive(_textView))
+                return;
+
+            ClearSuggestion();
+            ScheduleSuggestion();
         }
 
         private void CancelDebounce()
@@ -193,16 +299,24 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 if (caretPos > snapshot.Length)
                     caretPos = snapshot.Length;
 
-                int prefixStart = Math.Max(0, caretPos - MaxPrefixLength);
-                int prefixLen = caretPos - prefixStart;
-                string prefix = prefixLen > 0
-                    ? snapshot.GetText(prefixStart, prefixLen)
-                    : string.Empty;
+                string prefix = GetPrefix(snapshot, caretPos);
+                string suffix = GetSuffix(snapshot, caretPos);
 
-                int suffixLen = Math.Min(MaxSuffixLength, snapshot.Length - caretPos);
-                string suffix = suffixLen > 0
-                    ? snapshot.GetText(caretPos, suffixLen)
-                    : string.Empty;
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    var line = snapshot.GetLineFromPosition(caretPos);
+                    int lineEndPos = line.End.Position;
+                    int remainingLen = lineEndPos - caretPos;
+                    if (remainingLen > 0)
+                    {
+                        string textAfterCaret = snapshot.GetText(caretPos, remainingLen);
+                        if (!string.IsNullOrWhiteSpace(textAfterCaret))
+                        {
+                            InternalLogger.Info("Caret NOT at end of line — skipping suggestion");
+                            return;
+                        }
+                    }
+                }
 
                 var filePath = GetFilePath(snapshot);
                 var cacheKey = CompletionCache.BuildKey(
@@ -212,35 +326,25 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                     prefix,
                     suffix);
 
-                string[] displayLines;
                 if (!_cache.TryGet(cacheKey, out string suggestion))
                 {
-                    await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+                    var autocompletionsService = await GetAutocompletionsServiceAsync().ConfigureAwait(false);
 
-                    if (ct.IsCancellationRequested) return;
-
-                    var autocompletionsService = ServiceConfiguration.GetService<IAutocompletionsService>();
+                    if (autocompletionsService == null) return;
                     var parameters = new CompletionParameters
                     {
                         Prompt = prefix,
                         Suffix = suffix,
                         MaxTokens = DefaultMaxTokens,
                         Temperature = 0,
-                        Stop = new[] { "\n\n" }
+                        Stop = new[] { "\n\n\n" }
                     };
                     var raw = await autocompletionsService.GetCompletionAsync(parameters, ct).ConfigureAwait(false);
 
-                    displayLines = SuggestionPostProcessor.Process(raw, prefix, suffix, MaxSuggestionLines);
+                    suggestion = SuggestionPostProcessor.Process(raw, MaxSuggestionLines);
 
-                    if (displayLines != null)
-                    {
-                        suggestion = string.Join("\n", displayLines);
+                    if (!string.IsNullOrEmpty(suggestion))
                         _cache.Set(cacheKey, suggestion);
-                    }
-                }
-                else
-                {
-                    displayLines = suggestion.Split('\n');
                 }
 
                 if (ct.IsCancellationRequested || _disposed) return;
@@ -261,38 +365,15 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                     return;
                 }
 
-                if (_completionBroker != null && _completionBroker.IsCompletionActive(_textView))
-                {
-                    InternalLogger.Info("Completion is active, skipping suggestion");
-                    return;
-                }
-
                 if (!string.IsNullOrEmpty(suggestion) && _wpfTextView != null)
                 {
                     var caretPoint = new SnapshotPoint(currentSnapshot, currentCaretPos);
 
-                    var caretViewLine = _wpfTextView.GetTextViewLineContainingBufferPosition(caretPoint);
-                    if (caretViewLine == null) return;
+                    string clipped = ShowGhostText(suggestion, caretPoint);
 
-                    EnsureAdornmentsCreated(displayLines.Length);
+                    _state = new SuggestionState(clipped, caretPoint);
 
-                    int displayCount = _adornments.Count;
-
-                    if (displayCount < displayLines.Length)
-                    {
-                        var displayed = new string[displayCount];
-                        Array.Copy(displayLines, displayed, displayCount);
-                        suggestion = string.Join("\n", displayed);
-                        displayLines = displayed;
-                    }
-
-                    PrepareAdornments(displayLines, caretPoint, _adornments.ToArray());
-
-                    _state = new SuggestionState(
-                        suggestion,
-                        caretPoint);
-
-                    InternalLogger.Info($"Suggestion set: text='{suggestion}', caret={caretPoint}");
+                    InternalLogger.Info($"Suggestion set: text='{clipped}', caret={caretPoint}");
                 }
                 else
                 {
@@ -309,28 +390,43 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
         }
 
-        private void PrepareAdornments(
-            string[] lines,
-            SnapshotPoint caretPoint,
-            GhostTextAdornment[] adornments)
+        /// <summary>
+        /// Cuts a fragment of text before the caret with a maximum length of MaxPrefixLength.
+        /// </summary>
+        private string GetPrefix(ITextSnapshot snapshot, int caretPos)
         {
-            if (_wpfTextView == null) return;
+            int start = Math.Max(0, caretPos - MaxPrefixLength);
+            int length = caretPos - start;
+            return length > 0 ? snapshot.GetText(start, length) : string.Empty;
+        }
 
-            for (int i = 0; i < lines.Length && i < adornments.Length; i++)
-            {
-                var adornment = adornments[i];
-                if (adornment == null) continue;
+        /// <summary>
+        /// Cuts a fragment of text after the caret with a maximum length of MaxSuffixLength.
+        /// </summary>
+        private string GetSuffix(ITextSnapshot snapshot, int caretPos)
+        {
+            int length = Math.Min(MaxSuffixLength, snapshot.Length - caretPos);
+            return length > 0 ? snapshot.GetText(caretPos, length) : string.Empty;
+        }
 
-                adornment.Show(lines[i], caretPoint);
-            }
+        private string ShowGhostText(string text, SnapshotPoint caretPoint)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            EnsureAdornmentsCreated(1);
+            if (_adornments.Count > 0)
+                _adornments[0].Show(text, caretPoint);
+
+            return text;
         }
 
         private void EnsureAdornmentsCreated(int count)
         {
             if (_wpfTextView == null) return;
 
-            if (count > MaxSuggestionLines)
-                count = MaxSuggestionLines;
+            if (count > MaxAdorments)
+                count = MaxAdorments;
 
             while (_adornments.Count > count)
             {
@@ -369,7 +465,3 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         }
     }
 }
-
-
-
-

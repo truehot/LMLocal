@@ -24,6 +24,7 @@ export class ModelSelectorDialog {
         this._onSortClick = null;
         this._onToggle = null;
         this._onProviderChange = null;
+        this._onModelCardClick = null;
     }
 
     _getElements() {
@@ -167,19 +168,6 @@ export class ModelSelectorDialog {
         }).join('');
 
         this.el.container.innerHTML = `<div class="models-grid">${modelsHtml}</div>`;
-        this._attachModelCardHandlers();
-    }
-
-    _attachModelCardHandlers() {
-        const cards = this.el.container.querySelectorAll('.model-card');
-        cards.forEach(card => {
-            card.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const modelId = card.dataset.modelId;
-                const model = this.modelsList.find(m => m.id === modelId);
-                if (model) await this._selectModel(model);
-            });
-        });
     }
 
     async _selectModel(model) {
@@ -239,7 +227,6 @@ export class ModelSelectorDialog {
             if (result?.success !== false) {
                 await this._loadModels(false);
             } else {
-                // Rollback on failure
                 select.value = previousValue;
                 this.previousProviderValue = previousValue;
                 this._showErrorState(result?.error?.message || 'Failed to save provider');
@@ -280,6 +267,14 @@ export class ModelSelectorDialog {
         this._onProviderChange = () => {
             this._handleProviderChange();
         };
+        this._onModelCardClick = async (e) => {
+            const card = e.target.closest('.model-card');
+            if (!card) return;
+            e.stopPropagation();
+            const modelId = card.dataset.modelId;
+            const model = this.modelsList.find(m => m.id === modelId);
+            if (model) await this._selectModel(model);
+        };
 
         this.el.activeToggle.addEventListener('change', this._onToggle);
         this.el.filterInput.addEventListener('input', this._onFilterInput);
@@ -287,6 +282,7 @@ export class ModelSelectorDialog {
         this.el.refreshBtn.addEventListener('click', this._onRefreshClick);
         this.el.closeBtn.addEventListener('click', this._onCloseClick);
         this.el.providerSelect.addEventListener('change', this._onProviderChange);
+        this.el.container.addEventListener('click', this._onModelCardClick);
     }
 
     _detachEvents() {
@@ -296,15 +292,21 @@ export class ModelSelectorDialog {
         this.el.closeBtn.removeEventListener('click', this._onCloseClick);
         this.el.activeToggle.removeEventListener('change', this._onToggle);
         this.el.providerSelect.removeEventListener('change', this._onProviderChange);
+        this.el.container.removeEventListener('click', this._onModelCardClick);
         this._onRefreshClick = null;
         this._onCloseClick = null;
         this._onFilterInput = null;
         this._onSortClick = null;
         this._onToggle = null;
         this._onProviderChange = null;
+        this._onModelCardClick = null;
     }
 
     async show() {
+        if (this.el?.dialog?.open) {
+            this.el.dialog.close();
+        }
+
         this.el = this._getElements();
         this.filterText = '';
         this.sortAsc = true;
@@ -346,12 +348,18 @@ export class ModelSelectorDialog {
 
         return new Promise((resolve) => {
             const onClose = () => {
-                this._detachEvents();
-                this.onLoadProviders.off();
-                this.onSaveProvider.off();
-                this.el.dialog.removeEventListener('close', onClose);
-                resolve(this.selectedModel || null);
-                this.el = null;
+                try {
+                    this._detachEvents();
+                    this.onLoadProviders.off();
+                    this.onSaveProvider.off();
+                    this.el.dialog.removeEventListener('close', onClose);
+                    resolve(this.selectedModel || null);
+                } catch (err) {
+                    console.error('Error during dialog close cleanup:', err);
+                    resolve(this.selectedModel || null);
+                } finally {
+                    this.el = null;
+                }
             };
             this.el.dialog.addEventListener('close', onClose);
         });

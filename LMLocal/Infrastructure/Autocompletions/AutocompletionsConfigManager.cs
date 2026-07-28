@@ -31,7 +31,8 @@ namespace LMLocal.Infrastructure.Autocompletions
             Enabled = false,
             ProviderId = 0,
             ProviderType = "lmstudio",
-            ModelId = string.Empty
+            ModelId = string.Empty,
+            DebounceDelayMs = 300
         };
 
         public AutocompletionsConfigManager(IFileSystem fileSystem, ISettingsManager settingsManager)

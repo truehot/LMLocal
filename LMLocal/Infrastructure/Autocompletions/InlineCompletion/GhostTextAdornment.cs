@@ -38,6 +38,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             var line = _view.GetTextViewLineContainingBufferPosition(caretPoint);
             if (line == null) return;
 
+            if (caretPoint.Position < line.End.Position)
+            {
+                Hide();
+                return;
+            }
+
             if (_textBlock == null)
             {
                 var props = _view.FormattedLineSource?.DefaultTextProperties;
