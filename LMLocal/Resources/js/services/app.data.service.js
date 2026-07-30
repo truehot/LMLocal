@@ -260,6 +260,10 @@ class AppDataService {
         return await bridgeClient.openAllFilesAsync(filePaths);
     }
 
+    async openFileAsync(filePath) {
+        return await bridgeClient.openAllFilesAsync([filePath]);
+    }
+
     async discardFileAsync(filePath) {
         return await bridgeClient.discardFileAsync(filePath);
     }

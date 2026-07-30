@@ -28,6 +28,8 @@ namespace LMLocal.Commands
         private const int MaxTotalContentBytes = 200 * 1024; // 200 KB
         private const int MaxFolderFlatFiles = 20;
 
+        private static readonly string SolutionFolderKind = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
+
         private static readonly HashSet<string> ExcludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "bin", "obj", ".vs", ".git", "CopilotBaseline", "node_modules", "packages"
@@ -67,17 +69,72 @@ namespace LMLocal.Commands
 
         private void OnBeforeQueryStatus(object sender, EventArgs e)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             if (sender is OleMenuCommand menuCommand)
             {
                 bool isBusy = _sessionManager?.IsSessionRunning ?? false;
-                menuCommand.Visible = true;
                 menuCommand.Enabled = !isBusy;
+
+                // For Item and Folder commands (both in SolutionExplorerItemGroup), show only the relevant button for the current selection
+                if (menuCommand.CommandID.ID == CommandIdItem || menuCommand.CommandID.ID == CommandIdFolder)
+                {
+                    menuCommand.Visible = IsSelectionMatchCommand(menuCommand.CommandID.ID);
+                }
+                else
+                {
+                    menuCommand.Visible = true;
+                }
             }
+        }
+
+        private static bool IsSelectionMatchCommand(int commandId)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
+            object[] rawItems = dte?.ToolWindows?.SolutionExplorer?.SelectedItems as object[];
+            if (rawItems == null || rawItems.Length == 0)
+                return false;
+
+            var items = rawItems.Cast<UIHierarchyItem>().ToArray();
+
+            bool hasFile = false;
+            bool hasFolder = false;
+
+            foreach (var item in items)
+            {
+                switch (item.Object)
+                {
+                    case ProjectItem pi:
+                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
+                        if (isFolder)
+                            hasFolder = true;
+                        else
+                            hasFile = true;
+                        break;
+
+                    case Project proj when string.Equals(proj.Kind, SolutionFolderKind, StringComparison.OrdinalIgnoreCase):
+                        hasFolder = true;
+                        break;
+
+                    default:
+                        hasFile = true;
+                        break;
+                }
+            }
+
+            return commandId == CommandIdItem
+                ? hasFile && !hasFolder   // only files, no folders
+                : hasFolder;              // at least one folder
         }
 
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
+
+            var menuCommand = (OleMenuCommand)sender;
+            int commandId = menuCommand.CommandID.ID;
 
             var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
             object[] rawItems = dte?.ToolWindows?.SolutionExplorer?.SelectedItems as object[];
@@ -88,7 +145,7 @@ namespace LMLocal.Commands
             }
 
             var uiItems = rawItems.Cast<UIHierarchyItem>().ToArray();
-            var entries = CollectEntries(uiItems);
+            var entries = CollectEntries(uiItems, commandId);
 
             if (entries.Count == 0)
             {
@@ -103,7 +160,14 @@ namespace LMLocal.Commands
 
             _ = _package.JoinableTaskFactory.RunAsync(async () =>
             {
-                await CodeCommandHelper.InjectIntoChatAsync(_package, markdown);
+                try
+                {
+                    await CodeCommandHelper.InjectIntoChatAsync(_package, markdown);
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Error($"SendToLMFromSE: injection failed: {ex.Message}");
+                }
             });
         }
 
@@ -116,7 +180,7 @@ namespace LMLocal.Commands
             public string TreeText { get; set; }
         }
 
-        private List<FileEntry> CollectEntries(UIHierarchyItem[] items)
+        private List<FileEntry> CollectEntries(UIHierarchyItem[] items, int commandId)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -131,11 +195,19 @@ namespace LMLocal.Commands
                 switch (item.Object)
                 {
                     case ProjectItem pi:
-                        CollectFromProjectItem(pi, result, ref totalBytes);
+                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
+                        if (commandId == CommandIdFolder && isFolder)
+                            CollectFromProjectItem(pi, result, ref totalBytes);
+                        else if (commandId == CommandIdItem && !isFolder)
+                            CollectFromProjectItem(pi, result, ref totalBytes);
                         break;
 
                     case Project proj:
-                        result.Add(BuildProjectTree(proj));
+                        bool isSolutionFolder = string.Equals(proj.Kind, SolutionFolderKind, StringComparison.OrdinalIgnoreCase);
+                        if (commandId == CommandIdFolder && isSolutionFolder)
+                            CollectFromSolutionFolder(proj, result, ref totalBytes);
+                        else if (commandId == CommandIdProject && !isSolutionFolder)
+                            result.Add(BuildProjectTree(proj));
                         break;
 
                     default:
@@ -153,7 +225,7 @@ namespace LMLocal.Commands
 
             try
             {
-                bool isFolder = pi.ProjectItems != null && pi.ProjectItems.Count > 0;
+                bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
 
                 if (isFolder)
                 {
@@ -202,6 +274,29 @@ namespace LMLocal.Commands
             }
         }
 
+        private void CollectFromSolutionFolder(Project solutionFolder, List<FileEntry> result, ref int totalBytes)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            try
+            {
+                foreach (var rawItem in solutionFolder.ProjectItems)
+                {
+                    if (result.Count >= MaxFilesWithContent)
+                        break;
+
+                    if (rawItem is ProjectItem pi)
+                    {
+                        CollectFromProjectItem(pi, result, ref totalBytes);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SendToLMFromSE: failed to process Solution Folder '{solutionFolder.Name}': {ex.Message}");
+            }
+        }
+
         private void CollectFlatFiles(ProjectItems items, List<string> flatFiles)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -213,7 +308,7 @@ namespace LMLocal.Commands
             {
                 try
                 {
-                    bool isFolder = child.ProjectItems != null && child.ProjectItems.Count > 0;
+                    bool isFolder = child.FileCount == 0 || (child.ProjectItems != null && child.ProjectItems.Count > 0);
                     if (!isFolder)
                     {
                         string fullPath = GetProjectItemFullPath(child);
@@ -382,7 +477,6 @@ namespace LMLocal.Commands
 
         /// <summary>
         /// Builds a combined markdown string from all collected file entries.
-        /// Tools understand absolute paths natively, so we pass them as-is.
         /// </summary>
         internal static string BuildMultiFileMarkdown(List<FileEntry> entries)
         {

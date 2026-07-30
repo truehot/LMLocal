@@ -82,6 +82,7 @@
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
     <Compile Include="Infrastructure\InstructionsManagerTests.cs" />
+    <Compile Include="Infrastructure\KnownModelContextsTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientTests.cs" />
     <Compile Include="Infrastructure\Mcp\HttpMcpClientTests.cs" />
     <Compile Include="Infrastructure\Mcp\McpToolManagerTests.cs" />
@@ -133,10 +134,8 @@
     <Compile Include="Services\Tool\ToolExecutionManagerTests.cs" />
     <Compile Include="Infrastructure\InlineCompletion\CompletionCacheTests.cs" />
     <Compile Include="Infrastructure\InlineCompletion\SuggestionPostProcessTests.cs" />
-
     <Compile Include="Commands\CodeCommandHelperTests.cs" />
     <Compile Include="Commands\SendToLMFromSolutionExplorerCommandTests.cs" />
-
     <Reference Include="System.Net.Http" />
     <Compile Include="Infrastructure\AdditionalCriticalTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientAdditionalTests.cs" />
@@ -160,9 +159,7 @@
       <Name>LMLocal</Name>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Infrastructure\InlineCompletion\" />
-  </ItemGroup>
+  <ItemGroup />
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

@@ -41,6 +41,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(model.Id, Is.EqualTo("gpt-4"));
             Assert.That(model.Name, Is.EqualTo("GPT-4"));
             Assert.That(model.IsLoaded, Is.False);
+            Assert.That(result.SupportsIsLoaded, Is.False);
         }
 
         [Test]
@@ -186,5 +187,50 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models[0].Id, Is.EqualTo("chat-model-1"));
             Assert.That(result.Models[1].Id, Is.EqualTo("chat-model-2"));
         }
+
+        [Test]
+        public void ConvertAzureResponseToUnified_KnownModel_GetsMaxTokens()
+        {
+            // Arrange
+            var azureJson = @"[
+                {
+                    ""name"": ""deepseek-v4"",
+                    ""friendly_name"": ""DeepSeek V4"",
+                    ""task"": ""chat-completion""
+                }
+            ]";
+
+            // Act
+            var result = ModelResponseConverter.ConvertAzureResponseToUnified(azureJson);
+
+            // Assert
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var model = result.Models[0];
+            Assert.That(model.Id, Is.EqualTo("deepseek-v4"));
+            Assert.That(model.MaxTokens, Is.EqualTo(1_048_576));
+            Assert.That(model.SupportsMaxTokens, Is.True);
+        }
+
+        [Test]
+        public void ConvertAzureResponseToUnified_UnknownModel_NullMaxTokens()
+        {
+            // Arrange
+            var azureJson = @"[
+                {
+                    ""name"": ""my-custom-model"",
+                    ""task"": ""chat-completion""
+                }
+            ]";
+
+            // Act
+            var result = ModelResponseConverter.ConvertAzureResponseToUnified(azureJson);
+
+            // Assert
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var model = result.Models[0];
+            Assert.That(model.MaxTokens, Is.Null);
+            Assert.That(model.SupportsMaxTokens, Is.False);
+        }
+
     }
 }

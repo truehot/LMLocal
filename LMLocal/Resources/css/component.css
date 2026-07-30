@@ -202,6 +202,17 @@
         flex-shrink: 0;
     }
 
+    .changes-panel-component .file-item .file-icon {
+        cursor: pointer;
+        border-radius: 3px;
+        padding: 2px;
+    }
+
+    .changes-panel-component .file-item .file-icon:hover {
+        color: var(--accent-color);
+        background-color: rgba(0, 122, 204, 0.1);
+    }
+
     .changes-panel-component .file-name {
         font-family: Consolas, monospace;
         font-size: 11px;

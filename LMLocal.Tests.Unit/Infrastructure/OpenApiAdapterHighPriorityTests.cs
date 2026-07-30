@@ -178,6 +178,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Models, Is.Not.Null);
             Assert.That(result.Models.Count, Is.EqualTo(1));
+            Assert.That(result.SupportsIsLoaded, Is.True);
             var m = result.Models[0];
             Assert.That(m.Id, Is.EqualTo("jan-1"));
             Assert.That(m.Name, Is.EqualTo("Jan One"));
@@ -203,6 +204,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Models, Is.Not.Null);
             Assert.That(result.Models.Count, Is.EqualTo(1));
+            Assert.That(result.SupportsIsLoaded, Is.True);
             var m = result.Models[0];
             Assert.That(m.Id, Is.EqualTo("ollama-1"));
             Assert.That(m.MaxTokens, Is.EqualTo(8192));

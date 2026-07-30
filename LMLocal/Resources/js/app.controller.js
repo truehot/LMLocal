@@ -263,7 +263,7 @@ class AppController {
         toolbarComponent.onModelNameClick.on(async () => {
             const response = await appDataService.loadModels();
             if (response && response.models && response.models.length > 0) {
-                const dialog = createModelSelectorDialog(response.models, response.activeModel);
+                const dialog = createModelSelectorDialog(response.models, response.activeModel, response.supportsIsLoaded);
                 await dialog.show();
             }
         });
@@ -303,6 +303,10 @@ class AppController {
 
         changesPanelComponent.onOpenAll.on(async (filePaths) => {
             return await appDataService.openAllFilesAsync(filePaths);
+        });
+
+        changesPanelComponent.onOpenFile.on(async (filePath) => {
+            return await appDataService.openFileAsync(filePath);
         });
 
         changesPanelComponent.onDiscardSingleFile.on(async (filePath) => {
@@ -373,6 +377,7 @@ class AppController {
         changesPanelComponent.onReviewFile.off();
         changesPanelComponent.onReviewAll.off();
         changesPanelComponent.onOpenAll.off();
+        changesPanelComponent.onOpenFile.off();
         changesPanelComponent.onDiscardSingleFile.off();
         changesPanelComponent.onAcceptSingleFile.off();
     }

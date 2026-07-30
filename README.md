@@ -138,6 +138,8 @@ To use LMLocal, you need:
 * ➕ **Active Window Context:** Click the **`+`** button to include the entire content of the file currently open in the active document. 
   * *Auto-turn off:* The button automatically deactivates after the request is sent, as the document becomes part of the active chat history.
   * *UI & Logs:* The attached file content is kept hidden to avoid cluttering the chat UI, but it is tracked and visible in the extension logs.
+* **Drag and Drop:** You can drag and drop a text file (e.g., .txt, .md, .csv) directly into the chat window or the designated drop zone – its content will be loaded automatically.
+* **Context Menu:** Right‑click in editor window or solution explorer and choose "Send to LM Local" – this adds content from the clipboard or a selected file to the conversation.
 * ⏹️ **Stop** – Cancel an active generation.
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
   * **Start fresh:** Clear everything and open a completely empty chat.
@@ -235,6 +237,7 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 | **OpenAI** | OpenAI compatible | `https://api.openai.com` |
 | **DeepSeek** | DeepSeek (cloud) | `https://api.deepseek.com` |
 | **Together AI** | Together AI (cloud) | `https://api.together.ai/` |
+| **Fireworks AI** | OpenAI compatible | `https://api.fireworks.ai/inference/` |
 
 ---
 
@@ -263,6 +266,7 @@ When a tool edits a file, the changes are applied to the actual files in your so
 
 The panel lets you:
 - Click any file to see a diff of the changes.
+- Click on a file's icon to open it in the Visual Studio editor.
 - See labels: `New`, `Modified`, or `Deleted` next to each file.
 - Hover over any file to access individual quick actions on the right side:
   - Click the **`✕`** (**Discard modifications**) button to revert changes for that specific file only.
@@ -335,13 +339,13 @@ When the **"Strip formatting from history"** option is enabled in the extension 
 > **Under the Hood Only:** This optimization is **invisible** in the user interface. Your active chat window will always display responses with full Markdown rendering, code highlighting, and structural styling. The stripping process only alters the raw background history array sent to the model to save context tokens.
 
 ### 🧹 What Gets Removed / Transformed:
-* **Code Blocks:** Kept fully intact with their enclosures (```) to preserve code structure and syntax boundaries for the model.
-* **Headers:** Heading markers (`#`, `##`, etc.) are removed, keeping only the text content.
-* **Text Emphasis:** Bold (`**text**` → `text`), italics (`*text*` → `text`), and strikethroughs (`~~text~~` → `text`) are flattened.
-* **Inline Code:** Inline backticks (`code` → `code`) are dropped.
-* **Links & Media:** Hyperlinks (`[label](url)` → `label`) and images (`![alt](url)` → `alt`) discard their URLs/paths, preserving only their descriptive text labels.
-* **List & Structural Layouts:** Bullets (`-`, `*`, `+`, `1.`, `2.`), blockquote symbols (`> `), and horizontal rules (`---`, `***`, `___`) are erased.
-* **Whitespace Compaction:** Extra whitespace is trimmed, and redundant blank lines are clamped down (any sequence of 3 or more consecutive newlines is compressed into exactly 2 newlines).
+* **Code Blocks:** Kept fully intact with their enclosures (``` or more) to preserve code structure and syntax boundaries for the model.
+* **Headers** – Heading markers (`#`, `##`, etc.) are removed, keeping only the text content.
+* **Text Emphasis** – Bold (`**text**` → `text`), italics (`*text*` → `text`), and strikethroughs (`~~text~~` → `text`) are flattened.
+* **Inline Code** – Inline backticks (`` `code` `` → `code`) are dropped.
+* **Links & Media** – Hyperlinks (`[label](url)` → `label`) and images (`![alt](url)` → `alt`) discard their URLs/paths, preserving only their descriptive text labels.
+* **List & Structural Layouts** – Bullets (`-`, `*`, `+`, `1.`, `2.`), blockquote symbols (`> `), and horizontal rules (`---`, `***`, `___`) are erased.
+* **Whitespace Compaction** – Extra whitespace is trimmed, and redundant blank lines are clamped (any sequence of 3 or more consecutive newlines is compressed into exactly 2 newlines).
 
 ---
 
@@ -435,6 +439,8 @@ Provides fast, single-line **ghost completions** (inline grey text code suggesti
 
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
+
+> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot, TabNine, or any other inline suggestion tool), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **we recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
 
 #### Supported Models
 

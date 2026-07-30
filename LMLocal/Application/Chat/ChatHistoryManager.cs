@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi.Provider;
@@ -72,12 +71,12 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Clears history and starts a new session, carrying over the last user message and the full assistant response (including tool calls/results) that followed it.
         /// </summary>
-        void MoveLastExchangeToNewSession();
+        Task MoveLastExchangeToNewSessionAsync();
 
         /// <summary>
         /// Clears history and starts a new session, consolidating the last exchange.
         /// </summary>
-        void ConsolidateLastExchange();
+        Task ConsolidateLastExchangeAsync();
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -104,13 +103,11 @@ namespace LMLocal.Application.Chat
         {
             if (string.IsNullOrEmpty(userPrompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
 
-            bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
-
             string merged = userPrompt ?? "";
             if (!string.IsNullOrEmpty(activeDocumentContent))
                 merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + userPrompt;
 
-            ChatMessage userMessage = new ChatMessage("user", compress ? MarkdownStripper.Strip(merged) : merged);
+            ChatMessage userMessage = new ChatMessage("user", merged);
 
             lock (_lock)
             {
@@ -124,9 +121,7 @@ namespace LMLocal.Application.Chat
         {
             if (string.IsNullOrWhiteSpace(content)) return;
 
-            bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
-
-            ChatMessage assistantMessage = new ChatMessage("assistant", compress ? MarkdownStripper.Strip(content) : content);
+            ChatMessage assistantMessage = new ChatMessage("assistant", content);
 
             lock (_lock)
             {
@@ -144,8 +139,6 @@ namespace LMLocal.Application.Chat
             bool hasToolCalls = toolCalls != null && toolCalls.Count > 0;
 
             if (!hasContent && !hasToolCalls) return;
-
-            bool compress = _settingsManager?.Current?.EnableHistoryCompression ?? false;
 
             List<ToolCall> toolCallObjects = null;
             if (hasToolCalls)
@@ -168,7 +161,7 @@ namespace LMLocal.Application.Chat
                 }
             }
 
-            var chatMessage = new ChatMessage("assistant", hasContent ? (compress ? MarkdownStripper.Strip(content) : content) : null)
+            var chatMessage = new ChatMessage("assistant", hasContent ? content : null)
             {
                 ToolCalls = toolCallObjects
             };
@@ -234,7 +227,7 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.MarkNewSessionAsync();
         }
 
-        public void MoveLastExchangeToNewSession()
+        public async Task MoveLastExchangeToNewSessionAsync()
         {
             const int lookbackLimit = 800;
 
@@ -274,12 +267,13 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(historyFragment);
                     InvalidateCacheLocked();
                 }
-                _ = _persistence?.SaveMessagesAsync(historyFragment, CancellationToken.None);
+                if (_persistence != null)
+                    await _persistence.SaveMessagesAsync(historyFragment, CancellationToken.None).ConfigureAwait(false);
             }
         }
 
 
-        public void ConsolidateLastExchange()
+        public async Task ConsolidateLastExchangeAsync()
         {
             const int lookbackLimit = 800;
             var allowedTools = new HashSet<string>
@@ -391,7 +385,8 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(consolidatedFragment);
                     InvalidateCacheLocked();
                 }
-                _ = _persistence?.SaveMessagesAsync(consolidatedFragment, CancellationToken.None);
+                if (_persistence != null)
+                    await _persistence.SaveMessagesAsync(consolidatedFragment, CancellationToken.None).ConfigureAwait(false);
             }
         }
 
@@ -606,18 +601,17 @@ namespace LMLocal.Application.Chat
         /// Builds message list for the current provider backend.
         public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null)
         {
-            bool compress = _settingsManager.Current?.EnableHistoryCompression ?? false;
             ChatMessage systemMessage = null;
             if (!string.IsNullOrEmpty(additionalSystemPrompt))
             {
-                systemMessage = new ChatMessage("system", compress ? MarkdownStripper.Strip(additionalSystemPrompt) : additionalSystemPrompt);
+                systemMessage = new ChatMessage("system", additionalSystemPrompt);
             }
             else
             {
                 var currentSystemPrompt = _settingsManager.SystemPrompt;
                 if (!string.IsNullOrEmpty(currentSystemPrompt))
                 {
-                    systemMessage = new ChatMessage("system", compress ? MarkdownStripper.Strip(currentSystemPrompt) : currentSystemPrompt);
+                    systemMessage = new ChatMessage("system", currentSystemPrompt);
                 }
             }
 
@@ -652,79 +646,3 @@ namespace LMLocal.Application.Chat
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

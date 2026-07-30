@@ -226,11 +226,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(mgr.Current.LmStudioBaseUrl, Is.EqualTo("http://prefilled"));
         }
 
-
-
-
         [Test]
-        public void AddUserMessage_StripsMarkdown_WhenEnabled()
+        public void AddUserMessage_PreservesMarkdown_WhenCompressionEnabled()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -241,8 +238,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var copy = hist.GetHistoryCopy();
 
             Assert.That(copy.Count, Is.EqualTo(1));
-            Assert.That(copy[0].Content, Does.Not.Contain("**"));
-            Assert.That(copy[0].Content, Does.Contain("bold"));
+            Assert.That(copy[0].Content, Does.Contain("**bold**"));
+            Assert.That(copy[0].Content, Does.Contain("_italic_"));
         }
 
         [Test]

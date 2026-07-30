@@ -141,7 +141,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(filesToNotify);
+                _ = handlers.Invoke(filesToNotify);
         }
 
         public async Task ResetAsync(CancellationToken ct = default)
@@ -157,7 +157,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             }
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
+                _ = handlers.Invoke(Array.Empty<SnapshotFileChange>());
         }
 
         public async Task<IReadOnlyList<string>> GetChangedFilesAsync(CancellationToken ct = default)
@@ -319,7 +319,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             {
                 var handlers = SnapshotChangedAsync;
                 if (handlers != null)
-                    await handlers.Invoke(filesToNotify);
+                    _ = handlers.Invoke(filesToNotify);
             }
         }
 
@@ -397,7 +397,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             {
                 var handlers = SnapshotChangedAsync;
                 if (handlers != null)
-                    await handlers.Invoke(filesToNotify);
+                    _ = handlers.Invoke(filesToNotify);
             }
         }
 
@@ -466,7 +466,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
+                _ = handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             if (errors.Count > 0)
                 throw new AggregateException("RollbackAll completed with errors.", errors);
@@ -560,7 +560,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             var remaining = await GetChangedFilesWithStatusAsync(ct).ConfigureAwait(false);
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(remaining);
+                _ = handlers.Invoke(remaining);
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)
@@ -619,7 +619,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
 
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(Array.Empty<SnapshotFileChange>());
+                _ = handlers.Invoke(Array.Empty<SnapshotFileChange>());
 
             if (errors.Count > 0)
                 throw new AggregateException("CommitAll completed with errors.", errors);
@@ -712,7 +712,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
             var remaining = await GetChangedFilesWithStatusAsync(ct).ConfigureAwait(false);
             var handlers = SnapshotChangedAsync;
             if (handlers != null)
-                await handlers.Invoke(remaining);
+                _ = handlers.Invoke(remaining);
 
             var allErrors = pathErrors.Concat(errors).ToList();
             if (allErrors.Count > 0)

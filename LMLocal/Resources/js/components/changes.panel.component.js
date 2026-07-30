@@ -19,6 +19,7 @@ class ChangesPanelComponent {
         this.onDiscardAll = createCallback();
         this.onAcceptAll = createCallback();
         this.onOpenAll = createCallback();
+        this.onOpenFile = createCallback();
 
         this.onReviewFile = createCallback();
         this.onReviewAll = createCallback();
@@ -67,6 +68,7 @@ class ChangesPanelComponent {
         this.onDiscardAll.off();
         this.onAcceptAll.off();
         this.onOpenAll.off();
+        this.onOpenFile.off();
         this.onReviewFile.off();
         this.onReviewAll.off();
         this.onDiscardSingleFile.off();
@@ -230,6 +232,17 @@ class ChangesPanelComponent {
 
         const filePath = fileItem.getAttribute('data-file-path');
         if (!filePath) return;
+
+        if (target.closest('.file-icon')) {
+            event.stopPropagation();
+            this._incrementProcessing();
+            try {
+                await this.onOpenFile.emit(filePath);
+            } finally {
+                this._decrementProcessing();
+            }
+            return;
+        }
 
         if (target.closest('.action-discard')) {
             event.stopPropagation();

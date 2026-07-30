@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
+
 using System.Linq;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
@@ -72,9 +74,8 @@ namespace LMLocal.Tests.Unit
             mockPersistence.Verify(p => p.SaveLastMessageAsync(It.IsAny<ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()), Times.Exactly(2));
         }
 
-
         [Test]
-        public void AddUserMessage_WithDynamicSettings_UsesCurrentCompressionSetting()
+        public void AddUserMessage_WithDynamicSettings_DoesNotStripContent()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -84,11 +85,11 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("**bold**");
             var history = manager.GetHistoryCopy();
 
-            Assert.That(history[0].Content, Does.Not.Contain("**"));
+            Assert.That(history[0].Content, Does.Contain("**"));
         }
 
         [Test]
-        public void AddAssistantMessage_WithDynamicSettings_UsesCurrentCompressionSetting()
+        public void AddAssistantMessage_WithDynamicSettings_DoesNotStripContent()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -98,7 +99,7 @@ namespace LMLocal.Tests.Unit
             manager.AddAssistantMessage("**bold**");
             var history = manager.GetHistoryCopy();
 
-            Assert.That(history[0].Content, Does.Not.Contain("**"));
+            Assert.That(history[0].Content, Does.Contain("**"));
         }
 
         [Test]
@@ -716,21 +717,23 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[0].Role, Is.EqualTo("user"));
         }
 
+        // ---------- MoveLastExchangeToNewSession ----------
+
         [Test]
-        public void MoveLastExchangeToNewSession_EmptyHistory_DoesNothing()
+        public async Task MoveLastExchangeToNewSession_EmptyHistory_DoesNothing()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void MoveLastExchangeToNewSession_NoUser_NothingMoved()
+        public async Task MoveLastExchangeToNewSession_NoUser_NothingMoved()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -739,14 +742,14 @@ namespace LMLocal.Tests.Unit
             manager.AddAssistantMessage("response");
             manager.AddAssistantMessage("response2");
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0), "No user in history — should clear and keep nothing");
         }
 
         [Test]
-        public void MoveLastExchangeToNewSession_UserOnlyNoAssistant_NothingMoved()
+        public async Task MoveLastExchangeToNewSession_UserOnlyNoAssistant_NothingMoved()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -754,14 +757,14 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("hello");
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0), "User without assistant — should clear and keep nothing");
         }
 
         [Test]
-        public void MoveLastExchangeToNewSession_UserAndAssistant_MovesPair()
+        public async Task MoveLastExchangeToNewSession_UserAndAssistant_MovesPair()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -770,7 +773,7 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -781,7 +784,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void MoveLastExchangeToNewSession_MultipleExchanges_MovesOnlyLast()
+        public async Task MoveLastExchangeToNewSession_MultipleExchanges_MovesOnlyLast()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -794,7 +797,7 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("q2");
             manager.AddAssistantMessage("a2");
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -803,7 +806,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void MoveLastExchangeToNewSession_WithToolCalls_MovesFullExchange()
+        public async Task MoveLastExchangeToNewSession_WithToolCalls_MovesFullExchange()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -820,7 +823,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("done");
 
-            manager.MoveLastExchangeToNewSession();
+            await manager.MoveLastExchangeToNewSessionAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(4));
@@ -894,21 +897,23 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[0].Content, Is.EqualTo("recent"));
         }
 
+        // ---------- ConsolidateLastExchange ----------
+
         [Test]
-        public void ConsolidateLastExchange_EmptyHistory_DoesNothing()
+        public async Task ConsolidateLastExchange_EmptyHistory_DoesNothing()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void ConsolidateLastExchange_NoUser_NothingMoved()
+        public async Task ConsolidateLastExchange_NoUser_NothingMoved()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -916,14 +921,14 @@ namespace LMLocal.Tests.Unit
 
             manager.AddAssistantMessage("response");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0), "No user in history — should clear and keep nothing");
         }
 
         [Test]
-        public void ConsolidateLastExchange_UserOnlyNoAssistant_NothingMoved()
+        public async Task ConsolidateLastExchange_UserOnlyNoAssistant_NothingMoved()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -931,14 +936,14 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("hello");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(0), "User without assistant — should clear and keep nothing");
         }
 
         [Test]
-        public void ConsolidateLastExchange_UserAndAssistant_NoTools_KeepsBoth()
+        public async Task ConsolidateLastExchange_UserAndAssistant_NoTools_KeepsBoth()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -947,7 +952,7 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -958,7 +963,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ConsolidateLastExchange_WithToolResults_MergesIntoUser()
+        public async Task ConsolidateLastExchange_WithToolResults_MergesIntoUser()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -978,7 +983,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("Here is the file content.");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -996,7 +1001,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ConsolidateLastExchange_MultipleExchanges_ConsolidatesOnlyLast()
+        public async Task ConsolidateLastExchange_MultipleExchanges_ConsolidatesOnlyLast()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -1009,7 +1014,7 @@ namespace LMLocal.Tests.Unit
             manager.AddUserMessage("q2");
             manager.AddAssistantMessage("a2");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -1018,7 +1023,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ConsolidateLastExchange_MultipleToolResults_AllMerged()
+        public async Task ConsolidateLastExchange_MultipleToolResults_AllMerged()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -1042,7 +1047,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("Here is the analysis.");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -1059,7 +1064,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ConsolidateLastExchange_UnknownToolJson_Skipped()
+        public async Task ConsolidateLastExchange_UnknownToolJson_Skipped()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -1078,7 +1083,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("Done.");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -1092,7 +1097,7 @@ namespace LMLocal.Tests.Unit
 
 
         [Test]
-        public void ConsolidateLastExchange_ActiveDocument_MergedIntoUser()
+        public async Task ConsolidateLastExchange_ActiveDocument_MergedIntoUser()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -1112,7 +1117,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("Here is the active document content.");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
@@ -1130,7 +1135,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ConsolidateLastExchange_SearchResults_Skipped()
+        public async Task ConsolidateLastExchange_SearchResults_Skipped()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -1150,7 +1155,7 @@ namespace LMLocal.Tests.Unit
             });
             manager.AddAssistantMessage("Found 1 match.");
 
-            manager.ConsolidateLastExchange();
+            await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));

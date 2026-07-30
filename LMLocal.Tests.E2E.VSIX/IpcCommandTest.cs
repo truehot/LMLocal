@@ -124,11 +124,15 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("file_path"), "Response should contain 'file_path' key");
-                        Assert.IsTrue(obj.ContainsKey("lines"), "Response should contain 'lines' key");
-                        var lines = obj["lines"] as JArray;
-                        Assert.IsNotNull(lines);
-                        Assert.IsTrue(lines.Count > 0, "Expected at least one line in the file range.");
-                        Assert.IsTrue(lines[0]["line_number"] != null);
+                        Assert.IsTrue(obj.ContainsKey("text"), "Response should contain 'text' key");
+                        Assert.IsTrue(obj.ContainsKey("start_line"), "Response should contain 'start_line' key");
+                        Assert.IsTrue(obj.ContainsKey("end_line"), "Response should contain 'end_line' key");
+                        Assert.IsTrue(obj.ContainsKey("has_more"), "Response should contain 'has_more' key");
+                        Assert.IsTrue(obj.ContainsKey("success"), "Response should contain 'success' key");
+                        var text = obj["text"]?.ToString();
+                        Assert.IsFalse(string.IsNullOrEmpty(text), "Expected non-empty text content");
+                        Assert.AreEqual(1, (int)obj["start_line"], "start_line should be 1");
+                        Assert.IsTrue((int)obj["end_line"] >= 1, "end_line should be >= 1");
                     }
                 }
                 finally

@@ -88,6 +88,7 @@
     <Compile Include="Core\Models\AutocompletionsConfig.cs" />
     <Compile Include="Core\Models\CompletionParameters.cs" />
     <Compile Include="Core\Models\GetProvidersResponse.cs" />
+    <Compile Include="Core\Models\KnownModelContexts.cs" />
     <Compile Include="Core\Models\ListModelsParameters.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
@@ -425,7 +426,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\ui\dropdown.component.js" />
     <Content Include="Resources\js\workers\highlight.parser.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>

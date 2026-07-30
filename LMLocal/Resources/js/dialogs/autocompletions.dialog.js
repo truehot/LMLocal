@@ -16,6 +16,7 @@ export class AutocompletionsDialog {
         this._sortAsc = true;
         this._testBtnTimeout = null;
         this._searchDebounce = null;
+        this._supportsIsLoaded = true;
         this._onProviderChange = null;
         this._onModelCardClick = null;
         this.el = null;
@@ -120,7 +121,18 @@ export class AutocompletionsDialog {
             let raw = result;
             if (result?.success && result.data) raw = result.data;
             this._models = Array.isArray(raw?.models) ? raw.models : [];
+            this._supportsIsLoaded = raw.supportsIsLoaded !== false;
             if (!this.el) return;
+            if (this.el.loadedOnly) {
+                const toggleContainer = this.el.loadedOnly.closest('.toggle-container');
+                const target = toggleContainer || this.el.loadedOnly;
+                if (this._supportsIsLoaded === false) {
+                    target.classList.add('hidden');
+                    this._loadedOnly = false;
+                } else {
+                    target.classList.remove('hidden');
+                }
+            }
             this._renderModels();
         } catch (err) {
             console.error('Failed to load models:', err);
@@ -141,7 +153,7 @@ export class AutocompletionsDialog {
                 return id.includes(q) || name.includes(q);
             });
         }
-        if (this._loadedOnly) {
+        if (this._loadedOnly && this._supportsIsLoaded !== false) {
             list = list.filter(m => m.isLoaded === true);
         }
         list.sort((a, b) => {
@@ -168,10 +180,12 @@ export class AutocompletionsDialog {
             const modelName = m.name || modelId;
             const isSelected = this._config && modelId === this._config.modelId;
             let badgeHtml = '';
-            if (m.isLoaded === true) {
-                badgeHtml = '<span class="model-status-badge loaded">LOADED</span>';
-            } else if (m.isLoaded === false) {
-                badgeHtml = '<span class="model-status-badge">NOT LOADED</span>';
+            if (this._supportsIsLoaded !== false) {
+                if (m.isLoaded === true) {
+                    badgeHtml = '<span class="model-status-badge status-loaded">LOADED</span>';
+                } else if (m.isLoaded === false) {
+                    badgeHtml = '<span class="model-status-badge status-unloaded">NOT LOADED</span>';
+                }
             }
             return `<div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${this._escapeHtml(modelId)}">
                 <div class="model-card-header">

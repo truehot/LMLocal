@@ -35,9 +35,8 @@
     <!-- Menus section: defines submenus used in context menus -->
     <Menus>
       <!-- Submenu "LM Local Commands" inside the code editor context menu -->
-      <Menu guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" priority="0x0011" type="Menu">
+      <Menu guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" priority="0x0100" type="Menu">
         <Parent guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" />
-        <Icon guid="guidMyIconSet" id="iconLMLocal" />
         <Strings>
           <ButtonText>LM Local Commands</ButtonText>
         </Strings>
@@ -53,7 +52,7 @@
         <Parent guid="guidSHLMainMenu" id="IDM_VS_MENU_TOOLS" />
       </Group>
       <!-- Context menu group inside the code editor context menu (IDM_VS_CTXT_CODEWIN) -->
-      <Group guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0010">
+      <Group guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0100">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN"/>
       </Group>
       <!-- Group inside the "LM Local Commands" submenu to hold all code commands -->
@@ -61,17 +60,17 @@
         <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" />
       </Group>
 
-      <!-- Solution Explorer context menu groups -->
-      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerItemGroup" priority="0x0010">
+      <!-- Solution Explorer context menu groups (priority 0x0160 = after the first standard group) -->
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerItemGroup" priority="0x0200">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ITEMNODE"/>
       </Group>
-      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerFolderGroup" priority="0x0010">
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerFolderGroup" priority="0x0200">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_FOLDERNODE"/>
       </Group>
-      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerProjectGroup" priority="0x0010">
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerProjectGroup" priority="0x0200">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_PROJNODE"/>
       </Group>
-      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerSolutionGroup" priority="0x0010">
+      <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerSolutionGroup" priority="0x0200">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
       </Group>
     </Groups>

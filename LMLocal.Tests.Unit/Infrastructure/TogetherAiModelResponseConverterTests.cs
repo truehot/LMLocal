@@ -41,6 +41,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Error, Is.Null);
             Assert.That(result.Models, Is.Not.Null);
             Assert.That(result.Models.Count, Is.EqualTo(2));
+            Assert.That(result.SupportsIsLoaded, Is.False);
 
             // Model 1
             var m1 = result.Models[0];

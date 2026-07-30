@@ -2,7 +2,7 @@ import { createCallback } from '@app/lib/callback.js';
 import { populateProviderSelect } from '@app/lib/populate-provider-select.js';
 
 export class ModelSelectorDialog {
-    constructor(models = [], activeModel = null) {
+    constructor(models = [], activeModel = null, supportsIsLoaded = true) {
         this.modelsList = models;
         this.filterText = '';
         this.sortAsc = true;
@@ -17,6 +17,7 @@ export class ModelSelectorDialog {
         this.onSaveProvider = createCallback();
 
         this.previousProviderValue = null;
+        this._supportsIsLoaded = supportsIsLoaded;
 
         this._onRefreshClick = null;
         this._onCloseClick = null;
@@ -57,6 +58,8 @@ export class ModelSelectorDialog {
             this.selectedModel = response.hasActiveModel && response.activeModel ? response.activeModel : this.selectedModel;
             const models = Array.isArray(response.models) ? response.models : [];
             this.modelsList = models;
+            this._supportsIsLoaded = response.supportsIsLoaded !== false;
+            this._updateToggleVisibility();
             this._renderModels();
         } catch (error) {
             console.error('Failed to load models:', error);
@@ -105,12 +108,25 @@ export class ModelSelectorDialog {
         `;
     }
 
+    _updateToggleVisibility() {
+        if (!this.el.activeToggle) return;
+        const toggleContainer = this.el.activeToggle.closest('.model-filter-toggle') ||
+                                 this.el.activeToggle.closest('.toggle-container') ||
+                                 this.el.activeToggle;
+        if (this._supportsIsLoaded === false) {
+            toggleContainer.classList.add('hidden');
+            this.showOnlyActive = false;
+        } else {
+            toggleContainer.classList.remove('hidden');
+        }
+    }
+
     _renderModels() {
         if (!this.el.container) return;
 
         let displayList = this.modelsList.filter(model => {
             const nameMatch = (model.name || model.id).toLowerCase().includes(this.filterText);
-            const activeMatch = this.showOnlyActive ? model.isLoaded === true : true;
+            const activeMatch = this._supportsIsLoaded !== false && this.showOnlyActive ? model.isLoaded === true : true;
             return nameMatch && activeMatch;
         });
 
@@ -151,14 +167,15 @@ export class ModelSelectorDialog {
             }
 
 
-            const statusClass = model.isLoaded ? 'status-loaded' : 'status-unloaded';
-            const statusText = model.isLoaded ? 'Loaded' : 'Not loaded';
+            const badgeHtml = this._supportsIsLoaded !== false
+                ? `<div class="model-status-badge ${model.isLoaded ? 'status-loaded' : 'status-unloaded'}">${model.isLoaded ? 'Loaded' : 'Not loaded'}</div>`
+                : '';
 
             return `
         <div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${this._escapeHtml(modelId)}">
             <div class="model-card-header">
                 <div class="model-name">${this._escapeHtml(modelName)}</div>
-                <div class="model-status-badge ${statusClass}">${statusText}</div>
+                ${badgeHtml}
             </div>
             <div class="model-id">${this._escapeHtml(modelId)}</div>
             <div class="model-metadata">
@@ -339,6 +356,7 @@ export class ModelSelectorDialog {
         }
 
         if (this.modelsList.length) {
+            this._updateToggleVisibility();
             this._renderModels();
         } else {
             await this._loadModels();

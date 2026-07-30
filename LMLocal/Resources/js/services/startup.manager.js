@@ -33,7 +33,7 @@ class StartupManager {
                 return;
             }
 
-            // Priority 2: Find first active model in the list and activate it
+            // Priority 2: Find first active (loaded) model.
             const firstActiveModel = response.models.find(m => m.isLoaded);
             if (firstActiveModel) {
                 await appDataService.setActiveModel(firstActiveModel.id, firstActiveModel.name, firstActiveModel.supportsMaxTokens, firstActiveModel.maxTokens || 0);
@@ -41,7 +41,7 @@ class StartupManager {
             }
 
             // Priority 3: Show model selector dialog if no active model found
-            await this._showModelSelectorDialog(response.models);
+            await this._showModelSelectorDialog(response.models, response.supportsIsLoaded);
         } catch (e) {
             console.error("Failed to initialize models:", e);
             appStore.setState({
@@ -69,8 +69,8 @@ class StartupManager {
         });
     }
 
-    async _showModelSelectorDialog(models) {
-        const dialog = createModelSelectorDialog(models);
+    async _showModelSelectorDialog(models, supportsIsLoaded = true) {
+        const dialog = createModelSelectorDialog(models, null, supportsIsLoaded);
 
         try {
             const selectedModel = await dialog.show();

@@ -1,8 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace LMLocal.Tests.E2E.AppTests;
 
 [TestFixture]
-public class ChatTests : AppTestBase
+public partial class ChatTests : AppTestBase
 {
+    [GeneratedRegex("btn-stop")]
+    private static partial Regex StopBtnClassRegex();
     [Test]
     [Category("Chat")]
     public async Task Send_EmptyInput_DoesNotAppendMessage()
@@ -72,8 +76,7 @@ public class ChatTests : AppTestBase
         var stopBtn = Page.Locator("#mainBtn");
         await Expect(stopBtn).ToHaveTextAsync("Stop", new() { Timeout = 5000 });
 
-        var hasStopClass = await stopBtn.EvaluateAsync<bool>("el => el.classList.contains('btn-stop')");
-        Assert.That(hasStopClass, Is.True, "Button should have 'btn-stop' class while generating");
+        await Expect(stopBtn).ToHaveClassAsync(StopBtnClassRegex(), new() { Timeout = 5000 });
     }
 
     [Test]

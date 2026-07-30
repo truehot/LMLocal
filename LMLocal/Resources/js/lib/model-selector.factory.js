@@ -4,12 +4,10 @@ import providersStore from '@app/store/providers.store.js';
 import settingsStore from '@app/store/settings.store.js';
 
 /**
- * Factory: creates a ModelSelectorDialog pre-wired with all callbacks
- * (onRefresh, onSelect, onLoadProviders, onSaveProvider).
- * Used by both startup flow and toolbar model name click.
+ * Factory: creates a ModelSelectorDialog pre-wired with all callbacks (onRefresh, onSelect, onLoadProviders, onSaveProvider).
  */
-export function createModelSelectorDialog(models, activeModel = null) {
-    const dialog = new ModelSelectorDialog(models, activeModel);
+export function createModelSelectorDialog(models, activeModel = null, supportsIsLoaded = true) {
+    const dialog = new ModelSelectorDialog(models, activeModel, supportsIsLoaded);
 
     dialog.onRefresh.on(async () => {
         return await appDataService.loadModels();

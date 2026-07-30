@@ -31,6 +31,15 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
         /// </summary>
         [JsonProperty("activeModel", NullValueHandling = NullValueHandling.Ignore)]
         public UnifiedModelInfo ActiveModel { get; set; }
+
+        /// <summary>
+        /// Indicates whether the provider supports the IsLoaded indicator on models.
+        /// Default: true. Set to false for cloud providers (OpenAI, Azure, Together AI)
+        /// that cannot report whether a model is loaded in memory.
+        /// When false, the UI hides "not loaded" labels and the "show only loaded" filter.
+        /// </summary>
+        [JsonProperty("supportsIsLoaded")]
+        public bool SupportsIsLoaded { get; set; } = true;
     }
 
     /// <summary>

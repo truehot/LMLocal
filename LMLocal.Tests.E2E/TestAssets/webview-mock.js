@@ -132,6 +132,7 @@ function __startMock() {
                     isLoaded: true,
                     supportsToolUse: null
                 },
+                supportsIsLoaded: true,
                 error: null
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,

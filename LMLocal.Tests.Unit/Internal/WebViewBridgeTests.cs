@@ -130,7 +130,7 @@ namespace LMLocal.Tests.Unit
 
             var reset = await bridge.ResetHistoryWithActionAsync("last-prompt").ConfigureAwait(false);
             Assert.That(reset, Is.True);
-            mockHistoryManager.Verify(h => h.MoveLastExchangeToNewSession(), Times.Once);
+            mockHistoryManager.Verify(h => h.MoveLastExchangeToNewSessionAsync(), Times.Once);
             mockHistoryManager.Verify(h => h.Clear(), Times.Never);
         }
 
@@ -150,7 +150,7 @@ namespace LMLocal.Tests.Unit
 
             var reset = await bridge.ResetHistoryWithActionAsync("last-exchange").ConfigureAwait(false);
             Assert.That(reset, Is.True);
-            mockHistoryManager.Verify(h => h.ConsolidateLastExchange(), Times.Once);
+            mockHistoryManager.Verify(h => h.ConsolidateLastExchangeAsync(), Times.Once);
             mockHistoryManager.Verify(h => h.Clear(), Times.Never);
         }
 

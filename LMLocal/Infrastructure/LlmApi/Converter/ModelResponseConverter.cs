@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LMLocal.Core.Models;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Responses;
@@ -82,7 +83,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     });
                 }
 
-                return new UnifiedListModelsResponse { Models = models };
+                return new UnifiedListModelsResponse { Models = models, SupportsIsLoaded = true };
             }
             catch (JsonException ex)
             {
@@ -123,6 +124,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     result.Models.Add(unifiedModel);
                 }
 
+                result.SupportsIsLoaded = true;
                 return result;
             }
             catch (JsonException ex)
@@ -149,18 +151,20 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
                 foreach (var model in openAiResponse.Data)
                 {
+                    var maxTokens = KnownModelContexts.TryGet(model.Id);
                     var unifiedModel = new UnifiedModelInfo
                     {
                         Id = model.Id,
                         Name = null,
-                        MaxTokens = null,
-                        SupportsMaxTokens = false,
+                        MaxTokens = maxTokens,
+                        SupportsMaxTokens = maxTokens.HasValue,
                         IsLoaded = false
                     };
 
                     result.Models.Add(unifiedModel);
                 }
 
+                result.SupportsIsLoaded = false;
                 return result;
             }
             catch (JsonException ex)
@@ -208,7 +212,8 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             {
                 Models = mergedModels,
                 HasActiveModel = activeModels.Count > 0,
-                ActiveModel = activeModels.Count > 0 ? activeModels[0] : null
+                ActiveModel = activeModels.Count > 0 ? activeModels[0] : null,
+                SupportsIsLoaded = true
             };
         }
 
@@ -254,6 +259,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     result.Models.Add(unifiedModel);
                 }
 
+                result.SupportsIsLoaded = true;
                 return result;
             }
             catch (JsonException ex)
@@ -284,12 +290,13 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
                 foreach (var model in chatModels)
                 {
+                    var maxTokens = KnownModelContexts.TryGet(model.Name);
                     var unifiedModel = new UnifiedModelInfo
                     {
                         Id = model.Name,
                         Name = !string.IsNullOrEmpty(model.FriendlyName) ? model.FriendlyName : model.Name,
-                        MaxTokens = null,
-                        SupportsMaxTokens = false,
+                        MaxTokens = maxTokens,
+                        SupportsMaxTokens = maxTokens.HasValue,
                         IsLoaded = false
                     };
 
@@ -301,6 +308,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     return new UnifiedListModelsResponse { Error = "No chat-completion models available in Azure" };
                 }
 
+                result.SupportsIsLoaded = false;
                 return result;
             }
             catch (JsonException ex)
@@ -336,7 +344,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
                     int? maxTokens = entry.Meta?.NContext > 0
                         ? entry.Meta.NContext
-                        : (int?)null;
+                        : KnownModelContexts.TryGet(entry.Id);
 
                     long? sizeBytes = entry.Meta?.Size > 0
                         ? entry.Meta.Size
@@ -358,7 +366,8 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 {
                     Models = models,
                     HasActiveModel = onlyOne,
-                    ActiveModel = onlyOne ? models[0] : null
+                    ActiveModel = onlyOne ? models[0] : null,
+                    SupportsIsLoaded = true
                 };
             }
             catch (JsonException ex)
@@ -401,6 +410,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     result.Models.Add(unifiedModel);
                 }
 
+                result.SupportsIsLoaded = false;
                 return result;
             }
             catch (JsonException ex)

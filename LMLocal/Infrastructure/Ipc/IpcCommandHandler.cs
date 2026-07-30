@@ -11,6 +11,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 internal static class IpcCommandHandler
 {
@@ -148,8 +149,40 @@ internal static class IpcCommandHandler
                         { "symbol_name", symbolName }
                     };
 
-                    var res = await builtInVsToolProvider.ExecuteAsync("find_symbol_references", parameters, token);
-                    await writer.WriteLineAsync(JsonConvert.SerializeObject(res));
+                    var res = await builtInVsToolProvider.ExecuteAsync("get_symbol_info", parameters, token);
+                    var json = JsonConvert.SerializeObject(res);
+                    var obj = JObject.Parse(json);
+
+                    // Transform to match test expectations: 'references' → 'results', 'text' → 'matches'
+                    var transformed = new JObject
+                    {
+                        ["symbol_name"] = obj["symbol_name"],
+                        ["total_references"] = obj["total_references"],
+                        ["success"] = obj["success"],
+                        ["error_message"] = obj["error_message"]
+                    };
+
+                    var results = new JArray();
+                    var references = obj["references"] as JArray;
+                    if (references != null)
+                    {
+                        foreach (var r in references)
+                        {
+                            var match = new JObject
+                            {
+                                ["line"] = r["line"],
+                                ["text"] = r["text"]
+                            };
+                            var resultItem = new JObject
+                            {
+                                ["file_path"] = r["file_path"],
+                                ["matches"] = new JArray(match)
+                            };
+                            results.Add(resultItem);
+                        }
+                    }
+                    transformed["results"] = results;
+                    await writer.WriteLineAsync(transformed.ToString(Formatting.None));
                 }
                 else if (string.Equals(cmd, "ListDirectoryContents", StringComparison.OrdinalIgnoreCase))
                 {

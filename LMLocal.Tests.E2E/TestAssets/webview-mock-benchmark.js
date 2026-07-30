@@ -137,6 +137,7 @@ function __startMock() {
                 models: [{ id: "test-model-1", name: "Benchmark Model", maxTokens: 16384, supportsMaxTokens: true, isLoaded: false, supportsToolUse: null }],
                 hasActiveModel: true,
                 activeModel: { id: "test-model-instance", name: "Benchmark Model", maxTokens: 16384, supportsMaxTokens: true, isLoaded: true, supportsToolUse: null },
+                supportsIsLoaded: true,
                 error: null
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,

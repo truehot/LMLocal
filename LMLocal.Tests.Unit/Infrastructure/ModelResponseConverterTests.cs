@@ -48,6 +48,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(m.IsLoaded, Is.True);
             Assert.That(m.SupportsToolUse, Is.True);
             Assert.That(m.MaxTokens, Is.EqualTo(4096));
+            Assert.That(result.SupportsIsLoaded, Is.True);
         }
 
         [Test]
@@ -78,6 +79,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models, Is.Not.Null);
             Assert.That(result.Models.Count, Is.EqualTo(1));
             Assert.That(result.Models[0].Id, Is.EqualTo("m1"));
+            Assert.That(result.SupportsIsLoaded, Is.False);
         }
 
         [Test]
@@ -87,5 +89,59 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result, Is.Not.Null);
             Assert.That(result.Error, Does.Contain("Failed to parse OpenAI-compatible response"));
         }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_KnownModel_GetsMaxTokens()
+        {
+            // Arrange
+            var resp = new ListModelsResponse
+            {
+                Object = "list",
+                Data = new List<OpenAiModelInfo>
+                {
+                    new OpenAiModelInfo { Id = "deepseek-v4" }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(resp);
+
+            // Act
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            // Assert
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var model = result.Models[0];
+            Assert.That(model.Id, Is.EqualTo("deepseek-v4"));
+            Assert.That(model.MaxTokens, Is.EqualTo(1_048_576));
+            Assert.That(model.SupportsMaxTokens, Is.True);
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_UnknownModel_NullMaxTokens()
+        {
+            // Arrange
+            var resp = new ListModelsResponse
+            {
+                Object = "list",
+                Data = new List<OpenAiModelInfo>
+                {
+                    new OpenAiModelInfo { Id = "some-random-model-v1" }
+                }
+            };
+
+            var json = JsonConvert.SerializeObject(resp);
+
+            // Act
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            // Assert
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var model = result.Models[0];
+            Assert.That(model.MaxTokens, Is.Null);
+            Assert.That(model.SupportsMaxTokens, Is.False);
+        }
+
     }
 }

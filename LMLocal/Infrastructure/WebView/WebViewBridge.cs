@@ -119,24 +119,24 @@ namespace LMLocal.Infrastructure.WebView
         /// Resets the chat history with the specified action.
         /// Returns false if a session is running, true if successful.
         /// </summary>
-        public Task<bool> ResetHistoryWithActionAsync(string action)
+        public async Task<bool> ResetHistoryWithActionAsync(string action)
         {
             try
             {
                 if (_sessionManager.IsSessionRunning)
                 {
                     InternalLogger.Info("ResetHistoryWithActionAsync: Cannot reset while session is running");
-                    return Task.FromResult(false);
+                    return false;
                 }
 
                 switch (action)
                 {
                     case "last-prompt":
-                        _chatHistoryManager.MoveLastExchangeToNewSession();
+                        await _chatHistoryManager.MoveLastExchangeToNewSessionAsync().ConfigureAwait(false);
                         InternalLogger.Info("ResetHistoryWithActionAsync: Moved last exchange to new session");
                         break;
                     case "last-exchange":
-                        _chatHistoryManager.ConsolidateLastExchange();
+                        await _chatHistoryManager.ConsolidateLastExchangeAsync().ConfigureAwait(false);
                         InternalLogger.Info("ResetHistoryWithActionAsync: Consolidated last exchange");
                         break;
                     default:
@@ -145,12 +145,12 @@ namespace LMLocal.Infrastructure.WebView
                         break;
                 }
 
-                return Task.FromResult(true);
+                return true;
             }
             catch (Exception ex)
             {
                 InternalLogger.Error("ResetHistoryWithActionAsync failed", ex);
-                return Task.FromResult(false);
+                return false;
             }
         }
 

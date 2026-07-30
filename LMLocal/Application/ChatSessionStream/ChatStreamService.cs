@@ -64,7 +64,7 @@ namespace LMLocal.Application.ChatSessionStream
 
                 bool isToolRound = toolResults != null && toolResults.Count > 0;
 
-                if(!isToolRound)
+                if (!isToolRound)
                 {
                     _history.EnsureHistoryNormalized();
                 }
@@ -100,6 +100,9 @@ namespace LMLocal.Application.ChatSessionStream
                 }
 
                 var messages = _history.BuildUserMessagesWithHistory(context.AdditionalPrompt);
+
+                if (_settingsManager.Current?.EnableHistoryCompression ?? false)
+                    messages = MarkdownStripper.StripMessages(messages);
 
                 var processor = _streamProcessorFactory.Create(linkedCts);
 

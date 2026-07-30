@@ -131,8 +131,8 @@ namespace LMLocal.Tests.Unit
             public Task<List<ChatMessage>> LoadLastSessionAsync() => Task.FromResult(new List<ChatMessage>());
             public void EnsureHistoryNormalized() { }
             public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
-            public void MoveLastExchangeToNewSession() { }
-            public void ConsolidateLastExchange() { }
+            public Task MoveLastExchangeToNewSessionAsync() => Task.CompletedTask;
+            public Task ConsolidateLastExchangeAsync() => Task.CompletedTask;
         }
 
         private class DummyCompactor : IHistoryCompactor

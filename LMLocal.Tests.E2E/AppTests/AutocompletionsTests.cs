@@ -42,7 +42,8 @@ public class AutocompletionsTests : AppTestBase
                         { id: 'test-model-1', name: 'Test Model', isLoaded: true },
                         { id: 'test-model-2', name: 'Another Model', isLoaded: false }
                     ],
-                    hasActiveModel: true
+                    hasActiveModel: true,
+                    supportsIsLoaded: true
                 }),
                 TestCompletionAsync: async (json) => {
                     window.__capturedTestParams = json;

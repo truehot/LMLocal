@@ -78,6 +78,7 @@ function __startMock() {
                 ],
                 hasActiveModel: true,
                 activeModel: { id: "test-model-instance", name: "Test Model", maxTokens: 16384, supportsMaxTokens: true, isLoaded: true, supportsToolUse: null },
+                supportsIsLoaded: true,
                 error: null
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,
