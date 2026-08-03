@@ -253,24 +253,22 @@ namespace LMLocal.Commands
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var flatFiles = new List<string>();
-            CollectFlatFiles(folderPi.ProjectItems, flatFiles);
+            var allFiles = new List<string>();
+            CollectAllFilesRecursive(folderPi.ProjectItems, allFiles);
 
-            if (flatFiles.Count > MaxFolderFlatFiles)
+            if (allFiles.Count <= MaxFolderFlatFiles)
             {
-                result.Add(BuildFolderTree(folderPi, flatFiles));
-                return;
+                foreach (string filePath in allFiles)
+                {
+                    if (result.Count >= MaxFilesWithContent)
+                        break;
+
+                    AddFileEntry(filePath, result, ref totalBytes);
+                }
             }
-
-            foreach (string filePath in flatFiles)
+            else
             {
-                if (result.Count >= MaxFilesWithContent)
-                    break;
-
-                if (ShouldExclude(filePath))
-                    continue;
-
-                AddFileEntry(filePath, result, ref totalBytes);
+                result.Add(BuildFolderTree(folderPi));
             }
         }
 
@@ -297,7 +295,7 @@ namespace LMLocal.Commands
             }
         }
 
-        private void CollectFlatFiles(ProjectItems items, List<string> flatFiles)
+        private void CollectAllFilesRecursive(ProjectItems items, List<string> allFiles)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -308,13 +306,17 @@ namespace LMLocal.Commands
             {
                 try
                 {
-                    bool isFolder = child.FileCount == 0 || (child.ProjectItems != null && child.ProjectItems.Count > 0);
-                    if (!isFolder)
+                    bool isFolder = child.ProjectItems != null && child.ProjectItems.Count > 0;
+                    if (isFolder)
+                    {
+                        CollectAllFilesRecursive(child.ProjectItems, allFiles);
+                    }
+                    else
                     {
                         string fullPath = GetProjectItemFullPath(child);
                         if (!string.IsNullOrEmpty(fullPath) && File.Exists(fullPath) && !ShouldExclude(fullPath))
                         {
-                            flatFiles.Add(fullPath);
+                            allFiles.Add(fullPath);
                         }
                     }
                 }
@@ -378,19 +380,12 @@ namespace LMLocal.Commands
             };
         }
 
-        private FileEntry BuildFolderTree(ProjectItem folderPi, List<string> flatFiles)
+        private FileEntry BuildFolderTree(ProjectItem folderPi)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            var lines = new List<string> { $"// Folder: {folderPi.Name} ({flatFiles.Count} files, content truncated)" };
-            foreach (var file in flatFiles.Take(MaxFolderFlatFiles))
-            {
-                lines.Add($"//   {file}");
-            }
-            if (flatFiles.Count > MaxFolderFlatFiles)
-            {
-                lines.Add($"//   ... and {flatFiles.Count - MaxFolderFlatFiles} more");
-            }
+            var lines = new List<string> { $"// Folder: {folderPi.Name}/" };
+            AppendProjectItemsTree(folderPi.ProjectItems, lines, 1);
 
             return new FileEntry
             {

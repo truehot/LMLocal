@@ -12,8 +12,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (string.IsNullOrEmpty(raw))
                 return null;
 
-            var result = raw.TrimStart('\r', '\n', ' ', '\t');
-            result = result.TrimEnd('\r', '\n', ' ', '\t');
+            if (raw.StartsWith("\r\n"))
+            {
+                raw = raw.Substring(2).TrimStart(' ', '\t');
+            }
+
+            var result = raw.TrimEnd(' ', '\t');
 
             if (string.IsNullOrEmpty(result))
                 return null;
@@ -21,16 +25,18 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (maxLines <= 0)
                 return string.Empty;
 
+            string normalized = result.Replace("\r\n", "\n").Replace("\r", "\n");
+
             int pos = -1;
             for (int i = 0; i < maxLines; i++)
             {
-                int idx = result.IndexOf('\n', pos + 1);
+                int idx = normalized.IndexOf('\n', pos + 1);
                 if (idx == -1)
                     return result;
                 pos = idx;
             }
 
-            return result.Substring(0, pos);
+            return normalized.Substring(0, pos);
         }
     }
 }

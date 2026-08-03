@@ -215,7 +215,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Adds or removes a C# file from a .csproj project. Use this after create_file to register the new file in the project. Preferred over manually editing .csproj XML. Set include=false to exclude without deleting from disk (use delete_file for physical removal). File and project must both exist.",
+                Description = "Adds or removes a C# file from a .csproj project. Use this after create_file to register the new file in the project. Preferred over manually editing .csproj XML. Set include=false to exclude with deleting from disk. File and project must both exist.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

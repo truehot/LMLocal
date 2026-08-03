@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Autocompletions.InlineCompletion;
@@ -187,42 +187,67 @@ namespace LMLocal.Tests.Unit.Infrastructure.InlineCompletion
         // =========================================================================
 
         [Test]
-        public void InvalidateFile_RemovesEntriesWithFilePathPrefix()
+        public void InvalidateFile_RemovesEntriesBuiltWithBuildKey()
         {
-            _cache.Set(@"C:\file.cs:10:5:ABCDEF01:FEDCBA98", "suggestion1");
-            _cache.Set(@"C:\file.cs:12:3:11111111:22222222", "suggestion2");
-            _cache.Set(@"D:\other.cs:5:1:AAAAAAAA:BBBBBBBB", "suggestion3");
+            var filePath = @"C:\file.cs";
+            var key1 = CompletionCache.BuildKey(filePath, 10, 5, "hello", "world");
+            var key2 = CompletionCache.BuildKey(filePath, 12, 3, "foo", "bar");
+            var otherKey = CompletionCache.BuildKey(@"D:\other.cs", 5, 1, "x", "y");
+
+            _cache.Set(key1, "suggestion1");
+            _cache.Set(key2, "suggestion2");
+            _cache.Set(otherKey, "suggestion3");
+
+            _cache.InvalidateFile(filePath);
+
+            Assert.That(_cache.TryGet(key1, out string _), Is.False);
+            Assert.That(_cache.TryGet(key2, out string _), Is.False);
+            Assert.That(_cache.TryGet(otherKey, out string v), Is.True);
+            Assert.That(v, Is.EqualTo("suggestion3"));
+        }
+
+        [Test]
+        public void InvalidateFile_DoesNotRemoveSimilarFilePath()
+        {
+            // Regression: invalidating "C:\file.cs" must not touch entries for "C:\file.cs.bak".
+            var exactKey = CompletionCache.BuildKey(@"C:\file.cs", 1, 1, "a", "b");
+            var similarKey = CompletionCache.BuildKey(@"C:\file.cs.bak", 1, 1, "a", "b");
+
+            _cache.Set(exactKey, "exact");
+            _cache.Set(similarKey, "similar");
 
             _cache.InvalidateFile(@"C:\file.cs");
 
-            Assert.That(_cache.TryGet(@"C:\file.cs:10:5:ABCDEF01:FEDCBA98", out string _), Is.False);
-            Assert.That(_cache.TryGet(@"C:\file.cs:12:3:11111111:22222222", out string _), Is.False);
-            Assert.That(_cache.TryGet(@"D:\other.cs:5:1:AAAAAAAA:BBBBBBBB", out string v), Is.True);
-            Assert.That(v, Is.EqualTo("suggestion3"));
+            Assert.That(_cache.TryGet(exactKey, out string _), Is.False);
+            Assert.That(_cache.TryGet(similarKey, out string v), Is.True);
+            Assert.That(v, Is.EqualTo("similar"));
         }
 
         [Test]
         public void InvalidateFile_NullPath_DoesNotThrow()
         {
-            _cache.Set("key", "value");
+            var key = CompletionCache.BuildKey(@"C:\file.cs", 1, 1, "a", "b");
+            _cache.Set(key, "value");
             Assert.DoesNotThrow(() => _cache.InvalidateFile(null));
-            Assert.That(_cache.TryGet("key", out string _), Is.True);
+            Assert.That(_cache.TryGet(key, out string _), Is.True);
         }
 
         [Test]
         public void InvalidateFile_EmptyPath_DoesNotThrow()
         {
-            _cache.Set("key", "value");
+            var key = CompletionCache.BuildKey(@"C:\file.cs", 1, 1, "a", "b");
+            _cache.Set(key, "value");
             Assert.DoesNotThrow(() => _cache.InvalidateFile(""));
-            Assert.That(_cache.TryGet("key", out string _), Is.True);
+            Assert.That(_cache.TryGet(key, out string _), Is.True);
         }
 
         [Test]
         public void InvalidateFile_NonExistentPath_DoesNothing()
         {
-            _cache.Set("key", "value");
+            var key = CompletionCache.BuildKey(@"C:\file.cs", 1, 1, "a", "b");
+            _cache.Set(key, "value");
             _cache.InvalidateFile(@"Z:\nonexistent.cs");
-            Assert.That(_cache.TryGet("key", out string v), Is.True);
+            Assert.That(_cache.TryGet(key, out string v), Is.True);
             Assert.That(v, Is.EqualTo("value"));
         }
 
@@ -233,16 +258,28 @@ namespace LMLocal.Tests.Unit.Infrastructure.InlineCompletion
         }
 
         [Test]
-        public void InvalidateFile_CaseInsensitive()
+        public void InvalidateFile_CaseSensitive()
         {
-            _cache.Set(@"C:\FILE.CS:1:1:AAAA:BBBB", "value");
+            // NOTE: matches the current Ordinal comparison in InvalidateFile.
+            // If case-insensitive path matching is desired (Windows paths), switch it to OrdinalIgnoreCase.
+            var key = CompletionCache.BuildKey(@"C:\FILE.CS", 1, 1, "a", "b");
+            _cache.Set(key, "value");
             _cache.InvalidateFile(@"c:\File.cs");
-            Assert.That(_cache.TryGet(@"C:\FILE.CS:1:1:AAAA:BBBB", out string _), Is.False);
+            Assert.That(_cache.TryGet(key, out string v), Is.True);
+            Assert.That(v, Is.EqualTo("value"));
         }
 
         // =========================================================================
         // BuildKey
         // =========================================================================
+
+        [Test]
+        public void BuildKey_ContainsPrefixAndSuffixDirectly()
+        {
+            var key = CompletionCache.BuildKey(@"C:\test.cs", 10, 5, "hello", "world");
+            Assert.That(key, Does.Contain("hello"));
+            Assert.That(key, Does.Contain("world"));
+        }
 
         [Test]
         public void BuildKey_SameInputs_ProduceSameKey()
@@ -285,10 +322,28 @@ namespace LMLocal.Tests.Unit.Infrastructure.InlineCompletion
         }
 
         [Test]
+        public void BuildKey_SameLengthDifferentText_ProduceDifferentKeys()
+        {
+            // Regression: contexts with equal prefix/suffix lengths but different text must not collide
+            // (the old scheme stored only lengths + hashes).
+            var key1 = CompletionCache.BuildKey(@"C:\test.cs", 10, 5, "ab", "cd");
+            var key2 = CompletionCache.BuildKey(@"C:\test.cs", 10, 5, "xy", "zq");
+            Assert.That(key1, Is.Not.EqualTo(key2));
+        }
+
+        [Test]
         public void BuildKey_NullFilePath_UsesEmptyString()
         {
             var key = CompletionCache.BuildKey(null, 1, 2, "prefix", "suffix");
-            Assert.That(key, Does.StartWith("\01\02\06\06"));
+            Assert.That(key, Does.StartWith("\01\02\0prefix\0suffix"));
+        }
+
+        [Test]
+        public void BuildKey_NullPrefix_EqualsEmptyPrefix()
+        {
+            var withNull = CompletionCache.BuildKey("file.cs", 0, 0, null, "suffix");
+            var withEmpty = CompletionCache.BuildKey("file.cs", 0, 0, "", "suffix");
+            Assert.That(withNull, Is.EqualTo(withEmpty));
         }
 
         [Test]

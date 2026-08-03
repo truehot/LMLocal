@@ -33,7 +33,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.InlineCompletion
         [Test]
         public void WhitespaceOnly_ReturnsNull()
         {
-            var result = SuggestionPostProcessor.Process("   \r\n  \t  ", DefaultMaxLines);
+            var result = SuggestionPostProcessor.Process("\r\n  \t  ", DefaultMaxLines);
             Assert.That(result, Is.Null);
         }
 
@@ -44,28 +44,39 @@ namespace LMLocal.Tests.Unit.Infrastructure.InlineCompletion
         [Test]
         public void TrimsLeadingWhitespace()
         {
+            // Leading whitespace is trimmed only when the raw text starts with \r\n
             var result = SuggestionPostProcessor.Process("\r\n  \thello", DefaultMaxLines);
             Assert.That(result, Is.EqualTo("hello"));
         }
 
         [Test]
+        public void PreservesLeadingWhitespace_WithoutLeadingNewline()
+        {
+            // Without a leading \r\n, leading whitespace is significant (indentation) and is kept
+            var result = SuggestionPostProcessor.Process("  \r\nhello\r\n  ", DefaultMaxLines);
+            Assert.That(result, Is.EqualTo("  \r\nhello\r\n"));
+        }
+
+        [Test]
         public void TrimsTrailingWhitespace()
         {
+            // Trailing spaces/tabs are trimmed; a trailing newline is preserved
             var result = SuggestionPostProcessor.Process("hello\r\n  ", DefaultMaxLines);
-            Assert.That(result, Is.EqualTo("hello"));
+            Assert.That(result, Is.EqualTo("hello\r\n"));
         }
 
         [Test]
         public void TrimsBothSides()
         {
-            var result = SuggestionPostProcessor.Process("  \r\nhello\r\n  ", DefaultMaxLines);
+            // Leading whitespace (after a leading \r\n) and trailing spaces/tabs are trimmed
+            var result = SuggestionPostProcessor.Process("\r\n  hello  \t", DefaultMaxLines);
             Assert.That(result, Is.EqualTo("hello"));
         }
 
         [Test]
         public void TrimsTabsAndSpaces()
         {
-            var result = SuggestionPostProcessor.Process("\t\t  foo()  \t", DefaultMaxLines);
+            var result = SuggestionPostProcessor.Process("\r\n\t\t  foo()  \t", DefaultMaxLines);
             Assert.That(result, Is.EqualTo("foo()"));
         }
 

@@ -229,6 +229,9 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 | **GitHub Models** | Github Models via Azure (cloud) | `https://models.inference.ai.azure.com/` |
 | **Siliconflow** | OpenAI compatible | `https://api.siliconflow.com/` |
 | **Parasail** | OpenAI compatible | `https://api.parasail.io/` |
+| **Doubleword AI** | OpenAI compatible | `https://api.doubleword.ai/` |
+| **Hugging Face** | OpenAI compatible | `https://router.huggingface.co/` |
+
 
 #### 💳 Pay to Try (Commercial / Premium)
 
@@ -435,16 +438,18 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
 
 ## Auto-Completions
 
-Provides fast, single-line **ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
+Provides fast, **single-line ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
 
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
 
 > ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot, TabNine, or any other inline suggestion tool), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **we recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
 
-#### Supported Models
+#### Supported Providers & Models
 
-For optimal results, use base models trained natively on Fill-in-the-Middle (FIM) tokens. The following models or series have been verified to work perfectly:
+Works with local providers: LM Studio, Ollama, llama.cpp, Jan.
+
+For optimal results, use base models trained natively on Fill-in-the-Middle (FIM) tokens. The following models or series have been verified to work:
 
 *   **Qwen2.5-Coder (1.5B)**
 *   **DeepSeek-Coder (1.3B-Base)**
@@ -490,18 +495,20 @@ the entire document content is used.
 |---|---|---|
 | **1 file** | Send to LM Local | Full file content in a code fence with its absolute path |
 | **2–10 files** (Ctrl+Click) | Send to LM Local | Each file's content, up to **200 KB** total |
-| **Folder (≤20 flat files)** | Send to LM Local Folder | Content of all immediate files (1 level deep, non-recursive) |
-| **Folder (>20 files)** | Send to LM Local Folder | Truncated — file tree with paths only, no content |
+| **Folder (≤20 files recursively)** | Send to LM Local Folder | Content of all files (recursively through subfolders) |
+| **Folder (>20 files recursively)** | Send to LM Local Folder | Hierarchical tree of folders and files (no content) |
 | **Project node** | Send to LM Local Project | Hierarchical tree of folders and files (no content) |
 | **Solution node** | Send to LM Local Solution | Aggregated tree of all projects |
 
 #### Limits & Safety
 
-- **Max 10 files** with full content per operation
-- **Max 200 KB** total content; excess files appear as `(content truncated)`
-- Directories automatically excluded: `bin`, `obj`, `.vs`, `.git`, `CopilotBaseline`, `node_modules`, `packages`
-- Binary / image files (`.exe`, `.dll`, `.pdb`, `.png`, `.jpg`, `.gif`, etc.) are skipped
-- Button is disabled while a chat session is in progress
+- **Max 10 files** with full content per operation  
+- **Max 200 KB** total content; excess files appear as `(content truncated)`  
+- **Folder with ≤20 files** (recursive count) → file contents are sent  
+- **Folder with >20 files** → hierarchical directory tree is sent instead (no content)  
+- Directories automatically excluded: `bin`, `obj`, `.vs`, `.git`, `CopilotBaseline`, `node_modules`, `packages`  
+- Binary / image files (`.exe`, `.dll`, `.pdb`, `.png`, `.jpg`, `.gif`, etc.) are skipped  
+- Button is disabled while a chat session is in progress 
 
 > **Note:** Solution Explorer commands do **not** auto-send — content is injected into the chat input so you can review or add instructions before submitting. Files are read directly from disk and do not need to be open in the editor.
 

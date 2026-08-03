@@ -81,12 +81,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 
             lock (_lock)
             {
-                var prefix = filePath + ":";
+                var prefix = filePath + "\0";
 
                 var keysToRemove = new List<string>();
                 foreach (var kvp in _map)
                 {
-                    if (kvp.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    if (kvp.Key.StartsWith(prefix, StringComparison.Ordinal))
                         keysToRemove.Add(kvp.Key);
                 }
 
@@ -142,24 +142,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             string prefix,
             string suffix)
         {
-            return $"{filePath ?? string.Empty}\0{caretLine}\0{caretColumn}\0{prefix?.Length ?? 0}\0{suffix?.Length ?? 0}\0{StableHash(prefix ?? string.Empty):X8}\0{StableHash(suffix ?? string.Empty):X8}";
-        }
-
-        /// <summary>
-        /// Deterministic, platform-independent hash function (FNV-1a style).
-        /// </summary>
-        private static int StableHash(string s)
-        {
-            unchecked
-            {
-                int hash = 17;
-                foreach (char c in s)
-                {
-                    hash = hash * 31 + c;
-                }
-
-                return hash;
-            }
+            return $"{filePath ?? string.Empty}\0{caretLine}\0{caretColumn}\0{prefix ?? string.Empty}\0{suffix ?? string.Empty}";
         }
     }
 }

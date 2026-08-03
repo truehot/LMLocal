@@ -8,11 +8,11 @@ namespace LMLocal.Core.Common
     internal static class MarkdownStripper
     {
         private static readonly Regex CodeBlockRegex = new Regex(@"```(.+?)```", RegexOptions.Singleline | RegexOptions.Compiled);
-        private static readonly Regex HeaderRegex = new Regex(@"#{1,6}\s+", RegexOptions.Compiled);
-        private static readonly Regex BoldRegex = new Regex(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
-        private static readonly Regex ItalicRegex = new Regex(@"\*(.+?)\*", RegexOptions.Compiled);
+        private static readonly Regex HeaderRegex = new Regex(@"^#{1,6}\s+", RegexOptions.Compiled | RegexOptions.Multiline);
+        private static readonly Regex BoldRegex = new Regex(@"(?<!\w)\*\*(.+?)\*\*(?!\w)", RegexOptions.Compiled);
+        private static readonly Regex ItalicRegex = new Regex(@"(?<!\w)\*(.+?)\*(?!\w)", RegexOptions.Compiled);
         private static readonly Regex StrikethroughRegex = new Regex(@"~~(.+?)~~", RegexOptions.Compiled);
-        private static readonly Regex InlineCodeRegex = new Regex(@"`(.+?)`", RegexOptions.Compiled);
+        private static readonly Regex InlineCodeRegex = new Regex(@"(?<!\w)`(.+?)`(?!\w)", RegexOptions.Compiled);
         private static readonly Regex LinkRegex = new Regex(@"\[(.+?)\]\(.+?\)", RegexOptions.Compiled);
         private static readonly Regex ImageRegex = new Regex(@"!\[(.+?)\]\(.+?\)", RegexOptions.Compiled);
         private static readonly Regex UnorderedListRegex = new Regex(@"^\s*[-*+]\s+", RegexOptions.Compiled | RegexOptions.Multiline);

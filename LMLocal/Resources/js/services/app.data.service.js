@@ -299,7 +299,7 @@ class AppDataService {
             result = await this.getProvidersAsync();
         }
 
-        const allowedTypes = ['lmstudio', 'llamacpp'];
+        const allowedTypes = ['lmstudio', 'ollama', 'llamacpp', 'jan'];
         return (result.defaultProviders || []).filter(
             p => p && p.providerType && allowedTypes.includes(p.providerType.toLowerCase())
         );

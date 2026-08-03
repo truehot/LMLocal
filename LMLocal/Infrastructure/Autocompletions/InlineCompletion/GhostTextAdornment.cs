@@ -7,7 +7,7 @@ using Microsoft.VisualStudio.Text.Editor;
 namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 {
     /// <summary>
-    /// One line of ghost text, positioned right after the caret via a zero-width with TextRelative so the editor tracks the span automatically.
+    /// Renders one line of ghost text right after the caret.
     /// </summary>
     internal sealed class GhostTextAdornment
     {
@@ -40,8 +40,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 
             if (caretPoint.Position < line.End.Position)
             {
-                Hide();
-                return;
+                string textAfter = caretPoint.Snapshot.GetText(caretPoint.Position, line.End.Position - caretPoint.Position);
+                if (!string.IsNullOrWhiteSpace(textAfter))
+                {
+                    Hide();
+                    return;
+                }
             }
 
             if (_textBlock == null)

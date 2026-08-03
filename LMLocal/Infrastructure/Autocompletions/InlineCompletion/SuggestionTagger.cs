@@ -15,16 +15,16 @@ using Microsoft.VisualStudio.Text.Editor;
 namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 {
     /// <summary>
-    /// Provides inline ghost-text suggestions using IAdornmentLayer for pixel-perfect positioning relative to text view lines.
+    /// Drives the inline (ghost text) autocomplete feature for a single text view.
     /// </summary>
     internal class SuggestionTagger : IDisposable
     {
-        internal const int MaxAdorments = 1;
+        internal const int MaxAdornments = 1;
         internal const int MaxSuggestionLines = 1;
 
-        private const int MaxPrefixLength = 400;
-        private const int MaxSuffixLength = 200;
-        private const int DefaultMaxTokens = 350;
+        private const int MaxPrefixLength = 300;
+        private const int MaxSuffixLength = 150;
+        private const int DefaultMaxTokens = 150;
         private const int DefaultDebounceDelayMs = 300;
 
         private readonly ITextView _textView;
@@ -84,6 +84,9 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         {
             try
             {
+                if (!ServiceConfiguration.IsInitialized)
+                    return;
+
                 var configManager = ServiceConfiguration.GetService<IAutocompletionsConfigManager>();
                 if (configManager != null)
                 {
@@ -107,7 +110,9 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (_autocompletionsService != null)
                 return _autocompletionsService;
 
-            await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+            if (!ServiceConfiguration.IsInitialized)
+                await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+
             _autocompletionsService = ServiceConfiguration.GetService<IAutocompletionsService>();
             return _autocompletionsService;
         }
@@ -159,24 +164,23 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (currentCaret.Snapshot != snapshot || currentCaret.Position != caret.Position)
                 return;
 
+            if (_textView.TextBuffer.IsReadOnly(currentCaret.Position))
+                return;
+
             _suppressNextSuggestion = true;
             try
             {
-                CancelDebounce();
-                _state = null;
-
-                foreach (var ad in _adornments)
+                using (var edit = _textView.TextBuffer.CreateEdit())
                 {
-                    ad.Hide();
+                    edit.Insert(currentCaret.Position, suggestion);
+                    edit.Apply();
                 }
-
-                var edit = _textView.TextBuffer.CreateEdit();
-                edit.Insert(currentCaret.Position, suggestion);
-                edit.Apply();
             }
             finally
             {
+                ClearSuggestion();
                 _suppressNextSuggestion = false;
+                ScheduleSuggestion();
             }
         }
 
@@ -206,7 +210,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         {
             if (_disposed || _suppressNextSuggestion) return;
             if (e.Changes.Count == 0) return;
+
             ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (_completionBroker != null && _completionBroker.IsCompletionActive(_textView))
+                return;
+
             var state = _state;
             if (state != null && state.HasValue && !string.IsNullOrEmpty(state.Text))
             {
@@ -243,12 +252,25 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 }
             }
 
-            if (_completionBroker != null && _completionBroker.IsCompletionActive(_textView))
-                return;
-
             ClearSuggestion();
             ScheduleSuggestion();
         }
+
+        /// <summary>
+        /// Called when the caret moves. Hides an active ghost-text suggestion when the caret leaves its anchor position.
+        /// </summary>
+        internal void HandleCaretMoved(CaretPositionChangedEventArgs e)
+        {
+            if (_disposed || _suppressNextSuggestion) return;
+
+            var s = _state;
+            if (s == null || !s.HasValue) return;
+
+            if (e.NewPosition.BufferPosition == s.CaretPoint) return;
+
+            ClearSuggestion();
+        }
+
 
         private void CancelDebounce()
         {
@@ -293,36 +315,35 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 var ct = ctSource.Token;
                 ct.ThrowIfCancellationRequested();
 
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
+
                 var snapshot = _textView.TextSnapshot;
                 int caretPos = _textView.Caret.Position.BufferPosition.Position;
+                if (caretPos > snapshot.Length) caretPos = snapshot.Length;
 
-                if (caretPos > snapshot.Length)
-                    caretPos = snapshot.Length;
+                if (!_textView.Selection.IsEmpty) return;
+                if (_textView.TextBuffer.IsReadOnly(caretPos))
+                    return;
 
                 string prefix = GetPrefix(snapshot, caretPos);
                 string suffix = GetSuffix(snapshot, caretPos);
 
-                if (!string.IsNullOrEmpty(suffix))
+                var lineEnd = snapshot.GetLineFromPosition(caretPos).End.Position;
+                if (caretPos < lineEnd)
                 {
-                    var line = snapshot.GetLineFromPosition(caretPos);
-                    int lineEndPos = line.End.Position;
-                    int remainingLen = lineEndPos - caretPos;
-                    if (remainingLen > 0)
+                    string textAfterCaret = snapshot.GetText(caretPos, lineEnd - caretPos);
+                    if (!string.IsNullOrWhiteSpace(textAfterCaret))
                     {
-                        string textAfterCaret = snapshot.GetText(caretPos, remainingLen);
-                        if (!string.IsNullOrWhiteSpace(textAfterCaret))
-                        {
-                            InternalLogger.Info("Caret NOT at end of line — skipping suggestion");
-                            return;
-                        }
+                        InternalLogger.Info("Caret NOT at end of line — skipping suggestion");
+                        return;
                     }
                 }
 
                 var filePath = GetFilePath(snapshot);
                 var cacheKey = CompletionCache.BuildKey(
                     filePath,
-                    _textView.Caret.Position.BufferPosition.GetContainingLineNumber(),
-                    _textView.Caret.Position.BufferPosition.Position - _textView.Caret.Position.BufferPosition.GetContainingLine().Start.Position,
+                    snapshot.GetLineNumberFromPosition(caretPos),
+                    caretPos - snapshot.GetLineFromPosition(caretPos).Start.Position,
                     prefix,
                     suffix);
 
@@ -347,21 +368,18 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                         _cache.Set(cacheKey, suggestion);
                 }
 
-                if (ct.IsCancellationRequested || _disposed) return;
-
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
 
                 if (ct.IsCancellationRequested || _disposed) return;
 
                 var currentSnapshot = _textView.TextSnapshot;
                 var currentCaretPos = _textView.Caret.Position.BufferPosition.Position;
+                if (currentCaretPos > currentSnapshot.Length) currentCaretPos = currentSnapshot.Length;
 
-                if (currentCaretPos > currentSnapshot.Length)
-                    currentCaretPos = currentSnapshot.Length;
-
-                if (currentCaretPos != caretPos)
+                if (currentCaretPos != caretPos || currentSnapshot.Version.VersionNumber != snapshot.Version.VersionNumber)
                 {
-                    InternalLogger.Info($"Caret moved: {caretPos} -> {currentCaretPos}");
+                    InternalLogger.Info($"Context changed: caret {caretPos}->{currentCaretPos}, " +
+                                        $"snapshot {snapshot.Version.VersionNumber}->{currentSnapshot.Version.VersionNumber}");
                     return;
                 }
 
@@ -369,11 +387,11 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 {
                     var caretPoint = new SnapshotPoint(currentSnapshot, currentCaretPos);
 
-                    string clipped = ShowGhostText(suggestion, caretPoint);
+                    ShowGhostText(suggestion, caretPoint);
 
-                    _state = new SuggestionState(clipped, caretPoint);
+                    _state = new SuggestionState(suggestion, caretPoint);
 
-                    InternalLogger.Info($"Suggestion set: text='{clipped}', caret={caretPoint}");
+                    InternalLogger.Info($"Suggestion set: text='{suggestion}', caret={caretPoint}");
                 }
                 else
                 {
@@ -425,8 +443,8 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         {
             if (_wpfTextView == null) return;
 
-            if (count > MaxAdorments)
-                count = MaxAdorments;
+            if (count > MaxAdornments)
+                count = MaxAdornments;
 
             while (_adornments.Count > count)
             {

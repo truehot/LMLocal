@@ -29,6 +29,14 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (textView.Roles.Contains(PredefinedTextViewRoles.PreviewTextView))
                 return;
 
+            if (!textView.TextBuffer.Properties.TryGetProperty(typeof(ITextDocument), out ITextDocument document))
+                return;
+
+            string path = document.FilePath;
+            if (string.IsNullOrEmpty(path))
+                return;
+
+
             var tagger = textView.Properties.GetOrCreateSingletonProperty(
                 typeof(SuggestionTagger),
                 () => new SuggestionTagger(textView, SharedCache, CompletionBroker));
@@ -46,23 +54,34 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 }
             }
 
+            void OnCaretPositionChanged(object s, CaretPositionChangedEventArgs e)
+            {
+                try
+                {
+                    ThreadHelper.ThrowIfNotOnUIThread();
+                    tagger.HandleCaretMoved(e);
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn("caretHandler: " + ex.ToString());
+                }
+            }
+
             textView.TextBuffer.Changed += OnTextBufferChanged;
+            textView.Caret.PositionChanged += OnCaretPositionChanged;
 
             textView.Closed += (s, e) =>
             {
                 textView.TextBuffer.Changed -= OnTextBufferChanged;
+                textView.Caret.PositionChanged -= OnCaretPositionChanged;
 
                 if (textView.Properties.TryGetProperty(typeof(SuggestionTagger), out SuggestionTagger t))
                 {
                     t.Dispose();
                     textView.Properties.RemoveProperty(typeof(SuggestionTagger));
                 }
-
-                if (textView.TextBuffer.Properties.TryGetProperty(typeof(ITextDocument), out ITextDocument doc) && !string.IsNullOrEmpty(doc.FilePath))
-                {
-                    SharedCache.InvalidateFile(doc.FilePath);
-                }
             };
         }
     }
 }
+
