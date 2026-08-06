@@ -185,6 +185,47 @@ class AppManager {
         }
     }
 
+    /**
+     * Loads an old chat session from the history log and renders it. Mirrors performClearChat.
+     */
+    async performLoadSession(sessionId) {
+        if (appSelectors.isBusy(appStore.getState().status)) {
+            return { success: false, error: new Error('Cannot load session while busy') };
+        }
+
+        appStore.setState({
+            status: AppStatus.CLEARING,
+            error: null
+        });
+
+        try {
+            const session = await appDataService.getChatSessionByIdAsync(sessionId);
+
+            appStore.setState({
+                status: AppStatus.IDLE,
+                tokenUsed: 0, tokenSpeed: 0,
+                accumulatedText: "", accumulatedThoughtText: "",
+                userMessage: "", error: null
+            });
+
+            if (session && session.hasSession && Array.isArray(session.messages) && session.messages.length > 0) {
+                chatController.renderHistory(session.messages);
+                return { success: true };
+            }
+
+            return { success: false, error: new Error('Session has no messages') };
+        } catch (error) {
+            console.error("Load session failed:", error);
+            appStore.setState({
+                status: AppStatus.ERROR,
+                error: "Failed to load chat session",
+                accumulatedText: "", accumulatedThoughtText: "",
+                userMessage: "", tokenUsed: 0, tokenSpeed: 0
+            });
+            return { success: false, error };
+        }
+    }
+
     async getInstructions() {
         return await appDataService.getInstructionsAsync();
     }

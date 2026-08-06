@@ -20,6 +20,7 @@ namespace LMLocal.Infrastructure.Settings
         AppSettings Current { get; }
         Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default);
         Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default);
+        Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default);
         event Action<AppSettings> SettingsChanged;
 
         // Default configuration values
@@ -238,6 +239,42 @@ namespace LMLocal.Infrastructure.Settings
                 try { if (!string.IsNullOrEmpty(tempPath) && _fileSystem.FileExists(tempPath)) _fileSystem.Delete(tempPath); } catch { }
                 _saveSemaphore.Release();
             }
+        }
+
+        /// <summary>
+        /// Updates only the AI Tools settings (EnableAiTools / EnableAiWriteTools).
+        /// Mode values: "none" (tools disabled), "readonly" (read access), "readwrite" (full access).
+        /// Any unrecognized mode is treated as "none".
+        /// </summary>
+        public async Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            if (string.IsNullOrWhiteSpace(mode))
+                throw new ArgumentException("Mode cannot be null or empty.", nameof(mode));
+
+            var current = _cachedSettings ?? await LoadAsync(cancellationToken).ConfigureAwait(false);
+
+            // Clone so the cached Current instance is not mutated before the save succeeds.
+            var updated = current.ToJson().FromJson<AppSettings>();
+
+            switch (mode.ToLowerInvariant())
+            {
+                case "readwrite":
+                    updated.EnableAiTools = true;
+                    updated.EnableAiWriteTools = true;
+                    break;
+                case "readonly":
+                    updated.EnableAiTools = true;
+                    updated.EnableAiWriteTools = false;
+                    break;
+                default:
+                    updated.EnableAiTools = false;
+                    updated.EnableAiWriteTools = false;
+                    break;
+            }
+
+            await SaveAsync(updated, cancellationToken).ConfigureAwait(false);
         }
 
         public void Dispose()

@@ -1,23 +1,21 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Chat;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Settings;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Persistence
 {
 
     /// <summary>
-    /// Saves chat messages to a local file in JSON Lines format for later retrieval.
+    /// Saves and loads chat messages to/from local JSON Lines files.
     /// </summary>
     internal interface IChatPersistenceService
     {
@@ -40,6 +38,16 @@ namespace LMLocal.Infrastructure.Persistence
         /// Scans all jsonl chat files, finds the most recent session_start marker, and returns all messages belonging to that session in chronological order.
         /// </summary>
         Task<List<ChatMessage>> LoadLastSessionAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Scans jsonl chat files and returns lightweight summaries of the last <paramref name="limit"/> sessions, each containing the first user message (truncated), timestamp, and message count.
+        /// </summary>
+        Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogSerializer.DefaultSessionListLimit, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Scans jsonl chat files for a specific session by ID, returns all its messages in chronological order, and makes it the current session for subsequent saves.
+        /// </summary>
+        Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId, CancellationToken cancellationToken = default);
     }
 
     internal class ChatPersistenceService : IChatPersistenceService
@@ -54,6 +62,9 @@ namespace LMLocal.Infrastructure.Persistence
         /// </summary>
         private Guid _currentSessionId;
 
+        /// <summary>
+        /// Creates a persistence service bound to the configured local chat history directory.
+        /// </summary>
         public ChatPersistenceService(ISettingsManager settingsManager, IFileSystem fileSystem)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
@@ -69,6 +80,9 @@ namespace LMLocal.Infrastructure.Persistence
             _currentSessionId = Guid.NewGuid();
         }
 
+        /// <summary>
+        /// Appends a single chat message line (JSON) for the current session. Falls back to a unique file name when the primary write fails.
+        /// </summary>
         public async Task SaveLastMessageAsync(ChatMessage message, CancellationToken cancellationToken = default)
         {
             if (_settingsManager?.Current?.EnableChatLogging != true || message == null) return;
@@ -77,10 +91,10 @@ namespace LMLocal.Infrastructure.Persistence
 
             try
             {
-                string fileName = BuildFileName();
+                string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                string jsonLine = BuildMessageLine(message);
+                string jsonLine = ChatLogSerializer.BuildMessageLine(message, _currentSessionId.ToString(), DateTime.UtcNow);
 
                 await AppendLineAsync(filePath, jsonLine, cancellationToken).ConfigureAwait(false);
             }
@@ -95,6 +109,9 @@ namespace LMLocal.Infrastructure.Persistence
             }
         }
 
+        /// <summary>
+        /// Appends multiple chat message lines in a single write, acquiring the write semaphore once.
+        /// </summary>
         public async Task SaveMessagesAsync(IEnumerable<ChatMessage> messages, CancellationToken cancellationToken = default)
         {
             if (_settingsManager?.Current?.EnableChatLogging != true || messages == null)
@@ -107,12 +124,12 @@ namespace LMLocal.Infrastructure.Persistence
 
             try
             {
-                string fileName = BuildFileName();
+                string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
                 var sb = new StringBuilder(list.Count * 256);
                 for (int i = 0; i < list.Count; i++)
-                    sb.Append(BuildMessageLine(list[i]));
+                    sb.Append(ChatLogSerializer.BuildMessageLine(list[i], _currentSessionId.ToString(), DateTime.UtcNow));
 
                 await AppendLineAsync(filePath, sb.ToString(), cancellationToken).ConfigureAwait(false);
             }
@@ -128,6 +145,9 @@ namespace LMLocal.Infrastructure.Persistence
             }
         }
 
+        /// <summary>
+        /// Writes a session_start marker to the current jsonl file, establishing a new session boundary and rotating the current session ID.
+        /// </summary>
         public async Task MarkNewSessionAsync(CancellationToken cancellationToken = default)
         {
             if (_settingsManager?.Current?.EnableChatLogging != true) return;
@@ -138,17 +158,10 @@ namespace LMLocal.Infrastructure.Persistence
 
             try
             {
-                string fileName = BuildFileName();
+                string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                var marker = new Dictionary<string, object>
-                {
-                    { "type", "session_start" },
-                    { "session_id", _currentSessionId.ToString() },
-                    { "timestamp", DateTime.UtcNow.ToString("o") }
-                };
-
-                string jsonLine = JsonConvert.SerializeObject(marker) + Environment.NewLine;
+                string jsonLine = ChatLogSerializer.BuildSessionStartMarker(_currentSessionId.ToString(), DateTime.UtcNow);
 
                 await AppendLineAsync(filePath, jsonLine, cancellationToken).ConfigureAwait(false);
             }
@@ -162,12 +175,12 @@ namespace LMLocal.Infrastructure.Persistence
             }
         }
 
+        /// <summary>
+        /// Scans all jsonl chat files, finds the most recent session_start marker, and returns all messages belonging to that session in chronological order.
+        /// </summary>
         public async Task<List<ChatMessage>> LoadLastSessionAsync(CancellationToken cancellationToken = default)
         {
-            var files = (_fileSystem.GetFiles(_chatHistoryDir, "*.jsonl") ?? Array.Empty<string>())
-                         .OrderByDescending(f => f, StringComparer.Ordinal)
-                         .Take(50)
-                         .ToList();
+            var files = await ReadJsonlFilesAsync(cancellationToken).ConfigureAwait(false);
 
             if (files.Count == 0)
                 return new List<ChatMessage>();
@@ -175,86 +188,45 @@ namespace LMLocal.Infrastructure.Persistence
             string targetSessionId = null;
             var messages = new List<ChatMessage>();
 
-            foreach (string filePath in files)
+            foreach (var file in files)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                var lines = file.Lines;
 
-                try
+                for (int i = lines.Count - 1; i >= 0; i--)
                 {
-                    var lines = await ReadAllLinesAsync(filePath, cancellationToken).ConfigureAwait(false);
+                    JObject obj = lines[i];
 
-                    for (int i = lines.Count - 1; i >= 0; i--)
+                    string sessionId = obj.Value<string>("session_id");
+                    if (string.IsNullOrEmpty(sessionId)) continue;
+
+                    if (targetSessionId == null)
                     {
-                        string line = lines[i];
-                        if (string.IsNullOrWhiteSpace(line)) continue;
+                        targetSessionId = sessionId;
 
-                        JObject obj;
-                        try { obj = JObject.Parse(line); }
-                        catch { continue; }
-
-                        string sessionId = obj.Value<string>("session_id");
-                        if (string.IsNullOrEmpty(sessionId)) continue;
-
-                        if (targetSessionId == null)
-                        {
-                            targetSessionId = sessionId;
-
-                            if (Guid.TryParse(sessionId, out var parsed))
-                                _currentSessionId = parsed;
-                        }
-                        else if (!string.Equals(sessionId, targetSessionId, StringComparison.Ordinal))
-                        {
-                            messages.Reverse();
-                            return messages;
-                        }
-
-                        string entryType = obj.Value<string>("type");
-                        if (entryType == "session_start")
-                        {
-                            messages.Reverse();
-                            return messages;
-                        }
-
-                        var chatMessage = ParseChatMessage(obj);
-                        if (chatMessage != null)
-                            messages.Add(chatMessage);
+                        if (Guid.TryParse(sessionId, out var parsed))
+                            _currentSessionId = parsed;
                     }
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Error($"Error reading chat history file '{filePath}'", ex);
+                    else if (!string.Equals(sessionId, targetSessionId, StringComparison.Ordinal))
+                    {
+                        messages.Reverse();
+                        return messages;
+                    }
+
+                    string entryType = obj.Value<string>("type");
+                    if (entryType == "session_start")
+                    {
+                        messages.Reverse();
+                        return messages;
+                    }
+
+                    var chatMessage = ChatLogSerializer.ParseChatMessage(obj);
+                    if (chatMessage != null)
+                        messages.Add(chatMessage);
                 }
             }
 
             messages.Reverse();
             return messages;
-        }
-
-        /// <summary>
-        /// Builds the consistent hourly file name: yyyyMMdd_HH_label.jsonl
-        /// </summary>
-        private string BuildFileName()
-        {
-            return $"{DateTime.UtcNow:yyyyMMdd_HH}_{_settingsManager.ChatHistoryFileLabel}.jsonl";
-        }
-
-        /// <summary>
-        /// Serializes a ChatMessage into a JSON line with type, session_id, and timestamp.
-        /// </summary>
-        private string BuildMessageLine(ChatMessage message)
-        {
-            var entry = new Dictionary<string, object>
-            {
-                { "type", "message" },
-                { "session_id", _currentSessionId.ToString() },
-                { "timestamp", DateTime.UtcNow.ToString("o") },
-                { "role", message.Role },
-                { "content", message.Content },
-                { "tool_call_id", message.ToolCallId },
-                { "tool_calls", message.ToolCalls }
-            };
-
-            return JsonConvert.SerializeObject(entry) + Environment.NewLine;
         }
 
         /// <summary>
@@ -281,10 +253,11 @@ namespace LMLocal.Infrastructure.Persistence
         {
             try
             {
-                string fileName = $"{DateTime.UtcNow:yyyyMMdd_HH}_{_settingsManager.ChatHistoryFileLabel}_{Guid.NewGuid():N}.jsonl";
+                string baseName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
+                string fileName = baseName.Replace(".jsonl", $"_{Guid.NewGuid():N}.jsonl");
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                string jsonLine = BuildMessageLine(message);
+                string jsonLine = ChatLogSerializer.BuildMessageLine(message, _currentSessionId.ToString(), DateTime.UtcNow);
 
                 await _fileSystem.WriteAllBytesAsync(filePath, Encoding.UTF8.GetBytes(jsonLine), cancellationToken).ConfigureAwait(false);
             }
@@ -314,33 +287,184 @@ namespace LMLocal.Infrastructure.Persistence
         }
 
         /// <summary>
-        /// Deserializes a JObject (from jsonl) to a ChatMessage.
+        /// Enumerates the newest jsonl files (max ChatLogSerializer.MaxJsonlFilesToScan), parsing each non-empty line into a JObject and grouping the results per file in forward line order.
         /// </summary>
-        private static ChatMessage ParseChatMessage(JObject obj)
+        private async Task<List<JsonlFile>> ReadJsonlFilesAsync(CancellationToken cancellationToken)
         {
-            try
-            {
-                string role = obj.Value<string>("role");
-                object content = obj["content"]?.ToObject<object>();
-                string toolCallId = obj.Value<string>("tool_call_id");
+            var files = (_fileSystem.GetFiles(_chatHistoryDir, "*.jsonl") ?? Array.Empty<string>())
+                         .OrderByDescending(f => f, StringComparer.Ordinal)
+                         .Take(ChatLogSerializer.MaxJsonlFilesToScan)
+                         .ToList();
 
-                List<ToolCall> toolCalls = null;
-                var toolCallsToken = obj["tool_calls"];
-                if (toolCallsToken != null && toolCallsToken.Type != JTokenType.Null)
+            var result = new List<JsonlFile>(files.Count);
+
+            foreach (string filePath in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
                 {
-                    toolCalls = toolCallsToken.ToObject<List<ToolCall>>();
+                    var lines = await ReadAllLinesAsync(filePath, cancellationToken).ConfigureAwait(false);
+
+                    var parsed = new List<JObject>(lines.Count);
+                    foreach (string line in lines)
+                    {
+                        if (string.IsNullOrWhiteSpace(line)) continue;
+
+                        JObject obj;
+                        try { obj = JObject.Parse(line); }
+                        catch { continue; }
+
+                        parsed.Add(obj);
+                    }
+
+                    result.Add(new JsonlFile
+                    {
+                        FilePath = filePath,
+                        FileName = Path.GetFileName(filePath),
+                        Lines = parsed
+                    });
                 }
-
-                return new ChatMessage(role ?? "unknown", content, toolCallId)
+                catch (Exception ex)
                 {
-                    ToolCalls = toolCalls
-                };
+                    InternalLogger.Error($"Error reading chat history file '{filePath}'", ex);
+                }
             }
-            catch (Exception ex)
+
+            return result;
+        }
+
+        /// <summary>
+        /// Scans jsonl chat files and returns lightweight summaries of the last <paramref name="limit"/> sessions, each containing the first user message (truncated), timestamp, and message count.
+        /// </summary>
+        public async Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogSerializer.DefaultSessionListLimit, CancellationToken cancellationToken = default)
+        {
+            if (limit <= 0) return new List<ChatSessionSummary>();
+
+            var files = await ReadJsonlFilesAsync(cancellationToken).ConfigureAwait(false);
+
+            if (files.Count == 0) return new List<ChatSessionSummary>();
+
+            var sessionData = new Dictionary<string, SessionAccumulator>(StringComparer.Ordinal);
+            int sequence = 0;
+
+            foreach (var file in files)
             {
-                InternalLogger.Error("Failed to parse chat message from jsonl line", ex);
-                return null;
+                foreach (JObject obj in file.Lines)
+                {
+                    string sessionId = obj.Value<string>("session_id");
+                    if (string.IsNullOrEmpty(sessionId)) continue;
+
+                    string entryType = obj.Value<string>("type");
+                    if (entryType == "session_start") continue;
+
+                    string role = obj.Value<string>("role");
+                    string timestamp = obj.Value<string>("timestamp") ?? string.Empty;
+                    string content = obj.Value<object>("content")?.ToString() ?? string.Empty;
+
+                    if (!sessionData.TryGetValue(sessionId, out var entry))
+                    {
+                        entry = new SessionAccumulator { Timestamp = timestamp, Sequence = ++sequence };
+                        sessionData[sessionId] = entry;
+                    }
+
+                    entry.MessageCount++;
+
+                    if (string.IsNullOrEmpty(entry.Timestamp))
+                        entry.Timestamp = timestamp;
+
+                    if (string.Equals(role, "user", StringComparison.OrdinalIgnoreCase))
+                    {
+                        entry.Prompt = ChatLogSerializer.TruncatePrompt(content);
+                    }
+                }
             }
+
+            var summaries = sessionData
+                .OrderByDescending(kvp => kvp.Value.Timestamp, StringComparer.Ordinal)
+                .ThenByDescending(kvp => kvp.Value.Sequence)
+                .Take(limit)
+                .Select(kvp => new ChatSessionSummary
+                {
+                    SessionId = kvp.Key,
+                    Prompt = kvp.Value.Prompt ?? string.Empty,
+                    Timestamp = kvp.Value.Timestamp ?? string.Empty,
+                    MessageCount = kvp.Value.MessageCount
+                })
+                .ToList();
+
+            return summaries;
+        }
+
+        /// <summary>
+        /// Scans jsonl chat files for a specific session by ID and returns all its messages in chronological order.
+        /// </summary>
+        public async Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return new List<ChatMessage>();
+
+            var files = await ReadJsonlFilesAsync(cancellationToken).ConfigureAwait(false);
+
+            if (files.Count == 0) return new List<ChatMessage>();
+
+            var messages = new List<ChatMessage>();
+            bool currentSessionSet = false;
+
+            foreach (var file in files)
+            {
+                var lines = file.Lines;
+
+                for (int i = lines.Count - 1; i >= 0; i--)
+                {
+                    JObject obj = lines[i];
+
+                    string lineSessionId = obj.Value<string>("session_id");
+                    if (!string.Equals(lineSessionId, sessionId, StringComparison.Ordinal))
+                        continue;
+
+                    if (!currentSessionSet && Guid.TryParse(sessionId, out var parsedSessionId))
+                    {
+                        _currentSessionId = parsedSessionId;
+                        currentSessionSet = true;
+                    }
+
+                    string entryType = obj.Value<string>("type");
+                    if (entryType == "session_start")
+                    {
+                        messages.Reverse();
+                        return messages;
+                    }
+
+                    var chatMessage = ChatLogSerializer.ParseChatMessage(obj);
+                    if (chatMessage != null)
+                        messages.Add(chatMessage);
+                }
+            }
+
+            messages.Reverse();
+            return messages;
+        }
+
+        /// <summary>
+        /// Parsed JSON lines of a single jsonl file, kept in forward line order.
+        /// </summary>
+        private sealed class JsonlFile
+        {
+            public string FilePath { get; set; }
+            public string FileName { get; set; }
+            public List<JObject> Lines { get; set; }
+        }
+
+        /// <summary>
+        /// Mutable accumulator used while building session summaries from jsonl files.
+        /// </summary>
+        private sealed class SessionAccumulator
+        {
+            public string Prompt { get; set; }
+            public string Timestamp { get; set; }
+            public int MessageCount { get; set; }
+            public int Sequence { get; set; }
         }
     }
 }

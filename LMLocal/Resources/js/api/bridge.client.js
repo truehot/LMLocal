@@ -58,8 +58,30 @@ class BridgeClient {
     }
 
 
+    _getChatSessionHost() {
+        return window.__chatSessionOverride ?? window.chrome?.webview?.hostObjects?.chatSession;
+    }
+
+    async _callChatSession(method, ...args) {
+        const host = this._getChatSessionHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`ChatSession method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
     async getLastChatSessionAsync() {
-        const res = await this._callHost("GetLastChatSessionAsync");
+        const res = await this._callChatSession("GetLastChatSessionAsync");
+        return JSON.parse(res);
+    }
+
+    async getChatSessionsAsync() {
+        const res = await this._callChatSession("GetChatSessionsAsync");
+        return JSON.parse(res);
+    }
+
+    async getChatSessionByIdAsync(sessionId) {
+        const res = await this._callChatSession("GetChatSessionByIdAsync", sessionId);
         return JSON.parse(res);
     }
 
@@ -87,6 +109,11 @@ class BridgeClient {
     async updateSettingsAsync(settings) {
         const payload = JSON.stringify(settings);
         return await this._callSettings("UpdateSettingsAsync", payload);
+    }
+
+    async setAiToolsAsync(mode) {
+        const payload = JSON.stringify({ mode });
+        return await this._callSettings("SetAiToolsAsync", payload);
     }
 
     async testConnection(details) {

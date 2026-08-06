@@ -2221,3 +2221,199 @@
         transform: translateY(0);
     }
 }
+
+/* ====== Chat history dialog styles ====== */
+#chat-history-dialog.model-modal {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 520px;
+    height: 600px;
+    max-height: 90vh;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    overflow: hidden;
+    margin: auto;
+    flex-direction: column;
+}
+
+    #chat-history-dialog.model-modal[open] {
+        display: flex;
+    }
+
+    #chat-history-dialog.model-modal::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+#chat-history-dialog .modal-header {
+    padding: 10px 12px;
+    background-color: var(--top-bar-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--strong-text);
+    font-size: 14px;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+#chat-history-dialog .modal-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+#chat-history-dialog .toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-grow: 1;
+}
+
+#chat-history-dialog #chat-history-filter-input {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    outline: none;
+    flex-grow: 1;
+    max-width: 200px;
+}
+
+    #chat-history-dialog #chat-history-filter-input:focus {
+        border-color: var(--accent-color);
+    }
+
+#chat-history-dialog .modal-container {
+    padding: 0;
+    flex: 1;
+    overflow-y: auto;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+}
+
+#chat-history-dialog .chat-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+}
+
+#chat-history-dialog .chat-history-card {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 12px;
+    transition: background 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: ch_history_fadeIn 0.2s ease-out;
+}
+
+    #chat-history-dialog .chat-history-card:hover {
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--muted-color);
+    }
+
+#chat-history-dialog .chat-history-card-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#chat-history-dialog .chat-history-prompt {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--strong-text);
+    word-break: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+#chat-history-dialog .chat-history-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--muted-color);
+}
+
+#chat-history-dialog .chat-history-load {
+    flex-shrink: 0;
+    min-width: 60px;
+}
+
+#chat-history-dialog .loading-placeholder,
+#chat-history-dialog .empty-placeholder,
+#chat-history-dialog .error-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--muted-color);
+    gap: 12px;
+    text-align: center;
+}
+
+#chat-history-dialog .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--accent-color);
+    border-radius: 50%;
+    animation: ch_history_spin 1s linear infinite;
+}
+
+#chat-history-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: var(--panel-bg);
+    border-top: 1px solid var(--border-color);
+    box-sizing: border-box;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+@keyframes ch_history_spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes ch_history_fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+

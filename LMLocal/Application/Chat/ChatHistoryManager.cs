@@ -77,6 +77,16 @@ namespace LMLocal.Application.Chat
         /// Clears history and starts a new session, consolidating the last exchange.
         /// </summary>
         Task ConsolidateLastExchangeAsync();
+
+        /// <summary>
+        /// Returns lightweight summaries of recent chat sessions (last <paramref name="limit"/> sessions).
+        /// </summary>
+        Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogSerializer.DefaultSessionListLimit);
+
+        /// <summary>
+        /// Loads all messages for a specific session by ID and makes it the working session (replaces in-memory history without spawning a new session boundary).
+        /// </summary>
+        Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId);
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -93,12 +103,18 @@ namespace LMLocal.Application.Chat
         private string _pendingAssistantContent;
         private IReadOnlyList<ToolCallRecord> _pendingAssistantToolCalls;
 
+        /// <summary>
+        /// Creates a chat history manager backed by the given persistence service.
+        /// </summary>
         public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null, IToolResultMarkdownFormatter formatter = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
             _formatter = formatter;
         }
+        /// <summary>
+        /// Adds a user message to history and persists it.
+        /// </summary>
         public void AddUserMessage(string userPrompt, string activeDocumentContent = null)
         {
             if (string.IsNullOrEmpty(userPrompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
@@ -117,6 +133,9 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.SaveLastMessageAsync(userMessage, CancellationToken.None);
         }
 
+        /// <summary>
+        /// Adds an assistant message with text-only content to history and persists it.
+        /// </summary>
         public void AddAssistantMessage(string content)
         {
             if (string.IsNullOrWhiteSpace(content)) return;
@@ -174,12 +193,18 @@ namespace LMLocal.Application.Chat
         }
 
 
+        /// <summary>
+        /// Queues an assistant message with tool calls to be committed with the next AddToolExecutionResultMessages call.
+        /// </summary>
         public void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls)
         {
             _pendingAssistantContent = content;
             _pendingAssistantToolCalls = toolCalls;
         }
 
+        /// <summary>
+        /// Adds tool execution result messages to history and persists them.
+        /// </summary>
         public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages)
         {
             if (_pendingAssistantToolCalls != null && _pendingAssistantToolCalls.Count > 0)
@@ -213,6 +238,9 @@ namespace LMLocal.Application.Chat
         }
 
 
+        /// <summary>
+        /// Clears all messages from history and marks a new session boundary.
+        /// </summary>
         public void Clear()
         {
             _pendingAssistantContent = null;
@@ -227,6 +255,9 @@ namespace LMLocal.Application.Chat
             _ = _persistence?.MarkNewSessionAsync();
         }
 
+        /// <summary>
+        /// Clears history and starts a new session, carrying over the last user message and the assistant response that followed it.
+        /// </summary>
         public async Task MoveLastExchangeToNewSessionAsync()
         {
             const int lookbackLimit = 800;
@@ -273,6 +304,9 @@ namespace LMLocal.Application.Chat
         }
 
 
+        /// <summary>
+        /// Clears history and starts a new session, consolidating the last exchange into a clean user/assistant pair.
+        /// </summary>
         public async Task ConsolidateLastExchangeAsync()
         {
             const int lookbackLimit = 800;
@@ -390,6 +424,9 @@ namespace LMLocal.Application.Chat
             }
         }
 
+        /// <summary>
+        /// Returns a snapshot copy of the current in-memory history.
+        /// </summary>
         public IReadOnlyList<ChatMessage> GetHistoryCopy()
         {
             lock (_lock)
@@ -398,6 +435,9 @@ namespace LMLocal.Application.Chat
             }
         }
 
+        /// <summary>
+        /// Atomically replaces history with a summary + recent messages, only if current size matches expectedSize.
+        /// </summary>
         public bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize)
         {
             lock (_lock)
@@ -422,6 +462,9 @@ namespace LMLocal.Application.Chat
             }
         }
 
+        /// <summary>
+        /// Loads the last persisted session into in-memory history (if empty) and returns its messages.
+        /// </summary>
         public async Task<List<ChatMessage>> LoadLastSessionAsync()
         {
             if (_persistence == null)
@@ -444,6 +487,9 @@ namespace LMLocal.Application.Chat
             return messages.ToList();
         }
 
+        /// <summary>
+        /// Normalizes history for providers (e.g. LlamaCpp) that require strict user/assistant alternation.
+        /// </summary>
         public void EnsureHistoryNormalized()
         {
             var provider = ProviderResolver.ResolveProvider(_settingsManager.Current?.Provider);
@@ -598,7 +644,8 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
-        /// Builds message list for the current provider backend.
+        /// Builds the message list (system + history) for the current provider backend.
+        /// </summary>
         public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null)
         {
             ChatMessage systemMessage = null;
@@ -644,5 +691,45 @@ namespace LMLocal.Application.Chat
         {
             return $"Reference code:\n\n{content}";
         }
+
+        /// <summary>
+        /// Returns lightweight summaries of recent chat sessions (last <paramref name="limit"/> sessions).
+        /// </summary>
+        public async Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogSerializer.DefaultSessionListLimit)
+        {
+            return await _persistence.GetChatSessionsAsync(limit).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Loads all messages for a specific session by ID, forks into a new session (so continuation does not mutate the original), and replaces in-memory history.
+        /// </summary>
+        public async Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return new List<ChatMessage>();
+
+            if (_persistence == null)
+                return new List<ChatMessage>();
+
+            var messages = await _persistence.LoadSessionByIdAsync(sessionId).ConfigureAwait(false);
+
+            if (messages.Count > 0)
+            {
+                _pendingAssistantContent = null;
+                _pendingAssistantToolCalls = null;
+
+                await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
+
+                lock (_lock)
+                {
+                    _history.Clear();
+                    _history.AddRange(messages);
+                    InvalidateCacheLocked();
+                }
+            }
+
+            return messages;
+        }
     }
 }
+

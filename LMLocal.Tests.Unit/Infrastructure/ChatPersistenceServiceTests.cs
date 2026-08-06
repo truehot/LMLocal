@@ -80,9 +80,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await service.SaveLastMessageAsync(message);
 
             mockFileSystem.Verify(fs => fs.WriteAllBytesAsync(
-                It.Is<string>(p => p.Contains("chat_")), 
-                It.IsAny<byte[]>(), 
-                It.IsAny<CancellationToken>()), 
+                It.Is<string>(p => p.Contains("chat_")),
+                It.IsAny<byte[]>(),
+                It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
@@ -497,6 +497,495 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result[2].Content, Is.EqualTo("q2"),
                 "New message after reload must be part of the loaded session");
         }
+
+        // ----------------------------------------------------------------
+        //  GetChatSessionsAsync
+        // ----------------------------------------------------------------
+
+        [Test]
+        public async Task GetChatSessionsAsync_ReturnsUserPromptsAndCounts()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            // Session 1: user + assistant
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "question one"));
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "answer one"));
+
+            // Session 2: user + assistant + tool
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "question two"));
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "answer two"));
+            await service.SaveLastMessageAsync(new ChatMessage("tool", "result", "call-1"));
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result.Count, Is.EqualTo(2));
+
+            // Most recent session first (timestamp ordering)
+            Assert.That(result[0].Prompt, Is.EqualTo("question two"));
+            Assert.That(result[0].MessageCount, Is.EqualTo(3));
+            Assert.That(result[1].Prompt, Is.EqualTo("question one"));
+            Assert.That(result[1].MessageCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_TruncatesLongPrompts()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            await service.MarkNewSessionAsync();
+            var longPrompt = new string('x', 201);
+            await service.SaveLastMessageAsync(new ChatMessage("user", longPrompt));
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Prompt.Length, Is.EqualTo(200 + 3), "Prompt should be truncated to 200 chars + ellipsis");
+            Assert.That(result[0].Prompt.StartsWith(new string('x', 200)));
+            Assert.That(result[0].Prompt.EndsWith("..."));
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_PromptJustBelowBoundary_NotTruncated()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            await service.MarkNewSessionAsync();
+            var prompt = new string('x', 199);
+            await service.SaveLastMessageAsync(new ChatMessage("user", prompt));
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Prompt.Length, Is.EqualTo(199), "199 chars must not be truncated");
+            Assert.That(result[0].Prompt.EndsWith("..."), Is.False);
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_PromptAtBoundary_NotTruncated()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            await service.MarkNewSessionAsync();
+            var prompt = new string('x', 200);
+            await service.SaveLastMessageAsync(new ChatMessage("user", prompt));
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Prompt.Length, Is.EqualTo(200), "200 chars must not be truncated");
+            Assert.That(result[0].Prompt.EndsWith("..."), Is.False);
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_SessionWithoutUserMessage_HasEmptyPrompt()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "no user before"));
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Prompt, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_WithLimit_ReturnsOnlyLast()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            for (int i = 0; i < 3; i++)
+            {
+                await service.MarkNewSessionAsync();
+                await service.SaveLastMessageAsync(new ChatMessage("user", $"prompt {i}"));
+            }
+
+            var result = await service.GetChatSessionsAsync(limit: 2);
+
+            Assert.That(result.Count, Is.EqualTo(2));
+            Assert.That(result[0].Prompt, Is.EqualTo("prompt 2"));
+            Assert.That(result[1].Prompt, Is.EqualTo("prompt 1"));
+        }
+
+        // ----------------------------------------------------------------
+        //  LoadSessionByIdAsync
+        // ----------------------------------------------------------------
+
+        [Test]
+        public async Task LoadSessionByIdAsync_ReturnsMessagesForSession()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            // Session A
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "qA"));
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "aA"));
+
+            // Session B
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "qB"));
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "aB"));
+
+            var summaries = await service.GetChatSessionsAsync();
+            var sessionA = summaries.Single(s => s.Prompt == "qA");
+
+            var messages = await service.LoadSessionByIdAsync(sessionA.SessionId);
+
+            Assert.That(messages.Count, Is.EqualTo(2));
+            Assert.That(messages[0].Content, Is.EqualTo("qA"));
+            Assert.That(messages[1].Content, Is.EqualTo("aA"));
+        }
+
+        [Test]
+        public async Task LoadSessionByIdAsync_WithNullEmptyId_ReturnsEmpty()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            var nullResult = await service.LoadSessionByIdAsync(null);
+            var emptyResult = await service.LoadSessionByIdAsync("");
+            var wsResult = await service.LoadSessionByIdAsync("   ");
+
+            Assert.That(nullResult, Is.Empty);
+            Assert.That(emptyResult, Is.Empty);
+            Assert.That(wsResult, Is.Empty);
+        }
+
+        [Test]
+        public async Task LoadSessionByIdAsync_SessionSpanningTwoFiles_ReturnsAllMessages()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LMLocalChat",
+                "ChatHistory");
+
+            string sessionId = "session-span";
+
+            // Older file (hour 13): session starts here
+            var olderPath = Path.Combine(dir, "20250201_13_chat_.jsonl");
+            var olderContent =
+                "{\"type\":\"session_start\",\"session_id\":\"" + sessionId + "\",\"timestamp\":\"2025-02-01T13:00:00Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"user\",\"content\":\"q1\",\"timestamp\":\"2025-02-01T13:00:01Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"assistant\",\"content\":\"a1\",\"timestamp\":\"2025-02-01T13:00:02Z\"}\n";
+            await fileSystem.WriteAllBytesAsync(olderPath, Encoding.UTF8.GetBytes(olderContent));
+
+            // Newer file (hour 14): session continues (no session_start)
+            var newerPath = Path.Combine(dir, "20250201_14_chat_.jsonl");
+            var newerContent =
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"user\",\"content\":\"q2\",\"timestamp\":\"2025-02-01T14:00:00Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"assistant\",\"content\":\"a2\",\"timestamp\":\"2025-02-01T14:00:01Z\"}\n";
+            await fileSystem.WriteAllBytesAsync(newerPath, Encoding.UTF8.GetBytes(newerContent));
+
+            var result = await service.LoadSessionByIdAsync(sessionId);
+
+            Assert.That(result.Count, Is.EqualTo(4));
+            Assert.That(result[0].Content, Is.EqualTo("q1"));
+            Assert.That(result[1].Content, Is.EqualTo("a1"));
+            Assert.That(result[2].Content, Is.EqualTo("q2"));
+            Assert.That(result[3].Content, Is.EqualTo("a2"));
+        }
+
+        [Test]
+        public async Task LoadSessionByIdAsync_MakesLoadedSessionCurrentForSubsequentSaves()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            // Session A
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "qA"));
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "aA"));
+
+            // Session B
+            await service.MarkNewSessionAsync();
+            await service.SaveLastMessageAsync(new ChatMessage("user", "qB"));
+
+            var summaries = await service.GetChatSessionsAsync();
+            var sessionA = summaries.Single(s => s.Prompt == "qA");
+
+            // Loading A makes it the current session — no new session boundary is written.
+            var loaded = await service.LoadSessionByIdAsync(sessionA.SessionId);
+            Assert.That(loaded.Count, Is.EqualTo(2));
+
+            // A continuation after the load must append to A, not to a fresh session.
+            await service.SaveLastMessageAsync(new ChatMessage("assistant", "contA"));
+
+            var reloaded = await service.LoadSessionByIdAsync(sessionA.SessionId);
+            Assert.That(reloaded.Count, Is.EqualTo(3));
+            Assert.That(reloaded[2].Content, Is.EqualTo("contA"));
+        }
+
+        // ----------------------------------------------------------------
+        //  SaveMessagesAsync
+        // ----------------------------------------------------------------
+
+        [Test]
+        public async Task SaveMessagesAsync_BatchAppendsAllMessagesInOneWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            byte[] captured = null;
+            mockFileSystem.Setup(fs => fs.FileExists(It.IsAny<string>())).Returns(true);
+            mockFileSystem.Setup(fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .Callback<string, byte[], CancellationToken>((path, data, ct) => captured = data)
+                .Returns(Task.CompletedTask);
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(new[]
+            {
+                new ChatMessage("user", "m1"),
+                new ChatMessage("assistant", "m2"),
+                new ChatMessage("tool", "r", "call-1")
+            });
+
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+
+            string text = Encoding.UTF8.GetString(captured);
+            Assert.That(text, Does.Contain("\"m1\""));
+            Assert.That(text, Does.Contain("\"m2\""));
+            Assert.That(text, Does.Contain("\"r\""));
+        }
+
+        [Test]
+        public async Task SaveMessagesAsync_WithNullMessages_DoesNotWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(null);
+
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SaveMessagesAsync_WithEmptyList_DoesNotWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(new ChatMessage[0]);
+
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SaveMessagesAsync_WhenLoggingDisabled_DoesNotWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = false });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(new[] { new ChatMessage("user", "x") });
+
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SaveMessagesAsync_WhenPrimaryWriteFails_WritesEachMessageToFallbackFile()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            mockFileSystem.Setup(fs => fs.FileExists(It.IsAny<string>())).Returns(true);
+            mockFileSystem.Setup(fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new IOException("disk full"));
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(new[]
+            {
+                new ChatMessage("user", "m1"),
+                new ChatMessage("assistant", "m2")
+            });
+
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(
+                    It.Is<string>(p => p.Contains("chat_") && p.Contains(".jsonl")),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Exactly(2));
+        }
+
+        // ----------------------------------------------------------------
+        //  Fallback / settings guards
+        // ----------------------------------------------------------------
+
+        [Test]
+        public async Task SaveLastMessageAsync_WhenPrimaryWriteFails_WritesFallbackFile()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            mockFileSystem.Setup(fs => fs.FileExists(It.IsAny<string>())).Returns(true);
+            mockFileSystem.Setup(fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new IOException("disk full"));
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveLastMessageAsync(new ChatMessage("user", "lost"));
+
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(
+                    It.Is<string>(p => p.Contains("chat_") && p.Contains(".jsonl")),
+                    It.IsAny<byte[]>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task SaveLastMessageAsync_WhenCurrentNull_DoesNotWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns((AppSettings)null);
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveLastMessageAsync(new ChatMessage("user", "x"));
+
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SaveMessagesAsync_WhenCurrentNull_DoesNotWrite()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns((AppSettings)null);
+            var mockFileSystem = new Mock<IFileSystem>();
+
+            var service = new ChatPersistenceService(mockSettings.Object, mockFileSystem.Object);
+
+            await service.SaveMessagesAsync(new[] { new ChatMessage("user", "x") });
+
+            mockFileSystem.Verify(
+                fs => fs.WriteAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockFileSystem.Verify(
+                fs => fs.AppendAllBytesAsync(It.IsAny<string>(), It.IsAny<byte[]>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        // ----------------------------------------------------------------
+        //  GetChatSessionsAsync edge cases
+        // ----------------------------------------------------------------
+
+        [Test]
+        public async Task GetChatSessionsAsync_WithNonPositiveLimit_ReturnsEmpty()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            var zero = await service.GetChatSessionsAsync(0);
+            var negative = await service.GetChatSessionsAsync(-1);
+
+            Assert.That(zero, Is.Empty);
+            Assert.That(negative, Is.Empty);
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_WithNoFiles_ReturnsEmpty()
+        {
+            var mockSettings = CreateMockSettingsManager();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
+            var fileSystem = new InMemoryFileSystem();
+
+            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
+
+            var result = await service.GetChatSessionsAsync();
+
+            Assert.That(result, Is.Empty);
+        }
     }
 }
+
 

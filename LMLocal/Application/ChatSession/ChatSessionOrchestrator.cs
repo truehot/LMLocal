@@ -52,8 +52,8 @@ namespace LMLocal.Application.ChatSession
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly object _resetLock = new object();
 
-        private const int MAX_TOOL_ITERATIONS = 400;
-        private const int MAX_STATE_ITERATIONS = 400;
+        private const int MAX_TOOL_ITERATIONS = 9999;
+        private const int MAX_STATE_ITERATIONS = 9999;
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
         private const int MAX_DUPLICATE_TOOL_ROUNDS = 3;
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.ModelsList;
@@ -18,6 +18,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
         Task<string> GetSettingsAsync();
         Task<bool> UpdateSettingsAsync(string newSettingsJson);
         Task<string> TestConnectionAsync(string payload);
+        Task<bool> SetAiToolsAsync(string json);
     }
 
     [System.Runtime.InteropServices.ComVisible(true)]
@@ -63,6 +64,31 @@ namespace LMLocal.Infrastructure.WebView.Controllers
             catch (Exception ex)
             {
                 InternalLogger.Error("UpdateSettingsAsync failed", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Updates only the AI Tools settings (EnableAiTools / EnableAiWriteTools).
+        /// Expects JSON: { "mode": "none" | "readonly" | "readwrite" }.
+        /// </summary>
+        public async Task<bool> SetAiToolsAsync(string json)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(json))
+                    return false;
+
+                var request = json.FromJson<SetAiToolsRequest>();
+                if (request == null || string.IsNullOrWhiteSpace(request.Mode))
+                    return false;
+
+                await _settingsManager.SetAiToolsModeAsync(request.Mode).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("SetAiToolsAsync failed", ex);
                 return false;
             }
         }

@@ -13,6 +13,11 @@ import { wrapAsCodeFence } from '@app/lib/file.fence.js';
 class InputComponent {
     static RESIZE_MIN = 80;
     static RESIZE_MAX = 600;
+    static AI_TOOLS_OPTIONS = [
+        { value: 'none', label: 'No tools' },
+        { value: 'readonly', label: 'Read Only' },
+        { value: 'readwrite', label: 'Read & Write' }
+    ];
 
     constructor() {
         this.elements = {};
@@ -20,6 +25,7 @@ class InputComponent {
         this.onClick = createCallback();
         this.onEnter = createCallback();
         this.onTabChanged = createCallback();
+        this.onAiToolsChanged = createCallback();
 
         this._resizeState = { active: false, startY: 0, startHeight: 0 };
         this._resizerBound = { down: null, move: null, up: null };
@@ -35,6 +41,9 @@ class InputComponent {
             dropdownTrigger: document.querySelector('.dropdown-trigger'),
             selectedOption: document.getElementById('selectedOption'),
             dropdownMenu: document.querySelector('.dropdown-menu'),
+            aiToolsDropdown: document.getElementById('aiToolsDropdown'),
+            aiToolsSelectedOption: document.getElementById('aiToolsSelectedOption'),
+            aiToolsDropdownMenu: document.getElementById('aiToolsDropdownMenu'),
         };
     }
 
@@ -96,6 +105,30 @@ class InputComponent {
         }
 
         this.onTabChanged.emit(tabId);
+    };
+
+    _handleAiToolsDropdownToggle = (e) => {
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        this.elements.aiToolsDropdown.classList.toggle('active');
+    };
+
+    _handleAiToolsDropdownItemClick = (e) => {
+        const item = e.target.closest && e.target.closest('.dropdown-item');
+        if (!item) return;
+
+        const mode = item.getAttribute('data-value');
+        const displayName = item.textContent || '';
+        const selected = this.elements.aiToolsSelectedOption;
+        const dropdown = this.elements.aiToolsDropdown;
+
+        if (selected) {
+            selected.textContent = displayName;
+        }
+        if (dropdown) {
+            dropdown.classList.remove('active');
+        }
+
+        this.onAiToolsChanged.emit(mode);
     };
 
     // ─── Drag-and-drop file handling ────────────────────────────────────────
@@ -209,7 +242,7 @@ class InputComponent {
 
     _attachEvents() {
 
-        const { userInput, mainBtn, contextToggleBtn, dropdownTrigger, dropdown } = this.elements;
+        const { userInput, mainBtn, contextToggleBtn, dropdownTrigger, dropdown, aiToolsDropdown } = this.elements;
         if (!userInput || !mainBtn || !contextToggleBtn || !dropdownTrigger || !dropdown) return;
 
         userInput.addEventListener('input', this._handleInput);
@@ -219,10 +252,18 @@ class InputComponent {
 
         dropdownTrigger.addEventListener('click', this._handleDropdownToggle);
         dropdown.addEventListener('click', this._handleDropdownItemClick);
+
+        if (aiToolsDropdown) {
+            const aiToolsTrigger = aiToolsDropdown.querySelector('.dropdown-trigger');
+            if (aiToolsTrigger) {
+                aiToolsTrigger.addEventListener('click', this._handleAiToolsDropdownToggle);
+            }
+            aiToolsDropdown.addEventListener('click', this._handleAiToolsDropdownItemClick);
+        }
     }
 
     _detachEvents() {
-        const { userInput, mainBtn, contextToggleBtn, dropdownTrigger, dropdown } = this.elements;
+        const { userInput, mainBtn, contextToggleBtn, dropdownTrigger, dropdown, aiToolsDropdown } = this.elements;
         if (userInput) {
             userInput.removeEventListener('input', this._handleInput);
             userInput.removeEventListener('keydown', this._handleKeydown);
@@ -238,6 +279,13 @@ class InputComponent {
         }
         if (dropdown) {
             dropdown.removeEventListener('click', this._handleDropdownItemClick);
+        }
+        if (aiToolsDropdown) {
+            const aiToolsTrigger = aiToolsDropdown.querySelector('.dropdown-trigger');
+            if (aiToolsTrigger) {
+                aiToolsTrigger.removeEventListener('click', this._handleAiToolsDropdownToggle);
+            }
+            aiToolsDropdown.removeEventListener('click', this._handleAiToolsDropdownItemClick);
         }
     }
 
@@ -355,6 +403,7 @@ class InputComponent {
         this._attachEvents();
         this._attachDragDrop();
         this._initResizer();
+        this.renderAiToolsOptions();
         return this;
     }
 
@@ -422,6 +471,39 @@ class InputComponent {
             this.elements.dropdown.style.display = "block";
         } else {
             this.elements.dropdown.style.display = "none";
+        }
+    }
+
+    renderAiToolsOptions() {
+        if (!this.elements.aiToolsDropdownMenu) return;
+        this.elements.aiToolsDropdownMenu.innerHTML = '';
+        for (const option of InputComponent.AI_TOOLS_OPTIONS) {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.setAttribute('data-value', option.value);
+            item.textContent = option.label;
+            this.elements.aiToolsDropdownMenu.appendChild(item);
+        }
+    }
+
+    updateSettingsState(state, prev) {
+        if (!this.elements.aiToolsSelectedOption) return;
+
+        if (
+            prev &&
+            state.EnableAiTools === prev.EnableAiTools &&
+            state.EnableAiWriteTools === prev.EnableAiWriteTools
+        ) {
+            return;
+        }
+
+        const mode = state.EnableAiTools
+            ? (state.EnableAiWriteTools ? 'readwrite' : 'readonly')
+            : 'none';
+
+        const option = InputComponent.AI_TOOLS_OPTIONS.find(o => o.value === mode);
+        if (option) {
+            this.elements.aiToolsSelectedOption.textContent = option.label;
         }
     }
 };

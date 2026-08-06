@@ -64,6 +64,14 @@
                     </svg>
                     Providers...
                 </button>
+                <button data-action="open-chat-history">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M8 3.5v4.5l3 2" />
+                        <path d="M2.5 8a5.5 5.5 0 1 0 1.2-3.4" />
+                        <path d="M2.5 2.2v3h3" />
+                    </svg>
+                    Chat history...
+                </button>
                 <button data-action="open-tools">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
                         <rect x="2" y="3" width="5" height="3" rx="0.5" />
@@ -107,10 +115,10 @@
                 <button class="btn-icon-only" id="toggle-view-mode-btn" title="Toggle View Mode (List/Tree)" type="button"></button>
             </div>
             <div class="header-actions">
-                <button class="btn-small btn-secondary" id="review-all-btn">Review all</button>
-                <button class="btn-small btn-secondary" id="open-all-btn">Open all</button>
-                <button class="btn-small btn-secondary" id="discard-all-btn">Discard all</button>
-                <button class="btn-small btn-primary" id="accept-all-btn">Accept all</button>
+                <button class="btn-small btn-secondary" id="review-all-btn" title="View all changes in a unified diff window">Review all</button>
+                <button class="btn-small btn-secondary" id="open-all-btn" title="Open all changed files in the editor">Open all</button>
+                <button class="btn-small btn-secondary" id="discard-all-btn" title="Revert all files to their original state (cannot be undone)">Discard all</button>
+                <button class="btn-small btn-primary" id="accept-all-btn" title="Confirm all changes and remove backup copies (permanent)">Accept all</button>
             </div>
         </div>
 
@@ -121,7 +129,7 @@
 
     <div class="scroll-spacer"></div>
 
-    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span></div>
+    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto; opacity: 0.7;"></span></div>
 
     <div class="input-container">
         <div class="input-wrapper">
@@ -135,6 +143,13 @@
                             <span class="arrow">▾</span>
                         </button>
                         <div class="dropdown-menu"></div>
+                    </div>
+                    <div class="dropdown" id="aiToolsDropdown">
+                        <button type="button" class="btn-action dropdown-trigger" title="AI built-in tools access">
+                            <span id="aiToolsSelectedOption">No tools</span>
+                            <span class="arrow">▾</span>
+                        </button>
+                        <div class="dropdown-menu" id="aiToolsDropdownMenu"></div>
                     </div>
                 </div>
                 <div class="input-footer-right">
@@ -303,8 +318,8 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableHistoryCompression">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Strip formatting from history (beta)</span>
-                            <span class="checkbox-description">Removes markdown formatting and trims extra whitespace to reduce token usage without losing meaning.</span>
+                            <span class="checkbox-title">Clean whitespace in history (beta)</span>
+                            <span class="checkbox-description">Collapses extra spaces, tabs, and excessive newlines in background context. All Markdown syntax is preserved. Does not affect visible chat history.</span>
                         </span>
                     </label>
                 </div>
@@ -432,6 +447,41 @@
         </div>
     </dialog>
 
+    <dialog id="chat-history-dialog" class="model-modal">
+        <div class="modal-header">
+            <span>Chat History</span>
+        </div>
+
+        <div class="modal-toolbar">
+            <div class="toolbar-left">
+                <input type="text" id="chat-history-filter-input" placeholder="Filter sessions..." autocomplete="off">
+                <button id="chat-history-sort-btn" class="ui-icon-btn" title="Sort by date">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="fill: none; stroke: currentColor;">
+                        <circle cx="8" cy="8" r="6" />
+                        <path d="M8 4.5V8l2.5 1.5" />
+                    </svg>
+                </button>
+            </div>
+            <button id="chat-history-refresh-btn" class="ui-icon-btn" title="Refresh list">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.53 2.3A6.995 6.995 0 0 0 8 1a7 7 0 1 0 7 7h-1.5a5.5 5.5 0 1 1-1.39-3.64l-1.24 1.24H15V1.47l-1.35 1.35z" /></svg>
+            </button>
+        </div>
+
+        <div class="modal-container">
+            <div id="chat-history-container" class="chat-history-list">
+                <div class="loading-placeholder">
+                    <div class="spinner"></div>
+                    <span>Loading chat history...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button id="chat-history-close" class="btn-secondary">Close</button>
+        </div>
+    </dialog>
+
+
     <dialog id="mcp-settings-dialog">
         <div class="modal-header">MCP Extensions</div>
         <div class="modal-body">
@@ -447,7 +497,6 @@
                         </span>
                     </label>
                 </div>
-
                 <div id="mcp-dialog-config-container" class="mcp-sub-group" style="display: none;">
                     <div class="settings-group">
                         <div class="mcp-header-actions">

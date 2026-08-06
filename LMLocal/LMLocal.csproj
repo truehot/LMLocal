@@ -71,6 +71,7 @@
   <ItemGroup>
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
+    <Compile Include="Application\Chat\ChatSessionSummary.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
     <Compile Include="Commands\AddUnitTestsCommand.cs" />
@@ -82,6 +83,7 @@
     <Compile Include="Commands\ReviewCommand.cs" />
     <Compile Include="Commands\SendToLMFromEditorCommand.cs" />
     <Compile Include="Commands\SendToLMFromSolutionExplorerCommand.cs" />
+    <Compile Include="Core\Common\ChatHistoryNormalizer.cs" />
     <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
     <Compile Include="Core\Models\ApiErrorInfo.cs" />
@@ -122,6 +124,7 @@
     <Compile Include="Infrastructure\LlmApi\Responses\TogetherAiModelInfo.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
+    <Compile Include="Infrastructure\Persistence\ChatLogSerializer.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
     <Compile Include="Infrastructure\Syntax\ISyntaxChecker.cs" />
     <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactory.cs" />
@@ -229,6 +232,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\dialogs\chat.history.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\dialogs\mcp.settings.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -270,14 +277,17 @@
     <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\VisualStudio\FileViewer.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\AutocompletionsController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\ChatSessionController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\InstructionsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\McpController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ModelsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ProvidersController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\SettingsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ToolsController.cs" />
+    <Compile Include="Infrastructure\WebView\Models\ChatSessionsResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
+    <Compile Include="Infrastructure\WebView\Models\SetAiToolsRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestCompletionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />
@@ -322,7 +332,6 @@
     <Compile Include="Core\Common\InternalLogger.cs" />
     <Compile Include="Infrastructure\Streaming\LlmSseParser.cs" />
     <Compile Include="Infrastructure\LlmApi\OpenApiAdapter.cs" />
-    <Compile Include="Core\Common\MarkdownStripper.cs" />
     <Compile Include="Core\Models\StreamCompletionResult.cs" />
     <Compile Include="Infrastructure\Streaming\StreamInactivityWatcher.cs" />
     <Compile Include="Application\ChatSessionStream\StreamProcessor.cs" />

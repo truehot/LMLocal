@@ -27,6 +27,7 @@ import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
 import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
 import { AutocompletionsDialog } from '@app/dialogs/autocompletions.dialog.js';
+import { ChatHistoryDialog } from '@app/dialogs/chat.history.dialog.js';
 
 import { providerResolver } from '@app/lib/provider.resolver.js';
 
@@ -109,6 +110,7 @@ class AppController {
             chatComponent.updateSettingsState(state, prev);
             statusComponent.updateSettingsState(state, prev);
             chatController.updateSettingsState(state, prev);
+            inputComponent.updateSettingsState(state, prev);
         };
         settingsStore.subscribe(this._settingsStoreListener);
 
@@ -145,6 +147,10 @@ class AppController {
 
         inputComponent.onTabChanged.on(async (tabId) => {
             return await appDataService.updateInstructionsSelectedTabAsync(tabId);
+        });
+
+        inputComponent.onAiToolsChanged.on(async (mode) => {
+            return await appDataService.setAiToolsModeAsync(mode);
         });
 
         chatController.onCopyCode.on(async (text) => {
@@ -222,6 +228,17 @@ class AppController {
                     });
                     menuComponent.hideMenu();
                     await providersDialog.show();
+                    return true;
+                case 'open-chat-history':
+                    const chatHistoryDialog = new ChatHistoryDialog();
+                    chatHistoryDialog.onLoadSessions.on(async () => {
+                        return await appDataService.getChatSessionsAsync();
+                    });
+                    chatHistoryDialog.onLoadSession.on(async (sessionId) => {
+                        return await appManager.performLoadSession(sessionId);
+                    });
+                    menuComponent.hideMenu();
+                    await chatHistoryDialog.show();
                     return true;
                 case 'open-tools':
                     const toolsDialog = new ToolsDialog();

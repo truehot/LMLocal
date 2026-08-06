@@ -45,6 +45,7 @@ namespace LMLocal.Tests.Unit
             public event Action<AppSettings> SettingsChanged { add { } remove { } }
             public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Current);
             public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         [Test]

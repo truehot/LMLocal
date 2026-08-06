@@ -171,6 +171,11 @@ function __startMock() {
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,
         };
+        window.__chatSessionOverride = {
+            GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
+            GetChatSessionsAsync: async () => JSON.stringify({ sessions: [] }),
+            GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
+        };
         window.__bridgeOverride = __mockBridge;
         window.__settingsOverride = {
             GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),

@@ -43,12 +43,12 @@ namespace LMLocal.Core.Models
         /// <summary>
         /// When true, chat history is saved to disk in ChatHistory folder.
         /// </summary>
-        public bool EnableChatLogging { get; set; } = false;
+        public bool EnableChatLogging { get; set; } = true;
 
         /// <summary>
         /// When true, the last chat history session is automatically restored on startup.
         /// </summary>
-        public bool AutoLoadLastHistory { get; set; } = false;
+        public bool AutoLoadLastHistory { get; set; } = true;
 
         /// <summary>
         /// API key for authenticating to remote services. Optional for most local servers.

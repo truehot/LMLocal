@@ -26,7 +26,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (textView == null)
                 return;
 
-            if (textView.Roles.Contains(PredefinedTextViewRoles.PreviewTextView))
+            if (textView.Roles.Contains(PredefinedTextViewRoles.PreviewTextView) || textView.Roles.Contains("COMMANDVIEW"))
                 return;
 
             if (!textView.TextBuffer.Properties.TryGetProperty(typeof(ITextDocument), out ITextDocument document))

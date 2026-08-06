@@ -60,6 +60,43 @@
     }
 };
 
+// Pre-built session data for E2E tests
+const __MOCK_SESSIONS = [
+    {
+        sessionId: "session-aaa-111",
+        prompt: "How do I refactor this class to use dependency injection?",
+        timestamp: "2025-01-15T10:30:00.000Z",
+        messageCount: 12
+    },
+    {
+        sessionId: "session-bbb-222",
+        prompt: "What does the error CS1061 mean and how to fix it?",
+        timestamp: "2025-01-14T08:15:00.000Z",
+        messageCount: 5
+    },
+    {
+        sessionId: "session-ccc-333",
+        prompt: "Generate unit tests for the OrderService class",
+        timestamp: "2025-01-13T16:45:00.000Z",
+        messageCount: 24
+    }
+];
+
+const __MOCK_SESSION_MESSAGES = {
+    "session-aaa-111": [
+        { role: "user", content: "How do I refactor this class to use dependency injection?" },
+        { role: "assistant", content: "Here is how you refactor..." }
+    ],
+    "session-bbb-222": [
+        { role: "user", content: "What does the error CS1061 mean and how to fix it?" },
+        { role: "assistant", content: "CS1061 means..." }
+    ],
+    "session-ccc-333": [
+        { role: "user", content: "Generate unit tests for the OrderService class" },
+        { role: "assistant", content: "Here are the tests..." }
+    ]
+};
+
 function __startMock() {
     if (typeof window.lmInit === 'function') {
         console.log('[mock] calling window.lmInit');
@@ -142,8 +179,11 @@ function __startMock() {
         };
         window.__chatSessionOverride = {
             GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
-            GetChatSessionsAsync: async () => JSON.stringify({ sessions: [] }),
-            GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
+            GetChatSessionsAsync: async () => JSON.stringify({ sessions: __MOCK_SESSIONS }),
+            GetChatSessionByIdAsync: async (sessionId) => {
+                const msgs = __MOCK_SESSION_MESSAGES[sessionId] || [];
+                return JSON.stringify({ hasSession: msgs.length > 0, messages: msgs });
+            },
         };
         window.__bridgeOverride = __mockBridge;
         window.lmInit(__mockBridge);

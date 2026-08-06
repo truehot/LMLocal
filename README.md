@@ -36,29 +36,32 @@
 - [Installation](#installation)
 - [Getting Started](#getting-started)
 - [All Features](#all-features)
+- [AI Instructions & Modes](#ai-instructions--modes)
 - [Providers](#providers)
+- [Chat History Dialog](#chat-history-dialog)
 - [Built‑in AI Tools](#built‑in-ai-tools)
-- [MCP Support](#model-context-protocol-mcp-support)
-- [Smart Workflows](#smart-workflows--best-practices)
-- [Auto‑Completions](#auto-completions)
+- [List of built‑in tools](#list-of-built‑in-tools)
+- [Smart Workflows & Best Practices](#smart-workflows--best-practices)
 - [Context Menu Commands](#context-menu-commands)
-- [Configuration](#how-to-configure-mcp-servers)
+- [History Optimization: Clean Whitespace](#history-optimization-clean-whitespace)
+- [Auto‑Completions](#auto-completions)
+- [MCP Support](#model-context-protocol-mcp-support)
+- [MCP Configuration](#how-to-configure-mcp-servers)
 - [Troubleshooting](#troubleshooting)
 - [Data & Configuration](#data--configuration)
-- [License](#license--third-party)
-
+- [License & Third‑Party](#license--third-party)
 
 ---
 
 ## ⚡ Core Features
 
-- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, rollback, **and real‑time code autocompletions** as you type.
+- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, manual rollback via the Changes panel, **and code autocompletions** as you type.
 - **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, and any OpenAI‑compatible API.
 - **🔌 MCP Extensibility** – Add external tools via Model Context Protocol (stdio/http).
 - **📂 Flexible Workspace Context** – Quickly pass code to the AI: use the **`+`** button to attach the active file in the background, or right-click to send specific text selections.
-- **🧩 Reasoning, Roles & Efficiency** – Expandable thoughts, collapsible tool calls, custom system presets, token optimization (summarization, stripping, live stats).
-- **⚙️ Built-in Provider Integrations** – Pre-configured internal handlers for specific AI platforms (including Ollama, Groq, OpenRouter, Google AI Studio, DeepSeek, and GitHub Models). The extension natively manages each provider's protocol variations and stream parsing — enter your target API Base URL and personal API Key to connect.
-- **💾 Persistent & Reliable** – Auto‑connects on startup, restores your last session from local logs, configurable timeout, centralized settings.
+- **🧩 Reasoning, Roles & Efficiency** – Expandable thoughts, collapsible tool calls, custom system presets, token optimization (summarization, whitespace cleaning, live stats).
+- **⚙️ Built-in Provider Integrations** – Pre-configured internal handlers for specific AI platforms (including Ollama, Groq, OpenRouter, Google AI Studio and DeepSeek). The extension natively manages each provider's protocol variations and stream parsing — enter your target API Base URL and personal API Key to connect.
+- **💾 Persistent & Reliable** – Auto‑connects on startup, restores your last session from local logs, provides a chat history dialog to browse and restore previous sessions, configurable timeout, centralized settings.
 - **🔄 Hot-Swappable LLMs** – Switch between local models or cloud providers on the fly without clearing the chat. The new model seamlessly continues the conversation using the existing history and context.
 
 ---
@@ -107,7 +110,7 @@ To use LMLocal, you need:
      * **Jan (local)** – Automatically targets `http://127.0.0.1:1337`
      * **Llama.cpp (local)** – Automatically targets `http://127.0.0.1:8080`
      * **OpenAI compatible (custom)** – Allows you to supply a custom base URL and authorization keys for remote endpoints or custom gateways.
-   * *Note: Choosing a local provider automatically configures the correct default port and endpoint structure.*
+   * *Note: Choosing a local provider automatically configures the correct default port and endpoint structure. For local Microsoft Foundry, select `OpenAI compatible` and use `http://127.0.0.1:<port>` (where `<port>` is your active service port).*
    * *Tip: If you have multiple providers, it is recommended to set them up first via the "Providers..." menu option.*
 4. **Verify the Connection:**
    * Click the **"Test"** button located directly to the right of the **API Base URL** input field. 
@@ -120,8 +123,9 @@ To use LMLocal, you need:
 5. **Select an Instruction Preset (Optional):** Open the **AI Instructions...** window from the menu to select from pre-defined AI presets.
    * Each preset has its own pre-configured system prompt and temperature.
    * You can toggle individual presets or parameters on/off.
-6. **Context (Optional):** Click the **`+`** button to include the entire content of the active document into the conversation.
-7. **Chat:** Type your message and click **Send** or hit `Enter` ⌨️.
+6. **Quick Tool Mode Switch (Optional):** Use the dropdown next to the message input to instantly switch between No tools (AI cannot read or write), Read only (AI can read files but not modify them), and Read & Write (full tool access). 
+7. **Context (Optional):** Click the **`+`** button to include the entire content of the active document into the conversation.
+8. **Chat:** Type your message and click **Send** or hit `Enter` ⌨️.
 
 ---
 
@@ -138,7 +142,7 @@ To use LMLocal, you need:
 * ➕ **Active Window Context:** Click the **`+`** button to include the entire content of the file currently open in the active document. 
   * *Auto-turn off:* The button automatically deactivates after the request is sent, as the document becomes part of the active chat history.
   * *UI & Logs:* The attached file content is kept hidden to avoid cluttering the chat UI, but it is tracked and visible in the extension logs.
-* **Drag and Drop:** You can drag and drop a text file (e.g., .txt, .md, .csv) directly into the chat window or the designated drop zone – its content will be loaded automatically.
+* **Drag and Drop:** You can drag and drop a text file (e.g., .txt, .md, .csv) directly into the chat window text input – its content will be loaded automatically.
 * **Context Menu:** Right‑click in editor window or solution explorer and choose "Send to LM Local" – this adds content from the clipboard or a selected file to the conversation.
 * ⏹️ **Stop** – Cancel an active generation.
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
@@ -160,7 +164,8 @@ To use LMLocal, you need:
 - ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
 - ⌨️ **AI Inline Autocompletions** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
-- 📄 ** Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
+- 📄 **Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
+- 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
 
 **Context & Solution Awareness**
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
@@ -171,10 +176,12 @@ To use LMLocal, you need:
 - 🧠 **Thought/Reasoning Support** – Support for reasoning models; "thoughts" are displayed in expandable blocks.
 - 🛡️ **Smart History Buffering** – Automatically removes the oldest messages from the chat UI once the history exceeds 200 entries to prevent rendering lag, without affecting the underlying conversation data.
 - 🎯 **Context Menu Integration** – Right-click context menu command ("Send to LM Local") that copies text directly into the chat prompt without auto-submitting. If text is highlighted, it sends the selection; if nothing is selected, it falls back to sending the entire active document.
+- 🔄 **Quick Tool Mode Toggle** – Dropdown next to the input box to switch between No tools, Read only, and Read & Write for the current session without opening Settings.
+
 
 **Efficiency & Token Management**
 - 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
-- 🧹 **History Optimization** – Optionally strips markdown formatting and trims extra whitespace from background history entries to reduce token usage.
+- 🧹 **History Optimization** – Optionally compresses redundant whitespace and trims extra lines from background history entries to save tokens.
 - 📊 **Live Stats** – Status bar metrics: real-time speed (tokens/sec) and total token count.
 
 **Infrastructure & Settings**
@@ -221,32 +228,33 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 | Provider | Provider Type | API Base URL |
 | :--- | :--- | :--- |
 | **Ollama** | OpenAI compatible | `https://ollama.com/` |
-| **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
-| **Mistral** | OpenAI compatible | `https://api.mistral.ai/` |
-| **Cohere** | OpenAI compatible | `https://api.cohere.ai/compatibility/` |
 | **OpenRouter** | OpenAI compatible | `https://openrouter.ai/api/` |
-| **Google AI Studio** | Gemini (cloud) | `https://generativelanguage.googleapis.com` |
-| **GitHub Models** | Github Models via Azure (cloud) | `https://models.inference.ai.azure.com/` |
 | **Siliconflow** | OpenAI compatible | `https://api.siliconflow.com/` |
-| **Parasail** | OpenAI compatible | `https://api.parasail.io/` |
 | **Doubleword AI** | OpenAI compatible | `https://api.doubleword.ai/` |
 | **Hugging Face** | OpenAI compatible | `https://router.huggingface.co/` |
-
+| **Alibaba Cloud Model Studio** | OpenAI compatible | `https://[*].eu-central-1.maas.aliyuncs.com/compatible-mode/` |
+| **Parasail** | OpenAI compatible | `https://api.parasail.io/` |
+| **Perplexity.ai** | OpenAI compatible | `https://api.perplexity.ai/router/` |
+| **Mistral** | OpenAI compatible | `https://api.mistral.ai/` |
+| **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
+| **Cohere** | OpenAI compatible | `https://api.cohere.ai/compatibility/` |
+| **Google AI Studio** | Gemini (cloud) | `https://generativelanguage.googleapis.com` |
+| **GitHub Models** | Github Models via Azure (cloud) | `No longer available, will be removed in next releases` |
 
 #### 💳 Pay to Try (Commercial / Premium)
 
 | Provider | Provider Type | API Base URL |
 | :--- | :--- | :--- |
-| **OpenAI** | OpenAI compatible | `https://api.openai.com` |
 | **DeepSeek** | DeepSeek (cloud) | `https://api.deepseek.com` |
 | **Together AI** | Together AI (cloud) | `https://api.together.ai/` |
 | **Fireworks AI** | OpenAI compatible | `https://api.fireworks.ai/inference/` |
+| **OpenAI** | OpenAI compatible | `https://api.openai.com` |
 
 ---
 
 ## Built‑in AI Tools
 
-The built‑in tools let the AI read, edit, build, and test your code. You control which tools are enabled and can review all changes before accepting them.
+The built‑in tools let the AI read, edit, build, and test your code. You control which tools are enabled, can review all changes before accepting them and manually roll back any change.
 
 ### What you can control
 
@@ -308,7 +316,7 @@ The panel lets you:
 - **`get_symbol_info`** – Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context (uses Roslyn).
 
 ### Build and tests
-- **`build_solution`** – Builds the whole solution (runs asynchronously).
+- **`build_solution`** – Builds the whole solution.
 - **`run_tests`** – Runs `dotnet test` for a specific `.csproj` and shows live output.
 
 ---
@@ -334,24 +342,41 @@ Once configured, you can instantly switch between these system roles using the d
 
 ---
 
-## 📉 History Optimization: Strip Formatting
+## 📉 History Optimization: Clean Whitespace
 
-When the **"Strip formatting from history"** option is enabled in the extension settings, LMLocal automatically runs a cleanup pass on previous conversation turns before forwarding the payload to your AI backend. This reduces token overhead for local models by flattening structural Markdown syntax into lightweight plain text.
+When the **"Clean whitespace in history"** option is enabled in the extension settings, LMLocal automatically runs a cleanup pass on previous conversation turns before forwarding the payload to your AI backend. This reduces token overhead for local models by stripping redundant spaces, tabs, and excess newlines.
 
 > [!NOTE]  
-> **Under the Hood Only:** This optimization is **invisible** in the user interface. Your active chat window will always display responses with full Markdown rendering, code highlighting, and structural styling. The stripping process only alters the raw background history array sent to the model to save context tokens.
+> **Under the Hood Only:** This optimization is **invisible** in the user interface. Your active chat window will always display responses with full formatting. The cleanup process only alters the raw background history array sent to the model to save context tokens.
 
-### 🧹 What Gets Removed / Transformed:
-* **Code Blocks:** Kept fully intact with their enclosures (``` or more) to preserve code structure and syntax boundaries for the model.
-* **Headers** – Heading markers (`#`, `##`, etc.) are removed, keeping only the text content.
-* **Text Emphasis** – Bold (`**text**` → `text`), italics (`*text*` → `text`), and strikethroughs (`~~text~~` → `text`) are flattened.
-* **Inline Code** – Inline backticks (`` `code` `` → `code`) are dropped.
-* **Links & Media** – Hyperlinks (`[label](url)` → `label`) and images (`![alt](url)` → `alt`) discard their URLs/paths, preserving only their descriptive text labels.
-* **List & Structural Layouts** – Bullets (`-`, `*`, `+`, `1.`, `2.`), blockquote symbols (`> `), and horizontal rules (`---`, `***`, `___`) are erased.
-* **Whitespace Compaction** – Extra whitespace is trimmed, and redundant blank lines are clamped (any sequence of 3 or more consecutive newlines is compressed into exactly 2 newlines).
+### 🧹 What Gets Processed:
+
+* **Collapses Whitespace:** Merges multiple spaces and tabs into a single space.
+* **Compresses Newlines:** Limits consecutive newlines to a maximum of 2 (`\n\n`).
+* **Trims Boundaries:** Removes trailing/leading spaces on every line and trims the overall payload.
+* **Preserves Markdown:** All Markdown tags, headers, and code blocks remain completely intact.
 
 ---
 
+## 💬 Chat History Dialog
+
+The **Chat History** dialog (accessible from the top‑right menu **`…`** → **Chat History**) lets you browse and restore past conversations from the local chat logs.
+
+### How it works
+
+- The dialog lists the **last 200 chat sessions** found in the local `.jsonl` log files (up to **50 hourly log files** are scanned).
+- Each entry shows the first user message (truncated to 200 characters), a timestamp, and the total number of messages in that session.
+- Click **Load** on any session to restore it into the chat window.
+
+### Important details
+
+| Detail | Description |
+|---|---|
+| **Chat logging must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Enable Chat Logging** is turned off in Settings, no sessions will appear. |
+| **Loading a session forks it** | When you load a past session, the extension **creates a brand‑new session** initialized with that session's message history. Your continuation is saved under a new session ID — the original session remains untouched. |
+
+
+---
 ## 🌐 Model Context Protocol (MCP) Support
 
 LMLocal supports external tool integration via the **Model Context Protocol (MCP)**. This allows you to hook up custom or third-party servers to give your local AI even more capabilities.
@@ -366,7 +391,7 @@ LMLocal supports external tool integration via the **Model Context Protocol (MCP
 * **Protocol Version:** Compatible with the **MCP `2025-11-25`** specification standard.
 * **Tools-Only Support:** LMLocal **exclusively** loads and registers **Tools** exposed by your MCP servers. These are separate from the built‑in tools and are configured independently. Other MCP features like custom *Prompts* or *Resources* are currently ignored and will not be utilized by the assistant.
 * **Transports:** Supports both local process-based (stdio) and network-based streamable (http) transports.
-* **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported.
+* **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported (no plans).
 
 ---
 
@@ -402,14 +427,22 @@ It's simple. Just ask one AI model to write a plan, then switch to a different m
 
 **Why it works:**  It’s like bringing in two experts one after another. The first drafts a strategy. The second walks into the room, reads the finished document, and says: "Here’s where you went wrong," without ever seeing the first expert’s rough drafts. By swapping models, you collect the best from each perspective — and you never have to copy-paste or start a new chat, because the entire history stays right there.
 
-
 ---
 
-#### 📉 Managing Context Window Spills
+#### 📉 Hitting Context Limits
+
+**Method 1: Use LMLocal's UI cleanup**
 If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LMLocal's cleanup feature instead of losing your work:
 * Click the **"Clear chat"** button next to the menu.
 * Choose **"Summarize and move context"** or **"Consolidate last exchange"** or **Move last prompt and response**. 
-* This will automatically compress the entire debate or pull just your final refined plan into a fresh, clean chat session, resetting your active token usage back to the baseline.
+* This will automatically compress the entire debate or pull just your final refined plan into a fresh, clean chat session, resetting model context usage back to the baseline.
+
+**Method 2: Externalize state to a file** *(Requires built-in tools enabled)*
+* Tell the model: `"Save this finalized plan to docs/plan.md"`.
+* Clear the chat to reset the context window.
+* In the new clean chat, ask the model to review or implement the plan:
+  * To refine: `"Read docs/plan.md, review it, and suggest improvements."`
+  * To implement: `"Read docs/plan.md and implement Phase 1."`
 
 ---
 
@@ -419,7 +452,7 @@ Context window accumulation can lead to high API costs or local performance drop
 * **The "Smart Context Collector" Tiering:** Don't waste your expensive cloud tokens on reading massive files or building initial context. Instead, start the session with a lighter, cheaper model (like *GPT-4o-mini* or a local *Ministral 3.x*) to read your code files, list directories, and pull together the initial workspace data. Once the heavy context is captured and a baseline draft is formed in the history, hot-swap to a premium OpenAI-compatible model (like *DeepSeek V4-Pro* or *GPT-5.5*) to run the high-level analysis and critical edits.
 * **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LMLocal continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
 * **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LMLocal to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
-* **Enable History Stripping:** If you hit a VRAM ceiling on local models, toggle **"Strip formatting from history"** in the settings. This flattens Markdown structural syntax in the background context payload, saving valuable tokens without ruining the rich text rendering in your chat UI.
+* **Enable History Whitespace Cleaning:** Toggle **"Clean whitespace in history"** in the settings. This compresses redundant spaces, tabs, and excess newlines in background turns—slightly reducing context size and saving tokens without altering your rich-text UI.
 
 ---
 
@@ -443,7 +476,7 @@ Provides fast, **single-line ghost completions** (inline grey text code suggesti
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
 
-> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot, TabNine, or any other inline suggestion tool), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **we recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
+> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
 
 #### Supported Providers & Models
 
@@ -484,8 +517,7 @@ and in the **Solution Explorer** context menu. All commands open the LM Local ch
 | **LM Local Commands → Improve Code** | Auto-sends the selected code with an improvement prompt focused on performance, readability, and C# best practices. Selects the **Improve** instruction tab. |
 | **LM Local Commands → Explain Code** | Auto-sends the selected code with a detailed explanation prompt. Selects the **Explain** instruction tab. |
 
-All editor commands are **disabled** while a chat session is running. If no text is selected,
-the entire document content is used.
+All editor commands are **disabled** while a chat session is running. If no text is selected, the entire document content is used.
 
 ---
 
@@ -590,7 +622,6 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 
 ---
 
-
 ## 🔧 Troubleshooting
 
 | Issue | Solution |
@@ -598,6 +629,9 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | **No model shown** | Ensure a model is fully loaded in the LM Studio "Server" tab. |
 | **Connection Error** | Check if the LM Studio Server is **ON** at `http://127.0.0.1:1234`. Click **`↻`** to retry. |
 | **UI Lag** | Restart the tool window or check your local machine resources (CPU/GPU). |
+| **MCP server not detected** | Verify that MCP is enabled in **MCP Extensions…** dialog, check your JSON configuration syntax, and ensure the server process or URL is accessible. |
+| **Autocompletions not showing** | Make sure autocompletions are enabled in **Autocompletions…** dialog, and that you have selected a model that supports Fill‑in‑the‑Middle (FIM) – see the list of verified models in the Auto‑Completions section. |
+| **Built‑in tools not being invoked** | Check that the global **Enable built‑in AI tools (read‑only)** and/or **Enable built‑in AI tools (write/modify)** checkboxes are ticked in Settings. Also verify that the specific tool is not disabled in the **Built‑in Tools…** dialog. |
 
 ---
 

@@ -101,6 +101,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             public AppSettings Current => new AppSettings();
             public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+            public Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         [Test]
         public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsId_WhenFoundAndEnabled()

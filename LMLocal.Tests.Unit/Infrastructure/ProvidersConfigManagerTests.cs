@@ -244,6 +244,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public AppSettings Current => new AppSettings();
             public Task<AppSettings> LoadAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
             public Task SaveAsync(AppSettings settings, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetAiToolsModeAsync(string mode, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
 #pragma warning disable 0067
             public event Action<AppSettings> SettingsChanged;
 #pragma warning restore 0067

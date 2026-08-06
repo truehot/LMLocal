@@ -102,7 +102,7 @@ namespace LMLocal.Application.ChatSessionStream
                 var messages = _history.BuildUserMessagesWithHistory(context.AdditionalPrompt);
 
                 if (_settingsManager.Current?.EnableHistoryCompression ?? false)
-                    messages = MarkdownStripper.StripMessages(messages);
+                    messages = ChatHistoryNormalizer.NormalizeMessages(messages);
 
                 var processor = _streamProcessorFactory.Create(linkedCts);
 

@@ -16,7 +16,6 @@
     OpenAllFilesAsync: async () => true,
     DiscardFileAsync: async () => true,
     AcceptFileAsync: async () => true,
-    GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
     GetInstructionsAsync: async () => {
         console.log('[mock] GetInstructionsAsync called');
         return JSON.stringify({ tabs: [] });
@@ -75,6 +74,11 @@ function __startMock() {
                 error: "LM Studio unreachable"
             }),
             SetActiveModelAsync: async (modelId, contextLength) => false,
+        };
+        window.__chatSessionOverride = {
+            GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
+            GetChatSessionsAsync: async () => JSON.stringify({ sessions: [] }),
+            GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
         };
         window.__bridgeOverride = __mockBridge;
         window.lmInit(__mockBridge);

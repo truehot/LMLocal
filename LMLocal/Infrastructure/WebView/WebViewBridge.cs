@@ -23,19 +23,44 @@ namespace LMLocal.Infrastructure.WebView
     /// </summary>
     public interface IWebViewBridge
     {
+        /// <summary>Copies the given text to the clipboard.</summary>
         Task<bool> CopyToClipboardAsync(string text);
+
+        /// <summary>Executes a prompt request and streams the response to WebView2.</summary>
         Task ExecutePromptAsync(string requestJson);
+
+        /// <summary>Resets the chat history using the specified action.</summary>
         Task<bool> ResetHistoryWithActionAsync(string action);
+
+        /// <summary>Summarizes and compacts the current chat history via the given model.</summary>
         Task<bool> SummarizeAndCompactAsync(string modelId);
-        Task<string> GetLastChatSessionAsync();
+
+        /// <summary>Stops the current text generation process and active tools.</summary>
         Task StopExecutionAsync();
+
+        /// <summary>Loads the snapshot of changed files.</summary>
         Task<bool> GetSnapshotAsync();
+
+        /// <summary>Discards (rolls back) all accepted file changes.</summary>
         Task<bool> DiscardChangesAsync();
+
+        /// <summary>Accepts (commits) all file changes.</summary>
         Task<bool> AcceptChangesAsync();
+
+        /// <summary>Opens a diff viewer for a single changed file.</summary>
         Task<bool> ReviewFileAsync(string filePath);
+
+        /// <summary>Opens diff viewers for all changed files in the JSON list.</summary>
         Task<bool> ReviewAllFilesAsync(string filePathsJson);
+
+        /// <summary>Opens all changed files from the JSON list in the editor.</summary>
         Task<bool> OpenAllFilesAsync(string filePathsJson);
+
+        /// <summary>Discards (rolls back) a single changed file.</summary>
         Task<bool> DiscardFileAsync(string filePath);
+
+        /// <summary>Accepts (commits) a single changed file.</summary>
+        Task<bool> AcceptFileAsync(string filePath);
     }
 
 
@@ -117,7 +142,6 @@ namespace LMLocal.Infrastructure.WebView
 
         /// <summary>
         /// Resets the chat history with the specified action.
-        /// Returns false if a session is running, true if successful.
         /// </summary>
         public async Task<bool> ResetHistoryWithActionAsync(string action)
         {
@@ -205,35 +229,6 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
-
-        /// <summary>
-        /// Returns the last persisted chat session.
-        /// </summary>
-        public async Task<string> GetLastChatSessionAsync()
-        {
-            try
-            {
-                var messages = await _chatHistoryManager.LoadLastSessionAsync().ConfigureAwait(false);
-                var response = new GetLastChatSessionResponse
-                {
-                    HasSession = messages.Count > 0,
-                    Messages = messages.Select(m => new ChatMessageResponse
-                    {
-                        Role = m.Role,
-                        Content = m.Content,
-                        ToolCallId = m.ToolCallId,
-                        ToolCalls = m.ToolCalls
-                    }).ToList()
-                };
-                return response.ToJson();
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error("GetLastChatSessionAsync failed", ex);
-                return new GetLastChatSessionResponse().ToJson();
-            }
-        }
-
         /// <summary>
         /// Stops the current text generation process and active tools.
         /// </summary>
@@ -263,6 +258,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Loads the snapshot of changed files.
+        /// </summary>
         public async Task<bool> GetSnapshotAsync()
         {
             try
@@ -277,6 +275,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Discards (rolls back) all accepted file changes.
+        /// </summary>
         public async Task<bool> DiscardChangesAsync()
         {
             try
@@ -291,6 +292,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Accepts (commits) all file changes.
+        /// </summary>
         public async Task<bool> AcceptChangesAsync()
         {
             try
@@ -305,6 +309,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Opens a diff viewer for a single changed file.
+        /// </summary>
         public async Task<bool> ReviewFileAsync(string filePath)
         {
             try
@@ -328,6 +335,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Opens diff viewers for all changed files in the JSON list.
+        /// </summary>
         public async Task<bool> ReviewAllFilesAsync(string filePathsJson)
         {
             try
@@ -363,6 +373,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Opens all changed files from the JSON list in the editor.
+        /// </summary>
         public async Task<bool> OpenAllFilesAsync(string filePathsJson)
         {
             try
@@ -397,6 +410,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Discards (rolls back) a single changed file.
+        /// </summary>
         public async Task<bool> DiscardFileAsync(string filePath)
         {
             try
@@ -415,6 +431,9 @@ namespace LMLocal.Infrastructure.WebView
             }
         }
 
+        /// <summary>
+        /// Accepts (commits) a single changed file.
+        /// </summary>
         public async Task<bool> AcceptFileAsync(string filePath)
         {
             try

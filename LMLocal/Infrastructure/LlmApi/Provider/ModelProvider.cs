@@ -52,7 +52,7 @@ namespace LMLocal.Infrastructure.LlmApi.Provider
         /// <summary>
         /// Github Models cloud
         /// </summary>
-        [ProviderDisplay("Github Models via Azure (cloud)")]
+        [ProviderDisplay("Deprecated!!! Github Models via Azure (cloud)")]
         GithubModelsAzure,
 
         /// <summary>

@@ -96,6 +96,46 @@ dialog {
         color: var(--strong-text);
     }
 
+/* ====== Small button variant ====== */
+.btn-small {
+    padding: 4px 10px;
+    font-size: 12px;
+    min-width: auto;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
+    height: auto;
+    font-weight: 500;
+}
+
+    .btn-small.btn-secondary {
+        background: var(--input-bg);
+        color: var(--text-color);
+        border-color: var(--border-color);
+    }
+
+    .btn-small.btn-secondary:hover {
+        background: var(--border-color);
+        border-color: var(--border-color);
+        color: var(--strong-text);
+    }
+
+    .btn-small.btn-primary {
+        background: var(--accent-color);
+        color: var(--white);
+        border-color: transparent;
+    }
+
+    .btn-small.btn-primary:hover {
+        filter: brightness(1.1);
+    }
+
     dialog button:disabled,
     .btn-primary:disabled,
     .btn-secondary:disabled {

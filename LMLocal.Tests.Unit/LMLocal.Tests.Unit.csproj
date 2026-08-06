@@ -78,7 +78,9 @@
     <Compile Include="Infrastructure\AzureModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ApiErrorParserTests.cs" />
     <Compile Include="Infrastructure\ApiRequestBuilderTests.cs" />
+    <Compile Include="Infrastructure\ChatLogSerializerTests.cs" />
     <Compile Include="Infrastructure\ChatPersistenceServiceTests.cs" />
+    <Compile Include="Infrastructure\ChatSessionControllerTests.cs" />
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
     <Compile Include="Infrastructure\InstructionsManagerTests.cs" />
@@ -96,6 +98,7 @@
     <Compile Include="Infrastructure\ProviderResolverTests.cs" />
     <Compile Include="Infrastructure\ProvidersConfigManagerTests.cs" />
     <Compile Include="Infrastructure\ServiceLifetimeTests.cs" />
+    <Compile Include="Infrastructure\SettingsControllerTests.cs" />
     <Compile Include="Infrastructure\SettingsManagerTests.cs" />
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />
     <Compile Include="Infrastructure\SystemTimeProviderTests.cs" />
@@ -115,6 +118,7 @@
     <Compile Include="InstructionsControllerTests.cs" />
     <Compile Include="Internal\ChatGenerationServiceTests.cs" />
     <Compile Include="Internal\ChatHistoryManagerTests.cs" />
+    <Compile Include="Internal\ChatHistoryNormalizerTests.cs" />
     <Compile Include="Internal\ChatSessionOrchestratorTests.cs" />
     <Compile Include="Internal\ChatSessionOrchestratorToolTests.cs" />
     <Compile Include="Internal\InternalLoggerTests.cs" />
@@ -141,7 +145,6 @@
     <Compile Include="Infrastructure\LMStudioClientAdditionalTests.cs" />
     <Compile Include="Infrastructure\SettingsManagerAdditionalTests.cs" />
     <Compile Include="Internal\HistoryCompactorTests.cs" />
-    <Compile Include="Internal\MarkdownStripperTests.cs" />
     <Compile Include="Internal\TokenSpeedCalculatorDeterministicTests.cs" />
     <Compile Include="Internal\TokenSpeedCalculatorTests.cs" />
     <Compile Include="Infrastructure\Tooling\ToolsConfigManagerTests.cs" />

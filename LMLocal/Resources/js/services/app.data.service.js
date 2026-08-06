@@ -17,6 +17,14 @@ class AppDataService {
         return await bridgeClient.getLastChatSessionAsync();
     }
 
+    async getChatSessionsAsync() {
+        return await bridgeClient.getChatSessionsAsync();
+    }
+
+    async getChatSessionByIdAsync(sessionId) {
+        return await bridgeClient.getChatSessionByIdAsync(sessionId);
+    }
+
     async setActiveModel(modelId, modelName, supportsMaxTokens, tokenMax) {
         const result = await bridgeClient.setActiveModelAsync(modelId, tokenMax || 0);
 
@@ -65,6 +73,22 @@ class AppDataService {
                     supportsMaxTokens: false
                 });
             }
+        }
+
+        return result;
+    }
+
+    async setAiToolsModeAsync(mode) {
+        const enableAiTools = mode !== 'none';
+        const enableAiWriteTools = mode === 'readwrite';
+
+        const result = await bridgeClient.setAiToolsAsync(mode);
+
+        if (result) {
+            settingsStore.setState({
+                EnableAiTools: enableAiTools,
+                EnableAiWriteTools: enableAiWriteTools
+            });
         }
 
         return result;

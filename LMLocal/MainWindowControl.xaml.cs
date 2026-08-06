@@ -121,6 +121,7 @@ namespace LMLocal
             chatBrowser.CoreWebView2.AddHostObjectToScript("mcp", ServiceConfiguration.GetService<IMcpController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("models", ServiceConfiguration.GetService<IModelsController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("autocompletions", ServiceConfiguration.GetService<IAutocompletionsController>());
+            chatBrowser.CoreWebView2.AddHostObjectToScript("chatSession", ServiceConfiguration.GetService<IChatSessionController>());
 
             chatBrowser.HorizontalAlignment = HorizontalAlignment.Stretch;
             chatBrowser.VerticalAlignment = VerticalAlignment.Stretch;

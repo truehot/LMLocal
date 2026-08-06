@@ -237,10 +237,7 @@ class ChatController {
                     this.currentAi.clear();
                     this.currentAi = null;
                 }
-                this.reset();
-                this.container?.replaceChildren();
-                this.setup();
-
+                this.resetChatUI();
                 break;
 
             case AppStatus.IDLE:
@@ -267,6 +264,17 @@ class ChatController {
         if (this.container) {
             this.container.removeEventListener('click', this._onContainerClick);
         }
+    }
+
+    /**
+     * Resets the chat UI container to a clean state, ready for a new conversation or for rendering a loaded session.
+     */
+    resetChatUI() {
+        const container = this.container;
+        if (!container) return;
+        this.reset();
+        container.replaceChildren();
+        this.setup();
     }
 
     _clearTimeouts() {

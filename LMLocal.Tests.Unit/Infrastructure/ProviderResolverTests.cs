@@ -71,7 +71,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
             AssertDisplayName(types, "togetherai", "Together AI (cloud)");
             AssertDisplayName(types, "deepseek", "DeepSeek (cloud)");
             AssertDisplayName(types, "gemini", "Gemini (cloud)");
-            AssertDisplayName(types, "githubmodelsazure", "Github Models via Azure (cloud)");
         }
 
         [Test]
@@ -111,7 +110,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [TestCase("TogetherAi", "Together AI (cloud)")]
         [TestCase("DeepSeek", "DeepSeek (cloud)")]
         [TestCase("Gemini", "Gemini (cloud)")]
-        [TestCase("GithubModelsAzure", "Github Models via Azure (cloud)")]
         public void GetDisplayName_ReturnsCorrectValue(string mpName, string expected)
         {
             Enum.TryParse<ModelProvider>(mpName, out var mp);

@@ -198,6 +198,72 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[0].Content as string, Does.Contain("Explain this code"));
         }
 
+
+        [Test]
+        public async Task LoadSessionByIdAsync_PopulatesHistoryAndForksNewSession()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            mockPersistence
+                .Setup(p => p.LoadSessionByIdAsync("sid", It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<ChatMessage>
+                {
+                    new ChatMessage("user", "q1"),
+                    new ChatMessage("assistant", "a1")
+                });
+
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+
+            var messages = await manager.LoadSessionByIdAsync("sid");
+
+            // History must contain the loaded messages (regression: AddRange was missing)
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Content, Is.EqualTo("q1"));
+            Assert.That(history[1].Content, Is.EqualTo("a1"));
+
+            // Returned list matches history
+            Assert.That(messages.Count, Is.EqualTo(2));
+
+            // Must fork into a new session (MarkNewSessionAsync called exactly once)
+            mockPersistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<System.Threading.CancellationToken>()),
+                Times.Once,
+                "Must fork a new session so continuation does not mutate the loaded session");
+        }
+
+        [Test]
+        public async Task LoadSessionByIdAsync_EmptyResult_DoesNotForkNorClear()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            mockPersistence
+                .Setup(p => p.LoadSessionByIdAsync("empty", It.IsAny<System.Threading.CancellationToken>()))
+                .ReturnsAsync(new List<ChatMessage>());
+
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            manager.AddUserMessage("existing");
+
+            var messages = await manager.LoadSessionByIdAsync("empty");
+
+            Assert.That(messages.Count, Is.EqualTo(0));
+
+            // Existing history must be untouched
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(1));
+
+            // No fork for empty result
+            mockPersistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<System.Threading.CancellationToken>()),
+                Times.Never);
+        }
+
         [Test]
         public void AddUserMessage_WithActiveDocumentContent_PreservesRoundTrip()
         {

@@ -28,7 +28,8 @@ class StatusComponent {
             liveTokenCount: document.getElementById('live-token-count'),
             tokenCountText: document.getElementById('token-number'),
             tokensSpeed: document.getElementById('tokens-speed'),
-            clearChatBtn: document.getElementById('clear-chat-btn')
+            clearChatBtn: document.getElementById('clear-chat-btn'),
+            toolsModeStatus: document.getElementById('tools-mode-status'),
         };
     }
 
@@ -256,7 +257,32 @@ class StatusComponent {
         }
     }
 
+    _updateToolsModeStatus(settingsState, prevSettingsState) {
+        if (!this.elements.toolsModeStatus) return;
+
+        if (
+            prevSettingsState &&
+            settingsState.EnableAiTools === prevSettingsState.EnableAiTools &&
+            settingsState.EnableAiWriteTools === prevSettingsState.EnableAiWriteTools
+        ) {
+            return;
+        }
+
+        const mode = settingsState.EnableAiTools
+            ? (settingsState.EnableAiWriteTools ? 'readwrite' : 'readonly')
+            : 'none';
+
+        let text = '';
+        if (mode === 'readonly') {
+            text = 'Tools: Read';
+        } else if (mode === 'readwrite') {
+            text = 'Tools: Read & Write';
+        }
+        this.elements.toolsModeStatus.textContent = text;
+    }
+
     updateSettingsState(settingsState, prevSettingsState) {
+        this._updateToolsModeStatus(settingsState, prevSettingsState);
         if (settingsState.Provider && settingsState.Provider !== prevSettingsState?.Provider && this.elements.connStatus) {
             this.elements.connStatus.title = `Provider type: ${settingsState.Provider}\nBase url: ${settingsState.LmStudioBaseUrl}`;
         }
