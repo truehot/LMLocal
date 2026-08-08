@@ -19,7 +19,7 @@ namespace LMLocal
         /// </summary>
         public MainWindow() : base(null)
         {
-            this.Caption = "LM Local Chat";
+            this.Caption = "LM Local Chat - AI Assistant";
 
             _control = new MainWindowControl();
             this.Content = _control;

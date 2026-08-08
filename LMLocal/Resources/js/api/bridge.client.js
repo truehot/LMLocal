@@ -20,6 +20,18 @@ class BridgeClient {
         return host[method](...args);
     }
 
+    _getHostController() {
+        return window.__hostOverride ?? window.chrome?.webview?.hostObjects?.host;
+    }
+
+    async _callHostController(method, ...args) {
+        const host = this._getHostController();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`Host controller method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
     _getModelsHost() {
         return window.__modelsOverride ?? window.chrome?.webview?.hostObjects?.models;
     }
@@ -86,7 +98,11 @@ class BridgeClient {
     }
 
     async copyToClipboardAsync(text) {
-        return await this._callHost("CopyToClipboardAsync", text);
+        return await this._callHostController("CopyToClipboardAsync", text);
+    }
+
+    async focusAsync() {
+        return await this._callHostController("FocusAsync");
     }
 
     _getSettingsHost() {
@@ -118,7 +134,7 @@ class BridgeClient {
 
     async testConnection(details) {
         const payload = JSON.stringify(details);
-        var result = await this._callSettings("TestConnectionAsync", payload);
+        const result = await this._callSettings("TestConnectionAsync", payload);
         return JSON.parse(result);
     }
 

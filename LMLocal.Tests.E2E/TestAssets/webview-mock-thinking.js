@@ -92,6 +92,10 @@ function __startMock() {
             GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
         };
         window.__bridgeOverride = __mockBridge;
+        window.__hostOverride = {
+            CopyToClipboardAsync: async (text) => true,
+            FocusAsync: async () => {},
+        };
         window.__settingsOverride = {
             GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),
             UpdateSettingsAsync: async (json) => true,

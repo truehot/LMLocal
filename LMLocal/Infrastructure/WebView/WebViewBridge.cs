@@ -11,7 +11,6 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.VisualStudio;
-using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
@@ -23,9 +22,6 @@ namespace LMLocal.Infrastructure.WebView
     /// </summary>
     public interface IWebViewBridge
     {
-        /// <summary>Copies the given text to the clipboard.</summary>
-        Task<bool> CopyToClipboardAsync(string text);
-
         /// <summary>Executes a prompt request and streams the response to WebView2.</summary>
         Task ExecutePromptAsync(string requestJson);
 
@@ -237,25 +233,6 @@ namespace LMLocal.Infrastructure.WebView
             InternalLogger.Info("StopExecutionAsync called");
             _sessionManager.TryStopSession();
             return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// Copies the specified text to the clipboard.
-        /// </summary>
-        public async Task<bool> CopyToClipboardAsync(string text)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(text)) return false;
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                System.Windows.Clipboard.SetText(text);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error("CopyToClipboardAsync failed", ex);
-                return false;
-            }
         }
 
         /// <summary>

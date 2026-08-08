@@ -100,21 +100,6 @@ namespace LMLocal.Infrastructure.Streaming
                         systemFingerprint: usage?.SystemFingerprint));
                     return chunks;
                 }
-
-                var refusal = firstChoice?["delta"]?["refusal"]?.ToString();
-                if (!string.IsNullOrEmpty(refusal))
-                {
-                    FlushBuffer(chunks);
-                    var usage = ExtractUsage(json);
-                    chunks.Add(new CompletionStreamChunk(
-                        refusal: refusal,
-                        totalTokens: usage?.TotalTokens,
-                        promptTokens: usage?.PromptTokens,
-                        completionTokens: usage?.CompletionTokens,
-                        reasoningTokens: usage?.ReasoningTokens,
-                        systemFingerprint: usage?.SystemFingerprint));
-                    return chunks;
-                }
             }
 
             if (chunks.Count == 0)
@@ -209,6 +194,12 @@ namespace LMLocal.Infrastructure.Streaming
             {
                 ProcessReasoningContent(reasoning, chunks);
                 return chunks;
+            }
+
+            var refusal = delta["refusal"]?.ToString();
+            if (!string.IsNullOrEmpty(refusal))
+            {
+                chunks.Add(new TextStreamChunk(refusal, ChunkKind.Content));
             }
 
             var content = delta["content"]?.ToString();

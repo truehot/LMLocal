@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using EnvDTE;
 using EnvDTE80;
 
@@ -90,7 +92,38 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         return ErrorResponse("Build was cancelled.");
 
                     var messages = new List<BuildMessage>();
-                    await CollectErrorMessagesAsync(messages, ct);
+                    string errorDetail = buildSucceeded ? null : "Build failed. See messages for details.";
+
+                    if (!buildSucceeded)
+                    {
+                        string fullOutput = await StabilizeBuildOutputAsync(dte, ct);
+
+                        if (!string.IsNullOrEmpty(fullOutput))
+                        {
+                            messages = ParseBuildOutput(fullOutput);
+                        }
+
+                        if (messages.Count == 0)
+                        {
+                            await CollectErrorMessagesAsync(messages, ct);
+                        }
+
+                        if (messages.Count == 0)
+                        {
+                            if (!string.IsNullOrEmpty(fullOutput))
+                            {
+                                var lines = fullOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                int start = Math.Max(0, lines.Length - 10);
+                                var tail = new string[Math.Min(10, lines.Length)];
+                                Array.Copy(lines, start, tail, 0, tail.Length);
+                                errorDetail = "Build failed. Last output lines:\n" + string.Join(Environment.NewLine, tail);
+                            }
+                            else
+                            {
+                                errorDetail = "Build failed. No build output available.";
+                            }
+                        }
+                    }
 
                     return new BuildSolutionResponse
                     {
@@ -98,7 +131,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         SolutionName = solutionName,
                         SolutionPath = solutionPath,
                         Messages = messages,
-                        ErrorMessage = buildSucceeded ? null : "Build failed. See messages for details."
+                        ErrorMessage = errorDetail
                     };
                 }
             }
@@ -145,6 +178,115 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
+        private static readonly Regex _buildErrorRegex = new Regex(
+            @"^(?:\d+>)?" +
+            @"(?:(?<file>[^(]+)(?:\((?<line>\d+)(?:,(?<col>\d+))?\))?\s*:\s*)?" +
+            @"(?<kind>error|warning)\s+" +
+            @"(?:(?<code>[A-Za-z]+\d+)\s*:\s*|:)" +
+            @"(?<message>.*)$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        internal static List<BuildMessage> ParseBuildOutput(string output)
+        {
+            var messages = new List<BuildMessage>();
+            if (string.IsNullOrEmpty(output)) return messages;
+
+            foreach (var line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var m = _buildErrorRegex.Match(line);
+                if (!m.Success) continue;
+                if (!string.Equals(m.Groups["kind"].Value, "error", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string message = m.Groups["message"].Value.Trim();
+                int bracket = message.LastIndexOf(" [");
+                if (bracket >= 0) message = message.Substring(0, bracket).Trim();
+                if (message.Length == 0) continue;
+
+                messages.Add(new BuildMessage
+                {
+                    File = m.Groups["file"].Value.Trim(),
+                    Line = int.TryParse(m.Groups["line"].Value, out int l) ? l : 0,
+                    Column = int.TryParse(m.Groups["col"].Value, out int c) ? c : 0,
+                    Message = message
+                });
+            }
+            return messages;
+        }
+
+
+        private static readonly string[] BuildPaneNames = { "Build", "Build Output" };
+
+        private static readonly string[] BuildPaneContentMarkers = { "Build started", "==========", "Build FAILED", "Build succeeded" };
+
+        private static readonly string[] BuildActivePaneMarkers = { "==========", "Build FAILED", "Build succeeded", "error" };
+
+        private string GetBuildOutputText(DTE2 dte)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (dte?.ToolWindows?.OutputWindow == null) return null;
+
+            try
+            {
+                foreach (OutputWindowPane pane in dte.ToolWindows.OutputWindow.OutputWindowPanes)
+                {
+                    if (pane?.Name == null) continue;
+                    string paneName = pane.Name;
+                    if (BuildPaneNames.Any(n => paneName.Equals(n, StringComparison.OrdinalIgnoreCase)))
+                    { return ReadPane(pane); }
+                }
+
+                foreach (OutputWindowPane pane in dte.ToolWindows.OutputWindow.OutputWindowPanes)
+                {
+                    if (pane?.TextDocument == null) continue;
+                    string text = ReadPane(pane);
+                    if (text != null && BuildPaneContentMarkers.Any(text.Contains))
+                        return text;
+                }
+
+                var active = dte.ToolWindows.OutputWindow.ActivePane;
+                string probe = active?.TextDocument != null ? ReadPane(active) : null;
+                if (probe != null && BuildActivePaneMarkers.Any(probe.Contains))
+                    return probe;
+
+                return null;
+            }
+            catch { return null; }
+        }
+
+        private static string ReadPane(OutputWindowPane pane)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            var doc = pane.TextDocument;
+            return doc?.StartPoint.CreateEditPoint().GetText(doc.EndPoint.CreateEditPoint());
+        }
+
+
+        private async Task<string> StabilizeBuildOutputAsync(DTE2 dte, CancellationToken ct)
+        {
+            await Task.Delay(200, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
+
+            string previous = GetBuildOutputText(dte);
+            if (string.IsNullOrEmpty(previous)) return null;
+
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                await Task.Delay(500, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
+
+                string current = GetBuildOutputText(dte);
+                if (string.IsNullOrEmpty(current)) continue;
+                if (previous.Length == current.Length)
+                    return current;
+                previous = current;
+            }
+            return previous;
+        }
+
         private static BuildSolutionResponse ErrorResponse(string message)
         {
             return new BuildSolutionResponse
@@ -170,7 +312,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Builds the currently opened Visual Studio solution asynchronously. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. Example success: {\"success\":true,\"solution_name\":\"DevApp\",\"solution_path\":\"C:\\dev\\DevApp.sln\",\"error_message\":null,\"build_messages\":[]}..",
+                Description = "Builds the currently opened Visual Studio solution asynchronously. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. ",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

@@ -27,12 +27,6 @@ namespace LMLocal.Core.Models
         public TokenUsageMetadata TokenUsage { get; set; }
 
         /// <summary>
-        /// If FinishReason is "content_filter" or model refused to respond, contains the refusal reason.
-        /// Null if no refusal occurred.
-        /// </summary>
-        public string RefusalReason { get; set; }
-
-        /// <summary>
         /// Server-side fingerprint of the model configuration.
         /// Useful for detecting backend changes that might affect determinism during testing.
         /// Null if not provided by the server.

@@ -197,8 +197,10 @@ namespace LMLocal.Application.ChatSessionStream
 
                                     else if (chunk is CompletionStreamChunk completion)
                                     {
-                                        if (!string.IsNullOrEmpty(completion.FinishReason))
-                                            result.FinishReason = completion.FinishReason;
+                                        if (!string.IsNullOrEmpty(completion.FinishReason) && string.IsNullOrEmpty(result.FinishReason))
+                                        {
+                                            result.FinishReason = completion.FinishReason; //register once
+                                        }
 
                                         if (completion.TotalTokens.HasValue)
                                             result.TokenUsage.TotalTokens = completion.TotalTokens;
@@ -211,9 +213,6 @@ namespace LMLocal.Application.ChatSessionStream
 
                                         if (completion.ReasoningTokens.HasValue)
                                             result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
-
-                                        if (!string.IsNullOrEmpty(completion.Refusal))
-                                            result.RefusalReason = completion.Refusal;
 
                                         if (!string.IsNullOrEmpty(completion.SystemFingerprint))
                                             result.SystemFingerprint = completion.SystemFingerprint;

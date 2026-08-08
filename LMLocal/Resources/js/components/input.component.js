@@ -1,4 +1,6 @@
-﻿import { UIText, Config } from '@app/constants/app.globals.js';
+﻿import bridgeClient from '@app/api/bridge.client.js';
+
+import { UIText, Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
@@ -37,6 +39,8 @@ class InputComponent {
             userInput: document.getElementById('userInput'),
             mainBtn: document.getElementById('mainBtn'),
             contextToggleBtn: document.getElementById('contextToggleBtn'),
+            openFileBtn: document.getElementById('openFileBtn'),
+            attachFileInput: document.getElementById('attachFileInput'),
             dropdown: document.getElementById('actionDropdown'),
             dropdownTrigger: document.querySelector('.dropdown-trigger'),
             selectedOption: document.getElementById('selectedOption'),
@@ -164,40 +168,8 @@ class InputComponent {
         const dt = e.dataTransfer;
 
         if (dt.files && dt.files.length > 0) {
-            const files = Array.from(dt.files).slice(0, Config.DRAG_DROP_MAX_FILES);
-            const results = [];
-
-            for (const file of files) {
-                const ext = file.name.split('.').pop()?.toLowerCase();
-                if (!ext) continue;
-
-                if (!Config.DRAG_DROP_ALLOWED_EXTENSIONS.test('.' + ext)) {
-                    console.warn(`[DragDrop] Skipped unsupported file: ${file.name}`);
-                    continue;
-                }
-
-                if (file.size > Config.DRAG_DROP_MAX_FILE_SIZE_BYTES) {
-                    console.warn(`[DragDrop] Skipped oversized file: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
-                    continue;
-                }
-
-                try {
-                    const text = await file.text();
-                    results.push(wrapAsCodeFence(file.name, text));
-                } catch (err) {
-                    console.warn(`[DragDrop] Failed to read file: ${file.name}`, err);
-                }
-            }
-
-            if (results.length === 0) return;
-
-            const el = this.elements.userInput;
-            if (!el) return;
-
-            const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
-            el.value += separator + results.join('\n');
-            this._handleInput();
-
+            await this._appendFilesAsMarkdown(Array.from(dt.files));
+            this._focusUserInput();
             return;
         }
 
@@ -210,6 +182,70 @@ class InputComponent {
             this._handleInput();
         }
     };
+
+    _handleOpenFileClick = (e) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        if (this.elements.attachFileInput) {
+            this.elements.attachFileInput.click();
+        }
+    };
+
+    _handleAttachFileChange = async (e) => {
+        const input = e.target;
+        const files = input && input.files ? Array.from(input.files) : [];
+        if (files.length > 0) {
+            await this._appendFilesAsMarkdown(files);
+        }
+        if (input) {
+            input.value = '';
+        }
+        this._focusUserInput();
+    };
+
+    _appendFilesAsMarkdown = async (files) => {
+        const results = [];
+
+        for (const file of files.slice(0, Config.DRAG_DROP_MAX_FILES)) {
+            const ext = file.name.split('.').pop()?.toLowerCase();
+            if (!ext) continue;
+
+            if (!Config.DRAG_DROP_ALLOWED_EXTENSIONS.test('.' + ext)) {
+                console.warn(`[FileAttach] Skipped unsupported file: ${file.name}`);
+                continue;
+            }
+
+            if (file.size > Config.DRAG_DROP_MAX_FILE_SIZE_BYTES) {
+                console.warn(`[FileAttach] Skipped oversized file: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+                continue;
+            }
+
+            try {
+                const text = await file.text();
+                results.push(wrapAsCodeFence(file.name, text));
+            } catch (err) {
+                console.warn(`[FileAttach] Failed to read file: ${file.name}`, err);
+            }
+        }
+
+        if (results.length === 0) return;
+
+        const el = this.elements.userInput;
+        if (!el) return;
+
+        const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
+        el.value += separator + results.join('\n');
+        this._handleInput();
+    };
+
+    _focusUserInput() {
+        const el = this.elements.userInput;
+        if (!el || el.disabled) return;
+
+        bridgeClient.focusAsync().catch((e) => { console.error(e); });
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        el.scrollTop = el.scrollHeight;
+    }
 
     _attachDragDrop() {
         const wrapper = this.elements.inputWrapper;
@@ -249,6 +285,12 @@ class InputComponent {
         userInput.addEventListener('keydown', this._handleKeydown);
         mainBtn.addEventListener('click', this._handleClick);
         contextToggleBtn.addEventListener('click', this._handleContextToggle);
+        if (this.elements.openFileBtn) {
+            this.elements.openFileBtn.addEventListener('click', this._handleOpenFileClick);
+        }
+        if (this.elements.attachFileInput) {
+            this.elements.attachFileInput.addEventListener('change', this._handleAttachFileChange);
+        }
 
         dropdownTrigger.addEventListener('click', this._handleDropdownToggle);
         dropdown.addEventListener('click', this._handleDropdownItemClick);
@@ -273,6 +315,12 @@ class InputComponent {
         }
         if (contextToggleBtn) {
             contextToggleBtn.removeEventListener('click', this._handleContextToggle);
+        }
+        if (this.elements.openFileBtn) {
+            this.elements.openFileBtn.removeEventListener('click', this._handleOpenFileClick);
+        }
+        if (this.elements.attachFileInput) {
+            this.elements.attachFileInput.removeEventListener('change', this._handleAttachFileChange);
         }
         if (dropdownTrigger) {
             dropdownTrigger.removeEventListener('click', this._handleDropdownToggle);
@@ -305,6 +353,8 @@ class InputComponent {
         this.elements.userInput.disabled = !canSend;
         this.elements.contextToggleBtn.disabled = !canSend;
         this.elements.mainBtn.disabled = isStopping;
+        if (this.elements.openFileBtn) this.elements.openFileBtn.disabled = !canSend;
+        if (this.elements.attachFileInput) this.elements.attachFileInput.disabled = !canSend;
 
         const buttonText = isBusy
             ? UIText.BUTTON_STOP
@@ -329,7 +379,7 @@ class InputComponent {
     }
 
     _initResizer() {
-        const resizer = document.getElementById('drag-resizer');
+        const resizer = document.getElementById('input-drag-resizer');
         if (!resizer) return;
         this._resizerBound.down = this._onResizerMouseDown.bind(this);
         resizer.addEventListener('mousedown', this._resizerBound.down);
@@ -346,7 +396,7 @@ class InputComponent {
 
         wrapper.classList.remove('expanded-full');
 
-        const resizer = document.getElementById('drag-resizer');
+        const resizer = document.getElementById('input-drag-resizer');
         if (resizer) resizer.classList.add('is-resizing');
         document.body.style.cursor = 'ns-resize';
         document.body.style.userSelect = 'none';
@@ -371,7 +421,7 @@ class InputComponent {
     _onResizerMouseUp() {
         this._resizeState.active = false;
 
-        const resizer = document.getElementById('drag-resizer');
+        const resizer = document.getElementById('input-drag-resizer');
         if (resizer) resizer.classList.remove('is-resizing');
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
@@ -383,7 +433,7 @@ class InputComponent {
     }
 
     _destroyResizer() {
-        const resizer = document.getElementById('drag-resizer');
+        const resizer = document.getElementById('input-drag-resizer');
         if (resizer && this._resizerBound.down)
             resizer.removeEventListener('mousedown', this._resizerBound.down);
         if (this._resizerBound.move)

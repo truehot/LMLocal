@@ -106,6 +106,7 @@
     <Compile Include="Infrastructure\TogetherAiModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFileTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\DeleteFileTests.cs" />

@@ -108,14 +108,14 @@ public class TokenAndHighlightTests : AppTestBase
         // Read the displayed code text to compare later.
         var displayedCode = await codeElem.Nth(0).EvaluateAsync<string>("el => el.textContent");
 
-        // Prepare bridge override to capture the text passed to CopyToClipboardAsync.
+        // Prepare host controller override to capture the text passed to CopyToClipboardAsync.
         await Page.EvaluateAsync<object>(@"() => {
             window.__lastCopied = null;
-            const orig = window.__bridgeOverride?.CopyToClipboardAsync;
+            const orig = window.__hostOverride?.CopyToClipboardAsync;
             if (orig) {
-                window.__bridgeOverride.CopyToClipboardAsync = async (t) => { window.__lastCopied = t; return await orig(t); };
+                window.__hostOverride.CopyToClipboardAsync = async (t) => { window.__lastCopied = t; return await orig(t); };
             } else {
-                window.__bridgeOverride = { CopyToClipboardAsync: async (t) => { window.__lastCopied = t; return true; } };
+                window.__hostOverride = { CopyToClipboardAsync: async (t) => { window.__lastCopied = t; return true; } };
             }
         }");
 

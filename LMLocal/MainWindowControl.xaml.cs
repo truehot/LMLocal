@@ -114,6 +114,15 @@ namespace LMLocal
             var bridge = webViewBridgeFactory.CreateBridge(chatBrowser.CoreWebView2);
             chatBrowser.CoreWebView2.AddHostObjectToScript("bridge", bridge);
 
+            var hostController = ServiceConfiguration.GetService<IWebViewHostController>();
+            hostController.ConfigureFocus(async () =>
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                chatBrowser.Focus();
+                await chatBrowser.CoreWebView2.ExecuteScriptAsync("document.getElementById('userInput')?.focus()");
+            });
+            chatBrowser.CoreWebView2.AddHostObjectToScript("host", hostController);
+
             chatBrowser.CoreWebView2.AddHostObjectToScript("instructions", ServiceConfiguration.GetService<IInstructionsController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("providers", ServiceConfiguration.GetService<IProvidersController>());
             chatBrowser.CoreWebView2.AddHostObjectToScript("tools", ServiceConfiguration.GetService<IToolsController>());

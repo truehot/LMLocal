@@ -2,6 +2,8 @@ import { createCallback } from '@app/lib/callback.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 
 class ChangesPanelComponent {
+    static RESIZE_MIN = 80;
+    static RESIZE_MAX = 500;
     constructor() {
         this.panelElement = null;
         this.headerTrigger = null;
@@ -16,6 +18,8 @@ class ChangesPanelComponent {
         this._viewMode = 'list';// 'list' | 'tree'
         this._cachedFiles = [];
         this._processingCounter = 0;
+        this._resizeState = { active: false, startY: 0, startHeight: 0 };
+        this._resizerBound = { down: null, move: null, up: null };
         this.onDiscardAll = createCallback();
         this.onAcceptAll = createCallback();
         this.onOpenAll = createCallback();
@@ -51,10 +55,12 @@ class ChangesPanelComponent {
         }
 
         this._attachEvents();
+        this._initResizer();
         this._updateUiState();
     }
 
     reset() {
+        this._destroyResizer();
         this._detachEvents();
         this.panelElement = null;
         this.headerTrigger = null;
@@ -93,6 +99,80 @@ class ChangesPanelComponent {
         if (this.acceptAllBtn) this.acceptAllBtn.removeEventListener('click', this._handleAcceptAll);
         if (this.toggleViewModeBtn) this.toggleViewModeBtn.removeEventListener('click', this._toggleViewMode);
         if (this.filesList) this.filesList.removeEventListener('click', this._handleFileListClick);
+    }
+
+    _initResizer() {
+        const resizer = this.panelElement
+            ? this.panelElement.querySelector('#changes-panel-drag-resizer')
+            : null;
+        if (!resizer) return;
+        this._resizerBound.down = this._onResizerMouseDown.bind(this);
+        resizer.addEventListener('mousedown', this._resizerBound.down);
+    }
+
+    _onResizerMouseDown(e) {
+        if (!this._isExpanded) return;
+        const body = this.panelElement.querySelector('.changes-body');
+        if (!body) return;
+
+        this._resizeState.active = true;
+        this._resizeState.startY = e.clientY;
+        this._resizeState.startHeight = body.getBoundingClientRect().height;
+
+        const resizer = this.panelElement.querySelector('#changes-panel-drag-resizer');
+        if (resizer) resizer.classList.add('is-resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+
+        this._resizerBound.move = this._onResizerMouseMove.bind(this);
+        this._resizerBound.up = this._onResizerMouseUp.bind(this);
+        document.addEventListener('mousemove', this._resizerBound.move);
+        document.addEventListener('mouseup', this._resizerBound.up);
+    }
+
+    _onResizerMouseMove(e) {
+        if (!this._resizeState.active) return;
+
+        const deltaY = e.clientY - this._resizeState.startY;
+        const newHeight = Math.min(
+            ChangesPanelComponent.RESIZE_MAX,
+            Math.max(ChangesPanelComponent.RESIZE_MIN, this._resizeState.startHeight - deltaY)
+        );
+
+        const body = this.panelElement.querySelector('.changes-body');
+        if (body) {
+            body.style.setProperty('height', `${newHeight}px`);
+            body.style.setProperty('max-height', `${newHeight}px`);
+        }
+    }
+
+    _onResizerMouseUp() {
+        this._resizeState.active = false;
+
+        const resizer = this.panelElement
+            ? this.panelElement.querySelector('#changes-panel-drag-resizer')
+            : null;
+        if (resizer) resizer.classList.remove('is-resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+
+        document.removeEventListener('mousemove', this._resizerBound.move);
+        document.removeEventListener('mouseup', this._resizerBound.up);
+        this._resizerBound.move = null;
+        this._resizerBound.up = null;
+    }
+
+    _destroyResizer() {
+        const resizer = this.panelElement
+            ? this.panelElement.querySelector('#changes-panel-drag-resizer')
+            : null;
+        if (resizer && this._resizerBound.down)
+            resizer.removeEventListener('mousedown', this._resizerBound.down);
+        if (this._resizerBound.move)
+            document.removeEventListener('mousemove', this._resizerBound.move);
+        if (this._resizerBound.up)
+            document.removeEventListener('mouseup', this._resizerBound.up);
+        this._resizerBound = { down: null, move: null, up: null };
     }
 
     _updateUiState() {
@@ -161,6 +241,11 @@ class ChangesPanelComponent {
             this.panelElement.classList.add('hidden');
             this._isExpanded = false;
             this.panelElement.classList.remove('expanded');
+            const body = this.panelElement.querySelector('.changes-body');
+            if (body) {
+                body.style.removeProperty('height');
+                body.style.removeProperty('max-height');
+            }
         }
 
         this._renderFiles();

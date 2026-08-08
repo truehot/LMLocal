@@ -27,7 +27,7 @@ namespace LMLocal.Core.Models
         ToolCallRaw,
 
         /// <summary>
-        /// Completion metadata: finish_reason, token usage, refusal.
+        /// Completion metadata: finish_reason, token usage.
         /// </summary>
         Completion,
 
@@ -161,11 +161,6 @@ namespace LMLocal.Core.Models
         public int? ReasoningTokens { get; }
 
         /// <summary>
-        /// Text containing model's refusal reason if the model declined to respond.
-        /// </summary>
-        public string Refusal { get; }
-
-        /// <summary>
         /// Server-side fingerprint of the model configuration.
         /// </summary>
         public string SystemFingerprint { get; }
@@ -176,7 +171,6 @@ namespace LMLocal.Core.Models
             int? promptTokens = null,
             int? completionTokens = null,
             int? reasoningTokens = null,
-            string refusal = null,
             string systemFingerprint = null)
             : base(ChunkKind.Completion)
         {
@@ -185,14 +179,12 @@ namespace LMLocal.Core.Models
             PromptTokens = promptTokens;
             CompletionTokens = completionTokens;
             ReasoningTokens = reasoningTokens;
-            Refusal = refusal;
             SystemFingerprint = systemFingerprint;
         }
 
         public override bool IsEmpty =>
             string.IsNullOrEmpty(FinishReason) &&
             !TotalTokens.HasValue &&
-            string.IsNullOrEmpty(Refusal) &&
             string.IsNullOrEmpty(SystemFingerprint);
     }
 

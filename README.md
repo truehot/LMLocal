@@ -49,7 +49,7 @@
 - [MCP Configuration](#how-to-configure-mcp-servers)
 - [Troubleshooting](#troubleshooting)
 - [Data & Configuration](#data--configuration)
-- [License & Third‑Party](#license--third-party)
+- [License & Compliance & Third-Party](#license--compliance--third-party)
 
 ---
 
@@ -143,6 +143,7 @@ To use LMLocal, you need:
   * *Auto-turn off:* The button automatically deactivates after the request is sent, as the document becomes part of the active chat history.
   * *UI & Logs:* The attached file content is kept hidden to avoid cluttering the chat UI, but it is tracked and visible in the extension logs.
 * **Drag and Drop:** You can drag and drop a text file (e.g., .txt, .md, .csv) directly into the chat window text input – its content will be loaded automatically.
+* **Attach Files (Browse file):** Pick one or more text files from disk; their contents are inserted into the chat input code blocks (same rules as drag & drop).
 * **Context Menu:** Right‑click in editor window or solution explorer and choose "Send to LM Local" – this adds content from the clipboard or a selected file to the conversation.
 * ⏹️ **Stop** – Cancel an active generation.
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
@@ -165,7 +166,9 @@ To use LMLocal, you need:
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
 - ⌨️ **AI Inline Autocompletions** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
 - 📄 **Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
+- ↕️ **Resizable Panels** – Drag the grip above the input or above the Changes panel to adjust their height.
 - 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
+
 
 **Context & Solution Awareness**
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
@@ -632,6 +635,8 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | **MCP server not detected** | Verify that MCP is enabled in **MCP Extensions…** dialog, check your JSON configuration syntax, and ensure the server process or URL is accessible. |
 | **Autocompletions not showing** | Make sure autocompletions are enabled in **Autocompletions…** dialog, and that you have selected a model that supports Fill‑in‑the‑Middle (FIM) – see the list of verified models in the Auto‑Completions section. |
 | **Built‑in tools not being invoked** | Check that the global **Enable built‑in AI tools (read‑only)** and/or **Enable built‑in AI tools (write/modify)** checkboxes are ticked in Settings. Also verify that the specific tool is not disabled in the **Built‑in Tools…** dialog. |
+| **Response blocked by content filter** | Rephrase the request. |
+| **Response truncated - token limit reached** | Increase Context Length in LM Studio model settings or split the task into smaller parts. |
 
 ---
 
@@ -643,9 +648,10 @@ LMLocal keeps things simple and stores your preferences locally. Configuration f
 
 ---
 
-## 📜 License & Third-Party
+## 📜 License & Compliance & Third-Party
 
 - **License:** MIT License. See [LICENSE.txt](./LICENSE.txt) for details.
+- **Compliance:** See [COMPLIANCE.md](./COMPLIANCE.md) for EU AI Act and data handling information
 - **Components:**
   - `marked` v15.0.12 (MIT)
   - `highlight.js` v11.9.0 (BSD-3-Clause) 

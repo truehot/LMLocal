@@ -107,6 +107,7 @@
     </div>
 
     <div id="global-changes-panel" class="changes-panel-component hidden">
+        <div id="changes-panel-drag-resizer" title="Drag to resize"></div>
         <div class="changes-header" id="changes-header-trigger">
             <div class="header-left">
                 <span class="accordion-arrow">&#9656;</span>
@@ -133,7 +134,7 @@
 
     <div class="input-container">
         <div class="input-wrapper">
-            <div id="drag-resizer" title="Drag to resize"></div>
+            <div id="input-drag-resizer" title="Drag to resize"></div>
             <textarea id="userInput" placeholder="Ask LM Local..." rows="1" autofocus></textarea>
             <div class="input-footer">
                 <div class="input-footer-left">
@@ -153,9 +154,15 @@
                     </div>
                 </div>
                 <div class="input-footer-right">
-                    <button id="contextToggleBtn" class="btn-secondary" title="Include context from active window">
+                    <button id="openFileBtn" class="btn-secondary" title="Browse file" style="padding:2px">
+                        <svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M2 3.5A1.5 1.5 0 0 0 .5 5v6A1.5 1.5 0 0 0 2 12.5h12a1.5 1.5 0 0 0 1.5-1.5V6.5A1.5 1.5 0 0 0 14 5H8.707L7.354 3.646A.5.5 0 0 0 7 3.5H2zM1.5 5a.5.5 0 0 1 .5-.5h4.793l1 1A.5.5 0 0 0 8.146 6H14a.5.5 0 0 1 .5.5v.5h-13V5zm0 2h13v4a.5.5 0 0 1-.5.5H2a.5.5 0 0 1-.5-.5V7z" />
+                        </svg>
+                    </button>
+                    <button id="contextToggleBtn" class="btn-secondary" title="Include context from active window" style="padding:2px">
                         <span class="icon">+</span>
                     </button>
+                    <input type="file" id="attachFileInput" hidden multiple accept=".cs,.json,.js,.ts,.html,.css,.md,.xml,.txt,.yaml,.yml,.py,.java,.cpp,.c,.h,.sql,.env,.config,.ini,.log,.sh,.bat,.ps1,.rb,.go,.rs,.php,.vue,.svelte,.scss,.less">
                     <button id="mainBtn">Send</button>
                 </div>
             </div>
@@ -231,6 +238,9 @@
                     <label for="LmStudioBaseUrl" class="settings-label">API base URL</label>
                     <span class="settings-description">
                         Base URL of your local or remote LLM server.
+                        <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
+                            Sending requests to external endpoints (non-localhost) will transmit your prompts and data to that provider. Make sure you trust their privacy policy.
+                        </span>
                     </span>
                     <div class="input-with-button">
                         <input type="url" id="base-url-input" name="LmStudioBaseUrl" data-setting="LmStudioBaseUrl" placeholder="http://localhost:1234" required pattern="https?://.+">
@@ -337,7 +347,7 @@
                         <input type="checkbox" data-setting="EnableChatLogging">
                         <span class="checkbox-content-wrapper">
                             <span class="checkbox-title">Save chat history</span>
-                            <span class="checkbox-description">Saves all conversations to disk. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code></span>
+                            <span class="checkbox-description">Saves all conversations to disk. Required for session recovery. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code></span>
                         </span>
                     </label>
                 </div>
@@ -596,6 +606,9 @@
                         <label for="customBaseUrl" class="settings-label">API base URL</label>
                         <span class="settings-description">
                             The full endpoint URL for the API.
+                            <span style="display: block; margin-top: 6px; opacity: 0.8; font-size: 1em; font-style: italic;">
+                                Sending requests to external endpoints (non-localhost) will transmit your prompts and data to that provider. Make sure you trust their privacy policy.
+                            </span>
                         </span>
                         <div class="input-with-button">
                             <input type="url" data-setting="customBaseUrl" name="customBaseUrl" placeholder="https://api.openai.com/" required pattern="https?://.+">

@@ -265,6 +265,10 @@ function __startMock() {
             GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
         };
         window.__bridgeOverride = __mockBridge;
+        window.__hostOverride = {
+            CopyToClipboardAsync: async (text) => true,
+            FocusAsync: async () => {},
+        };
         window.lmInit(__mockBridge);
     } else {
         setTimeout(__startMock, 10);

@@ -194,4 +194,78 @@ public partial class InputTests : AppTestBase
         // Content should still be there (Shift+Enter doesn't send)
         await Expect(userInput).ToHaveValueAsync("Hello\n");
     }
+
+    [Test]
+    [Category("Input")]
+    public async Task Input_AttachFile_AppendsMarkdownToTextarea()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        var userInput = Page.Locator("#userInput");
+        var attachFileInput = Page.Locator("#attachFileInput");
+
+        // A small text file to attach
+        var filePath = Path.Combine(Path.GetTempPath(), "lm-local-e2e-sample.cs");
+        await File.WriteAllTextAsync(filePath, "public class Sample { }\n");
+
+        try
+        {
+            // Move focus away from the textarea first, to simulate the focus loss
+            // caused by the native OS file dialog when clicking the browse button.
+            await Page.Locator("#mainBtn").FocusAsync();
+            await Expect(userInput).Not.ToBeFocusedAsync();
+
+            // Simulate picking a file via the hidden input (same as clicking the browse button)
+            await attachFileInput.SetInputFilesAsync(filePath);
+
+            // The textarea should now contain the file wrapped in a markdown code fence
+            var value = await userInput.InputValueAsync();
+            Assert.That(value, Does.Contain("```csharp"));
+            Assert.That(value, Does.Contain("// lm-local-e2e-sample.cs"));
+            Assert.That(value, Does.Contain("public class Sample { }"));
+
+            // Focus must be restored to the textarea after inserting the file content
+            await Expect(userInput).ToBeFocusedAsync();
+
+            // Caret should be placed at the end, ready for further typing
+            var caretAtEnd = await userInput.EvaluateAsync<int>(
+                "(el) => el.selectionStart === el.selectionEnd && el.selectionEnd === el.value.length ? 1 : 0");
+            Assert.That(caretAtEnd, Is.EqualTo(1));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Test]
+    [Category("Input")]
+    public async Task Input_AttachFile_DisabledWhenBusy()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        var openFileBtn = Page.Locator("#openFileBtn");
+        var attachFileInput = Page.Locator("#attachFileInput");
+
+        // Enabled by default (app is idle)
+        await Expect(openFileBtn).ToBeEnabledAsync();
+        await Expect(attachFileInput).ToBeEnabledAsync();
+
+        // Simulate busy state via store so controls get disabled
+        await Page.EvaluateAsync("() => { " +
+            "Promise.all([ " +
+            "  import('/js/store/app.store.js'), " +
+            "  import('/js/store/app.status.js') " +
+            "]).then(([storeMod, statusMod]) => { " +
+            "  storeMod.default.setState({ status: statusMod.AppStatus.STREAMING }); " +
+            "}); }");
+        await Task.Delay(200);
+
+        await Expect(openFileBtn).ToBeDisabledAsync();
+        await Expect(attachFileInput).ToBeDisabledAsync();
+    }
 }

@@ -35,11 +35,7 @@ namespace LMLocal.Infrastructure.WebView
         /// Null if model doesn't support reasoning or none was used.
         /// </summary>
         public int? ReasoningTokens { get; set; }
-
-        /// <summary>
-        /// Refusal reason if model refused to respond (safety, policy, etc).
-        /// Null if no refusal occurred.
-        /// </summary>
-        public string RefusalReason { get; set; }
     }
 }
+
+

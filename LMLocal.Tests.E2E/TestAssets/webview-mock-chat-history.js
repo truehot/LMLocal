@@ -186,6 +186,10 @@ function __startMock() {
             },
         };
         window.__bridgeOverride = __mockBridge;
+        window.__hostOverride = {
+            CopyToClipboardAsync: async (text) => true,
+            FocusAsync: async () => {},
+        };
         window.lmInit(__mockBridge);
     } else {
         console.log('[mock] lmInit not ready, retrying...');

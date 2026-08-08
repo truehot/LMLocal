@@ -403,5 +403,58 @@ namespace LMLocal.Tests.Unit
                     It.IsAny<IReadOnlyList<ToolCallRecord>>()),
                 Times.Never);
         }
+
+        [Test]
+        public async Task GenerateStreamAsync_IncompleteFinishReason_DoesNotScheduleTools()
+        {
+            var messages = new List<ChatMessage>();
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
+
+            var mockStream = new MemoryStream();
+            var mockResponse = new System.Net.Http.HttpResponseMessage();
+            var mockRequest = new System.Net.Http.HttpRequestMessage();
+            var mockContent = new System.Net.Http.StringContent("");
+            var streamingResponse = new StreamingResponse(mockStream, mockResponse, mockRequest, mockContent);
+            _clientMock.Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(streamingResponse);
+
+            // Processor returns an incomplete generation ("length") with tool calls that must NOT be scheduled
+            _mockProcessor.Setup(p => p.ProcessStreamAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>(),
+                    It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(), It.IsAny<int>()))
+                .ReturnsAsync(new StreamCompletionResult
+                {
+                    ContentResponse = "partial response",
+                    FinishReason = "length",
+                    ToolCalls = new List<ToolCallRecord>
+                    {
+                        new ToolCallRecord { CallId = "c1", FunctionName = "search", ArgumentsJson = "{}" }
+                    }.AsReadOnly()
+                });
+
+            var context = new GenerateStreamContext { Prompt = "query", ModelId = null };
+            Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
+
+            var onCompleteCalled = false;
+            await _service.GenerateStreamAsync(context, null, onChunk, completion =>
+            {
+                onCompleteCalled = true;
+                Assert.That(completion.FinishReason, Is.EqualTo("length"));
+                return Task.CompletedTask;
+            }, CancellationToken.None);
+
+            Assert.That(onCompleteCalled, Is.True);
+
+            // Incomplete generation: tool round must NOT be scheduled
+            _historyMock.Verify(h => h.SetPendingAssistant(
+                    It.IsAny<string>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()),
+                Times.Never);
+
+            // The partial content (with the note appended) is saved as a single assistant message
+            _historyMock.Verify(h => h.AddAssistantMessage(
+                    It.Is<string>(s => s.Contains("partial response")),
+                    It.Is<IReadOnlyList<ToolCallRecord>>(tc => tc == null)),
+                Times.Once);
+        }
     }
 }

@@ -332,15 +332,16 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ExtractDeltas_ReturnsCompletion_WithRefusalFromDelta()
+        public void ExtractDeltas_ReturnsContentChunk_ForRefusalFromDelta()
         {
             var json = "data: {\"choices\":[{\"delta\":{\"refusal\":\"I refuse\"}}]}";
             var results = _parser.ExtractDeltas(json);
             Assert.That(results, Is.Not.Empty);
             var result = results[0];
-            Assert.That(result is CompletionStreamChunk, Is.True);
-            var c = (CompletionStreamChunk)result;
-            Assert.That(c.Refusal, Is.EqualTo("I refuse"));
+            Assert.That(result is TextStreamChunk, Is.True);
+            var chunk = (TextStreamChunk)result;
+            Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Content));
+            Assert.That(chunk.Text, Is.EqualTo("I refuse"));
         }
 
         [Test]
@@ -375,18 +376,41 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void ExtractDeltas_ReturnsCompletion_WithUsageAndRefusalInSameChunk()
+        public void ExtractDeltas_ReturnsContentChunk_ForRefusalAndUsageInSameChunk()
         {
             var json = "data: {\"choices\":[{\"delta\":{\"refusal\":\"I cannot do that\"}}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":1,\"total_tokens\":11}}";
             var results = _parser.ExtractDeltas(json);
             Assert.That(results, Is.Not.Empty);
             var result = results[0];
-            Assert.That(result is CompletionStreamChunk, Is.True);
-            var c = (CompletionStreamChunk)result;
-            Assert.That(c.Refusal, Is.EqualTo("I cannot do that"));
-            Assert.That(c.TotalTokens, Is.EqualTo(11));
-            Assert.That(c.PromptTokens, Is.EqualTo(10));
-            Assert.That(c.CompletionTokens, Is.EqualTo(1));
+            Assert.That(result is TextStreamChunk, Is.True);
+            var chunk = (TextStreamChunk)result;
+            Assert.That(chunk.Kind, Is.EqualTo(ChunkKind.Content));
+            Assert.That(chunk.Text, Is.EqualTo("I cannot do that"));
+        }
+
+        [Test]
+        public void ExtractDeltas_AccumulatesMultiChunkRefusal_AsContent()
+        {
+            // Multi-token refusal: each fragment is a separate TextStreamChunk(Content),
+            // which StreamProcessor accumulates into fullResponse.
+            var r1 = _parser.ExtractDeltas(@"data: {""choices"":[{""delta"":{""refusal"":""I'm sorry,""}}]}");
+            var r2 = _parser.ExtractDeltas(@"data: {""choices"":[{""delta"":{""refusal"":"" I can't""}}]}");
+            var r3 = _parser.ExtractDeltas(@"data: {""choices"":[{""delta"":{""refusal"":"" help.""}}]}");
+
+            Assert.That(r1.Count, Is.EqualTo(1));
+            Assert.That(r2.Count, Is.EqualTo(1));
+            Assert.That(r3.Count, Is.EqualTo(1));
+
+            Assert.That(r1[0], Is.TypeOf<TextStreamChunk>());
+            Assert.That(r2[0], Is.TypeOf<TextStreamChunk>());
+            Assert.That(r3[0], Is.TypeOf<TextStreamChunk>());
+
+            var text = string.Concat(
+                ((TextStreamChunk)r1[0]).Text,
+                ((TextStreamChunk)r2[0]).Text,
+                ((TextStreamChunk)r3[0]).Text);
+
+            Assert.That(text, Is.EqualTo("I'm sorry, I can't help."));
         }
 
         [Test]

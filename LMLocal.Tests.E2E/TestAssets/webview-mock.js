@@ -16,6 +16,7 @@
     OpenAllFilesAsync: async () => true,
     DiscardFileAsync: async () => true,
     AcceptFileAsync: async () => true,
+    FocusAsync: async () => {},
     GetInstructionsAsync: async () => {
         console.log('[mock] GetInstructionsAsync called');
         return JSON.stringify({ tabs: [] });
@@ -146,6 +147,10 @@ function __startMock() {
             GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),
         };
         window.__bridgeOverride = __mockBridge;
+        window.__hostOverride = {
+            CopyToClipboardAsync: async (text) => true,
+            FocusAsync: async () => {},
+        };
         window.lmInit(__mockBridge);
     } else {
         console.log('[mock] lmInit not ready, retrying...');

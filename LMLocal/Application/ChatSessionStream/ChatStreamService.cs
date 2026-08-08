@@ -8,6 +8,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Settings;
 
+
 namespace LMLocal.Application.ChatSessionStream
 {
     /// <summary>
@@ -109,18 +110,28 @@ namespace LMLocal.Application.ChatSessionStream
                 var messageContext = new MessageContext(messages);
                 var modelContext = new ModelContext(context.ModelId, temperature: context.Temperature);
 
-                using (var streaming = await _openApiAdapter.SendChatStreamingAsync(
-                    messageContext,
-                    modelContext,
-                    linkedCts.Token).ConfigureAwait(false))
+                StreamCompletionResult result;
+                using (var streaming = await _openApiAdapter.SendChatStreamingAsync(messageContext, modelContext, linkedCts.Token).ConfigureAwait(false))
                 {
-                    var result = await processor.ProcessStreamAsync(
+                    result = await processor.ProcessStreamAsync(
                         streaming.Stream,
                         linkedCts.Token,
                         onChunk,
                         _settingsManager.BatchIntervalMs).ConfigureAwait(false);
+                }
 
-                    if (!result.WasCancelled && string.IsNullOrEmpty(result.ErrorMessage))
+                if (!result.WasCancelled && string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    if (IsGenerationIncomplete(result.FinishReason))
+                    {
+                        result.ToolCalls = Array.Empty<ToolCallRecord>();
+                        result.ErrorMessage = string.Equals(result.FinishReason, "content_filter", StringComparison.OrdinalIgnoreCase)
+                            ? "\n\nResponse blocked by content filter."
+                            : "\n\nResponse truncated — token limit reached.";
+
+                        _history.AddAssistantMessage(result.ContentResponse, null);
+                    }
+                    else
                     {
                         bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
                         if (hasToolCalls)
@@ -132,18 +143,31 @@ namespace LMLocal.Application.ChatSessionStream
                             _history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
                         }
                     }
+                }
 
-                    if (onComplete != null)
-                    {
-                        await onComplete(result).ConfigureAwait(false);
-                    }
+                if (onComplete != null)
+                {
+                    await onComplete(result).ConfigureAwait(false);
                 }
             }
+
             finally
             {
                 linkedCts?.Dispose();
                 _requestLock.Release();
             }
+        }
+
+        /// <summary>
+        /// True when the finish reason indicates the generation did not complete normally.
+        /// </summary>
+        private bool IsGenerationIncomplete(string finishReason)
+        {
+            if (string.IsNullOrEmpty(finishReason))
+                return false;
+
+            var msg = finishReason.ToLower();
+            return msg == "length" || msg == "content_filter";
         }
     }
 }
