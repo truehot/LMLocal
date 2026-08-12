@@ -4,7 +4,9 @@ import { UIText, Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
-import { wrapAsCodeFence } from '@app/lib/file.fence.js';
+import { validateImageFile, validateTextFile, readImageFile, readTextFile } from '@app/lib/attachment.processor.js';
+import { openImageInNewTab } from '@app/lib/image.utils.js';
+import toast from '@app/lib/toast.js';
 
 /**
  * InputComponent - manages the user input area and submit controls.
@@ -31,6 +33,18 @@ class InputComponent {
 
         this._resizeState = { active: false, startY: 0, startHeight: 0 };
         this._resizerBound = { down: null, move: null, up: null };
+        this._images = [];      // { id, name, mimeType, dataUrl } for attached images
+        this._inputSession = this._createInputSession();
+    }
+
+    /**
+     * Creates a fresh input session.
+     */
+    _createInputSession() {
+        return {
+            pendingImages: new Set(),
+            pendingFiles: new Set(),
+        };
     }
 
     _getElements() {
@@ -41,6 +55,7 @@ class InputComponent {
             contextToggleBtn: document.getElementById('contextToggleBtn'),
             openFileBtn: document.getElementById('openFileBtn'),
             attachFileInput: document.getElementById('attachFileInput'),
+            attachmentsPreview: document.getElementById('attachments-preview'),
             dropdown: document.getElementById('actionDropdown'),
             dropdownTrigger: document.querySelector('.dropdown-trigger'),
             selectedOption: document.getElementById('selectedOption'),
@@ -59,24 +74,205 @@ class InputComponent {
         if (el.value.length > 0) {
             el.style.height = `${el.scrollHeight}px`;
         }
-        if (this.elements.inputWrapper) this.elements.inputWrapper.classList.add('expanded');
+        this._syncExpandedState();
+    };
+
+    // ─── Pasted image attachments ─────────────────────────────────────────
+
+    _syncExpandedState = () => {
+        const hasText = this.elements.userInput?.value?.length > 0;
+        const hasImages = this._images.length > 0;
+        if (hasText || hasImages) {
+            this.elements.inputWrapper?.classList.add('expanded');
+        } else {
+            this.elements.inputWrapper?.classList.remove('expanded');
+        }
+    };
+
+    _warnImage = (message) => {
+        console.warn('[ImagePaste]', message);
+        toast.show(message, 'error');
+    };
+
+    _handlePaste = (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const imageFiles = [];
+        for (const item of items) {
+            if (item.kind === 'file' && Config.IMAGE_ALLOWED_TYPES.includes(item.type)) {
+                const file = item.getAsFile();
+                if (file) imageFiles.push(file);
+            }
+        }
+        if (imageFiles.length === 0) return;
+
+        const accepted = this._acceptImageFiles(imageFiles);
+        if (accepted > 0) e.preventDefault();
+    };
+
+    /**
+     * Validates and starts async reads for image files, reserving slots synchronously so IMAGE_MAX_COUNT is not bypassed by a multi-file batch.
+     */
+    _acceptImageFiles(files) {
+        let accepted = 0;
+        for (const file of files) {
+
+            const pending = this._inputSession.pendingImages.size;
+            if (this._images.length + pending + accepted >= Config.IMAGE_MAX_COUNT) {
+                this._warnImage(UIText.IMAGE_TOO_MANY);
+                break;
+            }
+            try {
+                validateImageFile(file, {
+                    maxSize: Config.IMAGE_MAX_FILE_SIZE_BYTES,
+                    allowedTypes: Config.IMAGE_ALLOWED_TYPES,
+                });
+            } catch (error) {
+                this._warnImage(error.code === 'too-large'
+                    ? `${UIText.IMAGE_TOO_LARGE} (${file.name})`
+                    : `${UIText.IMAGE_UNSUPPORTED} (${file.name})`);
+                continue;
+            }
+            accepted++;
+            this._startImageOperation(file);
+        }
+        return accepted;
+    }
+
+    /**
+     * Starts an async image read and registers it in the current session's pending set. 
+     */
+    _startImageOperation(file) {
+        const session = this._inputSession;
+        const id = Symbol();
+
+        session.pendingImages.add(id);
+
+        readImageFile(file, {
+            compress: Config.IMAGE_COMPRESSION_ENABLED,
+            compressOptions: {
+                quality: Config.IMAGE_COMPRESSION_QUALITY,
+                maxDimension: Config.IMAGE_COMPRESSION_MAX_DIMENSION,
+            },
+        })
+            .then(result => {
+                if (session !== this._inputSession) return;
+                this._addImage(result);
+            })
+            .catch(error => {
+                if (session !== this._inputSession) return;
+                console.warn('[ImagePaste] Failed to read:', file.name, error);
+            })
+            .finally(() => {
+                session.pendingImages.delete(id);
+            });
+    }
+
+    _addImage({ name, mimeType, dataUrl }) {
+        this._images.push({
+            id: Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+            name,
+            mimeType,
+            dataUrl,
+        });
+        this._renderAttachments();
+        this._syncExpandedState();
+    }
+
+    _hasPendingImages() {
+        return this._inputSession.pendingImages.size > 0;
+    }
+
+    _hasPendingFiles() {
+        return this._inputSession.pendingFiles.size > 0;
+    }
+
+    _renderAttachments() {
+        const container = this.elements.attachmentsPreview;
+        if (!container) return;
+        container.innerHTML = '';
+        if (this._images.length === 0) {
+            container.classList.add('hidden');
+            return;
+        }
+        container.classList.remove('hidden');
+        for (const img of this._images) {
+            const item = document.createElement('div');
+            item.className = 'attachment-item';
+            item.setAttribute('data-image-id', img.id);
+            const thumb = document.createElement('img');
+            thumb.className = 'attachment-thumb';
+            thumb.src = img.dataUrl;
+            thumb.alt = img.name;
+            const name = document.createElement('span');
+            name.className = 'attachment-name';
+            name.textContent = img.name;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn-remove-attachment';
+            btn.title = 'Remove';
+            btn.innerHTML = '&times;';
+            item.appendChild(thumb);
+            item.appendChild(name);
+            item.appendChild(btn);
+            container.appendChild(item);
+        }
+    }
+
+    _handleAttachmentClick = (e) => {
+        const btn = e.target.closest('.btn-remove-attachment');
+        if (btn) {
+            const item = btn.closest('.attachment-item');
+            if (!item) return;
+            const id = item.getAttribute('data-image-id');
+            this._images = this._images.filter(img => img.id !== id);
+            this._renderAttachments();
+            this._syncExpandedState();
+            return;
+        }
+
+        const thumb = e.target.closest('.attachment-thumb');
+        if (thumb && thumb.src) {
+            openImageInNewTab(thumb.src);
+        }
     };
 
     _handleKeydown = async (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
+            if (this._hasPendingImages()) {
+                this._warnImage(UIText.IMAGE_PROCESSING);
+                return;
+            }
+            if (this._hasPendingFiles()) {
+                console.warn('[FileAttach]', UIText.FILES_PROCESSING);
+                toast.show(UIText.FILES_PROCESSING, 'error');
+                return;
+            }
             const value = this.elements.userInput?.value;
             const hasActiveContent = this.elements.contextToggleBtn.classList.contains('active');
-            if (await this.onEnter.emit(value, hasActiveContent)) {
+            const images = this._images.map(img => img.dataUrl);
+            if (await this.onEnter.emit(value, hasActiveContent, images)) {
                 this.clearInput();
             }
         }
     };
 
     _handleClick = async () => {
+        if (this._hasPendingImages()) {
+            this._warnImage(UIText.IMAGE_PROCESSING);
+            return;
+        }
+        if (this._hasPendingFiles()) {
+            console.warn('[FileAttach]', UIText.FILES_PROCESSING);
+            toast.show(UIText.FILES_PROCESSING, 'error');
+            return;
+        }
         const value = this.elements.userInput?.value;
         const hasActiveContent = this.elements.contextToggleBtn.classList.contains('active');
-        if (await this.onClick.emit(value, hasActiveContent)) {
+        const images = this._images.map(img => img.dataUrl);
+        if (await this.onClick.emit(value, hasActiveContent, images)) {
             this.clearInput();
         }
     };
@@ -89,6 +285,7 @@ class InputComponent {
 
     _handleDropdownToggle = (e) => {
         if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (this.elements.aiToolsDropdown) this.elements.aiToolsDropdown.classList.remove('active');
         this.elements.dropdown.classList.toggle('active');
     };
 
@@ -113,6 +310,7 @@ class InputComponent {
 
     _handleAiToolsDropdownToggle = (e) => {
         if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (this.elements.dropdown) this.elements.dropdown.classList.remove('active');
         this.elements.aiToolsDropdown.classList.toggle('active');
     };
 
@@ -168,8 +366,16 @@ class InputComponent {
         const dt = e.dataTransfer;
 
         if (dt.files && dt.files.length > 0) {
-            await this._appendFilesAsMarkdown(Array.from(dt.files));
-            this._focusUserInput();
+            const files = Array.from(dt.files);
+            const imageFiles = files.filter(f => Config.IMAGE_ALLOWED_TYPES.includes(f.type));
+            const textFiles = files.filter(f => !Config.IMAGE_ALLOWED_TYPES.includes(f.type));
+
+            if (imageFiles.length > 0) this._acceptImageFiles(imageFiles);
+            if (textFiles.length > 0) await this._appendFilesAsMarkdown(textFiles);
+
+            if (imageFiles.length > 0 || textFiles.length > 0) {
+                this._focusUserInput();
+            }
             return;
         }
 
@@ -194,7 +400,11 @@ class InputComponent {
         const input = e.target;
         const files = input && input.files ? Array.from(input.files) : [];
         if (files.length > 0) {
-            await this._appendFilesAsMarkdown(files);
+            const imageFiles = files.filter(f => Config.IMAGE_ALLOWED_TYPES.includes(f.type));
+            const textFiles = files.filter(f => !Config.IMAGE_ALLOWED_TYPES.includes(f.type));
+
+            if (imageFiles.length > 0) this._acceptImageFiles(imageFiles);
+            if (textFiles.length > 0) await this._appendFilesAsMarkdown(textFiles);
         }
         if (input) {
             input.value = '';
@@ -203,38 +413,50 @@ class InputComponent {
     };
 
     _appendFilesAsMarkdown = async (files) => {
-        const results = [];
+        const session = this._inputSession;
+        const id = Symbol();
+        session.pendingFiles.add(id);
 
-        for (const file of files.slice(0, Config.DRAG_DROP_MAX_FILES)) {
-            const ext = file.name.split('.').pop()?.toLowerCase();
-            if (!ext) continue;
+        try {
+            const results = [];
 
-            if (!Config.DRAG_DROP_ALLOWED_EXTENSIONS.test('.' + ext)) {
-                console.warn(`[FileAttach] Skipped unsupported file: ${file.name}`);
-                continue;
+            for (const file of files.slice(0, Config.DRAG_DROP_MAX_FILES)) {
+                try {
+                    validateTextFile(file, {
+                        maxSize: Config.DRAG_DROP_MAX_FILE_SIZE_BYTES,
+                        allowedExtensions: Config.DRAG_DROP_ALLOWED_EXTENSIONS,
+                    });
+                } catch (error) {
+                    if (error.code === 'too-large') {
+                        console.warn(`[FileAttach] Skipped oversized file: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+                        toast.show(`${UIText.FILES_TOO_LARGE} (${file.name})`, 'error');
+                    } else {
+                        console.warn(`[FileAttach] Skipped unsupported file: ${file.name}`);
+                        toast.show(`${UIText.FILES_UNSUPPORTED} (${file.name})`, 'error');
+                    }
+                    continue;
+                }
+
+                try {
+                    const result = await readTextFile(file);
+                    results.push(result.markdown);
+                } catch (err) {
+                    console.warn(`[FileAttach] Failed to read file: ${file.name}`, err);
+                }
             }
 
-            if (file.size > Config.DRAG_DROP_MAX_FILE_SIZE_BYTES) {
-                console.warn(`[FileAttach] Skipped oversized file: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
-                continue;
-            }
+            if (session !== this._inputSession) return;
+            if (results.length === 0) return;
 
-            try {
-                const text = await file.text();
-                results.push(wrapAsCodeFence(file.name, text));
-            } catch (err) {
-                console.warn(`[FileAttach] Failed to read file: ${file.name}`, err);
-            }
+            const el = this.elements.userInput;
+            if (!el) return;
+
+            const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
+            el.value += separator + results.join('\n');
+            this._handleInput();
+        } finally {
+            session.pendingFiles.delete(id);
         }
-
-        if (results.length === 0) return;
-
-        const el = this.elements.userInput;
-        if (!el) return;
-
-        const separator = el.value.length > 0 && !el.value.endsWith('\n') ? '\n' : '';
-        el.value += separator + results.join('\n');
-        this._handleInput();
     };
 
     _focusUserInput() {
@@ -283,6 +505,7 @@ class InputComponent {
 
         userInput.addEventListener('input', this._handleInput);
         userInput.addEventListener('keydown', this._handleKeydown);
+        userInput.addEventListener('paste', this._handlePaste);
         mainBtn.addEventListener('click', this._handleClick);
         contextToggleBtn.addEventListener('click', this._handleContextToggle);
         if (this.elements.openFileBtn) {
@@ -290,6 +513,9 @@ class InputComponent {
         }
         if (this.elements.attachFileInput) {
             this.elements.attachFileInput.addEventListener('change', this._handleAttachFileChange);
+        }
+        if (this.elements.attachmentsPreview) {
+            this.elements.attachmentsPreview.addEventListener('click', this._handleAttachmentClick);
         }
 
         dropdownTrigger.addEventListener('click', this._handleDropdownToggle);
@@ -309,6 +535,10 @@ class InputComponent {
         if (userInput) {
             userInput.removeEventListener('input', this._handleInput);
             userInput.removeEventListener('keydown', this._handleKeydown);
+            userInput.removeEventListener('paste', this._handlePaste);
+        }
+        if (this.elements.attachmentsPreview) {
+            this.elements.attachmentsPreview.removeEventListener('click', this._handleAttachmentClick);
         }
         if (mainBtn) {
             mainBtn.removeEventListener('click', this._handleClick);
@@ -376,6 +606,10 @@ class InputComponent {
         el.style.height = 'auto';
         if (this.elements.inputWrapper) this.elements.inputWrapper.classList.remove('expanded');
         if (this.elements.contextToggleBtn) this.elements.contextToggleBtn.classList.remove('active');
+
+        this._inputSession = this._createInputSession();
+        this._images = [];
+        this._renderAttachments();
     }
 
     _initResizer() {
@@ -446,10 +680,20 @@ class InputComponent {
     setup() {
         this.reset();
         this.elements = this._getElements();
-        if (!this.elements.userInput || !this.elements.mainBtn) {
-            console.error('InputComponent setup failed: required elements not found');
+
+        const required = [
+            'userInput',
+            'mainBtn',
+            'contextToggleBtn',
+            'dropdownTrigger',
+            'dropdown',
+        ];
+        const missing = required.filter(name => !this.elements[name]);
+        if (missing.length > 0) {
+            console.error(`InputComponent setup failed: missing elements [${missing.join(', ')}]`);
             return this;
         }
+
         this._attachEvents();
         this._attachDragDrop();
         this._initResizer();
@@ -472,9 +716,8 @@ class InputComponent {
     }
 
     hideDropdown() {
-        if (this.elements.dropdown && this.elements.dropdown.classList.contains('active')) {
-            this.elements.dropdown.classList.remove('active');
-        }
+        if (this.elements.dropdown) this.elements.dropdown.classList.remove('active');
+        if (this.elements.aiToolsDropdown) this.elements.aiToolsDropdown.classList.remove('active');
     }
 
     updateInstructionsState(state, prev) {

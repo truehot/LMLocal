@@ -481,5 +481,19 @@ namespace LMLocal.Tests.Unit
             Assert.That(results3[0] is TextStreamChunk);
             Assert.That(((TextStreamChunk)results3[0]).Text, Is.EqualTo("fresh"));
         }
+
+        [Test]
+        public void ExtractDeltas_ParsesCachedTokens_FromPromptTokensDetails()
+        {
+            // DeepSeek format: cached_tokens inside prompt_tokens_details (+ duplicate at usage root)
+            var json = @"data: {""choices"":[{""finish_reason"":""stop"",""delta"":{}}],""usage"":{""prompt_tokens"":7545,""completion_tokens"":446,""total_tokens"":7991,""prompt_tokens_details"":{""cached_tokens"":4224},""prompt_cache_hit_tokens"":4224,""prompt_cache_miss_tokens"":3321}}";
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results, Is.Not.Empty);
+            Assert.That(results[0], Is.TypeOf<CompletionStreamChunk>());
+            var c = (CompletionStreamChunk)results[0];
+            Assert.That(c.CachedTokens, Is.EqualTo(4224));
+        }
+
     }
 }

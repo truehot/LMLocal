@@ -1,4 +1,6 @@
-﻿/**
+﻿import { formatTokenStats } from '@app/lib/token.stats.js';
+
+/**
  * Factory that creates a collapsible AI message DOM element with multi-step support.
  */
 export function createAiCollapsibleMessage(container, highlightWorkerClient, currentPipeline, config) {
@@ -335,6 +337,15 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             }
 
             _isFinalRound = false;
+        },
+
+        showTokenStats: (stats) => {
+            if (!finalResponseEl) return;
+            if (finalResponseEl.querySelector('.token-stats')) return;
+            const div = document.createElement('div');
+            div.className = 'token-stats';
+            div.innerHTML = formatTokenStats(stats);
+            finalResponseEl.appendChild(div);
         },
 
         finalize: () => {

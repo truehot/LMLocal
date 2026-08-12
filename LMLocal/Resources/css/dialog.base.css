@@ -39,7 +39,6 @@ dialog {
         justify-content: flex-end;
         gap: 8px;
         border-top: 1px solid var(--border-color);
-        background: var(--status-bar-bg);
         align-items: center;
     }
 
@@ -120,11 +119,11 @@ dialog {
         border-color: var(--border-color);
     }
 
-    .btn-small.btn-secondary:hover {
-        background: var(--border-color);
-        border-color: var(--border-color);
-        color: var(--strong-text);
-    }
+        .btn-small.btn-secondary:hover {
+            background: var(--border-color);
+            border-color: var(--border-color);
+            color: var(--strong-text);
+        }
 
     .btn-small.btn-primary {
         background: var(--accent-color);
@@ -132,17 +131,17 @@ dialog {
         border-color: transparent;
     }
 
-    .btn-small.btn-primary:hover {
-        filter: brightness(1.1);
-    }
+        .btn-small.btn-primary:hover {
+            filter: brightness(1.1);
+        }
 
-    dialog button:disabled,
-    .btn-primary:disabled,
-    .btn-secondary:disabled {
-        opacity: 0.5;
-        cursor: not-allowed !important;
-        pointer-events: none;
-    }
+dialog button:disabled,
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
 
 /* ====== Base input and forms styles ====== */
 

@@ -1,4 +1,6 @@
+import { Icons } from '@app/constants/app.globals.js';
 import { createCallback } from '@app/lib/callback.js';
+import toast from '@app/lib/toast.js';
 
 export class ProvidersDialog {
     constructor() {
@@ -7,11 +9,11 @@ export class ProvidersDialog {
         this.onTestConnection = createCallback();
         this._providers = [];
         this._providerTypes = [];
-        this._currentEditingProvider = null;
         this._toggleHandler = null;
         this._addBtnClickHandler = null;
         this._testBtnClickHandler = null;
         this._testBtnTimeout = null;
+        this._testGeneration = 0;
         this.el = null;
         this._confirmHandler = null;
         this._cancelHandler = null;
@@ -48,7 +50,6 @@ export class ProvidersDialog {
             urlInput: dialog.querySelector('[data-setting="customBaseUrl"]'),
             keyInput: dialog.querySelector('[data-setting="customApiKey"]'),
             formCancelBtn: dialog.querySelector('#provider-form-cancel'),
-            formSaveBtn: dialog.querySelector('#provider-form-save'),
             testBtn: dialog.querySelector('.test-connection-btn'),
             passwordToggle: dialog.querySelector('.password-toggle'),
             listActions: dialog.querySelector('#providers-list-actions'),
@@ -131,9 +132,9 @@ export class ProvidersDialog {
             clearTimeout(this._testBtnTimeout);
             this._testBtnTimeout = null;
         }
+        this._testGeneration += 1;
         this._providers = [];
         this._providerTypes = [];
-        this._currentEditingProvider = null;
         this._toggleHandler = null;
         this._addBtnClickHandler = null;
         this._testBtnClickHandler = null;
@@ -154,6 +155,15 @@ export class ProvidersDialog {
         return found ? found.displayName : typeKey;
     }
 
+    _matchesFilter(provider) {
+        if (this._filterText.trim() === '') return true;
+        const search = this._filterText.trim().toLowerCase();
+        const name = (provider.name || '').toLowerCase();
+        const type = (provider.providerType || '').toLowerCase();
+        const url = (provider.customBaseUrl || '').toLowerCase();
+        return name.includes(search) || type.includes(search) || url.includes(search);
+    }
+
     _renderList() {
         const el = this._getElements();
         const { listContainer } = el;
@@ -161,13 +171,7 @@ export class ProvidersDialog {
 
         let filteredProviders = [...this._providers];
         if (this._filterText.trim() !== '') {
-            const search = this._filterText.trim().toLowerCase();
-            filteredProviders = filteredProviders.filter(provider => {
-                const name = (provider.name || '').toLowerCase();
-                const type = (provider.providerType || '').toLowerCase();
-                const url = (provider.customBaseUrl || '').toLowerCase();
-                return name.includes(search) || type.includes(search) || url.includes(search);
-            });
+            filteredProviders = filteredProviders.filter(provider => this._matchesFilter(provider));
         }
 
         if (this._sortAsc !== null) {
@@ -273,14 +277,12 @@ export class ProvidersDialog {
         this._fillTypeSelect(typeSelect);
 
         if (provider) {
-            this._currentEditingProvider = { ...provider };
             idInput.value = provider.id || '';
             nameInput.value = provider.name || '';
             typeSelect.value = provider.providerType || 'openai';
             urlInput.value = provider.customBaseUrl || '';
             keyInput.value = provider.customApiKey || '';
         } else {
-            this._currentEditingProvider = null;
             idInput.value = this._getNextId();
             nameInput.value = '';
             typeSelect.value = 'openai';
@@ -291,15 +293,17 @@ export class ProvidersDialog {
         nameInput.focus();
     }
 
-    _showList() {
+    _showList(resetView = false) {
         const el = this._getElements();
         const { listView, listActions, formView, formActions, filterInput } = el;
 
         if (!listView || !formView) return;
 
-        this._filterText = '';
-        this._sortAsc = null;
-        if (filterInput) filterInput.value = '';
+        if (resetView) {
+            this._filterText = '';
+            this._sortAsc = null;
+            if (filterInput) filterInput.value = '';
+        }
 
         listView.classList.remove('hidden');
         if (listActions) listActions.classList.remove('hidden');
@@ -316,6 +320,11 @@ export class ProvidersDialog {
         this._renderList();
     }
 
+
+    _showSaveError(message) {
+        toast.show(message, 'error', 4000, this.el?.confirmBtn);
+    }
+
     _resetTestButton() {
         const testBtn = this.el?.testBtn;
         if (!testBtn) return;
@@ -330,10 +339,7 @@ export class ProvidersDialog {
 
         const iconSlot = testBtn.querySelector('.btn-icon-slot');
         if (iconSlot) {
-            iconSlot.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 11.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" opacity="0.3" />
-            <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-        </svg>`;
+            iconSlot.innerHTML = Icons.LINK;
         }
     }
 
@@ -367,10 +373,6 @@ export class ProvidersDialog {
             this._providerTypes = [];
         }
 
-        this._filterText = '';
-        this._sortAsc = null;
-        if (filterInput) filterInput.value = '';
-
         this._toggleHandler = () => {
             const { keyInput, passwordToggle } = this.el;
             if (!keyInput) return;
@@ -391,6 +393,8 @@ export class ProvidersDialog {
                 this._testBtnTimeout = null;
             }
 
+            const generation = ++this._testGeneration;
+
             const { nameInput, urlInput, keyInput, testBtn, typeSelect } = this.el;
             if (!nameInput || !urlInput || !keyInput || !testBtn) return;
 
@@ -404,9 +408,6 @@ export class ProvidersDialog {
             const iconSlot = testBtn.querySelector('.btn-icon-slot');
             if (!iconSlot) return;
 
-            const successIcon = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>`;
-            const errorIcon = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`;
-
             testBtn.disabled = true;
             testBtn.classList.remove('success', 'error');
             iconSlot.innerHTML = '<span class="btn-spinner"></span>';
@@ -418,18 +419,25 @@ export class ProvidersDialog {
                     apiKey: key
                 });
 
+                if (!this.el || generation !== this._testGeneration) return;
+
                 if (result && result.success) {
-                    iconSlot.innerHTML = successIcon;
+                    iconSlot.innerHTML = Icons.SUCCESS;
                     testBtn.classList.add('success');
                 } else {
-                    iconSlot.innerHTML = errorIcon;
+                    iconSlot.innerHTML = Icons.ERROR;
                     testBtn.classList.add('error');
+
+                    toast.show(result?.error?.message || 'Connection test failed', 'error', 4000, testBtn);
                 }
             } catch (err) {
                 console.error('Test connection error', err);
-                iconSlot.innerHTML = errorIcon;
+                if (!this.el || generation !== this._testGeneration) return;
+                iconSlot.innerHTML = Icons.ERROR;
                 testBtn.classList.add('error');
+                toast.show(err?.message || 'Connection test failed', 'error', 4000, testBtn);
             } finally {
+                if (!this.el || generation !== this._testGeneration) return;
                 this._testBtnTimeout = setTimeout(() => {
                     this._resetTestButton();
                     this._testBtnTimeout = null;
@@ -454,7 +462,7 @@ export class ProvidersDialog {
         };
 
         this._attachEvents();
-        this._showList();
+        this._showList(true);
 
         return new Promise((resolve) => {
             dialog.showModal();
@@ -463,14 +471,19 @@ export class ProvidersDialog {
                 try {
                     const config = { providers: this._providers };
                     const result = await this.onSave.emitResult(config);
+                    if (!this.el) return;
+                    if (!(result && result.success)) {
+                        console.error('Failed to save providers', result?.error);
+                        this._showSaveError(result?.error?.message || 'Failed to save providers');
+                        return;
+                    }
                     this._cleanup();
                     dialog.close();
-                    resolve(result && result.success);
+                    resolve(true);
                 } catch (err) {
                     console.error('Failed to save providers', err);
-                    this._cleanup();
-                    dialog.close();
-                    resolve(false);
+                    if (!this.el) return;
+                    this._showSaveError(err?.message || 'Failed to save providers');
                 }
             };
 
@@ -509,6 +522,13 @@ export class ProvidersDialog {
                         this._providers[existingIndex] = newProvider;
                     } else {
                         this._providers.push(newProvider);
+                    }
+
+                    if (!this._matchesFilter(newProvider)) {
+                        this._filterText = '';
+                        this._sortAsc = null;
+                        const flt = this.el?.filterInput;
+                        if (flt) flt.value = '';
                     }
 
                     this._showList();

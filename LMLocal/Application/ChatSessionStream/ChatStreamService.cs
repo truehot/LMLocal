@@ -97,7 +97,7 @@ namespace LMLocal.Application.ChatSessionStream
                 }
                 else
                 {
-                    _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent);
+                    _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent, context.Images);
                 }
 
                 var messages = _history.BuildUserMessagesWithHistory(context.AdditionalPrompt);

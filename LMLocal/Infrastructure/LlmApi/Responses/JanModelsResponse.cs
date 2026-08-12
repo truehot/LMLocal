@@ -64,6 +64,13 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
         public string Format { get; set; } = string.Empty;
 
         /// <summary>
+        /// Multimodal projector file (e.g., "mmproj-model-f16.gguf").
+        /// If set, the model supports vision.
+        /// </summary>
+        [JsonProperty("mmproj", NullValueHandling = NullValueHandling.Ignore)]
+        public string Mmproj { get; set; }
+
+        /// <summary>
         /// Model settings such as context length and prompt template.
         /// </summary>
         [JsonProperty("settings")]

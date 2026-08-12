@@ -35,6 +35,17 @@ namespace LMLocal.Infrastructure.WebView
         /// Null if model doesn't support reasoning or none was used.
         /// </summary>
         public int? ReasoningTokens { get; set; }
+
+        /// <summary>
+        /// Number of prompt tokens served from the provider's cache (cache hit).
+        /// Null if not provided by the server.
+        /// </summary>
+        public int? CachedTokens { get; set; }
+
+        /// <summary>
+        /// Average tokens per second during the generation session.
+        /// </summary>
+        public double TokensPerSecond { get; set; }
     }
 }
 

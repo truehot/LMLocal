@@ -161,6 +161,11 @@ namespace LMLocal.Core.Models
         public int? ReasoningTokens { get; }
 
         /// <summary>
+        /// Number of prompt tokens served from the provider's cache (cache hit).
+        /// </summary>
+        public int? CachedTokens { get; }
+
+        /// <summary>
         /// Server-side fingerprint of the model configuration.
         /// </summary>
         public string SystemFingerprint { get; }
@@ -171,6 +176,7 @@ namespace LMLocal.Core.Models
             int? promptTokens = null,
             int? completionTokens = null,
             int? reasoningTokens = null,
+            int? cachedTokens = null,
             string systemFingerprint = null)
             : base(ChunkKind.Completion)
         {
@@ -179,6 +185,7 @@ namespace LMLocal.Core.Models
             PromptTokens = promptTokens;
             CompletionTokens = completionTokens;
             ReasoningTokens = reasoningTokens;
+            CachedTokens = cachedTokens;
             SystemFingerprint = systemFingerprint;
         }
 

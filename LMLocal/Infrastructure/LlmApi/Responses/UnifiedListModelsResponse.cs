@@ -34,9 +34,7 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
 
         /// <summary>
         /// Indicates whether the provider supports the IsLoaded indicator on models.
-        /// Default: true. Set to false for cloud providers (OpenAI, Azure, Together AI)
-        /// that cannot report whether a model is loaded in memory.
-        /// When false, the UI hides "not loaded" labels and the "show only loaded" filter.
+        /// Default: true. Set to false for cloud providers (OpenAI, Azure, Together AI) that cannot report whether a model is loaded in memory.
         /// </summary>
         [JsonProperty("supportsIsLoaded")]
         public bool SupportsIsLoaded { get; set; } = true;
@@ -83,6 +81,13 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
         /// </summary>
         [JsonProperty("supportsToolUse", NullValueHandling = NullValueHandling.Ignore)]
         public bool? SupportsToolUse { get; set; }
+
+        /// <summary>
+        /// Indicates whether the model supports vision (image inputs).
+        /// Null when the provider does not report this capability.
+        /// </summary>
+        [JsonProperty("supportsVision", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? SupportsVision { get; set; }
 
         /// <summary>
         /// Model size in bytes.

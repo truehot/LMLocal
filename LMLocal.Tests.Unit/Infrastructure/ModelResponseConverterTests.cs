@@ -24,6 +24,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
                         Key = "model_key",
                         DisplayName = "Model Name",
                         MaxContextLength = 2048,
+                        Vision = true,
                         Capabilities = new ModelCapabilities { TrainedForToolUse = true },
                         LoadedInstances = new List<LoadedInstance>
                         {
@@ -47,6 +48,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(m.Name, Is.EqualTo("Model Name"));
             Assert.That(m.IsLoaded, Is.True);
             Assert.That(m.SupportsToolUse, Is.True);
+            Assert.That(m.SupportsVision, Is.True);
             Assert.That(m.MaxTokens, Is.EqualTo(4096));
             Assert.That(result.SupportsIsLoaded, Is.True);
         }
@@ -141,6 +143,96 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var model = result.Models[0];
             Assert.That(model.MaxTokens, Is.Null);
             Assert.That(model.SupportsMaxTokens, Is.False);
+        }
+
+        [Test]
+        public void ConvertOllamaResponseToUnified_VisionModel_WhenFamiliesContainClip()
+        {
+            var resp = new OllamaPsResponse
+            {
+                Models = new List<OllamaRunningModel>
+                {
+                    new OllamaRunningModel
+                    {
+                        Name = "llava:latest",
+                        Model = "llava:latest",
+                        Details = new OllamaModelDetails { Families = new List<string> { "llama", "clip" } }
+                    }
+                }
+            };
+
+            var result = ModelResponseConverter.ConvertOllamaResponseToUnified(JsonConvert.SerializeObject(resp));
+
+            Assert.That(result.Models[0].SupportsVision, Is.True);
+        }
+
+        [Test]
+        public void ConvertOllamaResponseToUnified_NoClipFamily_SupportsVisionFalse()
+        {
+            var resp = new OllamaPsResponse
+            {
+                Models = new List<OllamaRunningModel>
+                {
+                    new OllamaRunningModel
+                    {
+                        Name = "llama3:latest",
+                        Model = "llama3:latest",
+                        Details = new OllamaModelDetails { Families = new List<string> { "llama" } }
+                    }
+                }
+            };
+
+            var result = ModelResponseConverter.ConvertOllamaResponseToUnified(JsonConvert.SerializeObject(resp));
+
+            Assert.That(result.Models[0].SupportsVision, Is.False);
+        }
+
+        [Test]
+        public void ConvertOllamaResponseToUnified_NoDetails_SupportsVisionNull()
+        {
+            var resp = new OllamaPsResponse
+            {
+                Models = new List<OllamaRunningModel>
+                {
+                    new OllamaRunningModel { Name = "llama3:latest", Model = "llama3:latest" }
+                }
+            };
+
+            var result = ModelResponseConverter.ConvertOllamaResponseToUnified(JsonConvert.SerializeObject(resp));
+
+            Assert.That(result.Models[0].SupportsVision, Is.Null);
+        }
+
+        [Test]
+        public void ConvertJanResponseToUnified_VisionModel_WhenMmprojSet()
+        {
+            var resp = new JanModelsResponse
+            {
+                Data = new List<JanModel>
+                {
+                    new JanModel { Id = "llava-v1.5-7b", Name = "Llava", Mmproj = "mmproj-model-f16.gguf" }
+                }
+            };
+
+            var result = ModelResponseConverter.ConvertJanResponseToUnified(JsonConvert.SerializeObject(resp));
+
+            Assert.That(result.Models[0].SupportsVision, Is.True);
+        }
+
+        [Test]
+        public void ConvertJanResponseToUnified_NoMmproj_SupportsVisionFalse()
+        {
+            var resp = new JanModelsResponse
+            {
+                Data = new List<JanModel>
+                {
+                    new JanModel { Id = "qwen2.5-7b", Name = "Qwen" }
+                }
+            };
+
+            var result = ModelResponseConverter.ConvertJanResponseToUnified(JsonConvert.SerializeObject(resp));
+
+            Assert.That(result.Models[0].SupportsVision, Is.False);
         }
 
     }

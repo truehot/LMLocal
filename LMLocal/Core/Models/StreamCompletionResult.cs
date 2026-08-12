@@ -34,6 +34,12 @@ namespace LMLocal.Core.Models
         public string SystemFingerprint { get; set; }
 
         /// <summary>
+        /// Average generation speed in tokens per second across all sampled chunks.
+        /// 0 if no content chunks were generated.
+        /// </summary>
+        public double TokensPerSecond { get; set; }
+
+        /// <summary>
         /// Tool calls detected and collected during generation.
         /// Contains metadata (function name, call ID, index) and accumulated arguments for each tool call.
         /// Empty list if no tool calls were made.
@@ -93,6 +99,12 @@ namespace LMLocal.Core.Models
         /// Null if model doesn't support extended reasoning or no reasoning was used.
         /// </summary>
         public int? ReasoningTokens { get; set; }
+
+        /// <summary>
+        /// Number of prompt tokens served from the provider's cache (cache hit).
+        /// Null if not provided by the server.
+        /// </summary>
+        public int? CachedTokens { get; set; }
     }
 
     /// <summary>

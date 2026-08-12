@@ -97,6 +97,7 @@ namespace LMLocal.Infrastructure.Streaming
                         promptTokens: usage?.PromptTokens,
                         completionTokens: usage?.CompletionTokens,
                         reasoningTokens: usage?.ReasoningTokens,
+                        cachedTokens: usage?.CachedTokens,
                         systemFingerprint: usage?.SystemFingerprint));
                     return chunks;
                 }
@@ -137,6 +138,13 @@ namespace LMLocal.Infrastructure.Streaming
                 reasoningTokens = detailsToken["reasoning_tokens"]?.Value<int?>();
             }
 
+            int? cachedTokens = null;
+            var promptDetails = usage["prompt_tokens_details"];
+            if (promptDetails?.Type == JTokenType.Object)
+            {
+                cachedTokens = promptDetails["cached_tokens"]?.Value<int?>();
+            }
+
             string systemFingerprint = json["system_fingerprint"]?.ToString();
 
             return new CompletionStreamChunk(
@@ -144,6 +152,7 @@ namespace LMLocal.Infrastructure.Streaming
                 promptTokens: promptTokens,
                 completionTokens: completionTokens,
                 reasoningTokens: reasoningTokens,
+                cachedTokens: cachedTokens,
                 systemFingerprint: systemFingerprint);
         }
 

@@ -224,4 +224,61 @@ public class TokenAndHighlightTests : AppTestBase
         await Expect(Page.Locator(".ai-response-container")).ToBeVisibleAsync(new() { Timeout = 10000 });
         await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
     }
+
+    [Test]
+    [Category("TokenStats")]
+    public async Task TokenStats_Badge_ShowsTotalCachedAndSpeed()
+    {
+        await GotoWithMockAsync("webview-mock-token-stats.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        await Expect(Page.Locator(".token-stats")).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Expect(Page.Locator(".token-stats"))
+            .ToHaveTextAsync(TokenStatsBadgeWithTime, new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("TokenStats")]
+    public async Task TokenStats_NotShownWhenSettingDisabled()
+    {
+        await GotoWithMockAsync("webview-mock-streaming.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        await Expect(Page.Locator(".ai-response-container")).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
+
+        await Expect(Page.Locator(".token-stats")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    [Category("TokenStats")]
+    public async Task TokenStats_ShowsOneBadgePerMessage()
+    {
+        await GotoWithMockAsync("webview-mock-token-stats.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        // First message gets exactly one badge (no duplicates on repeated IDLE transitions).
+        await Expect(Page.Locator(".token-stats")).ToHaveCountAsync(1, new() { Timeout = 5000 });
+
+        // Send a second message: it should get its own badge (one per message), not duplicate on the first.
+        await Page.Locator("#userInput").FillAsync("Again");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        await Expect(Page.Locator(".ai-response-container").Last).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => !document.querySelectorAll('.ai-response-container')[document.querySelectorAll('.ai-response-container').length - 1]?.classList.contains('is-generating')");
+
+        await Expect(Page.Locator(".token-stats")).ToHaveCountAsync(2, new() { Timeout = 3000 });
+    }
 }

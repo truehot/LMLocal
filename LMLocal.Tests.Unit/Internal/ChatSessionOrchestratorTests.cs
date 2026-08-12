@@ -175,5 +175,64 @@ namespace LMLocal.Tests.Unit.Internal
             var errorMsg = messages.First(m => m.Type == WebView2MessageType.ChatSessionError).Payload as string;
             Assert.That(errorMsg.Contains("LLM error"), Is.True);
         }
+
+        // Token usage metadata (including cached tokens) should propagate into ChatSessionComplete
+        [Test]
+        public async Task CompleteMessage_PropagatesTokenUsage_WithCachedTokens()
+        {
+            var messages = new List<WebView2ScriptMessage>();
+
+            _chatServiceMock.Setup(s => s.GenerateStreamAsync(
+                It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
+                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
+                It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            {
+                if (onComplete != null)
+                {
+                    var result = new StreamCompletionResult
+                    {
+                        WasCancelled = false,
+                        ErrorMessage = null,
+                        FinishReason = "stop",
+                        TokensPerSecond = 42.0,
+                        TokenUsage = new TokenUsageMetadata
+                        {
+                            TotalTokens = 800,
+                            PromptTokens = 500,
+                            CompletionTokens = 300,
+                            ReasoningTokens = 8,
+                            CachedTokens = 100
+                        }
+                    };
+                    await onComplete(result).ConfigureAwait(false);
+                }
+            });
+
+            _compactorMock.Setup(c => c.NeedsCompaction()).Returns(true);
+            _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+            var orchestrator = new ChatSessionOrchestrator(_chatServiceMock.Object, _toolManagerMock.Object, _compactorMock.Object, _snapshotManagerMock.Object, _loopDetectorMock.Object);
+
+            async Task OnMessage(WebView2ScriptMessage msg)
+            {
+                messages.Add(msg);
+                await Task.CompletedTask;
+            }
+
+            var context = new GenerateStreamContext { Prompt = "prompt", ModelId = "m" };
+
+            await orchestrator.RunSessionAsync(context, OnMessage, CancellationToken.None).ConfigureAwait(false);
+
+            var completeMsg = messages.OfType<WebView2SessionCompleteMessage>().Single();
+            Assert.That(completeMsg.TotalTokens, Is.EqualTo(800));
+            Assert.That(completeMsg.PromptTokens, Is.EqualTo(500));
+            Assert.That(completeMsg.CompletionTokens, Is.EqualTo(300));
+            Assert.That(completeMsg.ReasoningTokens, Is.EqualTo(8));
+            Assert.That(completeMsg.CachedTokens, Is.EqualTo(100));
+            Assert.That(completeMsg.TokensPerSecond, Is.EqualTo(42.0));
+        }
     }
 }

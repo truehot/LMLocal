@@ -17,7 +17,8 @@ class SettingsStoreClass extends BaseStoreClass {
             EnableAiTools: false,
             EnableAiWriteTools: false,
             CollapseToolCalls: false,
-            EnableCodeCollapse: false
+            EnableCodeCollapse: false,
+            ShowTokenStats: false
         });
     }
 }

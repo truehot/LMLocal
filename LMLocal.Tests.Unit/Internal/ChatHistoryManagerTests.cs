@@ -32,6 +32,76 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public void AddUserMessage_WithImages_BuildsMultimodalContent()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            var images = new List<string>
+            {
+                "data:image/png;base64,AAAA",
+                "data:image/png;base64,BBBB"
+            };
+            manager.AddUserMessage("describe", null, images);
+            var history = manager.GetHistoryCopy();
+
+            Assert.That(history.Count, Is.EqualTo(1));
+            var parts = history[0].Content as List<ContentPart>;
+            Assert.That(parts, Is.Not.Null);
+            Assert.That(parts.Count, Is.EqualTo(3)); // text + 2 images
+            Assert.That(parts[0].Type, Is.EqualTo("text"));
+            Assert.That(parts[0].Text, Is.EqualTo("describe"));
+            Assert.That(parts[1].Type, Is.EqualTo("image_url"));
+            Assert.That(parts[1].ImageUrl.Url, Is.EqualTo("data:image/png;base64,AAAA"));
+            Assert.That(parts[2].Type, Is.EqualTo("image_url"));
+        }
+
+        [Test]
+        public void AddUserMessage_WithImagesAndNoText_OmitsTextPart()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("", null, new List<string> { "data:image/png;base64,AAAA" });
+            var history = manager.GetHistoryCopy();
+
+            var parts = history[0].Content as List<ContentPart>;
+            Assert.That(parts, Is.Not.Null);
+            Assert.That(parts.Count, Is.EqualTo(1));
+            Assert.That(parts[0].Type, Is.EqualTo("image_url"));
+        }
+
+        [Test]
+        public void AddUserMessage_WithoutImages_StillUsesPlainString()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("hello", null, null);
+            var history = manager.GetHistoryCopy();
+
+            Assert.That(history[0].Content, Is.EqualTo("hello"));
+        }
+
+        [Test]
+        public void ContentTextExtractor_ExtractTextContent_HandlesAllShapes()
+        {
+            Assert.That(ContentTextExtractor.ExtractTextContent("hello"), Is.EqualTo("hello"));
+            Assert.That(ContentTextExtractor.ExtractTextContent(null), Is.EqualTo(""));
+
+            var parts = new List<ContentPart>
+            {
+                new ContentPart { Type = "text", Text = "a" },
+                new ContentPart { Type = "image_url", ImageUrl = new ImageUrlInfo { Url = "data:image/png;base64,x" } },
+                new ContentPart { Type = "text", Text = "b" }
+            };
+            Assert.That(ContentTextExtractor.ExtractTextContent(parts), Is.EqualTo("ab"));
+        }
+
+        [Test]
         public void ReplaceHistory_ReturnsFalse_WhenSizeMismatch()
         {
             var mockSettings = new Mock<ISettingsManager>();

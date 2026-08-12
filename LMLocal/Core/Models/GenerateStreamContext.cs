@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LMLocal.Core.Models
 {
     public class GenerateStreamContext
@@ -26,5 +28,10 @@ namespace LMLocal.Core.Models
         /// Temperature setting for the model. Controls randomness of output. Optional.
         /// </summary>
         public double? Temperature { get; set; }
+
+        /// <summary>
+        /// Optional list of base64 image data URLs attached to the user message as multimodal content.
+        /// </summary>
+        public IReadOnlyList<string> Images { get; set; }
     }
 }

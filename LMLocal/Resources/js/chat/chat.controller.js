@@ -19,11 +19,13 @@ class ChatController {
         this.scrollManager = null;
         this.markdownParser = null;
         this.highlightParser = null;
-        this.activeTimeouts = [];
+        this._activeTimeouts = [];
         this.onCopyCode = createCallback();
         this.collapseToolCalls = false;
-        this._roundInfo = null;
+        this.showTokenStats = false;
+        this._sessionStartedAt = 0;
         this.pipelineBuilder = null;
+        this._pendingFinishPromise = null;
     }
 
     _getContainer() {
@@ -58,16 +60,16 @@ class ChatController {
                     const timeoutId = setTimeout(() => {
                         statusSpan.textContent = UIText.COPY_LABEL;
                         copyBtn.classList.remove('success');
-                        this.activeTimeouts = this.activeTimeouts.filter(id => id !== timeoutId);
+                        this._activeTimeouts = this._activeTimeouts.filter(id => id !== timeoutId);
                     }, Config.COPY_STATUS_RESET_MS);
-                    this.activeTimeouts.push(timeoutId);
+                    this._activeTimeouts.push(timeoutId);
                 } else {
                     statusSpan.textContent = UIText.COPY_ERROR;
                     const timeoutId = setTimeout(() => {
                         statusSpan.textContent = UIText.COPY_LABEL;
-                        this.activeTimeouts = this.activeTimeouts.filter(id => id !== timeoutId);
+                        this._activeTimeouts = this._activeTimeouts.filter(id => id !== timeoutId);
                     }, Config.COPY_STATUS_RESET_MS);
-                    this.activeTimeouts.push(timeoutId);
+                    this._activeTimeouts.push(timeoutId);
                 }
             }).catch(err => {
                 console.error('Copy failed', err);
@@ -133,43 +135,22 @@ class ChatController {
         if (state.status === prev.status &&
             state.accumulatedText === prev.accumulatedText &&
             state.accumulatedThoughtText === prev.accumulatedThoughtText &&
-            state.userMessage === prev.userMessage) {
+            state.roundNumber === prev.roundNumber) {
+
             return;
         }
 
         switch (state.status) {
             case AppStatus.PROCESSING:
-                if (state.userMessage) {
-                    this._enforceMessageLimit();
-                    createUserMessage(state.userMessage, this.container, this.scrollManager);
-                    this.currentAi?.finalize();
-                    this._roundInfo = null;
 
-                    if (this.collapseToolCalls) {
-                        this.currentAi = createAiCollapsibleMessage(
-                            this.container,
-                            this.highlightParser,
-                            this.pipelineBuilder.createStreaming(this.markdownParser),
-                            {
-                                roundNum: this._roundInfo?.roundNumber || 0,
-                                toolCount: this._roundInfo?.toolCount || 0
-                            }
-                        );
-                    } else {
-                        this.currentAi = createAiMessage(
-                            this.container,
-                            this.highlightParser,
-                            this.pipelineBuilder.createStreaming(this.markdownParser),
-                            false
-                        );
-                    }
-                } else {
+                this._pendingFinishPromise = null;
 
-                    //iterating
+                if (state.roundNumber > 0) {
+                    // Tool round iteration — no new user message
                     if (this.collapseToolCalls && this.currentAi?.isCollapsible) {
                         this.currentAi.nextRound(
-                            this._roundInfo?.roundNumber || 0,
-                            this._roundInfo?.toolCount || 0
+                            state.roundNumber,
+                            state.toolCount
                         );
                     } else {
                         this.currentAi?.finalize();
@@ -178,6 +159,28 @@ class ChatController {
                             this.highlightParser,
                             this.pipelineBuilder.createStreaming(this.markdownParser),
                             true
+                        );
+                    }
+                } else {
+                    // New user message. Only create the AI response bubble.
+                    this.currentAi?.finalize();
+
+                    if (this.collapseToolCalls) {
+                        this.currentAi = createAiCollapsibleMessage(
+                            this.container,
+                            this.highlightParser,
+                            this.pipelineBuilder.createStreaming(this.markdownParser),
+                            {
+                                roundNum: 0,
+                                toolCount: 0
+                            }
+                        );
+                    } else {
+                        this.currentAi = createAiMessage(
+                            this.container,
+                            this.highlightParser,
+                            this.pipelineBuilder.createStreaming(this.markdownParser),
+                            false
                         );
                     }
                 }
@@ -196,10 +199,11 @@ class ChatController {
                 break;
 
             case AppStatus.FINISHING: {
-
                 if (this.currentAi) {
                     this.currentAi.stopThoughts();
-                    this.currentAi.finishStreaming().then(async () => {
+
+                    this._pendingFinishPromise = this.currentAi.finishStreaming();
+                    this._pendingFinishPromise.then(() => {
                         this.scrollManager.scrollToBottom();
                     });
                 }
@@ -222,6 +226,7 @@ class ChatController {
                     this.currentAi.finalize();
                     this.currentAi = null;
                 }
+                this._pendingFinishPromise = null;
                 break;
 
             case AppStatus.OFFLINE:
@@ -230,6 +235,7 @@ class ChatController {
                     this.currentAi.finalize();
                     this.currentAi = null;
                 }
+                this._pendingFinishPromise = null;
                 break;
 
             case AppStatus.CLEARING:
@@ -243,11 +249,20 @@ class ChatController {
             case AppStatus.IDLE:
                 if (this.currentAi && prev.status !== AppStatus.IDLE) {
                     this.currentAi.stopLoadingIndicator();
+
+                    const awaitFinalize = () =>
+                        (this._pendingFinishPromise || Promise.resolve()).catch(() => { });
+
+                    const showStatsAndScroll = () => {
+                        this._showTokenStats(state);
+                        this.scrollManager.scrollToBottom();
+                    };
+
                     if (this.currentAi.isCollapsible) {
-                        this.currentAi.finalizeResult();
-                        this.scrollManager.scrollToBottom(true);
+                        this.currentAi.finalizeResult().then(showStatsAndScroll);
+                    } else {
+                        awaitFinalize().then(showStatsAndScroll);
                     }
-                    this._roundInfo = null;
                 }
                 break;
 
@@ -278,10 +293,10 @@ class ChatController {
     }
 
     _clearTimeouts() {
-        for (const timeoutId of this.activeTimeouts) {
+        for (const timeoutId of this._activeTimeouts) {
             clearTimeout(timeoutId);
         }
-        this.activeTimeouts = [];
+        this._activeTimeouts = [];
     }
 
     setup() {
@@ -310,10 +325,28 @@ class ChatController {
 
     updateSettingsState(state, prev) {
         if (state.status === prev.status &&
-            state.CollapseToolCalls === prev.CollapseToolCalls) {
+            state.CollapseToolCalls === prev.CollapseToolCalls &&
+            state.ShowTokenStats === prev.ShowTokenStats) {
             return;
         }
         this.collapseToolCalls = state.CollapseToolCalls;
+        this.showTokenStats = !!state.ShowTokenStats;
+    }
+
+    _showTokenStats(state) {
+        if (!this.currentAi || !this.showTokenStats) return;
+        if (!state?.tokenUsed) return;
+
+        const elapsedMs = this._sessionStartedAt
+            ? Math.max(0, Date.now() - this._sessionStartedAt)
+            : 0;
+
+        this.currentAi.showTokenStats({
+            tokenUsed: state.tokenUsed,
+            cachedTokens: state.cachedTokens,
+            tokenSpeed: state.tokenSpeed,
+            elapsedMs
+        });
     }
 
     reset() {
@@ -325,6 +358,18 @@ class ChatController {
         this.currentAi?.clear();
         this.currentAi = null;
         this.pipelineBuilder = null;
+        this._sessionStartedAt = 0;
+        this._pendingFinishPromise = null;
+    }
+
+    /**
+     * Pre-render a user message (text + optional dataUrls) directly into the chat DOM
+     */
+    renderPendingUserMessage(text, images) {
+        if (!this.container) return;
+        this._sessionStartedAt = Date.now();
+        this._enforceMessageLimit();
+        createUserMessage(text || '', this.container, this.scrollManager, images);
     }
 
     renderHistory(messages) {
@@ -361,10 +406,8 @@ class ChatController {
         Promise.all(pending).then(function () { self.scrollManager?.scrollToBottom(true); });
     }
 
-    setRoundInfo(roundNumber, toolCount, isFinalRound = false) {
-        this._roundInfo = { roundNumber, toolCount, isFinalRound };
-
-        if (isFinalRound && this.currentAi?.isCollapsible) {
+    markAsFinalRound() {
+        if (this.currentAi?.isCollapsible) {
             this.currentAi.markAsFinalRound();
         }
     }

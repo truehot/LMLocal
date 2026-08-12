@@ -40,6 +40,66 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public async Task ExecutePromptAsync_WithImages_PassesImagesToContext()
+        {
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+
+            mockSession.Setup(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            await bridge.ExecutePromptAsync("{\"prompt\":\"describe\",\"images\":[\"data:image/png;base64,AAAA\"]}").ConfigureAwait(false);
+
+            mockSession.Verify(s => s.TryStartSessionAsync(
+                It.Is<GenerateStreamContext>(c => c.Images != null && c.Images.Count == 1 && c.Images[0] == "data:image/png;base64,AAAA"),
+                It.IsAny<Func<WebView2ScriptMessage, Task>>(),
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_WithTooManyImages_RejectsRequest()
+        {
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            var requestJson = "{\"prompt\":\"describe\",\"images\":[" +
+                "\"data:image/png;base64,AAAA\",\"data:image/png;base64,BBBB\"," +
+                "\"data:image/png;base64,CCCC\",\"data:image/png;base64,DDDD\"]}";
+            await bridge.ExecutePromptAsync(requestJson).ConfigureAwait(false);
+
+            mockSession.Verify(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_WithNonImageScheme_RejectsRequest()
+        {
+            var mockScript = new Mock<IWebViewScriptExecutor>();
+            var mockActiveDoc = new Mock<IGetActiveDocument>();
+            var mockSession = new Mock<ISessionManager>();
+            var mockHistoryManager = new Mock<IChatHistoryManager>();
+            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockSnapshotManager = new Mock<ISnapshotManager>();
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            await bridge.ExecutePromptAsync("{\"prompt\":\"describe\",\"images\":[\"data:text/plain;base64,AAAA\"]}").ConfigureAwait(false);
+
+            mockSession.Verify(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
         public async Task ExecutePromptAsync_ValidRequest_IncludesContentAndStartsSession()
         {
             var mockScript = new Mock<IWebViewScriptExecutor>();
@@ -238,7 +298,7 @@ namespace LMLocal.Tests.Unit
 
             mockHistoryManager.Verify(h => h.Clear(), Times.Once);
             mockHistoryManager.Verify(h => h.AddUserMessage(
-                It.Is<string>(s => s.Contains("Provide a brief summary")), null), Times.Once);
+                It.Is<string>(s => s.Contains("Provide a brief summary")), null, null), Times.Once);
             mockHistoryManager.Verify(h => h.AddAssistantMessage(
                 "compacted summary", null), Times.Once);
         }

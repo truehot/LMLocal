@@ -21,7 +21,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Adds a user message to history and persists it.
         /// </summary>
-        void AddUserMessage(string content, string activeDocumentContent = null);
+        void AddUserMessage(string content, string activeDocumentContent = null, IReadOnlyList<string> imageDataUrls = null);
 
         /// <summary>
         /// Adds an assistant message (optionally with tool calls) to history and persists it.
@@ -115,15 +115,42 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Adds a user message to history and persists it.
         /// </summary>
-        public void AddUserMessage(string userPrompt, string activeDocumentContent = null)
+        public void AddUserMessage(string userPrompt, string activeDocumentContent = null, IReadOnlyList<string> imageDataUrls = null)
         {
-            if (string.IsNullOrEmpty(userPrompt) && string.IsNullOrEmpty(activeDocumentContent)) return;
+            bool hasImages = imageDataUrls != null && imageDataUrls.Count > 0;
+            if (string.IsNullOrEmpty(userPrompt) && string.IsNullOrEmpty(activeDocumentContent) && !hasImages)
+                return;
 
-            string merged = userPrompt ?? "";
-            if (!string.IsNullOrEmpty(activeDocumentContent))
-                merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + userPrompt;
+            object content;
 
-            ChatMessage userMessage = new ChatMessage("user", merged);
+            if (!hasImages)
+            {
+                string merged = userPrompt ?? "";
+                if (!string.IsNullOrEmpty(activeDocumentContent))
+                    merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + userPrompt;
+                content = merged;
+            }
+            else
+            {
+                var parts = new List<ContentPart>();
+                string text = userPrompt ?? "";
+                if (!string.IsNullOrEmpty(activeDocumentContent))
+                    text = FormatIncludedContent(activeDocumentContent) + "\n\n" + text;
+                if (!string.IsNullOrEmpty(text))
+                    parts.Add(new ContentPart { Type = "text", Text = text });
+
+                foreach (var dataUrl in imageDataUrls)
+                {
+                    parts.Add(new ContentPart
+                    {
+                        Type = "image_url",
+                        ImageUrl = new ImageUrlInfo { Url = dataUrl, Detail = "auto" }
+                    });
+                }
+                content = parts;
+            }
+
+            ChatMessage userMessage = new ChatMessage("user", content);
 
             lock (_lock)
             {
@@ -388,7 +415,7 @@ namespace LMLocal.Application.Chat
                             }
                         }
 
-                        var originalContent = userMessage.Content as string ?? "";
+                        var originalContent = ContentTextExtractor.ExtractTextContent(userMessage.Content);
                         string consolidatedUserContent;
 
                         if (toolResults.Count > 0 && _formatter != null)

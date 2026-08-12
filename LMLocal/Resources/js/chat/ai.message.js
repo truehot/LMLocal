@@ -1,4 +1,6 @@
-﻿/**
+﻿import { formatTokenStats } from '@app/lib/token.stats.js';
+
+/**
  * Factory that creates a message DOM element, caches its internal blocks and returns an API to manipulate the message.
  */
 export function createAiMessage(container, highlightWorkerClient, currentPipeline, iterating = false) {
@@ -173,6 +175,15 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
                 isStreaming = false;
                 currentPipeline?.abort();
             }
+        },
+
+        showTokenStats: (stats) => {
+            if (!elements?.responseContainer) return;
+            if (elements.responseContainer.querySelector('.token-stats')) return;
+            const div = document.createElement('div');
+            div.className = 'token-stats';
+            div.innerHTML = formatTokenStats(stats);
+            elements.responseContainer.appendChild(div);
         },
 
         clear: () => {

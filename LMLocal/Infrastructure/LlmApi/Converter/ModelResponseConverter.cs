@@ -79,6 +79,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                         SupportsMaxTokens = maxTokens > 0,
                         IsLoaded = isLoaded,
                         SupportsToolUse = model.Capabilities?.TrainedForToolUse,
+                        SupportsVision = model.Vision ?? model.Capabilities?.Vision,
                         SizeInBytes = model.SizeBytes > 0 ? model.SizeBytes : (long?)null
                     });
                 }
@@ -118,6 +119,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                         MaxTokens = maxTokens,
                         SupportsMaxTokens = maxTokens.HasValue && maxTokens > 0,
                         IsLoaded = true,
+                        SupportsVision = ollamaModel.Details?.Families?.Any(f => string.Equals(f, "clip", StringComparison.OrdinalIgnoreCase)),
                         SizeInBytes = ollamaModel.Size > 0 ? ollamaModel.Size : (long?)null
                     };
 
@@ -203,7 +205,8 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                         MaxTokens = model.MaxTokens,
                         SupportsMaxTokens = model.SupportsMaxTokens,
                         IsLoaded = false,
-                        SupportsToolUse = model.SupportsToolUse
+                        SupportsToolUse = model.SupportsToolUse,
+                        SupportsVision = model.SupportsVision
                     });
                 }
             }
@@ -253,6 +256,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                         MaxTokens = maxTokens,
                         SupportsMaxTokens = maxTokens.HasValue && maxTokens > 0,
                         IsLoaded = true,
+                        SupportsVision = !string.IsNullOrEmpty(model.Mmproj),
                         SizeInBytes = model.Size > 0 ? model.Size : (long?)null
                     };
 

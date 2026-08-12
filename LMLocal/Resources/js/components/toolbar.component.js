@@ -66,7 +66,7 @@ class ToolbarComponent {
         clearTimeout(this.timeoutId);
         this.timeoutId = setTimeout(() => {
             this.elements?.modelName?.classList.remove('generating');
-        }, 1000);
+        }, 500);
         await this.onModelNameClick.emitResult();
     };
 

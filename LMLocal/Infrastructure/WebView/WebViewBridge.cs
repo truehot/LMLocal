@@ -107,13 +107,28 @@ namespace LMLocal.Infrastructure.WebView
 
             try
             {
+                const int MaxServerImages = 3;
+                const long MaxServerImageBase64Chars = 6L * 1024 * 1024; // ~4 MB file
+
+                bool hasImages = request.Images != null && request.Images.Count > 0;
+                if (hasImages &&
+                    (request.Images.Count > MaxServerImages ||
+                     request.Images.Any(i => string.IsNullOrWhiteSpace(i)
+                         || i.Length > MaxServerImageBase64Chars
+                         || !i.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))))
+                {
+                    InternalLogger.Warn("ExecutePromptAsync: invalid image payload rejected");
+                    return;
+                }
+
                 var context = new GenerateStreamContext
                 {
                     Prompt = request.Prompt,
                     ActiveDocumentContent = request.IncludeContent ? await _activeDocumentTool.GetContentAsync() : null,
                     AdditionalPrompt = request.AdditionalPrompt,
                     ModelId = request.ModelId,
-                    Temperature = request.Temperature
+                    Temperature = request.Temperature,
+                    Images = request.Images
                 };
 
                 async Task OnMessageAsync(WebView2ScriptMessage message)

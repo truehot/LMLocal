@@ -18,6 +18,7 @@ namespace LMLocal.Tests.Unit
         {
             public void Update(int totalTokens) { }
             public double GetTokensPerSecond() => 0.0;
+            public double GetAverageTokensPerSecond() => 42.0;
         }
 
         private class MockSettingsManager : ISettingsManager
@@ -67,6 +68,45 @@ namespace LMLocal.Tests.Unit
                 Assert.That(result.TokenUsage.PromptTokens, Is.EqualTo(3));
                 Assert.That(result.TokenUsage.CompletionTokens, Is.EqualTo(7));
                 Assert.That(result.SystemFingerprint, Is.EqualTo("fp123"));
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_PopulatesCachedTokens_FromPromptTokensDetails()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+
+            var sb = new StringBuilder();
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}");
+            sb.AppendLine("data: {\"choices\":[],\"usage\":{\"total_tokens\":12,\"prompt_tokens\":5,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":4}},\"system_fingerprint\":\"fp456\"}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { await Task.CompletedTask; });
+
+                Assert.That(result.TokenUsage, Is.Not.Null);
+                Assert.That(result.TokenUsage.TotalTokens, Is.EqualTo(12));
+                Assert.That(result.TokenUsage.PromptTokens, Is.EqualTo(5));
+                Assert.That(result.TokenUsage.CompletionTokens, Is.EqualTo(7));
+                Assert.That(result.TokenUsage.CachedTokens, Is.EqualTo(4));
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_ComputesAverageTokensPerSecond()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+
+            var sb = new StringBuilder();
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}");
+            sb.AppendLine("data: {\"choices\":[],\"usage\":{\"total_tokens\":10}}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None,
+                    async (chunk, stats) => { await Task.CompletedTask; });
+
+                Assert.That(result.TokensPerSecond, Is.EqualTo(42.0));
             }
         }
     }

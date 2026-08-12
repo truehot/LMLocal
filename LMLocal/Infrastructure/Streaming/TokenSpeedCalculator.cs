@@ -11,6 +11,7 @@ namespace LMLocal.Infrastructure.Streaming
     {
         void Update(int totalTokens);
         double GetTokensPerSecond();
+        double GetAverageTokensPerSecond();
     }
 
     internal sealed class TokenSpeedCalculator : ITokenSpeedCalculator
@@ -19,6 +20,8 @@ namespace LMLocal.Infrastructure.Streaming
         private readonly long _windowTicks;
         private int _currentTokens;
         private readonly ITimeProvider _timeProvider;
+        private double _speedSum;
+        private int _speedCount;
 
         public TokenSpeedCalculator(int windowSeconds = 5, ITimeProvider timeProvider = null)
         {
@@ -59,7 +62,23 @@ namespace LMLocal.Infrastructure.Streaming
             if (spanSeconds <= 0) return 0.0;
 
             int tokensInWindow = _currentTokens - tokens;
-            return tokensInWindow / spanSeconds;
+            double speed = tokensInWindow / spanSeconds;
+
+            if (speed > 0)
+            {
+                _speedSum += speed;
+                _speedCount++;
+            }
+
+            return speed;
+        }
+
+        /// <summary>
+        /// Gets the average generation speed in tokens per second across all sampled windows with positive speed.
+        /// </summary>
+        public double GetAverageTokensPerSecond()
+        {
+            return _speedCount > 0 ? _speedSum / _speedCount : 0.0;
         }
     }
 }

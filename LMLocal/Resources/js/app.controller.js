@@ -125,24 +125,34 @@ class AppController {
 
         themeComponent.setup();
 
-        inputComponent.onClick.on(async (text, hasActiveContent) => {
+        inputComponent.onClick.on(async (text, hasActiveContent, images) => {
             const isGenerating = appSelectors.isBusy(appStore.getState().status);
             if (isGenerating) {
                 await appManager.performStop(text);
                 return false;
-            } else if (text && text.trim()) {
-                await appManager.performSendMessage(text, hasActiveContent);
-                return true;
             }
-            return false;
+
+            return await appManager.performSendMessage(text, hasActiveContent, images);
         });
 
-        inputComponent.onEnter.on(async (text, hasActiveContent) => {
-            if (text && text.trim()) {
-                await appManager.performSendMessage(text, hasActiveContent);
-                return true;
-            }
-            return false;
+        inputComponent.onEnter.on(async (text, hasActiveContent, images) => {
+            return await appManager.performSendMessage(text, hasActiveContent, images);
+        });
+
+        appManager.onUserMessagePending.on((text, images) => {
+            chatController.renderPendingUserMessage(text, images);
+        });
+
+        appManager.onHistoryLoaded.on((messages) => {
+            chatController.renderHistory(messages);
+        });
+
+        bridgeMessageHandler.onToolRoundStart.on((roundNumber, toolCount) => {
+            appManager.onToolRoundStart(roundNumber, toolCount);
+        });
+
+        bridgeMessageHandler.onFinalRound.on(() => {
+            chatController.markAsFinalRound();
         });
 
         inputComponent.onTabChanged.on(async (tabId) => {
@@ -278,11 +288,8 @@ class AppController {
         });
 
         toolbarComponent.onModelNameClick.on(async () => {
-            const response = await appDataService.loadModels();
-            if (response && response.models && response.models.length > 0) {
-                const dialog = createModelSelectorDialog(response.models, response.activeModel, response.supportsIsLoaded);
-                await dialog.show();
-            }
+            const dialog = createModelSelectorDialog([], null, true);
+            await dialog.show();
         });
 
         statusComponent.onClearChat.on(async () => {

@@ -214,6 +214,9 @@ namespace LMLocal.Application.ChatSessionStream
                                         if (completion.ReasoningTokens.HasValue)
                                             result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
 
+                                        if (completion.CachedTokens.HasValue)
+                                            result.TokenUsage.CachedTokens = completion.CachedTokens;
+
                                         if (!string.IsNullOrEmpty(completion.SystemFingerprint))
                                             result.SystemFingerprint = completion.SystemFingerprint;
                                     }
@@ -233,6 +236,8 @@ namespace LMLocal.Application.ChatSessionStream
                 }
 
                 await consumerTask.ConfigureAwait(false);
+
+                result.TokensPerSecond = _tokenSpeedCalculator.GetAverageTokensPerSecond();
             }
             catch (OperationCanceledException ex)
             {

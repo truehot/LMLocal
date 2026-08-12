@@ -135,6 +135,7 @@
     <div class="input-container">
         <div class="input-wrapper">
             <div id="input-drag-resizer" title="Drag to resize"></div>
+            <div class="attachments-preview hidden" id="attachments-preview"></div>
             <textarea id="userInput" placeholder="Ask LM Local..." rows="1" autofocus></textarea>
             <div class="input-footer">
                 <div class="input-footer-left">
@@ -162,7 +163,7 @@
                     <button id="contextToggleBtn" class="btn-secondary" title="Include context from active window" style="padding:2px">
                         <span class="icon">+</span>
                     </button>
-                    <input type="file" id="attachFileInput" hidden multiple accept=".cs,.json,.js,.ts,.html,.css,.md,.xml,.txt,.yaml,.yml,.py,.java,.cpp,.c,.h,.sql,.env,.config,.ini,.log,.sh,.bat,.ps1,.rb,.go,.rs,.php,.vue,.svelte,.scss,.less">
+                    <input type="file" id="attachFileInput" hidden multiple accept=".cs,.json,.js,.ts,.html,.css,.md,.xml,.txt,.yaml,.yml,.py,.java,.cpp,.c,.h,.sql,.env,.config,.ini,.log,.sh,.bat,.ps1,.rb,.go,.rs,.php,.vue,.svelte,.scss,.less,.jpg,.jpeg,.png">
                     <button id="mainBtn">Send</button>
                 </div>
             </div>
@@ -245,12 +246,7 @@
                     <div class="input-with-button">
                         <input type="url" id="base-url-input" name="LmStudioBaseUrl" data-setting="LmStudioBaseUrl" placeholder="http://localhost:1234" required pattern="https?://.+">
                         <button type="button" class="test-connection-btn btn-secondary" title="Test connection to the provider">
-                            <span class="btn-icon-slot">
-                                <svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M6 11.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" opacity="0.3" />
-                                    <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-                                </svg>
-                            </span>
+                            <span class="btn-icon-slot"></span>
                         </button>
                     </div>
                 </div>
@@ -320,6 +316,17 @@
                             <span class="checkbox-title">Collapse tool calls</span>
                             <span class="checkbox-description">
                                 Groups sequential tool executions into a single compact block and collapses it when finished to reduce chat clutter.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="ShowTokenStats">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Show token usage statistics</span>
+                            <span class="checkbox-description">
+                                Displays the number of tokens (total, avg. speed) for each message, helping you monitor usage.
                             </span>
                         </span>
                     </label>
@@ -528,12 +535,7 @@
 
                         <div class="mcp-test-action">
                             <button type="button" id="mcp-dialog-test-btn" class="btn-secondary btn-small" title="Validate and connect to MCP servers">
-                                <span class="btn-icon-slot" style="display: flex; align-items: center; gap: 4px;">
-                                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                                        <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-                                    </svg>
-                                    Discover Tools
-                                </span>
+                                <span class="btn-icon-slot" style="display: flex; align-items: center; gap: 4px;">Discover Tools</span>
                             </button>
                         </div>
 
@@ -613,12 +615,7 @@
                         <div class="input-with-button">
                             <input type="url" data-setting="customBaseUrl" name="customBaseUrl" placeholder="https://api.openai.com/" required pattern="https?://.+">
                             <button type="button" class="test-connection-btn btn-secondary" title="Test connection to the provider">
-                                <span class="btn-icon-slot">
-                                    <svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                                        <path d="M6 11.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" opacity="0.3" />
-                                        <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-                                    </svg>
-                                </span>
+                                <span class="btn-icon-slot"></span>
                             </button>
                         </div>
                     </div>
@@ -721,9 +718,6 @@
                     <div class="status-inline-actions">
                         <button type="button" id="autocompletions-change-btn" class="btn-compact-action">Change</button>
                         <button type="button" id="autocompletions-test-btn" class="btn-compact-action" title="Test autocomplete">
-                            <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 3px; vertical-align: middle;">
-                                <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-                            </svg>
                             <span>Test</span>
                         </button>
                     </div>

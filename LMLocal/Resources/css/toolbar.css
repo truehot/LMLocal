@@ -22,10 +22,10 @@
 .model-info, .connection-info {
     font-size: 11px;
     font-weight: bold;
-    color: var(--success-color);
+    color: var(--model-text-color);
     white-space: nowrap;
-    max-width:300px;
-    overflow:hidden;
+    max-width: 300px;
+    overflow: hidden;
 }
 
 .model-info {
@@ -70,11 +70,11 @@
         right: 0;
         top: calc(50% - 6px);
         transform: none;
-        animation: spin 1s linear infinite;
+        animation: spin 0.5s linear infinite;
     }
 
 .model-info:hover #model-name {
-    color: var(--accent-color);
+    color: var(--text-color);
 }
 
     .model-info:hover #model-name::after {
@@ -105,10 +105,10 @@
 
 /* ====== Connection status  ====== */
 #conn-status.online {
-    color: var(--success-color);
+    color: var(--model-text-color);
     cursor: default;
     text-decoration: none;
-    max-width: 140px; 
+    max-width: 140px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -136,7 +136,6 @@
     border: none;
     cursor: pointer;
     padding: 0 0px 0px 4px;
-    ;
     font-size: 14px;
     color: inherit;
     opacity: 0.7;

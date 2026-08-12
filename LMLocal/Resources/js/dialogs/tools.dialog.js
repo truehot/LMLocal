@@ -1,4 +1,5 @@
 ﻿import { createCallback } from '@app/lib/callback.js';
+import toast from '@app/lib/toast.js';
 
 export class ToolsDialog {
     constructor() {
@@ -74,13 +75,21 @@ export class ToolsDialog {
             }));
             const config = { tools: toolsConfig };
             const result = await this.onSave.emitResult(config);
-            const isSuccess = !!(result && result.success);
-            this._closeDialog(isSuccess);
+            if (!(result && result.success)) {
+                console.error('Failed to save tools state', result?.error);
+                this._showSaveError(result?.error?.message || 'Failed to save tools');
+                return;
+            }
+            this._closeDialog(true);
         } catch (err) {
             console.error('Failed to save tools state', err);
-            this._closeDialog(false);
+            this._showSaveError(err?.message || 'Failed to save tools');
         }
     };
+
+    _showSaveError(message) {
+        toast.show(message, 'error', 4000, this.el?.confirmBtn);
+    }
 
     _onDialogClose = () => {
         this._closeDialog(false);
@@ -192,7 +201,7 @@ export class ToolsDialog {
 
             const title = document.createElement('span');
             title.className = 'tool-title';
-            title.textContent = tool.name.replace(/_/g, ' ') || 'unnamed-tool';
+            title.textContent = (tool.name || '').replace(/_/g, ' ') || 'unnamed-tool';
             nameRow.appendChild(title);
 
             const description = document.createElement('div');

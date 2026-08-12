@@ -92,6 +92,7 @@
     <Compile Include="Infrastructure\Mcp\StdioMcpClientExtendedTests.cs" />
     <Compile Include="Infrastructure\Mcp\StdioMcpClientTests.cs" />
     <Compile Include="Infrastructure\ModelResponseConverterTests.cs" />
+    <Compile Include="Infrastructure\ModelsListServiceTests.cs" />
     <Compile Include="Infrastructure\OpenApiAdapterHighPriorityTests.cs" />
     <Compile Include="Infrastructure\PathHelperTests.cs" />
     <Compile Include="Infrastructure\PathResolverTests.cs" />

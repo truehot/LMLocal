@@ -163,4 +163,56 @@ public class SettingsTests : AppTestBase
         // Verify dialog is closed
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
     }
+
+    [Test]
+    [Category("Settings")]
+    public async Task TestConnection_Error_ShowsToast()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Provide settings with a provider + URL so the Test button works,
+        // and make TestConnectionAsync fail with a reason.
+        // Providers for the settings dialog come from GetProvidersAsync (not from settings).
+        await Page.EvaluateAsync(@"() => {
+            window.__settingsOverride.GetSettingsAsync = async () => JSON.stringify({
+                AutoLoadOnStartup: true,
+                Provider: 'openai',
+                ProviderId: 0,
+                LmStudioBaseUrl: 'http://test.local'
+            });
+            window.__settingsOverride.TestConnectionAsync = async (json) => JSON.stringify({
+                success: false,
+                error: { message: 'Connection refused by remote host' }
+            });
+            window.__providersOverride.GetProvidersAsync = async () => JSON.stringify({
+                defaultProviders: [
+                    { id: 0, providerType: 'openai', name: 'OpenAI', customBaseUrl: 'http://test.local', customApiKey: 'key' }
+                ],
+                providers: [],
+                providerTypes: [
+                    { key: 'openai', displayName: 'OpenAI' }
+                ]
+            });
+        }");
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#settings-dialog form')?.children.length > 0");
+
+        // Ensure the provider select is populated so the Test button can run
+        await Expect(dialog.Locator("[data-setting='Provider'] option")).ToHaveCountAsync(1);
+
+        // Click Test -> error toast near the button
+        await dialog.Locator(".test-connection-btn").ClickAsync();
+
+        var toast = Page.Locator("#app-toast.show");
+        await Expect(toast).ToBeVisibleAsync();
+        await Expect(toast).ToContainTextAsync("Connection refused by remote host");
+    }
+
 }

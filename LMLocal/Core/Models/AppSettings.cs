@@ -76,6 +76,11 @@ namespace LMLocal.Core.Models
         public bool CollapseToolCalls { get; set; } = false;
 
         /// <summary>
+        /// When true, the number of tokens (total, prompt, completion) is displayed for each message to monitor usage and costs.
+        /// </summary>
+        public bool ShowTokenStats { get; set; } = false;
+
+        /// <summary>
         /// AI provider backend: "lmstudio" (local), "ollama" (local), "openai" (custom compatible), etc..
         /// </summary>
         [Required(ErrorMessage = "Provider is required.")]
@@ -102,6 +107,7 @@ namespace LMLocal.Core.Models
                 && EnableAiWriteTools == other.EnableAiWriteTools
                 && EnableCodeCollapse == other.EnableCodeCollapse
                 && CollapseToolCalls == other.CollapseToolCalls
+                && ShowTokenStats == other.ShowTokenStats
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase)
                 && ProviderId == other.ProviderId;
@@ -126,6 +132,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + EnableAiWriteTools.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
+                hash = hash * 23 + ShowTokenStats.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
                 hash = hash * 23 + ProviderId.GetHashCode();

@@ -1,4 +1,5 @@
 import { createCallback } from '@app/lib/callback.js';
+import { AsyncGuard } from '@app/lib/async.guard.js';
 
 export class ChatHistoryDialog {
     constructor() {
@@ -6,6 +7,7 @@ export class ChatHistoryDialog {
         this.filterText = '';
         this.sortAsc = false;
         this.isLoading = false;
+        this._guard = new AsyncGuard();
         this.el = null;
 
         this.onLoadSessions = createCallback();
@@ -33,11 +35,12 @@ export class ChatHistoryDialog {
     }
 
     async _loadSessions(showLoadingState = true) {
-        if (this.isLoading) return;
+        const generation = this._guard.start();
         this.isLoading = true;
         try {
             if (showLoadingState) this._showLoadingState();
             const result = await this.onLoadSessions.emitResult();
+            if (!this._guard.isCurrent(generation)) return;
             if (!result?.success) {
                 this._showErrorState(result?.error?.message || 'Failed to load chat history');
                 return;
@@ -48,9 +51,13 @@ export class ChatHistoryDialog {
             this._renderSessions();
         } catch (error) {
             console.error('Failed to load chat history:', error);
-            this._showErrorState(`Failed to load chat history: ${error.message}`);
+            if (this._guard.isCurrent(generation)) {
+                this._showErrorState(`Failed to load chat history: ${error.message}`);
+            }
         } finally {
-            this.isLoading = false;
+            if (this.el) {
+                this.isLoading = false;
+            }
         }
     }
 
@@ -223,6 +230,7 @@ export class ChatHistoryDialog {
         this.el = this._getElements();
         this.filterText = '';
         this.sortAsc = false;
+        this._guard.invalidate();
 
         if (!this.el.dialog) throw new Error('Dialog #chat-history-dialog not found');
 
@@ -250,6 +258,7 @@ export class ChatHistoryDialog {
                     console.error('Error during dialog close cleanup:', err);
                     resolve(null);
                 } finally {
+                    this._guard.invalidate();
                     this.el = null;
                 }
             };

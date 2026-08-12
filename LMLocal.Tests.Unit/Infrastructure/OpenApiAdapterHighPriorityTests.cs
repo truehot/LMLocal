@@ -166,6 +166,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
                         Id = "jan-1",
                         Name = "Jan One",
                         Size = 12345,
+                        Mmproj = "mmproj-model-f16.gguf",
                         Settings = new JanModelSettings { ContextLength = 4096 },
                         Parameters = new JanModelParameters { MaxTokens = 2048 }
                     }
@@ -185,6 +186,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(m.MaxTokens, Is.EqualTo(4096));
             Assert.That(m.IsLoaded, Is.True);
             Assert.That(m.SizeInBytes, Is.EqualTo(12345));
+            Assert.That(m.SupportsVision, Is.True);
         }
 
         [Test]
@@ -194,7 +196,17 @@ namespace LMLocal.Tests.Unit.Infrastructure
             {
                 Models = new System.Collections.Generic.List<OllamaRunningModel>
                 {
-                    new OllamaRunningModel { Name = "ollama-1", Model = "ollama-1", ContextLength = 8192, Size = 9999 }
+                    new OllamaRunningModel
+                    {
+                        Name = "ollama-1",
+                        Model = "ollama-1",
+                        ContextLength = 8192,
+                        Size = 9999,
+                        Details = new OllamaModelDetails
+                        {
+                            Families = new System.Collections.Generic.List<string> { "llama", "clip" }
+                        }
+                    }
                 }
             };
 
@@ -210,6 +222,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(m.MaxTokens, Is.EqualTo(8192));
             Assert.That(m.IsLoaded, Is.True);
             Assert.That(m.SizeInBytes, Is.EqualTo(9999));
+            Assert.That(m.SupportsVision, Is.True);
         }
 
         [Test]

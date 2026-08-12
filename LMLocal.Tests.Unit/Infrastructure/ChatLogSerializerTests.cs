@@ -158,5 +158,56 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             Assert.That(ChatLogSerializer.TruncatePrompt(content), Is.EqualTo(string.Empty));
         }
+
+        [Test]
+        public void BuildMessageLine_WithImageParts_WritesPlaceholderNotBase64()
+        {
+            var parts = new List<ContentPart>
+            {
+                new ContentPart { Type = "text", Text = "describe" },
+                new ContentPart { Type = "image_url", ImageUrl = new ImageUrlInfo { Url = "data:image/png;base64,AAAA", Detail = "auto" } },
+                new ContentPart { Type = "image_url", ImageUrl = new ImageUrlInfo { Url = "data:image/png;base64,BBBB", Detail = "auto" } }
+            };
+            var message = new ChatMessage("user", parts);
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj.Value<string>("content"), Is.EqualTo("[2 images attached - not available in this session]"));
+            Assert.That(line, Does.Not.Contain("data:image"));
+        }
+
+        [Test]
+        public void BuildMessageLine_WithTextOnlyParts_KeepsContentArray()
+        {
+            var parts = new List<ContentPart>
+            {
+                new ContentPart { Type = "text", Text = "describe" }
+            };
+            var message = new ChatMessage("user", parts);
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj["content"].Type, Is.EqualTo(JTokenType.Array));
+            Assert.That(obj["content"][0].Value<string>("type"), Is.EqualTo("text"));
+            Assert.That(obj["content"][0].Value<string>("text"), Is.EqualTo("describe"));
+        }
+
+        [Test]
+        public void BuildMessageLine_WithSingleImage_WritesSingularPlaceholder()
+        {
+            var parts = new List<ContentPart>
+            {
+                new ContentPart { Type = "image_url", ImageUrl = new ImageUrlInfo { Url = "data:image/png;base64,AAAA", Detail = "auto" } }
+            };
+            var message = new ChatMessage("user", parts);
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj.Value<string>("content"), Is.EqualTo("[1 image attached - not available in this session]"));
+            Assert.That(line, Does.Not.Contain("data:image"));
+        }
     }
 }

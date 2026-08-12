@@ -4,12 +4,14 @@ import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js'
 import changesStore from '@app/store/changes.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
-import chatController from '@app/chat/chat.controller.js';
+import { createCallback } from '@app/lib/callback.js';
 
 class BridgeMessageHandler {
     constructor() {
         this.contentBuffer = new ChunkBuffer(Config.STREAM_BUFFER_INTERVAL_MS);
         this.thoughtBuffer = new ChunkBuffer(Config.STREAM_BUFFER_INTERVAL_MS);
+        this.onToolRoundStart = createCallback(); 
+        this.onFinalRound = createCallback();
     }
 
     handleCompactionStart() {
@@ -83,17 +85,11 @@ class BridgeMessageHandler {
     }
 
     handleChatSessionIterating(data) {
-        const isFinal = !!data.IsFinalRound;
-        chatController.setRoundInfo(data.RoundNumber, data.ToolCount || 0, isFinal);
-
-        if (isFinal) return;
-
-        appStore.setState({
-            status: AppStatus.PROCESSING,
-            accumulatedText: "",
-            accumulatedThoughtText: "",
-            userMessage: "",
-        });
+        if (!!data.IsFinalRound) {
+            this.onFinalRound.emit();
+            return;
+        }
+        this.onToolRoundStart.emit(data.RoundNumber || 0, data.ToolCount || 0);
     }
 
     handleChatSessionCancelled(errorMessage) {
@@ -113,13 +109,19 @@ class BridgeMessageHandler {
     }
 
     handleChatSessionComplete(metadata) {
+        const totalTokens = metadata.TotalTokens || 0;
+        const reasoningTokens = metadata.ReasoningTokens || 0;
+
         modelStore.setState({
-            tokenUsed: metadata.TotalTokens - metadata.ReasoningTokens
+            tokenUsed: totalTokens - reasoningTokens
         });
 
         appStore.setState({
             status: AppStatus.IDLE,
-            tokenUsed: metadata.TotalTokens - metadata.ReasoningTokens
+            tokenUsed: totalTokens - reasoningTokens,
+            totalTokens: totalTokens,
+            cachedTokens: metadata.CachedTokens || 0,
+            tokenSpeed: metadata.TokensPerSecond || 0
         });
     }
 

@@ -106,10 +106,10 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
 
     public class FunctionParameters
     {
-        [JsonProperty("type")] 
+        [JsonProperty("type")]
         public string Type { get; set; } = "object";
 
-        [JsonProperty("properties")] 
+        [JsonProperty("properties")]
         public Dictionary<string, object> Properties { get; set; }
 
         [JsonProperty("required", NullValueHandling = NullValueHandling.Ignore)]
@@ -208,26 +208,5 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
         /// </summary>
         [JsonProperty("arguments")]
         public string Arguments { get; set; }
-    }
-
-    public class ContentPart
-    {
-        [JsonProperty("type")]
-        public string Type { get; set; } // "text", "image_url", "input_audio"
-
-        [JsonProperty("text", NullValueHandling = NullValueHandling.Ignore)]
-        public string Text { get; set; }
-
-        [JsonProperty("image_url", NullValueHandling = NullValueHandling.Ignore)]
-        public ImageUrlInfo ImageUrl { get; set; }
-    }
-
-    public class ImageUrlInfo
-    {
-        [JsonProperty("url")]
-        public string Url { get; set; }
-
-        [JsonProperty("detail", NullValueHandling = NullValueHandling.Ignore)]
-        public string Detail { get; set; } // "auto", "low", "high"
     }
 }

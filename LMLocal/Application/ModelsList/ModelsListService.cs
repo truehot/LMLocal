@@ -47,11 +47,11 @@ namespace LMLocal.Application.ModelsList
                 UnifiedListModelsResponse response;
                 if (provider == ModelProvider.Ollama)
                 {
-                    response = await GetOllamaModelsAsync(cancellationToken);
+                    response = await GetOllamaModelsAsync(baseUrl, null, cancellationToken);
                 }
                 else if (provider == ModelProvider.LlamaCpp)
                 {
-                    response = await GetLlamaCppModelsAsync(baseUrl, cancellationToken);
+                    response = await GetLlamaCppModelsAsync(baseUrl, null, cancellationToken);
                 }
                 else
                 {
@@ -69,10 +69,10 @@ namespace LMLocal.Application.ModelsList
             }
         }
 
-        private async Task<UnifiedListModelsResponse> GetOllamaModelsAsync(CancellationToken cancellationToken)
+        private async Task<UnifiedListModelsResponse> GetOllamaModelsAsync(string baseUrl, string apiKey, CancellationToken cancellationToken)
         {
-            var activeJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.OllamaRunningModels, null, null, cancellationToken);
-            var allJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, null, null, cancellationToken);
+            var activeJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.OllamaRunningModels, baseUrl, apiKey, cancellationToken);
+            var allJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, baseUrl, apiKey, cancellationToken);
 
             var activeModelsResponse = ModelResponseConverter.ConvertToUnified(activeJson, ModelProvider.Ollama);
             var allModelsResponse = ModelResponseConverter.ConvertToUnified(allJson, ModelProvider.OpenAi);
@@ -80,9 +80,9 @@ namespace LMLocal.Application.ModelsList
             return ModelResponseConverter.MergeOllamaModels(activeModelsResponse, allModelsResponse);
         }
 
-        private async Task<UnifiedListModelsResponse> GetLlamaCppModelsAsync(string baseUrl, CancellationToken cancellationToken)
+        private async Task<UnifiedListModelsResponse> GetLlamaCppModelsAsync(string baseUrl, string apiKey, CancellationToken cancellationToken)
         {
-            var modelsJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, baseUrl, null, cancellationToken);
+            var modelsJson = await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, baseUrl, apiKey, cancellationToken);
             return ModelResponseConverter.ConvertLlamaCppResponseToUnified(modelsJson);
         }
 
@@ -115,10 +115,22 @@ namespace LMLocal.Application.ModelsList
             try
             {
                 ModelProvider provider = ProviderResolver.ResolveProvider(providerType);
-                string endpoint = ProviderResolver.GetListModelsEndpoint(provider);
 
-                var json = await _openApiAdapter.ListModelsRawAsync(endpoint, baseUrl, apiKey, cancellationToken);
-                var response = ModelResponseConverter.ConvertToUnified(json, provider);
+                UnifiedListModelsResponse response;
+                if (provider == ModelProvider.Ollama)
+                {
+                    response = await GetOllamaModelsAsync(baseUrl, apiKey, cancellationToken);
+                }
+                else if (provider == ModelProvider.LlamaCpp)
+                {
+                    response = await GetLlamaCppModelsAsync(baseUrl, apiKey, cancellationToken);
+                }
+                else
+                {
+                    string endpoint = ProviderResolver.GetListModelsEndpoint(provider);
+                    var json = await _openApiAdapter.ListModelsRawAsync(endpoint, baseUrl, apiKey, cancellationToken);
+                    response = ModelResponseConverter.ConvertToUnified(json, provider);
+                }
 
                 return response;
             }

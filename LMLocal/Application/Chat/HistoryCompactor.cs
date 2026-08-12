@@ -56,7 +56,7 @@ namespace LMLocal.Application.Chat
             if (!enabled)
                 return false;
 
-            int chars = _history.GetHistoryCopy().Sum(m => m.Content?.ToString()?.Length ?? 0); ;
+            int chars = _history.GetHistoryCopy().Sum(m => ContentTextExtractor.ExtractTextLength(m.Content));
             return chars / 4 >= (int)(GetMaxContext() * CompactionThresholdRatio);
         }
 
@@ -165,7 +165,7 @@ namespace LMLocal.Application.Chat
                 if (msg.Role == "assistant" && (msg.ToolCalls != null || msg.Content == null))
                     continue;
 
-                sb.AppendLine($"{msg.Role}: {msg.Content}");
+                sb.AppendLine($"{msg.Role}: {ContentTextExtractor.ExtractTextContent(msg.Content)}");
                 sb.AppendLine();
             }
             return sb.ToString();

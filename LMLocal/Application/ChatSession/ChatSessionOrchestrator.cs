@@ -445,7 +445,9 @@ namespace LMLocal.Application.ChatSession
                         TotalTokens = finalResult.TokenUsage?.TotalTokens,
                         PromptTokens = finalResult.TokenUsage?.PromptTokens,
                         CompletionTokens = finalResult.TokenUsage?.CompletionTokens,
-                        ReasoningTokens = finalResult.TokenUsage?.ReasoningTokens
+                        ReasoningTokens = finalResult.TokenUsage?.ReasoningTokens,
+                        CachedTokens = finalResult.TokenUsage?.CachedTokens,
+                        TokensPerSecond = finalResult.TokensPerSecond
                     };
 
                     await onMessage(completeMsg).ConfigureAwait(false);

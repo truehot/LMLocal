@@ -1,5 +1,7 @@
+import { Icons } from '@app/constants/app.globals.js';
 import { createCallback } from '@app/lib/callback.js';
-import { populateProviderSelect } from '@app/lib/populate-provider-select.js';
+import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
+import toast from '@app/lib/toast.js';
 
 export class SettingsDialog {
     constructor() {
@@ -11,6 +13,7 @@ export class SettingsDialog {
         this._providerChangeHandler = null;
         this._testBtnClickHandler = null;
         this._testBtnTimeout = null;
+        this._testGeneration = 0;
     }
 
     _getElements() {
@@ -68,6 +71,7 @@ export class SettingsDialog {
             clearTimeout(this._testBtnTimeout);
             this._testBtnTimeout = null;
         }
+        this._testGeneration += 1;
         this.el = {};
         this._toggleHandler = null;
         this._providerChangeHandler = null;
@@ -88,10 +92,7 @@ export class SettingsDialog {
 
         const iconSlot = testBtn.querySelector('.btn-icon-slot');
         if (iconSlot) {
-            iconSlot.innerHTML = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 11.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5z" opacity="0.3" />
-            <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-        </svg>`;
+            iconSlot.innerHTML = Icons.LINK;
         }
     }
 
@@ -164,6 +165,8 @@ export class SettingsDialog {
                 this._testBtnTimeout = null;
             }
 
+            const generation = ++this._testGeneration;
+
             const provider = providerSelect.value;
             const url = baseUrlInput.value;
 
@@ -172,9 +175,6 @@ export class SettingsDialog {
 
             const iconSlot = testBtn.querySelector('.btn-icon-slot');
             if (!iconSlot) return;
-
-            const successIcon = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>`;
-            const errorIcon = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`;
 
             testBtn.disabled = true;
             testBtn.classList.remove('success', 'error');
@@ -194,18 +194,24 @@ export class SettingsDialog {
                     apiKey: apiKeyInput.value
                 });
 
+                if (!this.el || generation !== this._testGeneration) return;
+
                 if (result && result.success) {
-                    iconSlot.innerHTML = successIcon;
+                    iconSlot.innerHTML = Icons.SUCCESS;
                     testBtn.classList.add('success');
                 } else {
-                    iconSlot.innerHTML = errorIcon;
+                    iconSlot.innerHTML = Icons.ERROR;
                     testBtn.classList.add('error');
+                    toast.show(result?.error?.message || 'Connection test failed', 'error', 4000, testBtn);
                 }
             } catch (err) {
                 console.error('Test connection error', err);
-                iconSlot.innerHTML = errorIcon;
+                if (!this.el || generation !== this._testGeneration) return;
+                iconSlot.innerHTML = Icons.ERROR;
                 testBtn.classList.add('error');
+                toast.show(err?.message || 'Connection test failed', 'error', 4000, testBtn);
             } finally {
+                if (!this.el || generation !== this._testGeneration) return;
                 this._testBtnTimeout = setTimeout(() => {
                     this._resetTestButton();
                     this._testBtnTimeout = null;

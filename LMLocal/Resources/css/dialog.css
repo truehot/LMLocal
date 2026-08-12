@@ -154,10 +154,17 @@
         height: auto;
     }
 
+    #settings-dialog .input-with-button .test-connection-btn {
+        width: 30px;
+        min-width: 30px;
+        padding: 0;
+    }
+
     #settings-dialog .btn-secondary .btn-icon {
         display: inline-block;
         flex-shrink: 0;
         color: var(--muted-color);
+        padding-top:2px;
         transition: color 0.15s ease;
     }
 
@@ -522,7 +529,6 @@
 }
 
 #instructions-dialog {
-    background: var(--surface-bg);
     color: var(--text-color);
     width: 700px;
     max-width: 95vw;
@@ -609,7 +615,7 @@
 
     #instructions-dialog .settings-label {
         display: block;
-        color: var(--accent-color);
+        color: var(--text-color);
         font-size: 13px;
         text-transform: uppercase;
         font-weight: 600;
@@ -1461,6 +1467,7 @@
         border: 1px solid var(--border-color);
         border-radius: 4px;
         width: 28px;
+        min-width: 28px;
         height: 28px;
         display: flex;
         align-items: center;
@@ -1841,13 +1848,17 @@
 
 #autocompletions-selector-dialog .models-filter-bar {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     padding: 8px 12px;
     background-color: var(--bg-color);
     border-bottom: 1px solid var(--border-color);
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
+}
+
+#autocompletions-selector-dialog #autocompletions-refresh-models {
+    margin-left: auto;
 }
 
 #autocompletions-selector-dialog .settings-input {
@@ -2416,4 +2427,3 @@
         transform: translateY(0);
     }
 }
-

@@ -50,47 +50,47 @@
     transition: border-color 0.3s ease;
 }
 
-.collapsible-block .thought-container {
-    border-left: none;
-}
+    .collapsible-block .thought-container {
+        border-left: none;
+    }
 
-.collapsible-block .reasoning-header .expanded {
-    padding: 6px 10px 6px 4px;
-}
+    .collapsible-block .reasoning-header .expanded {
+        padding: 6px 10px 6px 4px;
+    }
 
-.collapsible-block .tool-status,
-.collapsible-block .tool-status-error,
-.collapsible-block .tool-status-completed {
-    border-left: none;
-}
+    .collapsible-block .tool-status,
+    .collapsible-block .tool-status-error,
+    .collapsible-block .tool-status-completed {
+        border-left: none;
+    }
 
-.collapsible-block .collapsible-header {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 35px 4px 8px;
-    cursor: pointer;
-    user-select: none;
-    position: relative;
-}
+    .collapsible-block .collapsible-header {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 4px 35px 4px 8px;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+    }
 
-.collapsible-block .collapsible-title {
-    font-size: 11px;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
-    color: var(--text-color);
-    opacity: 0.8;
-    transition: opacity 0.2s;
-}
+    .collapsible-block .collapsible-title {
+        font-size: 11px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+        color: var(--text-color);
+        opacity: 0.8;
+        transition: opacity 0.2s;
+    }
 
-.collapsible-block:hover .collapsible-title {
-    opacity: 1;
-}
+    .collapsible-block:hover .collapsible-title {
+        opacity: 1;
+    }
 
 .collapsible-block {
     opacity: 0.9;

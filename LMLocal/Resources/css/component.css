@@ -78,13 +78,9 @@
 
         .changes-panel-component .btn-small.btn-primary {
             background-color: var(--accent-color);
-            color: var(--selection-text);
+            color: var(--white);
             border: 1px solid transparent;
         }
-
-            .changes-panel-component .btn-small.btn-primary:hover {
-                background-image: linear-gradient(var(--hover-bg-alpha), var(--hover-bg-alpha));
-            }
 
             .changes-panel-component .btn-small.btn-primary:disabled {
                 background-color: var(--border-color);
@@ -208,10 +204,10 @@
         padding: 2px;
     }
 
-    .changes-panel-component .file-item .file-icon:hover {
-        color: var(--accent-color);
-        background-color: rgba(0, 122, 204, 0.1);
-    }
+        .changes-panel-component .file-item .file-icon:hover {
+            color: var(--accent-color);
+            background-color: rgba(0, 122, 204, 0.1);
+        }
 
     .changes-panel-component .file-name {
         font-family: Consolas, monospace;

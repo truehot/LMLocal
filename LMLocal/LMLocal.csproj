@@ -72,6 +72,7 @@
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\Chat\ChatSessionSummary.cs" />
+    <Compile Include="Application\Chat\ContentTextExtractor.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
     <Compile Include="Commands\AddUnitTestsCommand.cs" />
@@ -93,6 +94,7 @@
     <Compile Include="Core\Models\KnownModelContexts.cs" />
     <Compile Include="Core\Models\ListModelsParameters.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
+    <Compile Include="Core\Models\MessageContent.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
     <Compile Include="Core\Models\ProviderTypeInfo.cs" />
     <Compile Include="Core\Models\ToolsConfigFile.cs" />
@@ -248,7 +250,23 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\lib\async.guard.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\attachment.processor.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\lib\file.fence.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\image.utils.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\toast.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -256,11 +274,15 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\js\lib\populate-provider-select.js">
+    <Content Include="Resources\js\lib\populate-provider.select.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\lib\provider.resolver.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\token.stats.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

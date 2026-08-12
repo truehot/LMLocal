@@ -242,6 +242,39 @@ public class AutocompletionsTests : AppTestBase
 
     [Test]
     [Category("Autocompletions")]
+    public async Task TestButton_Error_ShowsToast()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await SetupAutocompletionsMockAsync();
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Make TestCompletionAsync fail with a reason
+        await Page.EvaluateAsync(@"() => {
+            window.__autocompletionsOverride.TestCompletionAsync = async (json) => JSON.stringify({
+                success: false,
+                error: { message: 'Connection refused by remote host' }
+            });
+        }");
+
+        await OpenDialogViaMenuAsync();
+
+        var dialog = Page.Locator(DialogId);
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Expect(dialog.Locator(InfoViewId)).ToBeVisibleAsync();
+
+        // Click Test -> error state + toast near the button
+        await dialog.Locator(TestBtnId).ClickAsync();
+
+        await WaitForTestButtonClassAsync("error");
+
+        var toast = Page.Locator("#app-toast.show");
+        await Expect(toast).ToBeVisibleAsync();
+        await Expect(toast).ToContainTextAsync("Connection refused by remote host");
+    }
+
+    [Test]
+    [Category("Autocompletions")]
     public async Task ChangeButton_ShowsSelectionView()
     {
         await GotoWithMockAsync("webview-mock.js");
@@ -424,5 +457,134 @@ public class AutocompletionsTests : AppTestBase
         var captured = await Page.EvaluateAsync<string>("window.__capturedUpdateConfig || null");
         Assert.That(captured, Is.Not.Null, "UpdateConfigAsync should have been called");
         Assert.That(captured, Does.Contain("\"enabled\":false"));
+    }
+
+    [Test]
+    [Category("Autocompletions")]
+    public async Task RefreshModels_PreservesFilter()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await SetupAutocompletionsMockAsync();
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await OpenDialogViaMenuAsync();
+
+        var dialog = Page.Locator(DialogId);
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Go to selection view
+        await dialog.Locator(ChangeBtnId).ClickAsync();
+        await Expect(dialog.Locator(SelectionViewId)).ToBeVisibleAsync();
+
+        var modelCards = dialog.Locator("#autocompletions-models-container .model-card");
+        await Expect(modelCards).ToHaveCountAsync(2, new() { Timeout = 5000 });
+
+        // Type a filter that matches only one model
+        await dialog.Locator("#autocompletions-model-search").FillAsync("Another");
+        await Expect(modelCards).ToHaveCountAsync(1, new() { Timeout = 3000 });
+
+        // Refresh — filter must be preserved
+        await dialog.Locator("#autocompletions-refresh-models").ClickAsync();
+
+        await Expect(dialog.Locator("#autocompletions-model-search")).ToHaveValueAsync("Another");
+        await Expect(modelCards).ToHaveCountAsync(1, new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("Autocompletions")]
+    public async Task Reopen_ResetsSearchFilter()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await SetupAutocompletionsMockAsync();
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await OpenDialogViaMenuAsync();
+
+        var dialog = Page.Locator(DialogId);
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Go to selection view and type a filter
+        await dialog.Locator(ChangeBtnId).ClickAsync();
+        await Expect(dialog.Locator(SelectionViewId)).ToBeVisibleAsync();
+        await dialog.Locator("#autocompletions-model-search").FillAsync("Another");
+        await Expect(dialog.Locator("#autocompletions-models-container .model-card")).ToHaveCountAsync(1, new() { Timeout = 3000 });
+
+        // Return to info view, then close via Cancel (Cancel is only in info view)
+        await dialog.Locator(BackBtnId).ClickAsync();
+        await Expect(dialog.Locator(InfoViewId)).ToBeVisibleAsync();
+        await dialog.Locator(CancelBtnId).ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        // Reopen — search must be reset, all models shown again
+        await OpenDialogViaMenuAsync();
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await dialog.Locator(ChangeBtnId).ClickAsync();
+        await Expect(dialog.Locator(SelectionViewId)).ToBeVisibleAsync();
+
+        await Expect(dialog.Locator("#autocompletions-model-search")).ToHaveValueAsync("");
+        await Expect(dialog.Locator("#autocompletions-models-container .model-card")).ToHaveCountAsync(2, new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("Autocompletions")]
+    public async Task ProviderSwitch_NoStaleResponse()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await SetupAutocompletionsMockAsync();
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Two providers; the first ListModelsForProviderAsync call (provider A) is slow,
+        // later calls are fast and provider-specific.
+        await Page.EvaluateAsync(@"() => {
+            window.__acCallCount = 0;
+            window.__providersOverride = {
+                GetProvidersAsync: async () => JSON.stringify({
+                    defaultProviders: [
+                        { id: 0, providerType: 'lmstudio', name: 'Provider A', customBaseUrl: 'http://a.local', customApiKey: '' },
+                        { id: 1, providerType: 'ollama', name: 'Provider B', customBaseUrl: 'http://b.local', customApiKey: '' }
+                    ],
+                    providers: [],
+                    providerTypes: [
+                        { key: 'lmstudio', displayName: 'LM Studio' },
+                        { key: 'ollama', displayName: 'Ollama' }
+                    ]
+                }),
+                UpdateProvidersAsync: async (json) => true,
+            };
+            window.__autocompletionsOverride.ListModelsForProviderAsync = async (json) => {
+                const params = JSON.parse(json);
+                window.__acCallCount++;
+                if (window.__acCallCount === 1) {
+                    await new Promise(r => setTimeout(r, 5000));
+                    return JSON.stringify({ models: [{ id: 'model-a', name: 'Model A', isLoaded: true }], supportsIsLoaded: true });
+                }
+                if (params.providerType === 'ollama') {
+                    return JSON.stringify({ models: [{ id: 'model-b', name: 'Model B', isLoaded: true }], supportsIsLoaded: true });
+                }
+                return JSON.stringify({ models: [{ id: 'model-a', name: 'Model A', isLoaded: true }], supportsIsLoaded: true });
+            };
+        }");
+
+        await OpenDialogViaMenuAsync();
+
+        var dialog = Page.Locator(DialogId);
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Go to selection view — triggers the slow model load for provider A
+        await dialog.Locator(ChangeBtnId).ClickAsync();
+        await Expect(dialog.Locator(SelectionViewId)).ToBeVisibleAsync();
+
+        // Wait until provider select is populated with both providers
+        await Page.WaitForFunctionAsync("() => document.getElementById('autocompletions-provider-select')?.options.length === 2");
+
+        // Switch to provider B while the slow load for A is still in flight
+        await dialog.Locator("#autocompletions-provider-select").SelectOptionAsync("1");
+
+        // Final list must reflect provider B, not the stale provider A response
+        await Expect(dialog.Locator("#autocompletions-models-container .model-card[data-model-id='model-b']"))
+            .ToHaveCountAsync(1, new() { Timeout = 8000 });
     }
 }

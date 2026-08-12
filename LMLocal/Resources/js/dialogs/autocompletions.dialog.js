@@ -1,4 +1,8 @@
-﻿import { createCallback } from '@app/lib/callback.js';
+﻿import { Icons } from '@app/constants/app.globals.js';
+import { createCallback } from '@app/lib/callback.js';
+import { AsyncGuard } from '@app/lib/async.guard.js';
+import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
+import toast from '@app/lib/toast.js';
 
 export class AutocompletionsDialog {
     constructor() {
@@ -15,10 +19,13 @@ export class AutocompletionsDialog {
         this._loadedOnly = false;
         this._sortAsc = true;
         this._testBtnTimeout = null;
+        this._testGeneration = 0;
         this._searchDebounce = null;
         this._supportsIsLoaded = true;
         this._onProviderChange = null;
         this._onModelCardClick = null;
+        this._populatingProvider = false;
+        this._guard = new AsyncGuard();
         this.el = null;
     }
 
@@ -76,30 +83,31 @@ export class AutocompletionsDialog {
     }
 
     _populateProviderSelect() {
-        const select = this.el.providerSelect;
-        select.innerHTML = '';
-        this._providers.forEach(p => {
-            const opt = document.createElement('option');
-            opt.value = p.id;
-            opt.textContent = p.name || p.providerType || 'Unknown';
-            opt._providerData = p;
-            if (this._config && p.providerType === this._config.providerType &&
-                p.id === this._config.providerId) {
-                opt.selected = true;
-                this._selectedProvider = p;
-            }
-            select.appendChild(opt);
-        });
+        this._populatingProvider = true;
+        try {
+            populateProviderSelect(
+                this.el.providerSelect,
+                this._providers,
+                { providerType: this._config?.providerType, providerId: this._config?.providerId }
+            );
+            const selectedOpt = this.el.providerSelect.options[this.el.providerSelect.selectedIndex];
+            this._selectedProvider = selectedOpt?._providerData || null;
+        } finally {
+            this._populatingProvider = false;
+        }
     }
 
-    async _loadModels() {
+    async _loadModels(resetFilters = true) {
         if (!this.el) return;
-        this._searchFilter = '';
-        this._loadedOnly = false;
-        this._sortAsc = true;
-        if (this.el.modelSearch) this.el.modelSearch.value = '';
-        if (this.el.loadedOnly) this.el.loadedOnly.checked = false;
-        if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
+        const generation = this._guard.start();
+        if (resetFilters) {
+            this._searchFilter = '';
+            this._loadedOnly = false;
+            this._sortAsc = true;
+            if (this.el.modelSearch) this.el.modelSearch.value = '';
+            if (this.el.loadedOnly) this.el.loadedOnly.checked = false;
+            if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
+        }
         const container = this.el.modelsContainer;
         if (!container) return;
         container.innerHTML = '<div class="loading-placeholder"><div class="spinner"></div><span>Loading models...</span></div>';
@@ -117,7 +125,7 @@ export class AutocompletionsDialog {
                 provider.customBaseUrl || '',
                 provider.customApiKey || ''
             );
-            if (!this.el) return;
+            if (!this.el || !this._guard.isCurrent(generation)) return;
             let raw = result;
             if (result?.success && result.data) raw = result.data;
             this._models = Array.isArray(raw?.models) ? raw.models : [];
@@ -136,7 +144,7 @@ export class AutocompletionsDialog {
             this._renderModels();
         } catch (err) {
             console.error('Failed to load models:', err);
-            if (!this.el) return;
+            if (!this.el || !this._guard.isCurrent(generation)) return;
             const c = this.el.modelsContainer;
             if (c) c.innerHTML = `<div class="empty-placeholder"><span style="color:var(--danger-color);padding:20px;">Error: ${this._escapeHtml(err.message)}</span></div>`;
             this._models = [];
@@ -210,10 +218,7 @@ export class AutocompletionsDialog {
         if (this._testBtnTimeout) { clearTimeout(this._testBtnTimeout); this._testBtnTimeout = null; }
         testBtn.disabled = false;
         testBtn.classList.remove('success', 'error');
-        testBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M11.5 2a.5.5 0 0 1 .5-.5v4a.5.5 0 0 1-1 0V3H8.5v3.293l1.854 1.853a.5.5 0 0 1-.708.708L8.5 7.707V14H7.5V7.707L6.354 8.854a.5.5 0 1 1-.708-.708L7.5 6.293V3H4.5v3.5a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 .5-.5h8z" />
-        </svg>
-        <span>Test</span>`;
+        testBtn.innerHTML = `${Icons.LINK}&nbsp;<span>Test</span>`;
     }
 
     async show() {
@@ -228,6 +233,9 @@ export class AutocompletionsDialog {
         this._searchFilter = '';
         this._loadedOnly = false;
         this._sortAsc = true;
+        if (modelSearch) modelSearch.value = '';
+        if (loadedOnly) loadedOnly.checked = false;
+        this._guard.invalidate();
         this._resetTestButton();
         if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
 
@@ -266,13 +274,16 @@ export class AutocompletionsDialog {
             this.el.debounceInput.addEventListener('input', onDebounceChange);
         }
 
-        const onChangeClick = () => { this._showSelectionView(); this._loadModels(); };
+        const onChangeClick = () => { this._showSelectionView(); this._loadModels(true); };
         changeBtn.addEventListener('click', onChangeClick);
 
         const onBackClick = () => { this._showInfoView(); };
         backBtn.addEventListener('click', onBackClick);
 
-        this._onProviderChange = () => { this._loadModels(); };
+        this._onProviderChange = () => {
+            if (this._populatingProvider) return;
+            this._loadModels(true);
+        };
         providerSelect.addEventListener('change', this._onProviderChange);
 
         const onModelSearchInput = () => {
@@ -297,13 +308,14 @@ export class AutocompletionsDialog {
         sortBtn.addEventListener('click', onSortClick);
 
         const onRefreshClick = () => {
-            this._loadModels();
+            this._loadModels(false);
         };
         refreshBtn.addEventListener('click', onRefreshClick);
 
         const onTestClick = async (e) => {
             e.preventDefault();
             if (this._testBtnTimeout) { clearTimeout(this._testBtnTimeout); this._testBtnTimeout = null; }
+            const generation = ++this._testGeneration;
             testBtn.disabled = true;
             testBtn.classList.remove('success', 'error');
             testBtn.innerHTML = '<span class="btn-spinner"></span>';
@@ -317,21 +329,23 @@ export class AutocompletionsDialog {
                     apiKey: provider.customApiKey || '',
                     modelId: this._config?.modelId || ''
                 });
-                const successIcon = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/></svg>`;
-                const errorIcon = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`;
+                if (!this.el || generation !== this._testGeneration) return;
                 if (result?.success && result?.data) {
-                    testBtn.innerHTML = `${successIcon} <span>Test</span>`;
+                    testBtn.innerHTML = `${Icons.SUCCESS} <span>Test</span>`;
                     testBtn.classList.add('success');
                 } else {
-                    testBtn.innerHTML = `${errorIcon} <span>Test</span>`;
+                    testBtn.innerHTML = `${Icons.ERROR} <span>Test</span>`;
                     testBtn.classList.add('error');
+                    toast.show(result?.error?.message || 'Connection test failed', 'error', 4000, testBtn);
                 }
             } catch (err) {
                 console.error('Test autocomplete error', err);
-                const errorIcon = `<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>`;
-                testBtn.innerHTML = `${errorIcon} <span>Test</span>`;
+                if (!this.el || generation !== this._testGeneration) return;
+                testBtn.innerHTML = `${Icons.ERROR} <span>Test</span>`;
                 testBtn.classList.add('error');
+                toast.show(err?.message || 'Connection test failed', 'error', 4000, testBtn);
             } finally {
+                if (!this.el || generation !== this._testGeneration) return;
                 this._testBtnTimeout = setTimeout(() => { this._resetTestButton(); this._testBtnTimeout = null; }, 3000);
             }
         };
@@ -384,8 +398,10 @@ export class AutocompletionsDialog {
                 }
                 if (this._searchDebounce) { clearTimeout(this._searchDebounce); this._searchDebounce = null; }
                 if (this._testBtnTimeout) { clearTimeout(this._testBtnTimeout); this._testBtnTimeout = null; }
+                this._testGeneration += 1;
                 this._onProviderChange = null;
                 this._onModelCardClick = null;
+                this._guard.invalidate();
                 this.onLoad.off();
                 this.onSave.off();
                 this.onTest.off();

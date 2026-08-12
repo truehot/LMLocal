@@ -1,4 +1,5 @@
-﻿import { createCallback } from '@app/lib/callback.js';
+﻿import { Icons } from '@app/constants/app.globals.js';
+import { createCallback } from '@app/lib/callback.js';
 
 export class McpSettingsDialog {
     constructor() {
@@ -163,6 +164,9 @@ export class McpSettingsDialog {
         confirmBtn.disabled = false;
         cancelBtn.disabled = false;
         testBtn.disabled = false;
+
+        const iconSlot = testBtn.querySelector('.btn-icon-slot');
+        if (iconSlot) iconSlot.innerHTML = `${Icons.LINK} Discover Tools`;
 
 
         try {

@@ -197,6 +197,16 @@
     </Bitmaps>
   </Commands>
 
+
+  <KeyBindings>
+    <KeyBinding guid="guidLMLocalPackageCmdSet"
+                id="cmdidAskLMLocal"
+                editor="guidVSStd97"
+                key1="L"
+                mod1="ALT" />
+  </KeyBindings>
+
+
   <Symbols>
     <GuidSymbol name="guidMyIconSet" value="{dc60de45-6b26-4b00-b969-92c6dd30dc08}">
       <IDSymbol name="iconLMLocal" value="1" />

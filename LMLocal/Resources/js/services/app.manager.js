@@ -5,13 +5,18 @@ import modelStore from '@app/store/model.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import appDataService from '@app/services/app.data.service.js';
 import { startupManager } from '@app/services/startup.manager.js';
-import chatController from '@app/chat/chat.controller.js';
+import { createCallback } from '@app/lib/callback.js';
 import bridgeClient from '@app/api/bridge.client.js';
 
 /**
- * AppManager - central controller for streaming and UI state.
+ * AppManager — manage user-initiated chat actions (send, stop, clear, load session, summarize) against the bridge and drives store status transitions.
  */
 class AppManager {
+
+    constructor() {
+        this.onUserMessagePending = createCallback();
+        this.onHistoryLoaded = createCallback();
+    }
 
     async onAppInit() {
         appStore.setState({ status: AppStatus.CONNECTING, accumulatedText: "", accumulatedThoughtText: "", error: null });
@@ -22,7 +27,7 @@ class AppManager {
             if (settings.EnableChatLogging === true && settings.AutoLoadLastHistory === true) {
                 const session = await appDataService.getLastChatSessionAsync();
                 if (session && session.hasSession) {
-                    chatController.renderHistory(session.messages);
+                    await this.onHistoryLoaded.emit(session.messages);
                 }
             }
 
@@ -58,11 +63,21 @@ class AppManager {
         await startupManager.initialize();
     }
 
-    async performSendMessage(text, hasContent) {
+    async performSendMessage(text, hasContent, images = []) {
         const cleanText = (text || '').trim();
-        if (!cleanText || !appSelectors.canSend(appStore.getState().status)) return;
+        const hasImages = images && images.length > 0;
+        if ((!cleanText && !hasImages) || !appSelectors.canSend(appStore.getState().status)) return false;
 
-        appStore.setState({ status: AppStatus.PROCESSING, accumulatedText: "", accumulatedThoughtText: "", error: null, userMessage: cleanText });
+        await this.onUserMessagePending.emit(cleanText, hasImages ? images.slice() : null);
+
+        appStore.setState({
+            status: AppStatus.PROCESSING,
+            accumulatedText: "",
+            accumulatedThoughtText: "",
+            error: null,
+            roundNumber: 0,
+            toolCount: 0
+        });
 
         const instructionsState = instructionsStore.getState();
         const selectedTabId = instructionsState.selectedTabId;
@@ -73,6 +88,7 @@ class AppManager {
             includeContent: hasContent,
             modelId: modelStore.getState().modelId || ""
         };
+        if (hasImages) request.images = images;
 
         if (Array.isArray(instructions) && selectedTabId) {
             const selectedTab = instructions.find(tab => tab.id == selectedTabId);
@@ -94,10 +110,23 @@ class AppManager {
         return true;
     }
 
+    /**
+     * Marks the start of a tool round.
+     */
+    onToolRoundStart(roundNumber, toolCount) {
+        appStore.setState({
+            status: AppStatus.PROCESSING,
+            roundNumber: roundNumber || 0,
+            toolCount: toolCount || 0,
+            accumulatedText: "",
+            accumulatedThoughtText: ""
+        });
+    }
+
     async performStop(text) {
         if (!appSelectors.isGenerating(appStore.getState().status)) return;
 
-        appStore.setState({ status: AppStatus.STOPPING, userMessage: text });
+        appStore.setState({ status: AppStatus.STOPPING });
 
         try {
             await bridgeClient.stopExecutionAsync();
@@ -133,7 +162,7 @@ class AppManager {
                     status: AppStatus.IDLE,
                     tokenUsed: 0, tokenSpeed: 0,
                     accumulatedText: "", accumulatedThoughtText: "",
-                    userMessage: "", error: null
+                    error: null
                 });
                 return;
             }
@@ -142,7 +171,7 @@ class AppManager {
                 status: AppStatus.IDLE,
                 tokenUsed: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
-                userMessage: "", error: null
+                error: null
             });
             return;
         }
@@ -166,13 +195,13 @@ class AppManager {
                 status: AppStatus.IDLE,
                 tokenUsed: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
-                userMessage: "", error: null
+                error: null
             });
 
             if (action !== 'none') {
                 const session = await appDataService.getLastChatSessionAsync();
                 if (session && session.hasSession) {
-                    chatController.renderHistory(session.messages);
+                    await this.onHistoryLoaded.emit(session.messages);
                 }
             }
         } catch (error) {
@@ -180,7 +209,7 @@ class AppManager {
                 status: AppStatus.ERROR,
                 error: "Failed to clear chat history",
                 accumulatedText: "", accumulatedThoughtText: "",
-                userMessage: "", tokenUsed: 0, tokenSpeed: 0
+                tokenUsed: 0, tokenSpeed: 0
             });
         }
     }
@@ -205,11 +234,11 @@ class AppManager {
                 status: AppStatus.IDLE,
                 tokenUsed: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
-                userMessage: "", error: null
+                error: null
             });
 
             if (session && session.hasSession && Array.isArray(session.messages) && session.messages.length > 0) {
-                chatController.renderHistory(session.messages);
+                await this.onHistoryLoaded.emit(session.messages);
                 return { success: true };
             }
 
@@ -220,7 +249,7 @@ class AppManager {
                 status: AppStatus.ERROR,
                 error: "Failed to load chat session",
                 accumulatedText: "", accumulatedThoughtText: "",
-                userMessage: "", tokenUsed: 0, tokenSpeed: 0
+                tokenUsed: 0, tokenSpeed: 0
             });
             return { success: false, error };
         }

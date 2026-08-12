@@ -58,6 +58,7 @@ namespace LMLocal.Tests.Unit
         {
             public void Update(int totalTokens) { }
             public double GetTokensPerSecond() => 0.0;
+            public double GetAverageTokensPerSecond() => 0.0;
         }
 
         [Test]

@@ -26,6 +26,10 @@ public partial class AppTestBase : PageTest
     private static partial Regex CopiedLabelRegex();
     protected static Regex CopiedLabel => CopiedLabelRegex();
 
+    [GeneratedRegex(@"^792 tokens · cached 100 · 42\.0 t/s · \d+\.\d+ s$")]
+    private static partial Regex TokenStatsBadgeWithTimeRegex();
+    protected static Regex TokenStatsBadgeWithTime => TokenStatsBadgeWithTimeRegex();
+
     protected static string ReadMock(string fileName) =>
         File.ReadAllText(Path.GetFullPath($"TestAssets/{fileName}"));
 

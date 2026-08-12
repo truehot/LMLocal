@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi.Requests;
@@ -35,13 +36,22 @@ namespace LMLocal.Infrastructure.Persistence
         /// </summary>
         internal static string BuildMessageLine(ChatMessage message, string sessionId, DateTime utcNow)
         {
+            object content = message.Content;
+
+            if (content is List<ContentPart> parts)
+            {
+                int imageCount = parts.Count(p => p.Type == "image_url");
+                if (imageCount > 0)
+                    content = FormatImagePlaceholder(imageCount);
+            }
+
             var entry = new Dictionary<string, object>
             {
                 { "type", "message" },
                 { "session_id", sessionId },
                 { "timestamp", utcNow.ToString("o") },
                 { "role", message.Role },
-                { "content", message.Content },
+                { "content", content },
                 { "tool_call_id", message.ToolCallId },
                 { "tool_calls", message.ToolCalls }
             };
@@ -103,6 +113,13 @@ namespace LMLocal.Infrastructure.Persistence
             return content.Length > MaxPromptLength
                 ? content.Substring(0, MaxPromptLength) + "..."
                 : content;
+        }
+
+        private static string FormatImagePlaceholder(int count)
+        {
+            return count == 1
+                ? "[1 image attached - not available in this session]"
+                : $"[{count} images attached - not available in this session]";
         }
     }
 }

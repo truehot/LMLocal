@@ -44,6 +44,13 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
         public string DisplayName { get; set; }
 
         /// <summary>
+        /// Indicates whether the model supports vision (image inputs).
+        /// Top-level flag returned by LM Studio.
+        /// </summary>
+        [JsonProperty("vision", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? Vision { get; set; }
+
+        /// <summary>
         /// Model architecture (e.g., "llama", "mistral", "qwen").
         /// Only for LLM models.
         /// </summary>

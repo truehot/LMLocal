@@ -1,5 +1,6 @@
 import { createCallback } from '@app/lib/callback.js';
-import { populateProviderSelect } from '@app/lib/populate-provider-select.js';
+import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
+import { AsyncGuard } from '@app/lib/async.guard.js';
 
 export class ModelSelectorDialog {
     constructor(models = [], activeModel = null, supportsIsLoaded = true) {
@@ -18,6 +19,7 @@ export class ModelSelectorDialog {
 
         this.previousProviderValue = null;
         this._supportsIsLoaded = supportsIsLoaded;
+        this._guard = new AsyncGuard();
 
         this._onRefreshClick = null;
         this._onCloseClick = null;
@@ -45,14 +47,16 @@ export class ModelSelectorDialog {
     }
 
     async _loadModels(showLoadingState = true) {
-        if (this.isLoading) return;
+        if (!this.el) return 0;
+        const generation = this._guard.start();
         this.isLoading = true;
         try {
             if (showLoadingState) this._showLoadingState();
             const result = await this.onRefresh.emitResult();
+            if (!this.el || !this._guard.isCurrent(generation)) return generation;
             if (!result?.success) {
                 this._showErrorState(result?.error?.message || 'Failed to load models');
-                return;
+                return generation;
             }
             const response = result.data || {};
             this.selectedModel = response.hasActiveModel && response.activeModel ? response.activeModel : this.selectedModel;
@@ -61,37 +65,41 @@ export class ModelSelectorDialog {
             this._supportsIsLoaded = response.supportsIsLoaded !== false;
             this._updateToggleVisibility();
             this._renderModels();
+            return generation;
         } catch (error) {
             console.error('Failed to load models:', error);
-            this._showErrorState(`Failed to load models: ${error.message}`);
+            if (this._guard.isCurrent(generation)) {
+                this._showErrorState(`Failed to load models: ${error.message}`);
+            }
+            return generation;
         } finally {
-            this.isLoading = false;
+            if (this.el) {
+                this.isLoading = false;
+            }
         }
     }
 
     _showLoadingState() {
-        if (this.el.container) {
-            this.el.container.innerHTML = `
+        if (!this.el?.container) return;
+        this.el.container.innerHTML = `
                 <div class="loading-placeholder">
                     <div class="spinner"></div>
                     <span>Fetching models from endpoint...</span>
                 </div>
             `;
-        }
     }
 
     _showErrorState(errorMessage) {
-        if (this.el.container) {
-            this.el.container.innerHTML = `
+        if (!this.el?.container) return;
+        this.el.container.innerHTML = `
                 <div class="error-placeholder">
                     <span style="color: var(--danger-color); padding: 20px;">Error: ${this._escapeHtml(errorMessage)}</span>
                 </div>
             `;
-        }
     }
 
     _showEmptyState() {
-        if (!this.el.container) return;
+        if (!this.el?.container) return;
         const isFiltering = this.filterText.length > 0;
         this.el.container.innerHTML = `
             <div class="empty-placeholder">
@@ -109,10 +117,10 @@ export class ModelSelectorDialog {
     }
 
     _updateToggleVisibility() {
-        if (!this.el.activeToggle) return;
+        if (!this.el?.activeToggle) return;
         const toggleContainer = this.el.activeToggle.closest('.model-filter-toggle') ||
-                                 this.el.activeToggle.closest('.toggle-container') ||
-                                 this.el.activeToggle;
+            this.el.activeToggle.closest('.toggle-container') ||
+            this.el.activeToggle;
         if (this._supportsIsLoaded === false) {
             toggleContainer.classList.add('hidden');
             this.showOnlyActive = false;
@@ -122,7 +130,7 @@ export class ModelSelectorDialog {
     }
 
     _renderModels() {
-        if (!this.el.container) return;
+        if (!this.el?.container) return;
 
         let displayList = this.modelsList.filter(model => {
             const nameMatch = (model.name || model.id).toLowerCase().includes(this.filterText);
@@ -164,6 +172,12 @@ export class ModelSelectorDialog {
                 const toolClass = model.supportsToolUse ? 'model-tooluse-active' : 'model-tooluse-none';
                 const toolText = model.supportsToolUse ? 'Tool Use: Yes' : 'Tool Use: No';
                 metaItems.push(`<div class="model-tooluse ${toolClass}">${toolText}</div>`);
+            }
+
+            if (model.supportsVision != null) {
+                const visionClass = model.supportsVision ? 'model-tooluse-active' : 'model-tooluse-none';
+                const visionText = model.supportsVision ? 'Vision: Yes' : 'Vision: No';
+                metaItems.push(`<div class="model-tooluse ${visionClass}">${visionText}</div>`);
             }
 
 
@@ -213,21 +227,25 @@ export class ModelSelectorDialog {
     }
 
     _setControlsEnabled(enabled) {
-        this.el.providerSelect.disabled = !enabled;
-        this.el.refreshBtn.disabled = !enabled;
-        this.el.filterInput.disabled = !enabled;
-        this.el.sortBtn.disabled = !enabled;
-        this.el.activeToggle.disabled = !enabled;
-        this.el.closeBtn.disabled = !enabled;
+        if (!this.el) return;
+        const { providerSelect, refreshBtn, filterInput, sortBtn, activeToggle, closeBtn } = this.el;
+        if (providerSelect) providerSelect.disabled = !enabled;
+        if (refreshBtn) refreshBtn.disabled = !enabled;
+        if (filterInput) filterInput.disabled = !enabled;
+        if (sortBtn) sortBtn.disabled = !enabled;
+        if (activeToggle) activeToggle.disabled = !enabled;
+        if (closeBtn) closeBtn.disabled = !enabled;
     }
 
     async _handleProviderChange() {
+        if (!this.el) return;
         const select = this.el.providerSelect;
         const selectedOption = select.options[select.selectedIndex];
         if (!selectedOption?._providerData) return;
 
         const providerData = selectedOption._providerData;
         const previousValue = this.previousProviderValue;
+        const generation = this._guard.start();
         this.previousProviderValue = select.value;
 
         this._setControlsEnabled(false);
@@ -241,6 +259,8 @@ export class ModelSelectorDialog {
                 ApiKey: providerData.customApiKey || '',
             });
 
+            if (!this.el || !this._guard.isCurrent(generation)) return;
+
             if (result?.success !== false) {
                 await this._loadModels(false);
             } else {
@@ -250,20 +270,26 @@ export class ModelSelectorDialog {
             }
         } catch (err) {
             console.error('Provider change failed:', err);
+            if (!this.el || !this._guard.isCurrent(generation)) return;
             select.value = previousValue;
             this.previousProviderValue = previousValue;
             this._showErrorState(`Provider change failed: ${err.message}`);
         } finally {
-            this._setControlsEnabled(true);
+            if (this.el) {
+                this._setControlsEnabled(true);
+            }
         }
     }
 
     _attachEvents() {
         this._onRefreshClick = (e) => {
             e.stopPropagation();
+            if (!this.el?.refreshBtn) return;
             this.el.refreshBtn.classList.add('spinning');
             this._loadModels(false).finally(() => {
-                this.el.refreshBtn.classList.remove('spinning');
+                if (this.el) {
+                    this.el.refreshBtn.classList.remove('spinning');
+                }
             });
         };
         this._onCloseClick = () => {
@@ -328,16 +354,41 @@ export class ModelSelectorDialog {
         this.filterText = '';
         this.sortAsc = true;
         this.showOnlyActive = false;
+        this._guard.invalidate();
 
         if (!this.el.dialog) throw new Error('Dialog #model-selector-dialog not found');
 
+        this._setControlsEnabled(true);
+
         this.el.filterInput.value = '';
-        this.showOnlyActive = !!this.el.activeToggle.checked;
+        this.el.activeToggle.checked = false;
 
         this._attachEvents();
 
+        const resultPromise = new Promise((resolve) => {
+            const onClose = () => {
+                try {
+                    this._detachEvents();
+                    this.onLoadProviders.off();
+                    this.onSaveProvider.off();
+                    this.el.dialog.removeEventListener('close', onClose);
+                    resolve(this.selectedModel || null);
+                } catch (err) {
+                    console.error('Error during dialog close cleanup:', err);
+                    resolve(this.selectedModel || null);
+                } finally {
+                    this._guard.invalidate();
+                    this.el = null;
+                }
+            };
+            this.el.dialog.addEventListener('close', onClose);
+        });
+
+        this.el.dialog.showModal();
+
         try {
             const providersResult = await this.onLoadProviders.emitResult();
+            if (!this.el) return resultPromise;
             if (providersResult?.success) {
                 const data = providersResult.data || {};
 
@@ -355,6 +406,8 @@ export class ModelSelectorDialog {
             console.error('Failed to load providers for model dialog:', err);
         }
 
+        if (!this.el) return resultPromise;
+
         if (this.modelsList.length) {
             this._updateToggleVisibility();
             this._renderModels();
@@ -362,24 +415,6 @@ export class ModelSelectorDialog {
             await this._loadModels();
         }
 
-        this.el.dialog.showModal();
-
-        return new Promise((resolve) => {
-            const onClose = () => {
-                try {
-                    this._detachEvents();
-                    this.onLoadProviders.off();
-                    this.onSaveProvider.off();
-                    this.el.dialog.removeEventListener('close', onClose);
-                    resolve(this.selectedModel || null);
-                } catch (err) {
-                    console.error('Error during dialog close cleanup:', err);
-                    resolve(this.selectedModel || null);
-                } finally {
-                    this.el = null;
-                }
-            };
-            this.el.dialog.addEventListener('close', onClose);
-        });
+        return resultPromise;
     }
 }

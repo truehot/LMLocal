@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LMLocal.Models
 {
     public class ExecutePromptRequest
@@ -26,6 +28,11 @@ namespace LMLocal.Models
         /// Temperature setting for the model. Controls randomness of output. Optional.
         /// </summary>
         public double? Temperature { get; set; }
+
+        /// <summary>
+        /// Optional list of base64 image data URLs (data:image/...) attached to the user message as multimodal content.
+        /// </summary>
+        public List<string> Images { get; set; }
     }
 }
 

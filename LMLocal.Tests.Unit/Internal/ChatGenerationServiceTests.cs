@@ -121,7 +121,7 @@ namespace LMLocal.Tests.Unit
 
         private class DummyHistory : IChatHistoryManager
         {
-            public void AddUserMessage(string text, string activeDocumentContent = null) { }
+            public void AddUserMessage(string text, string activeDocumentContent = null, IReadOnlyList<string> imageDataUrls = null) { }
             public void AddAssistantMessage(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
             public void Clear() { }
             public IReadOnlyList<ChatMessage> GetHistoryCopy() => new List<ChatMessage>();
@@ -201,7 +201,7 @@ namespace LMLocal.Tests.Unit
             _clientMock.Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(streamingResponse);
 
-            _historyMock.Setup(h => h.AddUserMessage(It.IsAny<string>(), null));
+            _historyMock.Setup(h => h.AddUserMessage(It.IsAny<string>(), null, null));
             _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), CancellationToken.None)).Returns(Task.CompletedTask);
 
             Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
@@ -216,7 +216,7 @@ namespace LMLocal.Tests.Unit
 
             await _service.GenerateStreamAsync(context, null, onChunk, completion => Task.CompletedTask, CancellationToken.None);
 
-            _historyMock.Verify(h => h.AddUserMessage("prompt", null), Times.Once);
+            _historyMock.Verify(h => h.AddUserMessage("prompt", null, null), Times.Once);
         }
 
         [Test]
@@ -255,7 +255,7 @@ namespace LMLocal.Tests.Unit
 
             // Tool round: AddToolExecutionResultMessages called (not AddUserMessage)
             _historyMock.Verify(h => h.AddToolExecutionResultMessages(It.IsAny<IEnumerable<ChatMessage>>()), Times.Once);
-            _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>(), null), Times.Never);
 
             // Assistant message saved with result
             _historyMock.Verify(h => h.AddAssistantMessage(It.IsAny<string>(), It.IsAny<IReadOnlyList<ToolCallRecord>>()), Times.Once);
@@ -350,7 +350,7 @@ namespace LMLocal.Tests.Unit
                 Times.Never);
 
             // User message is added before the streaming call, so it's already in history
-            _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            _historyMock.Verify(h => h.AddUserMessage(It.IsAny<string>(), It.IsAny<string>(), null), Times.Once);
         }
 
         [Test]
