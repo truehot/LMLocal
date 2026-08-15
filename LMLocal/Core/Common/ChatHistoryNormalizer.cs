@@ -18,7 +18,7 @@ namespace LMLocal.Core.Common
     /// </summary>
     internal static class ChatHistoryNormalizer
     {
-        private static readonly Regex CodeBlockRegex = new Regex(@"```(.+?)```", RegexOptions.Singleline | RegexOptions.Compiled);
+        private static readonly Regex CodeBlockRegex = new Regex(@"[`]{3,}(.+?)[`]{3,}", RegexOptions.Singleline | RegexOptions.Compiled);
         private static readonly Regex MultipleNewlinesRegex = new Regex(@"\n{3,}", RegexOptions.Compiled);
 
         public static string Normalize(string text)

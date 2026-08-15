@@ -56,7 +56,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { "symbol_name", new ToolDetails { Type = "string", Description = "The name of the symbol (case‑insensitive)." } },
-                        { "file_path", new ToolDetails { Type = "string", Description = "Optional: limit search to a specific file (relative or absolute path). If provided, only declarations in this file are returned." } },
+                        { "file_path", new ToolDetails { Type = "string", Description = "Limit search to a specific file (relative or absolute path). If provided, only declarations in this file are returned." } },
                         { "include_references", new ToolDetails { Type = "boolean", Description = "Whether to include usages (references). Default true." } },
                         { "max_references", new ToolDetails { Type = "integer", Description = "Number of references per page (page size). Default 50, max 200." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for the next page of references." } }

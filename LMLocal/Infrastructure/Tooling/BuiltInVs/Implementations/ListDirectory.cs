@@ -1,13 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -22,14 +21,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IFileSystem _fileSystem;
         private const int MaxEntries = 200;
 
-        private static readonly HashSet<string> _excludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin",
-            "obj",
-            ".vs",
-            ".git",
-            "CopilotBaseline"
-        };
 
         public string ToolName => "list_directory";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -46,7 +37,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Lists files and subdirectories within a given path. System directories (bin, obj, .vs, .git, CopilotBaseline) are automatically excluded from results. Returns up to 200 entries; if has_more_results is true, the directory has more entries not shown. Only works inside the solution directory — paths outside the solution are rejected. Use '.' for the solution root. Example: {\"directory_path\":\"src\"} → {\"success\":true,\"directory\":\"src\",\"entries\":[{\"name\":\"Program.cs\",\"path\":\"src/Program.cs\",\"type\":\"file\"},{\"name\":\"Models\",\"path\":\"src/Models\",\"type\":\"directory\"}],\"has_more_results\":false,\"error_message\":null}.",
+                Description = "Lists files and subdirectories within a given path. Generated and dependency directories (bin, obj, node_modules, .git, etc.) are automatically excluded from results. Returns up to 200 entries; if has_more_results is true, the directory has more entries not shown. Only works inside the solution directory — paths outside the solution are rejected. Use '.' for the solution root.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -105,8 +96,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private async Task<DirectoryContentsResponse> EnumerateDirectoryContentsAsync(
-            string absolutePath, string solutionDir, CancellationToken cancellationToken)
+        private async Task<DirectoryContentsResponse> EnumerateDirectoryContentsAsync(string absolutePath, string solutionDir, CancellationToken cancellationToken)
         {
             var result = new DirectoryContentsResponse
             {
@@ -118,8 +108,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                var entries = await _fileSystem.EnumerateDirectoryAsync(
-                    absolutePath, _excludedDirectories, cancellationToken);
+                var entries = await _fileSystem.EnumerateDirectoryAsync(absolutePath, VsFileFilter.ExcludedDirectories, cancellationToken);
 
                 int entryCount = 0;
                 foreach (var entry in entries)

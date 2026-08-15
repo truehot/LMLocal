@@ -9,8 +9,6 @@ namespace LMLocal.Commands
     {
         protected override int CommandId => 0x0201;
 
-        protected override string ButtonText => "Review Code";
-
         protected override string InstructionDisplayName => "Review";
 
         protected override string PromptInstruction =>

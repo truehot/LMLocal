@@ -13,6 +13,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [SetUp]
         public void SetUp()
         {
+            ProjectMetadataProvider.ClearAll(); // static cache
             _root = Path.Combine(Path.GetTempPath(), "ProjectMetadataProviderTests", Guid.NewGuid().ToString());
             Directory.CreateDirectory(_root);
         }
@@ -105,6 +106,45 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             // Language is known by extension, but target framework is not read for large files
             Assert.That(meta.Language, Is.EqualTo("C#"));
             Assert.That(meta.TargetFramework, Is.EqualTo("Unknown"));
+        }
+
+        [Test]
+        public void GetMetadata_DetectsCppLanguage_FromVcxproj()
+        {
+            var file = Path.Combine(_root, "Native.vcxproj");
+            File.WriteAllText(file, "<Project><PropertyGroup><ConfigurationType>Application</ConfigurationType></PropertyGroup></Project>");
+
+            var meta = ProjectMetadataProvider.GetMetadata(file);
+
+            Assert.That(meta.Language, Is.EqualTo("C++"));
+            Assert.That(meta.TargetFramework, Is.EqualTo("Unknown"));
+            Assert.That(meta.IsNativeTestProject, Is.False);
+        }
+
+        [Test]
+        public void GetMetadata_DetectsNativeUnitTest_FromVcxproj()
+        {
+            var file = Path.Combine(_root, "NativeTest.vcxproj");
+            var content = "<Project><PropertyGroup><ConfigurationType>DynamicLibrary</ConfigurationType><UseNativeUnitTest>true</UseNativeUnitTest></PropertyGroup></Project>";
+            File.WriteAllText(file, content);
+
+            var meta = ProjectMetadataProvider.GetMetadata(file);
+
+            Assert.That(meta.Language, Is.EqualTo("C++"));
+            Assert.That(meta.IsNativeTestProject, Is.True);
+        }
+
+        [Test]
+        public void GetMetadata_UseNativeUnitTest_False_IsNotTestProject()
+        {
+            var file = Path.Combine(_root, "NativeNoTest.vcxproj");
+            var content = "<Project><PropertyGroup><UseNativeUnitTest>false</UseNativeUnitTest></PropertyGroup></Project>";
+            File.WriteAllText(file, content);
+
+            var meta = ProjectMetadataProvider.GetMetadata(file);
+
+            Assert.That(meta.Language, Is.EqualTo("C++"));
+            Assert.That(meta.IsNativeTestProject, Is.False);
         }
     }
 }

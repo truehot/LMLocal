@@ -127,7 +127,7 @@ namespace LMLocal.Application.Chat
             {
                 string merged = userPrompt ?? "";
                 if (!string.IsNullOrEmpty(activeDocumentContent))
-                    merged = FormatIncludedContent(activeDocumentContent) + "\n\n" + userPrompt;
+                    merged = activeDocumentContent + "\n\n" + userPrompt;
                 content = merged;
             }
             else
@@ -135,7 +135,7 @@ namespace LMLocal.Application.Chat
                 var parts = new List<ContentPart>();
                 string text = userPrompt ?? "";
                 if (!string.IsNullOrEmpty(activeDocumentContent))
-                    text = FormatIncludedContent(activeDocumentContent) + "\n\n" + text;
+                    text = activeDocumentContent + "\n\n" + text;
                 if (!string.IsNullOrEmpty(text))
                     parts.Add(new ContentPart { Type = "text", Text = text });
 
@@ -712,11 +712,6 @@ namespace LMLocal.Application.Chat
         private void InvalidateCacheLocked()
         {
             _cachedNormalized = null;
-        }
-
-        private static string FormatIncludedContent(string content)
-        {
-            return $"Reference code:\n\n{content}";
         }
 
         /// <summary>

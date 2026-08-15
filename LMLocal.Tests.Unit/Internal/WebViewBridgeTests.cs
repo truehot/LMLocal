@@ -109,7 +109,13 @@ namespace LMLocal.Tests.Unit
             var mockCompactor = new Mock<IHistoryCompactor>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            mockActiveDoc.Setup(a => a.GetContentAsync()).ReturnsAsync("file content");
+            mockActiveDoc.Setup(a => a.GetActiveDocumentInfoAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new GetActiveDocument.ActiveDocumentResponse
+                {
+                    FilePath = "src/Foo.cs",
+                    Content = "file content",
+                    Success = true
+                });
 
             GenerateStreamContext capturedContext = null;
             mockSession.Setup(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
@@ -123,12 +129,12 @@ namespace LMLocal.Tests.Unit
 
             await bridge.ExecutePromptAsync(json).ConfigureAwait(false);
 
-            mockActiveDoc.Verify(a => a.GetContentAsync(), Times.Once);
+            mockActiveDoc.Verify(a => a.GetActiveDocumentInfoAsync(It.IsAny<CancellationToken>()), Times.Once);
             mockSession.Verify(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()), Times.Once);
 
             Assert.That(capturedContext, Is.Not.Null);
             Assert.That(capturedContext.Prompt, Is.EqualTo("hello"));
-            Assert.That(capturedContext.ActiveDocumentContent, Is.EqualTo("file content"));
+            Assert.That(capturedContext.ActiveDocumentContent, Is.EqualTo("````csharp\n// file: src/Foo.cs\nfile content\n````"));
             Assert.That(capturedContext.AdditionalPrompt, Is.EqualTo("add"));
             Assert.That(capturedContext.ModelId, Is.EqualTo("m1"));
         }

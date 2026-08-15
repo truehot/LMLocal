@@ -18,8 +18,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
         /// <summary>
         /// Gets a high-level overview of the solution structure (loaded projects only).
-        /// Results are cached; cache invalidates when .sln file is modified.
-        /// Excludes solution folders and projects without file paths.
         /// </summary>
         public static SolutionInfo GetSolutionOverview(IVsSolution solution, int maxProjects = 200)
         {
@@ -99,9 +97,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     }
 
                     string relativePath = GetRelativePath(solutionDirectory, projectFilePath);
-                    int fileCount = CountSourceFilesInProject(projectHierarchy);
-                    bool isTest = IsTestProject(projectName);
-                    (string language, string framework) = ProjectMetadataProvider.GetMetadata(projectFilePath);
+                    (string language, string framework, bool isNativeTest) = ProjectMetadataProvider.GetMetadata(projectFilePath);
+                    int fileCount = CountSourceFilesInProject(projectHierarchy, language);
+                    bool isTest = IsTestProject(projectName, isNativeTest);
 
                     projectsList.Add(new ProjectInfo(projectName, language, relativePath, fileCount, isTest, framework));
                     totalFilesCount += fileCount;
@@ -209,15 +207,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         /// <summary>
         /// Counts source files recursively in a project hierarchy.
         /// </summary>
-        private static int CountSourceFilesInProject(IVsHierarchy hierarchy)
+        private static int CountSourceFilesInProject(IVsHierarchy hierarchy, string language)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             int count = 0;
-            CountFilesRecursive(hierarchy, VSConstants.VSITEMID_ROOT, ref count);
+            CountFilesRecursive(hierarchy, VSConstants.VSITEMID_ROOT, language, ref count);
             return count;
         }
 
-        private static void CountFilesRecursive(IVsHierarchy hierarchy, uint itemId, ref int count)
+        private static void CountFilesRecursive(IVsHierarchy hierarchy, uint itemId, string language, ref int count)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (hierarchy.GetProperty(itemId, (int)__VSHPROPID.VSHPROPID_FirstChild, out object childObj) != VSConstants.S_OK)
@@ -227,11 +225,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             while (childId != VSConstants.VSITEMID_NIL)
             {
-                bool hasChildren = hierarchy.GetProperty(childId, (int)__VSHPROPID.VSHPROPID_FirstChild, out object maybeChildObj) == VSConstants.S_OK
-                                   && TryGetItemId(maybeChildObj, out uint _);
+                bool hasChildren = hierarchy.GetProperty(childId, (int)__VSHPROPID.VSHPROPID_FirstChild, out object maybeChildObj) == VSConstants.S_OK && TryGetItemId(maybeChildObj, out uint _);
                 if (hasChildren)
                 {
-                    CountFilesRecursive(hierarchy, childId, ref count);
+                    CountFilesRecursive(hierarchy, childId, language, ref count);
                 }
                 else
                 {
@@ -240,8 +237,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                         string fileName = nameObj as string;
                         if (!string.IsNullOrEmpty(fileName))
                         {
-                            string ext = Path.GetExtension(fileName).ToLower();
-                            if (IsSourceFileExtension(ext))
+                            string ext = Path.GetExtension(fileName);
+                            if (SourceFileExtensions.IsSourceFile(ext, language))
                                 count++;
                         }
                     }
@@ -254,20 +251,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
         }
 
-        private static bool IsSourceFileExtension(string ext)
-        {
-            switch (ext)
-            {
-                case ".cs":
-                case ".vb":
-                case ".fs":
-                case ".xaml":
-                case ".resx":
-                    return true;
-                default:
-                    return false;
-            }
-        }
 
         private static bool TryGetItemId(object value, out uint id)
         {
@@ -298,13 +281,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         }
 
         /// <summary>
-        /// Determines if a project is a test project based on naming convention.
-        /// May include false positives (e.g., "TestUtils" project).
+        /// Determines if a project is a test project.
         /// </summary>
-        private static bool IsTestProject(string projectName)
+        internal static bool IsTestProject(string projectName, bool isNativeTestProject)
         {
-            return projectName.IndexOf("test", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   projectName.IndexOf("tests", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (isNativeTestProject)
+                return true;
+
+            if (string.IsNullOrEmpty(projectName))
+                return false;
+
+            return projectName.IndexOf("test", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>

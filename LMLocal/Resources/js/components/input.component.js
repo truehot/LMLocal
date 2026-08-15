@@ -82,12 +82,19 @@ class InputComponent {
     _syncExpandedState = () => {
         const hasText = this.elements.userInput?.value?.length > 0;
         const hasImages = this._images.length > 0;
-        if (hasText || hasImages) {
+        const isResized = this._isResized();
+        if (hasText || hasImages || isResized) {
             this.elements.inputWrapper?.classList.add('expanded');
         } else {
             this.elements.inputWrapper?.classList.remove('expanded');
         }
     };
+
+    _isResized() {
+        const el = this.elements.userInput;
+        if (!el) return false;
+        return el.style.getPropertyValue('min-height') !== '';
+    }
 
     _warnImage = (message) => {
         console.warn('[ImagePaste]', message);
@@ -627,8 +634,6 @@ class InputComponent {
         this._resizeState.active = true;
         this._resizeState.startY = e.clientY;
         this._resizeState.startHeight = el.getBoundingClientRect().height;
-
-        wrapper.classList.remove('expanded-full');
 
         const resizer = document.getElementById('input-drag-resizer');
         if (resizer) resizer.classList.add('is-resizing');

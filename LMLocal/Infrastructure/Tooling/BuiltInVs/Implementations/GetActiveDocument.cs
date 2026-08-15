@@ -18,7 +18,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </summary>
     internal interface IGetActiveDocument : IBuiltInTool
     {
-        Task<string> GetContentAsync();
+        /// <summary>
+        /// Returns the currently active document (relative path + content) as raw data.
+        /// </summary>
+        Task<GetActiveDocument.ActiveDocumentResponse> GetActiveDocumentInfoAsync(CancellationToken cancellationToken = default);
     }
 
     internal class GetActiveDocument : IGetActiveDocument
@@ -42,7 +45,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns the currently active text document in Visual Studio — the file the user is viewing/editing. Use when the user asks to 'fix this' or 'refactor this file' and you need to see what they're looking at without guessing the path. If no document is open, returns success=false. If the document content cannot be read (e.g., unsaved changes conflict), returns success=false with an error_message. Example: (no parameters) → {\"success\":true,\"file_path\":\"src/Program.cs\",\"content\":\"using System;\\n...\",\"error_message\":null}.",
+                Description = "Returns the currently active text document in Visual Studio — the file the user is viewing/editing. Use when the user asks to 'fix this' or 'refactor this file' and you need to see what they're looking at without guessing the path. If no document is open, returns success=false. If the document content cannot be read (e.g., unsaved changes conflict), returns success=false with an error_message.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -59,43 +62,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_vsDependencies.IsSolutionOpen)
                     return Error("No solution is currently open.");
 
-                string solutionDir = _vsDependencies.GetSolutionDirectory();
-
-                var (filePath, content) = await GetActiveTextDocumentAsync(cancellationToken);
-                if (string.IsNullOrEmpty(filePath))
-                {
-                    return new ActiveDocumentResponse
-                    {
-                        FilePath = null,
-                        Content = content,
-                        Success = false,
-                        ErrorMessage = "No active document found."
-                    };
-                }
-
-                if (content == null)
-                {
-                    return new ActiveDocumentResponse
-                    {
-                        FilePath = filePath,
-                        Content = "",
-                        Success = false,
-                        ErrorMessage = "Failed to retrieve document content."
-                    };
-                }
-
-                if (string.IsNullOrEmpty(solutionDir) || !_pathResolver.TryGetRelativePath(filePath, solutionDir, out string relativePath))
-                {
-                    relativePath = filePath;
-                }
-
-                return new ActiveDocumentResponse
-                {
-                    FilePath = relativePath,
-                    Content = content,
-                    Success = true,
-                    ErrorMessage = null
-                };
+                return await GetActiveDocumentInfoAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -109,10 +76,46 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        public async Task<string> GetContentAsync()
+        /// <summary>
+        /// Returns the currently active document (relative path + content) as raw data.
+        /// </summary>
+        public async Task<ActiveDocumentResponse> GetActiveDocumentInfoAsync(CancellationToken cancellationToken = default)
         {
-            var (_, text) = await GetActiveTextDocumentAsync();
-            return text;
+            var (filePath, content) = await GetActiveTextDocumentAsync(cancellationToken);
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return new ActiveDocumentResponse
+                {
+                    FilePath = null,
+                    Content = content,
+                    Success = false,
+                    ErrorMessage = "No active document found."
+                };
+            }
+
+            if (content == null)
+            {
+                return new ActiveDocumentResponse
+                {
+                    FilePath = filePath,
+                    Content = "",
+                    Success = false,
+                    ErrorMessage = "Failed to retrieve document content."
+                };
+            }
+
+            string solutionDir = _vsDependencies.GetSolutionDirectory();
+            string relativePath = filePath;
+            if (!string.IsNullOrEmpty(solutionDir) && _pathResolver.TryGetRelativePath(filePath, solutionDir, out string rel))
+                relativePath = rel;
+
+            return new ActiveDocumentResponse
+            {
+                FilePath = relativePath,
+                Content = content,
+                Success = true,
+                ErrorMessage = null
+            };
         }
 
         private async Task<(string filePath, string content)> GetActiveTextDocumentAsync(CancellationToken cancellationToken = default)

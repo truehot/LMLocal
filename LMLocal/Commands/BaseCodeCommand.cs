@@ -17,7 +17,6 @@ namespace LMLocal.Commands
     {
         public static readonly Guid CommandSet = new Guid("c29700c4-7786-468f-bf99-0ecb9d69343f");
         protected abstract int CommandId { get; }
-        protected abstract string ButtonText { get; }
         protected abstract string PromptInstruction { get; }
 
         /// <summary>
@@ -75,18 +74,13 @@ namespace LMLocal.Commands
             string filePath = CodeCommandHelper.GetActiveDocumentPath();
             if (filePath == null) return;
 
-            string language = CodeCommandHelper.GetLanguageFromDocument((Package.GetGlobalService(typeof(DTE)) as DTE)?.ActiveDocument);
             string relativePath = CodeCommandHelper.GetRelativePath(filePath);
             string selectedText = CodeCommandHelper.GetSelectedText();
 
-            string fileComment = !string.IsNullOrEmpty(relativePath)
-                ? $"// file: {relativePath}"
-                : null;
-
-            string codeBlock = CodeCommandHelper.WrapInCodeFence(
-                selectedText ?? CodeCommandHelper.ReadFullDocumentContent(),
-                language,
-                fileComment);
+            string codeBlock = CodeCommandHelper.BuildMarkdownContent(
+                selectedText,
+                filePath,
+                relativePath);
 
             if (string.IsNullOrWhiteSpace(codeBlock)) return;
 

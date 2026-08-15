@@ -98,6 +98,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             try
             {
                 await _snapshotManager.SnapshotFileAsync(absoluteProjectPath, SnapshotChangeStatus.BeforeModify, cancellationToken).ConfigureAwait(false);
+
+                string filtersPath = absoluteProjectPath + ".filters";
+                if (_fileSystem.FileExists(filtersPath))
+                    await _snapshotManager.SnapshotFileAsync(filtersPath, SnapshotChangeStatus.BeforeModify, cancellationToken).ConfigureAwait(false);
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 if (include)
                 {
@@ -135,7 +139,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     {
                         Success = true,
                         FilePath = absolutePath,
-                        Message = "File excluded successfully."
+                        Message = "File deleted from disk."
                     };
                 }
             }
@@ -176,7 +180,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         if (string.Equals(itemPath, fullPath, StringComparison.OrdinalIgnoreCase))
                             return item;
                     }
-                    else if (item.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFolder)
+                    else if (item.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFolder || item.Kind == EnvDTE.Constants.vsProjectItemKindVirtualFolder)
                     {
                         var found = FindProjectItemRecursive(item.ProjectItems, fileName, fullPath);
                         if (found != null) return found;
@@ -199,8 +203,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var path = parameters?.TryGetValue("file_path", out var p) == true ? p?.ToString() : "file";
-            var include = parameters?.TryGetValue("include", out var inc) == true && inc is bool b && b ? "Include" : "Exclude";
-            return $"{include} file '{path}'... ";
+            bool include = true;
+            if (parameters?.TryGetValue("include", out var inc) == true)
+            {
+                if (inc is bool incBool)
+                    include = incBool;
+                else if (inc is string incStr && bool.TryParse(incStr, out bool parsed))
+                    include = parsed;
+            }
+            string action = include ? "Include" : "Delete";
+            return $"{action} file '{path}'... ";
         }
 
         public string GetCompletionMessage(object result)
@@ -215,7 +227,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Adds or removes a C# file from a .csproj project. Use this after create_file to register the new file in the project. Preferred over manually editing .csproj XML. Set include=false to exclude with deleting from disk. File and project must both exist.",
+                Description = "Adds a file to a project or removes it from the project and deletes it from disk. Use this after create_file to register the new file in the project. Preferred over manually editing project XML. Works for .csproj and .vcxproj projects. Set include=false to remove the file from the project and delete it from disk. File and project must both exist.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -229,12 +241,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ["project_path"] = new ToolDetails
                         {
                             Type = "string",
-                            Description = "Relative path to the .csproj file."
+                            Description = "Relative path to the project file (.csproj or .vcxproj)."
                         },
                         ["include"] = new ToolDetails
                         {
                             Type = "boolean",
-                            Description = "True to include (add) the file, false to exclude (remove). Default: true."
+                            Description = "True to include (add) the file, false to exclude and delete the file. Default: true."
                         }
                     },
                     Required = new List<string> { "file_path", "project_path" }

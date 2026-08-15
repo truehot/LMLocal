@@ -58,15 +58,13 @@ namespace LMLocal.Commands
             ThreadHelper.ThrowIfNotOnUIThread();
 
             string filePath = CodeCommandHelper.GetActiveDocumentPath();
-            string language = CodeCommandHelper.GetLanguageFromDocument((Package.GetGlobalService(typeof(DTE)) as DTE)?.ActiveDocument);
             string relativePath = CodeCommandHelper.GetRelativePath(filePath);
             string selectedText = CodeCommandHelper.GetSelectedText();
 
             string markdownText = CodeCommandHelper.BuildMarkdownContent(
                 selectedText,
                 filePath,
-                relativePath,
-                language);
+                relativePath);
 
             if (string.IsNullOrWhiteSpace(markdownText))
             {

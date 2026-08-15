@@ -36,13 +36,21 @@ namespace LMLocal.Core.Common
                 case ".swift": return "swift";
                 case ".cpp":
                 case ".cc":
-                case ".cxx": return "cpp";
+                case ".cxx":
+                case ".c++": return "cpp";
                 case ".c": return "c";
                 case ".h":
-                case ".hpp": return "c";
+                case ".hh":
+                case ".hpp":
+                case ".hxx":
+                case ".h++":
+                case ".inl":
+                case ".ipp": return "cpp";
                 case ".xml":
                 case ".xaml":
                 case ".csproj":
+                case ".vcxproj":
+                case ".vcxproj.filters":
                 case ".sln":
                 case ".config": return "xml";
                 case ".json": return "json";

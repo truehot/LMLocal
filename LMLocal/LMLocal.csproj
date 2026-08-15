@@ -85,7 +85,11 @@
     <Compile Include="Commands\SendToLMFromEditorCommand.cs" />
     <Compile Include="Commands\SendToLMFromSolutionExplorerCommand.cs" />
     <Compile Include="Core\Common\ChatHistoryNormalizer.cs" />
+    <Compile Include="Core\Common\MarkdownCodeBlockFormatter.cs" />
     <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
+    <Compile Include="Core\Common\Pluralizer.cs" />
+    <Compile Include="Core\Common\SourceFileExtensions.cs" />
+    <Compile Include="Core\Common\SourceFileFilter.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
     <Compile Include="Core\Models\ApiErrorInfo.cs" />
     <Compile Include="Core\Models\AutocompletionsConfig.cs" />
@@ -132,12 +136,14 @@
     <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactory.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
     <Compile Include="Infrastructure\Syntax\CSharpSyntaxChecker.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\DocumentSyncGuard.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\LineMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsFileFilter.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfo.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectType.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SetFileProjectStatus.cs" />
-    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\OptimizeUsings.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContent.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolution.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFile.cs" />
@@ -215,6 +221,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\chat\chat.pipeline.builder.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lm-api.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

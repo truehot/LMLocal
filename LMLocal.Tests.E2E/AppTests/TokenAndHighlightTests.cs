@@ -168,7 +168,7 @@ public class TokenAndHighlightTests : AppTestBase
 
     [Test]
     [Category("TokenBar")]
-    public async Task TokenBar_IsHiddenAfterStreamCompletes()
+    public async Task TokenBar_RemainsVisibleAfterStreamCompletes()
     {
         await GotoWithMockAsync("webview-mock-streaming.js");
         await Expect(Page.Locator("#conn-status"))
@@ -177,12 +177,12 @@ public class TokenAndHighlightTests : AppTestBase
         await Page.Locator("#userInput").FillAsync("Hello");
         await Page.Locator("#mainBtn").ClickAsync();
 
-        // Token counter is visible during streaming and FINISHING state
-        // It remains visible as long as isBusy() returns true (which includes FINISHING)
+        // Token counter is visible during streaming and stays visible after
+        // completion, keeping the last token/speed values until the next turn.
         await Expect(Page.Locator(".ai-response-container")).ToBeVisibleAsync(new() { Timeout = 5000 });
         await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
 
-        // Verify token counter is still visible during post-processing (FINISHING state)
+        // Verify the counter keeps the last numbers after the stream completes.
         await Expect(Page.Locator("#live-token-count")).ToBeVisibleAsync();
     }
 

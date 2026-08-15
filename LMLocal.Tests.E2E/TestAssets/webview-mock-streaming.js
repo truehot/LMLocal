@@ -43,7 +43,13 @@ const __mockBridge = {
         }, 150));
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
-                data: { Type: 'ChatSessionComplete', Payload: {} }
+                data: {
+                    Type: 'ChatSessionComplete',
+                    TotalTokens: 10,
+                    ReasoningTokens: 0,
+                    CachedTokens: 0,
+                    TokensPerSecond: 15.5
+                }
             }));
         }, 200));
     },

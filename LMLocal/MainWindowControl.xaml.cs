@@ -119,7 +119,7 @@ namespace LMLocal
             {
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
                 chatBrowser.Focus();
-                await chatBrowser.CoreWebView2.ExecuteScriptAsync("document.getElementById('userInput')?.focus()");
+                await chatBrowser.CoreWebView2.ExecuteScriptAsync("window.lmApi?.focusInput();");
             });
             chatBrowser.CoreWebView2.AddHostObjectToScript("host", hostController);
 
@@ -207,7 +207,7 @@ namespace LMLocal
         {
             if (chatBrowser?.CoreWebView2 != null && _webViewLazy.IsValueFactoryCompleted)
             {
-                _ = chatBrowser.CoreWebView2.ExecuteScriptAsync("document.getElementById('userInput')?.focus()");
+                _ = chatBrowser.CoreWebView2.ExecuteScriptAsync("window.lmApi?.focusInput();");
             }
         }
 
@@ -237,63 +237,7 @@ namespace LMLocal
             if (keyName == null)
                 return;
 
-            string script = $@"
-    (function() {{
-        const el = document.activeElement;
-        if (!el || !('selectionStart' in el)) return;
-
-        const isShift = {(shift ? "true" : "false")};
-        const key = '{keyName}';
-
-        const caret = el.selectionDirection === 'backward'
-            ? el.selectionStart
-            : el.selectionEnd;
-
-        const text = el.value;
-        const textLength = text.length;
-
-        let anchor = el.dataset.selAnchor
-            ? parseInt(el.dataset.selAnchor, 10)
-            : caret;
-
-        function getLineStart(pos) {{
-            const idx = text.lastIndexOf('\n', pos - 1);
-            return idx === -1 ? 0 : idx + 1;
-        }}
-
-        function getLineEnd(pos) {{
-            const idx = text.indexOf('\n', pos);
-            return idx === -1 ? textLength : idx;
-        }}
-
-        let newPos = caret;
-
-        if (key === 'Home') {{
-            newPos = getLineStart(caret);
-        }} else if (key === 'End') {{
-            newPos = getLineEnd(caret);
-        }} else if (key === 'ArrowLeft') {{
-            if (caret > 0) newPos = caret - 1;
-        }} else if (key === 'ArrowRight') {{
-            if (caret < textLength) newPos = caret + 1;
-        }} else {{
-            return;
-        }}
-
-        if (!isShift) {{
-            delete el.dataset.selAnchor;
-            el.setSelectionRange(newPos, newPos, 'none');
-        }} else {{
-            if (!el.dataset.selAnchor) {{
-                el.dataset.selAnchor = anchor;
-            }}
-            const start = Math.min(anchor, newPos);
-            const end   = Math.max(anchor, newPos);
-            const direction = anchor <= newPos ? 'forward' : 'backward';
-            el.setSelectionRange(start, end, direction);
-        }}
-    }})();
-";
+            string script = $"window.lmApi?.moveCaret('{keyName}', {(shift ? "true" : "false")});";
             _ = chatBrowser.CoreWebView2.ExecuteScriptAsync(script);
         }
 
@@ -323,20 +267,7 @@ namespace LMLocal
             }
 
             string escaped = JsonConvert.SerializeObject(markdownText);
-            string script = $@"
-(function() {{
-    const el = document.getElementById('userInput');
-    if (!el) return;
-    el.value = {escaped};
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
-    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-    const wrapper = el.closest('.input-wrapper');
-    if (wrapper) wrapper.classList.add('expanded');
-}})();
-";
+            string script = $"window.lmApi.setInputText({escaped});";
             await core.ExecuteScriptAsync(script);
         }
 
@@ -359,28 +290,7 @@ namespace LMLocal
             string escaped = JsonConvert.SerializeObject(markdownText);
             string escapedTabId = instructionTabId != null ? JsonConvert.SerializeObject(instructionTabId) : "null";
 
-            // JS execution: select instruction tab (if specified), inject text, resize, then click Send
-            string script = $@"
-(function() {{
-    const tabId = {escapedTabId};
-    if (tabId) {{
-        const item = document.querySelector('.dropdown-item[data-value=""' + tabId + '""]');
-        if (item) {{
-            item.click();
-        }}
-    }}
-    const el = document.getElementById('userInput');
-    if (!el) return;
-    el.value = {escaped};
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
-    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-    const wrapper = el.closest('.input-wrapper');
-    if (wrapper) wrapper.classList.add('expanded');
-    const btn = document.getElementById('mainBtn');
-    if (btn) btn.click();
-}})();
-";
+            string script = $"window.lmApi.injectAndSend({escaped}, {escapedTabId});";
             await core.ExecuteScriptAsync(script);
         }
 

@@ -163,10 +163,10 @@ namespace LMLocal.Tests.Unit.Commands
 
             string result = SendToLMFromSolutionExplorerCommand.BuildMultiFileMarkdown(entries);
 
-            Assert.That(result, Does.StartWith("```cs"));
+            Assert.That(result, Does.StartWith("````csharp"));
             Assert.That(result, Does.Contain("// file: /project/src/Program.cs"));
             Assert.That(result, Does.Contain("Console.WriteLine(\"Hello\");"));
-            Assert.That(result, Does.EndWith("```"));
+            Assert.That(result, Does.EndWith("````"));
         }
 
         [Test]
@@ -193,7 +193,7 @@ namespace LMLocal.Tests.Unit.Commands
             Assert.That(result, Does.Contain("class A {}"));
             Assert.That(result, Does.Contain("class B {}"));
             // Files should be separated by a blank line between code blocks
-            Assert.That(result, Does.Contain("```\n\n```"));
+            Assert.That(result, Does.Contain("````\n\n````"));
         }
 
         [Test]

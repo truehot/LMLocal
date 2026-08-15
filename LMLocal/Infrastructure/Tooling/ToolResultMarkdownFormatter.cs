@@ -77,9 +77,9 @@ namespace LMLocal.Infrastructure.Tooling
                 sb.Append(" *(truncated, more lines available)*");
             sb.AppendLine();
             sb.AppendLine();
-            sb.AppendLine($"```{lang}");
+            sb.AppendLine($"````{lang}");
             sb.AppendLine(text);
-            sb.AppendLine("```");
+            sb.AppendLine("````");
             sb.AppendLine();
         }
 
@@ -91,9 +91,9 @@ namespace LMLocal.Infrastructure.Tooling
 
             sb.AppendLine($"**Active Document: `{filePath}`**");
             sb.AppendLine();
-            sb.AppendLine($"```{lang}");
+            sb.AppendLine($"````{lang}");
             sb.AppendLine(content);
-            sb.AppendLine("```");
+            sb.AppendLine("````");
             sb.AppendLine();
         }
 
@@ -104,7 +104,7 @@ namespace LMLocal.Infrastructure.Tooling
             var totalFiles = obj["total_files"]?.Value<int>() ?? 0;
             var hasMore = obj["has_more_results"]?.Value<bool>() == true;
 
-            sb.AppendLine($"**Solution:** {solutionName} ({totalProjects} projects, {totalFiles} files)");
+            sb.AppendLine($"**Solution:** {solutionName} ({totalProjects} {Pluralizer.Pluralize(totalProjects, "project", "projects")}, {totalFiles} {Pluralizer.Pluralize(totalFiles, "file", "files")})");
             sb.AppendLine();
 
             var projects = obj["projects"] as JArray;
@@ -118,7 +118,7 @@ namespace LMLocal.Infrastructure.Tooling
                     var isTest = project["is_test_project"]?.Value<bool>() == true;
 
                     var testTag = isTest ? " *(test)*" : "";
-                    sb.AppendLine($"- **{name}** — {lang}, {fileCount} files{testTag}");
+                    sb.AppendLine($"- **{name}** — {lang}, {fileCount} {Pluralizer.Pluralize(fileCount, "file", "files")}{testTag}");
                 }
             }
 

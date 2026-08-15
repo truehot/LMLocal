@@ -243,7 +243,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
-        public void BuildMessagesForRequest_IncludesReferenceCode_WhenIncludedContentProvided()
+        public void BuildMessagesForRequest_IncludesActiveDocumentContent_WhenProvided()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
@@ -252,7 +252,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             hist.AddUserMessage("ask", activeDocumentContent: "code snippet");
             var messages = hist.BuildUserMessagesWithHistory();
 
-            Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("Reference code:"));
+            Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("code snippet"));
+            Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Not.Contain("Reference code:"));
             Assert.That(messages[messages.Count - 1].Content.ToString(), Does.Contain("ask"));
         }
 

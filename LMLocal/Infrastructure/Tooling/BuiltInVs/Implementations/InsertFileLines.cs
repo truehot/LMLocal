@@ -72,7 +72,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             { Type = "string",Description = "Text to insert. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty." }
                         },
                         { "expected_line", new ToolDetails
-                            { Type = "string",Description = "Optional. The exact text of the line AFTER which to insert. If provided and the line has shifted, the tool searches nearby and auto-corrects position. Ignored when position=0." }
+                            { Type = "string",Description = "The exact text of the line AFTER which to insert. If provided and the line has shifted, the tool searches nearby and auto-corrects position. Ignored when position=0." }
                         }
                     },
                     Required = new List<string> { "file_path", "position", "new_lines" }

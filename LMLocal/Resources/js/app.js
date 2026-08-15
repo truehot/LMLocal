@@ -2,6 +2,7 @@
 
 import appManager from '@app/services/app.manager.js';
 import appController from '@app/app.controller.js';
+import '@app/lm-api.js';
 
 window.lmInit = async () => {
     try {

@@ -114,7 +114,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is SolutionOverviewResponse solutionResult)
                 return solutionResult.Success
-                    ? $"Loaded {solutionResult.TotalProjects} projects, {solutionResult.TotalFiles} files."
+                    ? $"Loaded {solutionResult.TotalProjects} {Pluralizer.Pluralize(solutionResult.TotalProjects, "project", "projects")}, {solutionResult.TotalFiles} {Pluralizer.Pluralize(solutionResult.TotalFiles, "file", "files")}."
                     : $"Error: {solutionResult.ErrorMessage}";
             return "Solution overview loaded.";
         }

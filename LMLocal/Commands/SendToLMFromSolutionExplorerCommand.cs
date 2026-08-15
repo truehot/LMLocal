@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
+using System.Text;
 using EnvDTE;
 using EnvDTE80;
 using LMLocal.Application.ChatSession;
@@ -29,11 +30,6 @@ namespace LMLocal.Commands
         private const int MaxFolderFlatFiles = 20;
 
         private static readonly string SolutionFolderKind = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
-
-        private static readonly HashSet<string> ExcludedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin", "obj", ".vs", ".git", "CopilotBaseline", "node_modules", "packages"
-        };
 
         private readonly AsyncPackage _package;
         private readonly ISessionManager _sessionManager;
@@ -210,6 +206,11 @@ namespace LMLocal.Commands
                             result.Add(BuildProjectTree(proj));
                         break;
 
+                    case Solution solution:
+                        if (commandId == CommandIdSolution)
+                            result.Add(BuildSolutionTree(solution));
+                        break;
+
                     default:
                         InternalLogger.Warn($"SendToLMFromSE: unexpected item type: {item.Object?.GetType().Name}");
                         break;
@@ -351,7 +352,7 @@ namespace LMLocal.Commands
                     Content = content,
                     IsTruncated = false
                 });
-                totalBytes += content.Length;
+                totalBytes += Encoding.UTF8.GetByteCount(content);
             }
             catch (Exception ex)
             {
@@ -375,6 +376,40 @@ namespace LMLocal.Commands
             return new FileEntry
             {
                 Path = project.FullName,
+                IsTree = true,
+                TreeText = string.Join("\n", lines)
+            };
+        }
+
+        private FileEntry BuildSolutionTree(Solution solution)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            string solutionName = !string.IsNullOrEmpty(solution?.FullName)
+                ? System.IO.Path.GetFileNameWithoutExtension(solution.FullName)
+                : "Solution";
+
+            var lines = new List<string> { $"// Solution: {solutionName}" };
+
+            try
+            {
+                foreach (Project project in solution.Projects)
+                {
+                    if (project == null)
+                        continue;
+
+                    lines.Add($"  {project.Name}/");
+                    AppendProjectItemsTree(project.ProjectItems, lines, 2);
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SendToLMFromSE: failed to build solution tree: {ex.Message}");
+            }
+
+            return new FileEntry
+            {
+                Path = solution.FullName,
                 IsTree = true,
                 TreeText = string.Join("\n", lines)
             };
@@ -408,6 +443,9 @@ namespace LMLocal.Commands
             {
                 try
                 {
+                    if (IsTreeItemExcluded(item))
+                        continue;
+
                     bool isFolder = item.ProjectItems != null && item.ProjectItems.Count > 0;
                     if (isFolder)
                     {
@@ -424,6 +462,40 @@ namespace LMLocal.Commands
                     // Skip items we can't read (e.g. disposed, virtual, or malformed)
                 }
             }
+        }
+
+        private bool IsTreeItemExcluded(ProjectItem item)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            try
+            {
+                bool isFolder = item.ProjectItems != null && item.ProjectItems.Count > 0;
+                string fullPath = GetProjectItemFullPath(item);
+
+                if (isFolder)
+                {
+                    // Skip the whole branch for generated / dependency directories.
+                    if (SourceFileFilter.ExcludedDirectories.Contains(item.Name))
+                        return true;
+                    if (!string.IsNullOrEmpty(fullPath) && SourceFileFilter.ShouldExcludePath(fullPath))
+                        return true;
+                }
+                else
+                {
+                    // Skip binary / image / minified / junk files.
+                    if (SourceFileFilter.IsExcludedFile(item.Name))
+                        return true;
+                    if (!string.IsNullOrEmpty(fullPath) && SourceFileFilter.ShouldExclude(fullPath))
+                        return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
         }
 
         private string GetProjectItemFullPath(ProjectItem pi)
@@ -452,23 +524,7 @@ namespace LMLocal.Commands
             return null;
         }
 
-        internal static bool ShouldExclude(string path)
-        {
-            foreach (var dir in ExcludedDirectories)
-            {
-                if (path.IndexOf(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return true;
-                if (path.StartsWith(dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            string ext = Path.GetExtension(path)?.ToLowerInvariant();
-            if (ext == ".exe" || ext == ".dll" || ext == ".pdb" || ext == ".png" || ext == ".jpg" ||
-                ext == ".jpeg" || ext == ".gif" || ext == ".bmp" || ext == ".ico" || ext == ".svg")
-                return true;
-
-            return false;
-        }
+        internal static bool ShouldExclude(string path) => SourceFileFilter.ShouldExclude(path);
 
         /// <summary>
         /// Builds a combined markdown string from all collected file entries.
@@ -487,21 +543,13 @@ namespace LMLocal.Commands
 
                 if (entry.Content == null)
                 {
-                    string lang = MarkdownLanguageHelper.GetLanguageFromExtension(entry.Path);
-                    string langTag = !string.IsNullOrEmpty(lang) ? lang : "";
-                    parts.Add($"```{langTag}");
-                    parts.Add($"// file: {entry.Path} (content truncated, file too large)");
-                    parts.Add("```");
+                    parts.Add(MarkdownCodeBlockFormatter.BuildTruncatedFileFence(entry.Path));
                     continue;
                 }
 
-                string language = MarkdownLanguageHelper.GetLanguageFromExtension(entry.Path);
-                string languageTag = !string.IsNullOrEmpty(language) ? language : "";
-
-                parts.Add($"```{languageTag}");
-                parts.Add($"// file: {entry.Path}");
-                parts.Add(entry.Content);
-                parts.Add("```");
+                string formatted = MarkdownCodeBlockFormatter.FormatFileAsMarkdown(entry.Content, entry.Path);
+                if (!string.IsNullOrEmpty(formatted))
+                    parts.Add(formatted);
             }
 
             return string.Join("\n\n", parts);

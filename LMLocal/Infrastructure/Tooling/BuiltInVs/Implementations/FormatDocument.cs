@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
@@ -37,6 +38,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (parameters?.TryGetValue("file_path", out var fp) != true || !(fp is string filePathParam) || string.IsNullOrEmpty(filePathParam))
                 return ErrorResponse("Parameter 'file_path' is required.");
+
+            bool organizeUsings = true;
+            if (parameters != null && parameters.TryGetValue("organize_usings", out var organizeValue))
+            {
+                if (!TryParseBoolean(organizeValue, out organizeUsings))
+                    return ErrorResponse("Parameter 'organize_usings' must be a boolean.");
+            }
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
@@ -83,7 +91,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 targetDocument.Activate();
 
+                string syncError = await DocumentSyncGuard.GetSyncErrorAsync(targetDocument, absolutePath, _fileSystem, cancellationToken);
+                if (syncError != null)
+                    return ErrorResponse(syncError);
+
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
+
+                bool isCSharpFile = string.Equals(Path.GetExtension(absolutePath), ".cs", StringComparison.OrdinalIgnoreCase);
+                if (organizeUsings && isCSharpFile)
+                    dte.ExecuteCommand("Edit.RemoveAndSort");
 
                 dte.ExecuteCommand("Edit.FormatDocument");
 
@@ -126,10 +142,34 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
+        private static bool TryParseBoolean(object value, out bool result)
+        {
+            if (value is bool b)
+            {
+                result = b;
+                return true;
+            }
+
+            if (value is string s && bool.TryParse(s, out result))
+                return true;
+
+            result = false;
+            return false;
+        }
+
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var path = parameters?.TryGetValue("file_path", out var p) == true ? p?.ToString() : "file";
-            return $"Formatting '{path}'... ";
+            bool organizeUsings = true;
+            if (parameters != null && parameters.TryGetValue("organize_usings", out var organizeValue))
+                TryParseBoolean(organizeValue, out organizeUsings);
+
+            bool isCSharpFile = !string.IsNullOrEmpty(path)
+                && string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
+
+            return organizeUsings && isCSharpFile
+                ? $"Organizing usings and formatting '{path}'... "
+                : $"Formatting '{path}'... ";
         }
 
         public string GetCompletionMessage(object result)
@@ -144,13 +184,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Formats a code file using Visual Studio's built-in formatting engine. Normalizes indentation, spacing, and line breaks according to the solution's .editorconfig or VS settings. The file is opened, formatted, saved, and closed automatically. Works on any file type supported by the VS editor (C#, XML, JSON, etc.). Fails if the file does not exist or cannot be resolved. Example: {\"file_path\":\"src/Services/OrderService.cs\"}.",
+                Description = "Formats a code file using Visual Studio's built-in formatting engine. Normalizes indentation, spacing, and line breaks according to the solution's .editorconfig or VS settings. The file is opened, processed, saved, and closed automatically. Works on any file type supported by the VS editor (C#, XML, JSON, etc.); the organize_usings step optionally removes unused 'using' directives and sorts them first and applies only to C# files. Fails if the file does not exist or cannot be resolved.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } }
+                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } },
+                        { "organize_usings", new ToolDetails { Type = "boolean", Description = "If true, removes unused 'using' directives and sorts the remaining ones before formatting. Applies only to C# files. Defaults to true." } }
                     },
                     Required = new List<string> { "file_path" }
                 }

@@ -263,7 +263,7 @@ namespace LMLocal.Tests.Unit
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(1));
             Assert.That(history[0].Role, Is.EqualTo("user"));
-            Assert.That(history[0].Content as string, Does.Contain("Reference code:"));
+            Assert.That(history[0].Content as string, Does.Not.Contain("Reference code:"));
             Assert.That(history[0].Content as string, Does.Contain("public class Foo { }"));
             Assert.That(history[0].Content as string, Does.Contain("Explain this code"));
         }

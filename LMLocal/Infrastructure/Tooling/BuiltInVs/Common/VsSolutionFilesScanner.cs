@@ -20,9 +20,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         private readonly IPathResolver _pathResolver;
         private readonly ISolutionFileProvider _solutionFileProvider;
 
-        private static readonly HashSet<string> _imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".svg", ".webp", ".tiff" };
-        private static readonly string[] _minifiedSuffixes = { ".min.js", ".min.css", ".udm.js" };
-        private static readonly string[] _excludedDirectories = { "bin", "obj", ".vs", ".git", "CopilotBaseline" };
 
         public VsSolutionFilesScanner(IVsDependencies vsDependencies, IUiThreadGuard uiThreadGuard, IPathResolver pathResolver, ISolutionFileProvider solutionFileProvider)
         {
@@ -104,8 +101,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             if (string.IsNullOrEmpty(normalizedFilePath))
                 return false;
 
-            if (ShouldExcludePath(normalizedFilePath))
+            if (VsFileFilter.ShouldExcludePath(normalizedFilePath))
                 return false;
+
+            string fname = Path.GetFileName(normalizedFilePath);
 
             if (extensions != null && extensions.Count > 0)
             {
@@ -113,20 +112,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 if (!extensions.Contains(ext))
                     return false;
             }
-
-            string fname = Path.GetFileName(normalizedFilePath);
+            else
+            {
+                if (VsFileFilter.IsExcludedFile(fname))
+                    return false;
+            }
 
             if (!string.IsNullOrEmpty(fileNamePattern))
             {
                 if (!MatchesPattern(fname, fileNamePattern))
                     return false;
             }
-
-            if (IsMinifiedFile(fname))
-                return false;
-
-            if (IsImageFile(fname))
-                return false;
 
             if (!string.IsNullOrEmpty(projectFilter) && !string.IsNullOrEmpty(normalizedSolutionDir))
             {
@@ -191,27 +187,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
 
             return true;
-        }
-
-        private static bool ShouldExcludePath(string normalizedFilePath)
-        {
-            foreach (var dir in _excludedDirectories)
-            {
-                if (normalizedFilePath.IndexOf(Path.DirectorySeparatorChar + dir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) >= 0)
-                    return true;
-            }
-            return false;
-        }
-
-        private static bool IsImageFile(string fileName) => _imageExtensions.Contains(Path.GetExtension(fileName));
-        private static bool IsMinifiedFile(string fileName)
-        {
-            foreach (var suffix in _minifiedSuffixes)
-            {
-                if (fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
         }
 
         private static HashSet<string> ParseExtensions(string extensionFilter)

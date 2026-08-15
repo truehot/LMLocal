@@ -9,7 +9,6 @@ namespace LMLocal.Commands
     internal sealed class AddUnitTestsCommand : BaseCodeCommand
     {
         protected override int CommandId => 0x0203;
-        protected override string ButtonText => "Add Unit Tests";
         protected override string InstructionDisplayName => "Tests";
         protected override string PromptInstruction =>
             "Generate unit tests for the following code. Use the testing framework that best matches this project. Cover edge cases and happy path.";

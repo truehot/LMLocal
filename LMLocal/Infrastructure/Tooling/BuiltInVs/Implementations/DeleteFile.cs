@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Deletes a file from disk. Fails if the file does not exist. The file is permanently removed; use set_file_project_status to only exclude from .csproj while keeping it on disk. Path relative to solution root. For .cs files referenced in a project, call set_file_project_status with include=false first \r\nto remove the .csproj reference, otherwise the build will break",
+                Description = "Deletes a file from disk. Fails if the file does not exist. The file is permanently removed. Path relative to solution root. For files referenced in a project, use set_file_project_status with include=false instead - it removes the project reference and deletes the file in one step.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

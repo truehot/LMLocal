@@ -19,39 +19,40 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         {
             public string Language { get; set; }
             public string TargetFramework { get; set; }
+            public bool IsNativeTestProject { get; set; }
             public DateTime LastWriteTime { get; set; }
         }
 
-        private static readonly ConcurrentDictionary<string, CacheEntry> _cache
-            = new ConcurrentDictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, CacheEntry> _cache = new ConcurrentDictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly char[] _tagNameDelimiters = new[] { ' ', '>', '\t', '\r', '\n' };
 
         public static void ClearAll() => _cache.Clear();
 
         /// <summary>
-        /// Gets language and target framework for a project.
+        /// Gets language, target framework and native test flag for a project.
         /// </summary>
-        public static (string Language, string TargetFramework) GetMetadata(string projectPath)
+        public static (string Language, string TargetFramework, bool IsNativeTestProject) GetMetadata(string projectPath)
         {
             if (string.IsNullOrEmpty(projectPath))
-                return ("Unknown", null);
+                return ("Unknown", null, false);
 
             string actualPath = ResolveProjectFilePath(projectPath);
             if (actualPath == null)
-                return ("Unknown", null);
+                return ("Unknown", null, false);
 
             DateTime currentWriteTime = File.Exists(actualPath)
                 ? File.GetLastWriteTime(actualPath)
                 : DateTime.MinValue;
 
             if (_cache.TryGetValue(actualPath, out CacheEntry cached) && cached.LastWriteTime == currentWriteTime)
-                return (cached.Language, cached.TargetFramework);
+                return (cached.Language, cached.TargetFramework, cached.IsNativeTestProject);
 
             string language = DetectLanguageByExtension(actualPath);
             string targetFramework = null;
+            bool isNativeTestProject = false;
             string content = null;
-            bool needRead = (language == "C#" || language == "VB.NET" || language == "F#") && File.Exists(actualPath);
+            bool needRead = (language == "C#" || language == "VB.NET" || language == "F#" || language == "C++") && File.Exists(actualPath);
 
             if (needRead)
             {
@@ -62,6 +63,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     {
                         content = File.ReadAllText(actualPath, Encoding.UTF8);
                         targetFramework = ExtractTargetFrameworkFromContent(content);
+                        isNativeTestProject = ExtractIsNativeUnitTestFromContent(content);
                     }
                 }
                 catch (Exception ex)
@@ -77,11 +79,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 Language = language ?? "Unknown",
                 TargetFramework = targetFramework ?? "Unknown",
+                IsNativeTestProject = isNativeTestProject,
                 LastWriteTime = currentWriteTime
             };
 
             _cache.AddOrUpdate(actualPath, newEntry, (string key, CacheEntry existing) => newEntry);
-            return (newEntry.Language, newEntry.TargetFramework);
+            return (newEntry.Language, newEntry.TargetFramework, newEntry.IsNativeTestProject);
         }
 
         private static string ResolveProjectFilePath(string projectPath)
@@ -162,6 +165,26 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 idx = lt + 1;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Returns true when the project file contains <UseNativeUnitTest>true</UseNativeUnitTest>.
+        /// </summary>
+        private static bool ExtractIsNativeUnitTestFromContent(string content)
+        {
+            if (string.IsNullOrEmpty(content)) return false;
+
+            int idx = content.IndexOf("<UseNativeUnitTest", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+
+            int gt = content.IndexOf('>', idx);
+            if (gt < 0) return false;
+
+            int lt = content.IndexOf('<', gt + 1);
+            if (lt < 0) return false;
+
+            string rawValue = content.Substring(gt + 1, lt - gt - 1).Trim();
+            return string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string DetectLanguageFromContent(string content)

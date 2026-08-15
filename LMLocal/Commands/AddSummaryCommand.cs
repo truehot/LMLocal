@@ -8,8 +8,6 @@ namespace LMLocal.Commands
     internal sealed class AddSummaryCommand : BaseCodeCommand
     {
         protected override int CommandId => 0x0204;
-        protected override string ButtonText => "Add Summary";
-
         protected override string PromptInstruction =>
             "Add XML documentation comments (///) for all public members and a summary for the file/class";
 

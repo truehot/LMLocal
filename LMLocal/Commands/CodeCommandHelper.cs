@@ -118,57 +118,17 @@ namespace LMLocal.Commands
         }
 
         /// <summary>
-        /// Gets the language tag for markdown code fences from the document.
+        /// Builds markdown content from selected text or full document, using the shared file formatter.
         /// </summary>
-        public static string GetLanguageFromDocument(Document document)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (document == null || string.IsNullOrEmpty(document.FullName)) return null;
-
-            string lang = MarkdownLanguageHelper.GetLanguageFromExtension(document.FullName);
-            return string.IsNullOrEmpty(lang) ? null : lang;
-        }
-
-        /// <summary>
-        /// Wraps code text in a markdown fenced code block with optional file comment.
-        /// </summary>
-        public static string WrapInCodeFence(string code, string language, string fileComment = null)
-        {
-            if (string.IsNullOrWhiteSpace(code)) return null;
-
-            string langTag = !string.IsNullOrEmpty(language) ? language : "";
-            string result = $"```{langTag}\n";
-
-            if (!string.IsNullOrEmpty(fileComment))
-                result += $"{fileComment}\n";
-
-            result += $"{code}\n```";
-            return result;
-        }
-
-        /// <summary>
-        /// Builds markdown content from selected text or full document.
-        /// </summary>
-        public static string BuildMarkdownContent(string selectedText, string filePath, string relativePath, string language)
+        public static string BuildMarkdownContent(string selectedText, string filePath, string relativePath)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            string fileComment = !string.IsNullOrEmpty(relativePath)
-                ? $"// file: {relativePath}"
-                : !string.IsNullOrEmpty(filePath) ? $"// file: {filePath}" : null;
+            string content = !string.IsNullOrWhiteSpace(selectedText) ? selectedText : ReadFullDocumentContent();
+            if (string.IsNullOrWhiteSpace(content))
+                return null;
 
-            if (!string.IsNullOrWhiteSpace(selectedText))
-            {
-                return WrapInCodeFence(selectedText, language, fileComment);
-            }
-
-            string fullContent = ReadFullDocumentContent();
-            if (!string.IsNullOrWhiteSpace(fullContent))
-            {
-                return WrapInCodeFence(fullContent, language, fileComment);
-            }
-
-            return null;
+            return MarkdownCodeBlockFormatter.FormatFileAsMarkdown(content, filePath, relativePath);
         }
 
         /// <summary>
@@ -201,9 +161,13 @@ namespace LMLocal.Commands
                 return;
 
             if (autoSend)
+            {
                 await mainWindow.InjectAndAutoSendAsync(markdownText + "\n\n", instructionTabId);
+            }
             else
+            {
                 await mainWindow.InjectPromptAsync(markdownText + "\n\n");
+            }
         }
     }
 }

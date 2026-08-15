@@ -102,12 +102,12 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, DeleteFile>();
             services.AddTransient<IBuiltInTool, FindFiles>();
             services.AddTransient<IBuiltInTool, GetSymbolInfo>();
+            services.AddTransient<IBuiltInTool, InspectType>();
             services.AddTransient<IBuiltInTool, FormatDocument>();
             services.AddTransient<IBuiltInTool, GetActiveDocument>();
             services.AddTransient<IBuiltInTool, GetSolutionOverview>();
             services.AddTransient<IBuiltInTool, InsertFileLines>();
             services.AddTransient<IBuiltInTool, ListDirectory>();
-            services.AddTransient<IBuiltInTool, OptimizeUsings>();
             services.AddTransient<IBuiltInTool, ReadFileLines>();
             services.AddTransient<IBuiltInTool, ReplaceFileLines>();
             services.AddTransient<IBuiltInTool, ReplaceFileContent>();

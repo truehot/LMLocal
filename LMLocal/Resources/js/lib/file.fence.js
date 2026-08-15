@@ -190,5 +190,5 @@ export function wrapAsCodeFence(filename, content) {
         comment = `${commentChar} ${filename}`;
     }
 
-    return `\n\`\`\`${lang}\n${comment}\n${content}\n\`\`\`\n`;
+    return `\n\`\`\`\`${lang}\n${comment}\n${content}\n\`\`\`\`\n`;
 }

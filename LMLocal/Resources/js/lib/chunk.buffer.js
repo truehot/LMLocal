@@ -1,6 +1,5 @@
 /**
- * Accumulates incoming stream chunks and provides
- * time-based flushing. Stateless except for internal buffer and lastFlush.
+ * Accumulates incoming stream chunks and provides time-based flushing. Stateless except for internal buffer and lastFlush.
  */
 export class ChunkBuffer {
     constructor(flushIntervalMs = 60) {

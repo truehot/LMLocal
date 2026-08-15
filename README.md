@@ -5,12 +5,10 @@
 ![Visual Studio](https://img.shields.io/badge/Visual%20Studio-2022%20%2F%202026-purple?style=flat&logo=visual-studio)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
----
 
 > [!NOTE]
 > **Safe & Controlled:** By default, write/modify tools are **disabled** – the AI can read files but cannot change anything. Writing tools are optional, must be explicitly turned on in Settings, and all changes are tracked in the Changes panel with one‑click rollback. The codebase is open‑source – inspect it or contribute on [GitHub](https://github.com/truehot/LMLocal).
 
----
 
 ## 📸 Screenshots
 
@@ -22,32 +20,31 @@
   <img src="https://raw.githubusercontent.com/truehot/LMLocal/main/Assets/2022_mid_light.png" alt="VS 2022 - mid light" width="10%" />
 </a>
 
----
+
 
 ## 📖 Table of Contents
 
-- [Core Features](#core-features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Getting Started](#getting-started)
-- [All Features](#all-features)
-- [AI Instructions & Modes](#ai-instructions--modes)
-- [Providers](#providers)
-- [Chat History Dialog](#chat-history-dialog)
-- [Image Attachments (Multimodal Chat)](#image-attachments-multimodal-chat)
-- [Built‑in AI Tools](#built‑in-ai-tools)
-- [List of built‑in tools](#list-of-built‑in-tools)
-- [Smart Workflows & Best Practices](#smart-workflows--best-practices)
-- [Context Menu Commands](#context-menu-commands)
-- [History Optimization: Clean Whitespace](#history-optimization-clean-whitespace)
-- [Auto‑Completions](#auto-completions)
-- [MCP Support](#model-context-protocol-mcp-support)
-- [MCP Configuration](#how-to-configure-mcp-servers)
-- [Troubleshooting](#troubleshooting)
-- [Data & Configuration](#data--configuration)
-- [License & Compliance & Third-Party](#license--compliance--third-party)
+- [Core Features](#-core-features)
+- [Requirements](#-requirements)
+- [Installation](#-installation)
+- [Getting Started](#-getting-started)
+- [All Features](#-all-features)
+- [AI Instructions & Modes](#-ai-instructions--modes)
+- [Providers](#️-providers)
+- [Chat History Dialog](#-chat-history-dialog)
+- [Image Attachments (Multimodal Chat)](#-image-attachments-multimodal-chat)
+- [Built‑in AI Tools](#-built-in-ai-tools)
+- [List of built‑in tools](#-list-of-built-in-tools)
+- [Smart Workflows & Best Practices](#-smart-workflows--best-practices)
+- [Auto-Completions](#-auto-completions)
+- [Context Menu Commands](#-context-menu-commands)
+- [History Optimization: Clean Whitespace](#-history-optimization-clean-whitespace)
+- [Model Context Protocol (MCP) Support](#-model-context-protocol-mcp-support)
+- [How to Configure MCP Servers](#-how-to-configure-mcp-servers)
+- [Troubleshooting](#-troubleshooting)
+- [Data & Configuration](#-data--configuration)
+- [License & Compliance & Third-Party](#-license--compliance--third-party)
 
----
 
 ## ⚡ Core Features
 
@@ -60,7 +57,7 @@
 - **💾 Persistent & Reliable** – Auto‑connects on startup, restores your last session from local logs, provides a chat history dialog to browse and restore previous sessions, centralized settings.
 - **🔄 Hot-Swappable LLMs** – Switch between local models or cloud providers on the fly without clearing the chat. The new model seamlessly continues the conversation using the existing history and context.
 
----
+
 
 ## 🛠 Requirements
 
@@ -74,7 +71,7 @@ To use LMLocal, you need:
     * **Jan** (local server at `http://127.0.0.1:1337`)
     * **Llama.cpp** (local server at `http://127.0.0.1:8080`)
 
----
+
 
 ## 🚀 Installation
 
@@ -88,7 +85,7 @@ To use LMLocal, you need:
 1. Download the `.vsix` file from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=7gsocvrdqco5wtvsp3nuym3pxrwnwxxr7yuow4ymkl5of6epygaa.LMLocal).
 2. Double-click the file and follow the VSIX Installer prompts.
 
----
+
 
 ## 🏁 Getting Started
 
@@ -112,7 +109,6 @@ To use LMLocal, you need:
    * Click the **"Test"** button located directly to the right of the **API Base URL** input field. 
    * This pings the specified endpoint to verify if the server is active, accessible, and correctly responding.
 
----
 
 ### Part 2. How to Use the Chat
 
@@ -123,9 +119,9 @@ To use LMLocal, you need:
 7. **Context (Optional):** Click the **`+`** button to include the entire content of the active document into the conversation.
 8. **Chat:** Type your message and click **Send** or hit `Enter` ⌨️.
 
----
 
-### 💡 Interface & Interaction Tips
+
+## 💡 Interface & Interaction Tips
 
 * **Keyboard Shortcuts:** Standard Chromium browser hotkeys work inside the chat window:
   * **`Ctrl + C`** / **`Ctrl + V`** — Copy text and paste messages (the right-click context menu is disabled).
@@ -149,11 +145,11 @@ To use LMLocal, you need:
   * **Consolidate last exchange:** Merge your last message, tool results (code lines), and AI response into a single clean starting history.
   * **Summarize and move context:** Send a quick request to the AI to summarize this conversation, then save it as the first message in the new chat.
 
----
+
 
 ## ✨ All features
 
-**Interface & User Experience**
+### Interface & User Experience
 - ☁️ **In-IDE Chat UI** – Tool window for LLM interaction without switching applications.
 - 🌊 **Streaming Responses** – Real-time token delivery for instant visual feedback.
 - 🤖 **Model & Provider Hot-Swapping** – Switch between AI models or providers on the fly directly from the chat header, automatically preserving your active session context.
@@ -167,8 +163,7 @@ To use LMLocal, you need:
 - ↕️ **Resizable Panels** – Drag the grip above the input or above the Changes panel to adjust their height.
 - 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
 
-
-**Context & Solution Awareness**
+### Context & Solution Awareness
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
 - 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked three times with identical arguments, preventing infinite loops and token waste.
 - 📝 **Automated Code Editing** – Enabled tools can automatically create, delete, or modify code files directly inside Visual Studio.
@@ -179,14 +174,13 @@ To use LMLocal, you need:
 - 🎯 **Context Menu Integration** – Right-click context menu command ("Send to LM Local") that copies text directly into the chat prompt without auto-submitting. If text is highlighted, it sends the selection; if nothing is selected, it falls back to sending the entire active document.
 - 🔄 **Quick Tool Mode Toggle** – Dropdown next to the input box to switch between No tools, Read only, and Read & Write for the current session without opening Settings.
 
-
-**Efficiency & Token Management**
+### Efficiency & Token Management
 - 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
 - 🧹 **History Optimization** – Optionally compresses redundant whitespace and trims extra lines from background history entries to save tokens.
 - 📊 **Live Stats** – Status bar metrics: real-time speed (tokens/sec) and total token count.
 - 🏷️ **Token Stats Badge** – After each response, a compact summary shows total tokens, cached tokens (when available), and the average generation speed (tokens/sec).
 
-**Infrastructure & Settings**
+### Infrastructure & Settings
 - ⚙️ **Persistent Settings** – Centralized configuration for API URLs, stream timeouts, and history management.
 - 🔌 **Connect on Startup** – Automatically connects to the LLM server on extension startup.
 - 🔄 **Auto-Load History on Startup** – Automatically restores the most recent conversation from saved history.
@@ -194,9 +188,9 @@ To use LMLocal, you need:
 - 📂 **Local Chat Logging** – Appends all conversation events to .jsonl files in `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. This persistent log serves as the data source for session recovery when Visual Studio starts.
 - 🌐 **Streamable MCP Support** – Supports the Model Context Protocol to dynamically scale the AI's toolkit via both local process-based (`stdio`) and remote network-based (`http`) transports.
 
----
 
-### ⚙️ Providers
+
+## ⚙️ Providers
 
 The **"Providers..."** dialog allows you to create and save multiple provider profiles (servers) so you don't have to re-enter your API keys and base URLs every time. You can store as many profiles as you need, including both **local servers** (like Ollama running on your machine) and **cloud remote services** (like Groq, OpenAI, or Gemini).
 
@@ -204,7 +198,9 @@ Once configured, you can seamlessly switch between your saved profiles via the m
 
 > 🔒 **Privacy & Data Usage Note:** Unlike local servers which keep 100% of your data offline on your machine, **cloud remote providers** process your requests on external servers. Data retention policies vary significantly by provider - some services may use your prompt history and codebase context for model training by default. Always verify the provider's privacy policy and terms of service before transmitting proprietary or sensitive source code.
 
-Here is a quick end-to-end example of how to configure a custom remote endpoint and activate it inside the extension.
+### Quick example 
+
+How to configure a custom remote endpoint and activate it inside the extension.
 
 #### Step 1: Create the Provider Profile
 1. Click the menu icon (**`…`**) and select **"Providers..."**.
@@ -225,7 +221,7 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 1. Click the model name (or **"Select model..."** placeholder) in the top header.
 2. Search, filter, and select your desired model from the window to activate it.
 
-#### 🆓 Free to Try (Free Limited Tiers / Credits Available)
+### 🆓 Free to Try (Free Limited Tiers / Credits Available)
 
 | Provider | Provider Type | API Base URL |
 | :--- | :--- | :--- |
@@ -243,7 +239,7 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 | **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
 | **GitHub Models** | Github Models via Azure (cloud) | `No longer available, will be removed in next releases` |
 
-#### 💳 Pay to Try (Commercial / Premium)
+### 💳 Pay to Try (Commercial / Premium)
 
 | Provider | Provider Type | API Base URL |
 | :--- | :--- | :--- |
@@ -252,13 +248,13 @@ Here is a quick end-to-end example of how to configure a custom remote endpoint 
 | **Fireworks AI** | OpenAI compatible | `https://api.fireworks.ai/inference/` |
 | **OpenAI** | OpenAI compatible | `https://api.openai.com` |
 
----
+
 
 ## Built‑in AI Tools
 
 The built‑in tools let the AI read, edit, build, and test your code. You control which tools are enabled, can review all changes before accepting them and manually roll back any change.
 
-### What you can control
+#### What you can control
 
 **In Settings (two checkboxes):**
 - **`Enable built‑in AI tools (read‑only)`** – The AI can open and read files, but cannot change anything.
@@ -272,6 +268,29 @@ The built‑in tools let the AI read, edit, build, and test your code. You contr
 
 **In the Built‑in Tools… dialog (list of built‑in tools):**  
 Open this from the extension's main menu. You’ll see all built‑in tools (for example, `delete_file`, `replace_file_content`). Each tool can be enabled or disabled individually. Even if the global write/modify checkbox is on, you can still turn off specific tools like `delete_file`. Use “Enable All” or “Disable All” to change many at once, then click Save.
+
+### List of built‑in tools
+
+| Tool | Description | Supported Languages | Limitations / Notes |
+|------|-------------|----------------------|----------------------|
+| `create_file` | Creates a new file with initial content. | All | Syntax check applies only to C#. |
+| `delete_file` | Deletes a file from the solution. | All | – |
+| `find_files` | Searches for files by name. | All | – |
+| `list_directory` | Lists files and folders in a given path. | All | – |
+| `get_solution_overview` | Summarizes the currently open solution: projects, solution folders, file counts, languages, test-project flags. | C#, VB.NET, F#, C++ (.vcxproj) | – |
+| `set_file_project_status` | Includes a file in a project, or removes it from the project and deletes it from disk. | C#, VB.NET, F#, C++ (.vcxproj) | – |
+| `read_file_lines` | Reads a specific range of lines. | All | – |
+| `search_file_content` | Searches for a text string (case‑insensitive) inside solution files. | All | – |
+| `get_active_document` | Returns the path and full text of the currently open document. | All | – |
+| `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Syntax check applies only to C#. |
+| `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Syntax check applies only to C#. |
+| `insert_file_lines` | Inserts lines at a specific position. | All | Syntax check applies only to C#. |
+| `format_document` | Applies Visual Studio's code formatting to a file. | Any (VS editor) | `organize_usings` applies only to C# files. |
+| `get_symbol_info` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | C# only | Uses Roslyn |
+| `inspect_type` | Inspects a fully qualified type from the open solution (source or referenced assemblies) and returns its full metadata. | C# only | Uses Roslyn. |
+| `build_solution` | Builds the currently open solution, including all its projects. | Any (MSBuild) | Uses MSBuild via Visual Studio. |
+| `run_tests` | Runs `dotnet test` for a specific `.csproj` and shows live output. | C# only | Requires the .NET SDK (`dotnet` CLI) installed on the machine; only for C# test projects. |
+
 
 ### Changes panel – see what was changed and revert if needed
 
@@ -290,40 +309,9 @@ The panel lets you:
 - Click **`Discard all`** – reverts all changes using internal backups (files are restored to their state before the AI edits).
 - Click **`Accept all`** – confirms the changes, removes the internal backups, and clears the list (you can no longer revert them afterward).
 
----
 
-## List of built‑in tools
 
-### Files and projects
-- **`create_file`** – Creates a new file with initial content.
-- **`delete_file`** – Deletes a file from the solution.
-- **`find_files`** – Searches for files by name.
-- **`list_directory`** – Lists files and folders in a given path.
-- **`get_solution_overview`** – Returns a summary of projects, folders, and files.
-- **`set_file_project_status`** – Includes or excludes a file from a project.
-
-### Reading file content
-- **`read_file_lines`** – Reads a specific range of lines.
-- **`search_file_content`** – Searches for a text string (case‑insensitive) inside solution files.
-- **`get_active_document`** – Returns the path and full text of the currently open document.
-
-### Editing and formatting code
-- **`replace_file_content`** – Replaces the entire file with new text.
-- **`replace_file_lines`** – Replaces a range of lines (by numbers) with new content.
-- **`insert_file_lines`** – Inserts lines at a specific position.
-- **`format_document`** – Applies Visual Studio’s code formatting to the file.
-- **`optimize_usings`** – Removes unused `using` statements and sorts the rest in C# files.
-
-### Analysing code
-- **`get_symbol_info`** – Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context (uses Roslyn).
-
-### Build and tests
-- **`build_solution`** – Builds the whole solution.
-- **`run_tests`** – Runs `dotnet test` for a specific `.csproj` and shows live output.
-
----
-
-### 🎭 AI Instructions & Modes
+## 🎭 AI Instructions & Modes
 
 The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, and **Tests**.
 
@@ -332,7 +320,7 @@ The **"AI Instructions..."** window allows you to define specialized **System Pr
 
 Once configured, you can instantly switch between these system roles using the dropdown menu directly in the main chat bar. Selecting a preset updates the AI's system prompt and temperature for that conversation.
 
-#### How to Customize Modes:
+### How to Customize Modes:
 1. Click the menu icon (**`…`**) and select **"AI Instructions..."**.
 2. Select a target mode/role from the left panel (e.g., `Review` or `Bugfix`).
 3. Configure its behavior in the right panel:
@@ -342,7 +330,7 @@ Once configured, you can instantly switch between these system roles using the d
    > 💡 **Note:** Always check your specific model's official documentation for recommended temperature settings, as some local models require strict defaults or a value of `0` to function properly without breaking formatting or structure.
 4. Click **Save** to apply the changes to your chat environment.
 
----
+
 
 ## 📉 History Optimization: Clean Whitespace
 
@@ -358,7 +346,7 @@ When the **"Clean whitespace in history"** option is enabled in the extension se
 * **Trims Boundaries:** Removes trailing/leading spaces on every line and trims the overall payload.
 * **Preserves Markdown:** All Markdown tags, headers, and code blocks remain completely intact.
 
----
+
 
 ## 💬 Chat History Dialog
 
@@ -377,7 +365,6 @@ The **Chat History** dialog (accessible from the top‑right menu **`…`** → 
 | **Chat logging must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Enable Chat Logging** is turned off in Settings, no sessions will appear. |
 | **Loading a session forks it** | When you load a past session, the extension **creates a brand‑new session** initialized with that session's message history. Your continuation is saved under a new session ID — the original session remains untouched. |
 
----
 
 ## 🖼️ Image Attachments (Multimodal Chat)
 
@@ -385,7 +372,7 @@ LMLocal lets you attach images to a message so vision-capable models can "see" s
 
 ### How it works
 
-- Images are sent to the model in the OpenAI multimodal format (`image_url` with a base64 data URL), together with your text prompt.
+Images are sent to the model in the OpenAI multimodal format (`image_url` with a base64 data URL), together with your text prompt.
 
 ### ⚠️ Limitations
 
@@ -403,7 +390,7 @@ LMLocal lets you attach images to a message so vision-capable models can "see" s
 > [!TIP]
 > Images live in memory only for the current session — they won't survive a restart or loading a session from history.
 
----
+
 
 ## 💡 Smart Workflows & Best Practices
 
@@ -417,8 +404,6 @@ If you are new to local LLMs and don't know where to start, trying these model f
 * **Nemotron 3.x series**
 * **GPT OSS series**
 
----
-
 ### 🤔 Model can't find what you're looking for?
 
 The AI doesn't have a full filesystem index — it relies on the context you provide. If the model fails to find a specific file, class, or code block:
@@ -427,7 +412,6 @@ The AI doesn't have a full filesystem index — it relies on the context you pro
 - **Use "Send to LM Local"** – Right-click in the editor and select **"Send to LM Local"**. If you highlight code, it sends only the selection; if nothing is highlighted, it sends the entire active document.
 - **Be specific in your prompt** – Mention the exact file name and extension. For example: `"Find the CalculateTotal method in OrderService.cs"` — this gives the AI a clear target, making it easier to locate the relevant code.
 
----
 
 ### 🎯 How can I improve my development plans by hot-swapping models?
 
@@ -437,9 +421,7 @@ It's simple. Just ask one AI model to write a plan, then switch to a different m
 
 **Why it works:**  It’s like bringing in two experts one after another. The first drafts a strategy. The second walks into the room, reads the finished document, and says: "Here’s where you went wrong," without ever seeing the first expert’s rough drafts. By swapping models, you collect the best from each perspective — and you never have to copy-paste or start a new chat, because the entire history stays right there.
 
----
-
-#### 📉 Hitting Context Limits
+### 📉 Hitting Context Limits
 
 **Method 1: Use LMLocal's UI cleanup**
 If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LMLocal's cleanup feature instead of losing your work:
@@ -454,8 +436,6 @@ If the chat history grows too long during this multi-model review loop and you s
   * To refine: `"Read docs/plan.md, review it, and suggest improvements."`
   * To implement: `"Read docs/plan.md and implement Phase 1."`
 
----
-
 ### 💰 How can I reduce token usage and lower API costs?
 Context window accumulation can lead to high API costs or local performance drops. You can optimize your budget by applying these patterns:
 
@@ -465,7 +445,6 @@ Context window accumulation can lead to high API costs or local performance drop
 * **Use a lightweight project map (no RAG):** Create a context.md file (manually or ask the model to generate it) describing your project structure, main classes, and patterns. Attach it to the first message to give the model a "project map" without attaching the whole codebase. This saves tokens and reduces context size.
 * **Enable History Whitespace Cleaning:** Toggle **"Clean whitespace in history"** in the settings. This compresses redundant spaces, tabs, and excess newlines in background turns—slightly reducing context size and saving tokens without altering your rich-text UI.
 
----
 
 ### ⚡ How do I maximize model speed (even with a quality drop)?
 When you just need to generate straightforward boilerplate, repetitive CRUD methods, or standard unit tests at maximum speed:
@@ -478,7 +457,7 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
     * **Keep Model in Memory**
 * **Drop the Temperature:** Lower your active preset temperature closer to `0.0` or `0.1`. This stops the model from creatively wandering around, forcing it to stream short, direct, and deterministic code structures.
 
----
+
 
 ## Auto-Completions
 
@@ -489,7 +468,7 @@ Click the **`...`** menu in the extension panel and select **Autocompletions...*
 
 > ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
 
-#### Supported Providers & Models
+### Supported Providers & Models
 
 Works with local providers: LM Studio, Ollama, llama.cpp, Jan.
 
@@ -506,7 +485,6 @@ For optimal results, use base models trained natively on Fill-in-the-Middle (FIM
 
 > ⚠️ **Note:** Make sure you are using the **Base** versions of these models rather than the Instruct/Chat versions, as base models are specifically optimized for raw code completion.
 
----
 
 ## Context Menu Commands
 
@@ -514,7 +492,6 @@ LM Local adds two groups of commands to Visual Studio — in the **code editor**
 and in the **Solution Explorer** context menu. All commands open the LM Local chat window
 (if not already visible) and inject the relevant content.
 
----
 
 ### Editor Context Menu (right-click inside a code file)
 
@@ -530,7 +507,6 @@ and in the **Solution Explorer** context menu. All commands open the LM Local ch
 
 All editor commands are **disabled** while a chat session is running. If no text is selected, the entire document content is used.
 
----
 
 ### Solution Explorer Context Menu (right-click any node)
 
@@ -555,7 +531,7 @@ All editor commands are **disabled** while a chat session is running. If no text
 
 > **Note:** Solution Explorer commands do **not** auto-send — content is injected into the chat input so you can review or add instructions before submitting. Files are read directly from disk and do not need to be open in the editor.
 
----
+
 
 ## 🌐 Model Context Protocol (MCP) Support
 
@@ -574,8 +550,6 @@ LMLocal supports external tool integration via the **Model Context Protocol (MCP
 * **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported (no plans).
 
 
-
----
 
 ## ⚙️ How to Configure MCP Servers
 
@@ -644,14 +618,13 @@ You can organize your configuration using either the `servers` or `mcpServers` r
 }
 ```
 
----
 
 ### 🔗 Developer Resources
 
 Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and compile your own custom MCP servers compatible with LMLocal.
 `https://github.com/modelcontextprotocol/csharp-sdk`
 
----
+
 
 ## 🔧 Troubleshooting
 
@@ -665,8 +638,8 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | **Built‑in tools not being invoked** | Check that the global **Enable built‑in AI tools (read‑only)** and/or **Enable built‑in AI tools (write/modify)** checkboxes are ticked in Settings. Also verify that the specific tool is not disabled in the **Built‑in Tools…** dialog. |
 | **Response blocked by content filter** | Rephrase the request. |
 | **Response truncated - token limit reached** | Increase Context Length in LM Studio model settings or split the task into smaller parts. |
-| **`image_url` variant error** ("unknown variant `image_url`, expected `text`") | The loaded model does **not** support vision/multimodal inputs – it only accepts `text` messages. **Do not include image attachments or `image_url` fields** in your request. If you need image understanding, switch to a multimodal model (e.g., LLaVA, Qwen-VL, or any model with vision capabilities). |
----
+| **`image_url` variant error** ("unknown variant `image_url`, expected `text`") | The loaded model does **not** support vision/multimodal inputs – it only accepts `text` messages. **Do not include image attachments in your request**. If you need image understanding, switch to a multimodal model (e.g., LLaVA, Qwen-VL, or any model with vision capabilities). |
+
 
 ## 💾 Data & Configuration
 
@@ -674,7 +647,6 @@ LMLocal keeps things simple and stores your preferences locally. Configuration f
 
 `%LOCALAPPDATA%\LMLocalChat\`
 
----
 
 ## 📜 License & Compliance & Third-Party
 

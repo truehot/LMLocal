@@ -31,7 +31,9 @@ namespace LMLocal
     [PackageRegistration(UseManagedResourcesOnly = true, AllowsBackgroundLoading = true)]
     [Guid(PackageGuidString)]
     [ProvideMenuResource("Menus.ctmenu", 1)]
+#pragma warning disable VSSDK003 // tool window is created on-demand synchronously; async construction not required
     [ProvideToolWindow(typeof(MainWindow))]
+#pragma warning restore VSSDK003
 
     public sealed class LMLocalPackage : AsyncPackage
     {

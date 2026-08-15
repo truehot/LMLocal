@@ -173,9 +173,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!fileResults.Success)
                     return $"Error: {fileResults.ErrorMessage}";
 
-                var message = fileResults.Results.Count == 0 ? "Found no files" : $"Found {fileResults.Results.Count} files";
+                var message = fileResults.Results.Count == 0
+                    ? "Found no files"
+                    : $"Found {fileResults.Results.Count} {Pluralizer.Pluralize(fileResults.Results.Count, "file", "files")}";
                 if (fileResults.TotalFiles > 0 && fileResults.Results.Count < fileResults.TotalFiles)
-                    message += $" (total: {fileResults.TotalFiles} files)";
+                    message += $" (total: {fileResults.TotalFiles} {Pluralizer.Pluralize(fileResults.TotalFiles, "file", "files")})";
                 message += ".";
                 return message;
             }

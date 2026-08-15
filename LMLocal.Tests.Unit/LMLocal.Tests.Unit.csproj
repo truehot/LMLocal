@@ -73,6 +73,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
+    <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
     <Compile Include="Infrastructure\AutocompletionsControllerTests.cs" />
     <Compile Include="Infrastructure\AzureModelResponseConverterTests.cs" />
@@ -107,7 +109,9 @@
     <Compile Include="Infrastructure\TogetherAiModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionInspectorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFileTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\DeleteFileTests.cs" />
@@ -140,7 +144,6 @@
     <Compile Include="Services\Tool\ToolExecutionManagerTests.cs" />
     <Compile Include="Infrastructure\InlineCompletion\CompletionCacheTests.cs" />
     <Compile Include="Infrastructure\InlineCompletion\SuggestionPostProcessTests.cs" />
-    <Compile Include="Commands\CodeCommandHelperTests.cs" />
     <Compile Include="Commands\SendToLMFromSolutionExplorerCommandTests.cs" />
     <Reference Include="System.Net.Http" />
     <Compile Include="Infrastructure\AdditionalCriticalTests.cs" />

@@ -124,7 +124,7 @@ namespace LMLocal.Infrastructure.WebView
                 var context = new GenerateStreamContext
                 {
                     Prompt = request.Prompt,
-                    ActiveDocumentContent = request.IncludeContent ? await _activeDocumentTool.GetContentAsync() : null,
+                    ActiveDocumentContent = request.IncludeContent ? await GetIncludedContentAsync() : null,
                     AdditionalPrompt = request.AdditionalPrompt,
                     ModelId = request.ModelId,
                     Temperature = request.Temperature,
@@ -148,6 +148,18 @@ namespace LMLocal.Infrastructure.WebView
             {
                 InternalLogger.Error("ExecutePromptAsync failed", ex);
             }
+        }
+
+        /// <summary>
+        /// Reads the active document and formats it as a Markdown fenced code block. 
+        /// </summary>
+        private async Task<string> GetIncludedContentAsync()
+        {
+            var doc = await _activeDocumentTool.GetActiveDocumentInfoAsync();
+            if (doc?.Success != true || string.IsNullOrWhiteSpace(doc.Content))
+                return null;
+
+            return MarkdownCodeBlockFormatter.FormatFileAsMarkdown(doc.Content, doc.FilePath);
         }
 
 
