@@ -22,15 +22,22 @@ namespace LMLocal.Services.Tool
         public object Result { get; set; }
 
         /// <summary>
-        /// Error message if execution failed.
+        /// Error message if execution failed (full details sent to the model and persisted).
         /// Null if successful.
         /// </summary>
         public string Error { get; set; }
 
         /// <summary>
-        /// Completion message summarizing the tool execution result.
+        /// Short, user-facing text shown in the UI on success.
+        /// Not sent to the model and not persisted.
         /// </summary>
         public string CompletionMessage { get; set; }
+
+        /// <summary>
+        /// Short, user-facing text shown in the UI on error.
+        /// Not sent to the model and not persisted.
+        /// </summary>
+        public string UserMessage { get; set; }
 
         /// <summary>
         /// True if tool executed successfully.

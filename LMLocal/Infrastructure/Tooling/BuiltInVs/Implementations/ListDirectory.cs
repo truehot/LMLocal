@@ -1,3 +1,4 @@
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -159,7 +160,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is DirectoryContentsResponse dirResult)
                 return dirResult.Success
-                    ? $"Listed {dirResult.Entries.Count} entries."
+                    ? $"Listed {dirResult.Entries.Count} {Pluralizer.Pluralize(dirResult.Entries.Count, "entry", "entries")}."
                     : $"Listing directory failed: {dirResult.ErrorMessage}";
             return "Directory listing finished.";
         }

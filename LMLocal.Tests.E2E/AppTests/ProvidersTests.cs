@@ -594,6 +594,54 @@ public class ProvidersTests : AppTestBase
         await Expect(toast).ToBeVisibleAsync();
         await Expect(toast).ToContainTextAsync("Connection refused by remote host");
     }
+
+    [Test]
+    [Category("Providers")]
+    public async Task ProvidersDialog_DeprecatedProviderType_HiddenOnAdd_VisibleOnEdit()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.EvaluateAsync(@"() => {
+            window.__providersOverride = {
+                GetProvidersAsync: async () => JSON.stringify({
+                    success: true,
+                    data: {
+                        providers: [
+                            { id: 9, name: 'Legacy Github', providerType: 'githubmodelsazure', customBaseUrl: 'https://models.inference.ai.azure.com', customApiKey: '' }
+                        ],
+                        providerTypes: [
+                            { key: 'openai', displayName: 'OpenAI compatible' },
+                            { key: 'ollama', displayName: 'Ollama (local)' },
+                            { key: 'githubmodelsazure', displayName: 'Deprecated!!! Github Models via Azure (cloud)' }
+                        ]
+                    }
+                }),
+                UpdateProvidersAsync: async (json) => true,
+            };
+        }");
+
+        await OpenProvidersDialogAsync();
+        var dialog = Page.Locator("#providers-dialog");
+        var typeSelect = dialog.Locator("[data-setting='providerType']");
+
+        // Add form: deprecated type must be hidden
+        await dialog.Locator("#provider-add-btn").ClickAsync();
+        await Expect(dialog.Locator("#provider-form-view")).Not.ToHaveClassAsync("hidden");
+        await Expect(typeSelect.Locator("option[value='githubmodelsazure']")).ToHaveCountAsync(0);
+        await Expect(typeSelect.Locator("option[value='openai']")).ToHaveCountAsync(1);
+
+        // Cancel add form
+        await dialog.Locator("#provider-form-cancel").ClickAsync();
+        await Expect(dialog.Locator("#providers-list-view")).Not.ToHaveClassAsync("hidden");
+
+        // Edit form: existing deprecated provider keeps its type selectable
+        await dialog.Locator(".provider-card .provider-card-btn", new() { HasText = "Edit" }).First.ClickAsync();
+        await Expect(dialog.Locator("#provider-form-view")).Not.ToHaveClassAsync("hidden");
+        await Expect(typeSelect.Locator("option[value='githubmodelsazure']")).ToHaveCountAsync(1);
+        await Expect(typeSelect).ToHaveValueAsync("githubmodelsazure");
+    }
 }
 
 

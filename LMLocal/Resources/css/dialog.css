@@ -154,7 +154,8 @@
         height: auto;
     }
 
-    #settings-dialog .input-with-button .test-connection-btn {
+    #settings-dialog .input-with-button .test-connection-btn,
+    #settings-dialog .input-with-button .test-certificate-btn {
         width: 30px;
         min-width: 30px;
         padding: 0;

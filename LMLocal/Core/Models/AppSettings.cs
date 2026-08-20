@@ -13,6 +13,11 @@ namespace LMLocal.Core.Models
         public string LmStudioBaseUrl { get; set; } = "http://localhost:1234";
 
         /// <summary>
+        /// Path to the server's public certificate (.cer/.crt/.pem) used to trust self-signed or private CA HTTPS endpoints. Empty = default Windows trust.
+        /// </summary>
+        public string TrustedServerCertificatePath { get; set; } = string.Empty;
+
+        /// <summary>
         /// When true, the application will attempt to connect to LM Studio on startup.
         /// </summary>
         public bool AutoLoadOnStartup { get; set; } = true;
@@ -110,7 +115,8 @@ namespace LMLocal.Core.Models
                 && ShowTokenStats == other.ShowTokenStats
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase)
-                && ProviderId == other.ProviderId;
+                && ProviderId == other.ProviderId
+                && string.Equals(TrustedServerCertificatePath, other.TrustedServerCertificatePath, StringComparison.OrdinalIgnoreCase);
         }
 
         public override bool Equals(object obj) => Equals(obj as AppSettings);
@@ -136,6 +142,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
                 hash = hash * 23 + ProviderId.GetHashCode();
+                hash = hash * 23 + (TrustedServerCertificatePath != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(TrustedServerCertificatePath) : 0);
                 return hash;
             }
         }

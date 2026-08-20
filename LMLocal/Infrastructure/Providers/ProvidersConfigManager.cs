@@ -60,14 +60,14 @@ namespace LMLocal.Infrastructure.Providers
         internal static List<CustomProvider> BuildDefaultProviders()
         {
             var result = new List<CustomProvider>(DefaultProviderDefs.Length);
-            foreach (var def in DefaultProviderDefs)
+            foreach (var (Id, Provider, BaseUrl) in DefaultProviderDefs)
             {
                 result.Add(new CustomProvider
                 {
-                    Id = def.Id,
-                    ProviderName = ProviderResolver.GetDisplayName(def.Provider),
-                    ProviderType = def.Provider.ToString().ToLowerInvariant(),
-                    CustomBaseUrl = def.BaseUrl,
+                    Id = Id,
+                    ProviderName = ProviderResolver.GetDisplayName(Provider),
+                    ProviderType = Provider.ToString().ToLowerInvariant(),
+                    CustomBaseUrl = BaseUrl,
                     CustomApiKey = string.Empty
                 });
             }

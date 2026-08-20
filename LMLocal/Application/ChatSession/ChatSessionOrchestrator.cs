@@ -368,8 +368,7 @@ namespace LMLocal.Application.ChatSession
                             Type = WebView2MessageType.StreamToolEnd,
                             FunctionName = toolCall.FunctionName,
                             CallId = toolCall.CallId,
-                            Message = toolResult.CompletionMessage,
-                            Error = toolResult.Error,
+                            Message = string.IsNullOrEmpty(toolResult.Error) ? toolResult.CompletionMessage : toolResult.UserMessage,
                             IsError = !string.IsNullOrEmpty(toolResult.Error)
                         }).ConfigureAwait(false);
                     }

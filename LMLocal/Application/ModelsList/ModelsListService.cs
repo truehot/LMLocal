@@ -19,7 +19,6 @@ namespace LMLocal.Application.ModelsList
     {
         Task<UnifiedListModelsResponse> ListModelsAsync(string currentActiveModelId, CancellationToken cancellationToken);
         Task<UnifiedListModelsResponse> ListModelsForProviderAsync(string providerType, string baseUrl, string apiKey, CancellationToken cancellationToken);
-        Task<bool> TestConnectionAsync(string baseUrl, string providerName, string apiKey, CancellationToken cancellationToken);
     }
 
     internal class ModelsListService : IModelsListService
@@ -138,28 +137,6 @@ namespace LMLocal.Application.ModelsList
             {
                 InternalLogger.Error("ListModelsForProviderAsync failed", ex);
                 return new UnifiedListModelsResponse { Error = ex.Message };
-            }
-        }
-
-        public async Task<bool> TestConnectionAsync(string baseUrl, string providerName, string apiKey, CancellationToken cancellationToken)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(baseUrl))
-                    return false;
-
-                baseUrl = baseUrl.TrimEnd('/');
-
-                ModelProvider provider = ProviderResolver.ResolveProvider(providerName);
-
-                await _openApiAdapter.ListModelsRawAsync(ApiEndpoints.ListModels, baseUrl, apiKey, cancellationToken);
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error($"TestConnectionAsync failed for {providerName} at {baseUrl}", ex);
-                return false;
             }
         }
     }

@@ -83,7 +83,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 LastWriteTime = currentWriteTime
             };
 
-            _cache.AddOrUpdate(actualPath, newEntry, (string key, CacheEntry existing) => newEntry);
+            _cache.AddOrUpdate(actualPath, newEntry, (key, existing) => newEntry);
             return (newEntry.Language, newEntry.TargetFramework, newEntry.IsNativeTestProject);
         }
 

@@ -82,7 +82,6 @@ const __mockBridge = {
                     FunctionName: 'FindSymbolReferences',
                     CallId: 'call_symbol_002',
                     Message: 'Symbol not found',
-                    Error: 'Symbol "MyClass" not found in solution',
                     IsError: true
                 }
             }));

@@ -135,12 +135,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string msg = "Replacement completed";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
-                    msg += $" with {response.SyntaxErrors.Length} syntax error(s)";
+                    msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
 
                 msg += ".";
                 return msg;
             }
-            return "Replacement finished.";
+            return "Replacement completed.";
         }
 
         private (string filePath, string newContent, string error) ExtractAndValidateParameters(

@@ -5,6 +5,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi.Responses;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using Newtonsoft.Json;
 using System;
@@ -23,7 +24,7 @@ namespace LMLocal.Infrastructure.LlmApi
         /// <summary>
         /// Retrieves raw JSON response for models list from a specific backend with explicit credentials.
         /// </summary>
-        Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken);
+        Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken, string certificatePath = null);
 
         /// <summary>
         /// Opens a streaming chat request and returns the response stream.
@@ -47,16 +48,19 @@ namespace LMLocal.Infrastructure.LlmApi
         private readonly IHttpClientWrapper _httpClientWrapper;
         private readonly ISettingsManager _settingsManager;
         private readonly IApiRequestBuilder _requestBuilder;
+        private readonly ITemporaryHttpClientFactory _temporaryHttpClientFactory;
         private const string DefaultBaseUrl = "http://localhost:1234";
 
         public OpenApiAdapter(
             IHttpClientWrapper httpClientWrapper,
             ISettingsManager settingsManager,
-            IApiRequestBuilder requestBuilder)
+            IApiRequestBuilder requestBuilder,
+            ITemporaryHttpClientFactory temporaryHttpClientFactory)
         {
             _httpClientWrapper = httpClientWrapper ?? throw new ArgumentNullException(nameof(httpClientWrapper));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _requestBuilder = requestBuilder ?? throw new ArgumentNullException(nameof(requestBuilder));
+            _temporaryHttpClientFactory = temporaryHttpClientFactory ?? throw new ArgumentNullException(nameof(temporaryHttpClientFactory));
         }
 
         private string GetBaseUrl()
@@ -73,7 +77,7 @@ namespace LMLocal.Infrastructure.LlmApi
             return ProviderResolver.GetChatCompletionsEndpoint(provider);
         }
 
-        public async Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken)
+        public async Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken, string certificatePath = null)
         {
             if (string.IsNullOrWhiteSpace(baseUrl))
             {
@@ -87,9 +91,33 @@ namespace LMLocal.Infrastructure.LlmApi
             if (string.IsNullOrEmpty(apiKey))
                 apiKey = _settingsManager.Current?.ApiKey;
 
+            string url = baseUrl + endpoint;
+
+            if (string.IsNullOrWhiteSpace(certificatePath))
+            {
+                return await ListModelsRawCoreAsync(_httpClientWrapper.SendAsync, url, apiKey, cancellationToken).ConfigureAwait(false);
+            }
+
+            HttpClient temporaryClient = _temporaryHttpClientFactory.Create(certificatePath);
             try
             {
-                using (var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + endpoint))
+                return await ListModelsRawCoreAsync(temporaryClient.SendAsync, url, apiKey, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                temporaryClient.Dispose();
+            }
+        }
+
+        private async Task<string> ListModelsRawCoreAsync(
+            Func<HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>> sendAsync,
+            string url,
+            string apiKey,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                using (var request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
                     if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
                         request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
@@ -97,7 +125,7 @@ namespace LMLocal.Infrastructure.LlmApi
                         request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
 
-                    using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
+                    using (var response = await sendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);

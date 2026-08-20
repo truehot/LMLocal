@@ -16,6 +16,7 @@ class StartupManager {
     async initialize() {
         try {
 
+            await appDataService.getProvidersAsync();
             const response = await appDataService.loadModels();
 
             if (response.error || !response.models || response.models.length === 0) {

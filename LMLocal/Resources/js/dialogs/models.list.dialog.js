@@ -392,9 +392,19 @@ export class ModelSelectorDialog {
             if (providersResult?.success) {
                 const data = providersResult.data || {};
 
+                const isActiveProvider = (p) => {
+                    if (!p) return false;
+                    const type = (data.Provider || '').toLowerCase();
+                    if ((p.providerType || '').toLowerCase() !== type) return false;
+                    if (data.ProviderId != null) return String(p.id) === String(data.ProviderId);
+
+                    return (p.customBaseUrl || '') === (data.LmStudioBaseUrl || '')
+                        && (!p.customApiKey || p.customApiKey === (data.ApiKey || ''));
+                };
+
                 const allProviders = {
-                    defaultProviders: (data.defaultProviders || []).filter(p => p.customBaseUrl),
-                    providers: (data.providers || []).filter(p => p.customBaseUrl),
+                    defaultProviders: (data.defaultProviders || []).filter(p => p.customBaseUrl || isActiveProvider(p)),
+                    providers: (data.providers || []).filter(p => p.customBaseUrl || isActiveProvider(p)),
                 };
                 this.previousProviderValue = populateProviderSelect(
                     this.el.providerSelect,

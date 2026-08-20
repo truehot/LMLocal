@@ -71,6 +71,32 @@ namespace LMLocal.Tests.Unit
                 Assert.That(call.CallId, Is.EqualTo("call0"));
                 Assert.That(call.FunctionName, Is.EqualTo("fn0"));
                 Assert.That(call.ArgumentsJson, Does.Contain("\"a\":1"));
+                Assert.That(call.IsInvalid, Is.False);
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_InvalidToolArguments_SanitizesToEmptyObjectAndMarksInvalid()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+
+            var sb = new StringBuilder();
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call0\",\"function\":{\"name\":\"fn0\"}}]}}]}");
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"a\\\":\"}}]}}]}");
+            sb.AppendLine("data: [DONE]");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { await Task.CompletedTask; }, batchIntervalMs: 1);
+
+                Assert.That(result.ToolCalls, Is.Not.Null);
+                Assert.That(result.ToolCalls.Count, Is.EqualTo(1));
+
+                var call = result.ToolCalls[0];
+                Assert.That(call.CallId, Is.EqualTo("call0"));
+                Assert.That(call.FunctionName, Is.EqualTo("fn0"));
+                Assert.That(call.IsInvalid, Is.True);
+                Assert.That(call.ArgumentsJson, Is.EqualTo("{}"));
             }
         }
     }

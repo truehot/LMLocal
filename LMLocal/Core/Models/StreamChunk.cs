@@ -1,8 +1,7 @@
 namespace LMLocal.Core.Models
 {
     /// <summary>
-    /// Represents the type of content in a streamed chunk from LLM.
-    /// Supports multiple LLM providers: Nemotron, Qwen, Gemma, OpenAI.
+    /// Represents the type of content in a streamed chunk from an OpenAI-compatible LLM.
     /// </summary>
     internal enum ChunkKind
     {
@@ -20,11 +19,6 @@ namespace LMLocal.Core.Models
         /// Tool call arguments in JSON format (OpenAI-compatible format for Qwen/Gemma/OpenAI).
         /// </summary>
         ToolCallArguments,
-
-        /// <summary>
-        /// Raw tool call block (complete &lt;tool_call&gt;...&lt;/tool_call&gt; from Nemotron/DeepSeek).
-        /// </summary>
-        ToolCallRaw,
 
         /// <summary>
         /// Completion metadata: finish_reason, token usage.
@@ -86,11 +80,6 @@ namespace LMLocal.Core.Models
         }
 
         public override bool IsEmpty => string.IsNullOrEmpty(Text);
-
-        /// <summary>
-        /// Helper property to detect XML-formatted tool calls from Nemotron models.
-        /// </summary>
-        public bool IsXmlToolCall => Kind == ChunkKind.Reasoning && Text?.Contains("<tool_call>") == true;
     }
 
     /// <summary>

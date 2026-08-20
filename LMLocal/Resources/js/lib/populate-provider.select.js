@@ -14,8 +14,12 @@ export function populateProviderSelect(select, providers, currentSettings) {
 
     const savedType = currentSettings?.Provider ?? currentSettings?.providerType;
     const savedProviderId = currentSettings?.ProviderId ?? currentSettings?.providerId;
+    const savedUrl = currentSettings?.LmStudioBaseUrl;
+    const savedApiKey = currentSettings?.ApiKey;
 
     let matchIdx = 0;
+    let matched = false;
+
     for (let i = 0; i < list.length; i++) {
         const p = list[i];
         if (!p) continue;
@@ -26,7 +30,18 @@ export function populateProviderSelect(select, providers, currentSettings) {
             p.id === savedProviderId
         ) {
             matchIdx = i;
+            matched = true;
             break;
+        }
+
+        if (
+            !matched &&
+            p.providerType === savedType &&
+            p.customBaseUrl === savedUrl &&
+            (!p.customApiKey || p.customApiKey === savedApiKey)
+        ) {
+            matchIdx = i;
+            matched = true;
         }
     }
 

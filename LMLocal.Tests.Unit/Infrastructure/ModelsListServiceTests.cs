@@ -91,8 +91,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var adapter = new Mock<IOpenApiAdapter>();
             adapter
                 .Setup(a => a.ListModelsRawAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .Returns<string, string, string, CancellationToken>((endpoint, baseUrl, apiKey, ct) =>
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()))
+                .Returns<string, string, string, CancellationToken, string>((endpoint, baseUrl, apiKey, ct, certificatePath) =>
                     Task.FromResult(responder(endpoint)));
             return adapter;
         }
@@ -124,8 +124,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             // Both Ollama endpoints must be hit — proves the provider-specific branch,
             // not the old single "/api/ps" path.
-            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", OllamaBaseUrl, "", It.IsAny<CancellationToken>()), Times.Once);
-            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", OllamaBaseUrl, "", It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", OllamaBaseUrl, "", It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", OllamaBaseUrl, "", It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
 
         [Test]
@@ -138,8 +138,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             await service.ListModelsForProviderAsync("ollama", OllamaBaseUrl, apiKey, CancellationToken.None);
 
-            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", OllamaBaseUrl, apiKey, It.IsAny<CancellationToken>()), Times.Once);
-            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", OllamaBaseUrl, apiKey, It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", OllamaBaseUrl, apiKey, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", OllamaBaseUrl, apiKey, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
 
         [Test]
@@ -159,7 +159,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models[0].MaxTokens, Is.EqualTo(4096));
             Assert.That(result.SupportsIsLoaded, Is.True);
 
-            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", "http://localhost:8080", "", It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", "http://localhost:8080", "", It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
 
         [Test]
@@ -178,7 +178,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models[0].Id, Is.EqualTo("gpt-4o"));
             Assert.That(result.SupportsIsLoaded, Is.False);
 
-            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", baseUrl, apiKey, It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", baseUrl, apiKey, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
 
         [Test]
@@ -196,7 +196,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models[0].IsLoaded, Is.True);
             Assert.That(result.SupportsIsLoaded, Is.True);
 
-            adapter.Verify(a => a.ListModelsRawAsync("/api/v1/models", "http://localhost:1234", "", It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/api/v1/models", "http://localhost:1234", "", It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
 
         [Test]
@@ -205,7 +205,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var adapter = new Mock<IOpenApiAdapter>();
             adapter
                 .Setup(a => a.ListModelsRawAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()))
                 .ThrowsAsync(new InvalidOperationException("network error"));
             var service = CreateService(adapter);
 
@@ -237,8 +237,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Models.Count, Is.EqualTo(2));
 
             // ListModelsAsync falls back to the saved settings base URL and null api key
-            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", settingsBaseUrl, null, It.IsAny<CancellationToken>()), Times.Once);
-            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", settingsBaseUrl, null, It.IsAny<CancellationToken>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/api/ps", settingsBaseUrl, null, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
+            adapter.Verify(a => a.ListModelsRawAsync("/v1/models", settingsBaseUrl, null, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
     }
 }

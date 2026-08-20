@@ -11,6 +11,7 @@ using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Responses;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -81,7 +82,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
@@ -114,7 +115,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
@@ -143,7 +144,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { LmStudioBaseUrl = "http://example.com:8080/" });
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");
@@ -152,6 +153,69 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             Assert.That(captured, Is.Not.Null);
             Assert.That(captured.RequestUri.ToString(), Is.EqualTo("http://example.com:8080/v1/chat/completions"));
+        }
+
+        [Test]
+        public async Task ListModelsRawAsync_WithCertificatePath_UsesTemporaryClientFromFactory()
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"models\":[]}", Encoding.UTF8, "application/json")
+            };
+            var temporaryClient = new HttpClient(new FakeHandler(response));
+
+            var factory = new Mock<ITemporaryHttpClientFactory>();
+            factory.Setup(f => f.Create(It.IsAny<string>())).Returns(temporaryClient);
+
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+
+            var adapter = new OpenApiAdapter(
+                Mock.Of<IHttpClientWrapper>(),
+                mockSettings.Object,
+                new ApiRequestBuilder(mockSettings.Object, toolFactory),
+                factory.Object);
+
+            var json = await adapter.ListModelsRawAsync(
+                "/v1/models", "https://localhost:8443", "sk", CancellationToken.None, "C:\\certs\\server.cer");
+
+            Assert.That(json, Does.Contain("models"));
+            factory.Verify(f => f.Create("C:\\certs\\server.cer"), Times.Once);
+        }
+
+        [Test]
+        public async Task ListModelsRawAsync_WithoutCertificatePath_DoesNotUseTemporaryFactory()
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"models\":[]}", Encoding.UTF8, "application/json")
+            };
+
+            var mockWrapper = new Mock<IHttpClientWrapper>();
+            mockWrapper
+                .Setup(x => x.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<HttpCompletionOption>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(response);
+
+            var factory = new Mock<ITemporaryHttpClientFactory>();
+
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+
+            var adapter = new OpenApiAdapter(
+                mockWrapper.Object,
+                mockSettings.Object,
+                new ApiRequestBuilder(mockSettings.Object, toolFactory),
+                factory.Object);
+
+            var json = await adapter.ListModelsRawAsync("/v1/models", "https://api.openai.com", "sk", CancellationToken.None);
+
+            Assert.That(json, Does.Contain("models"));
+            mockWrapper.Verify(
+                x => x.SendAsync(It.IsAny<HttpRequestMessage>(), It.IsAny<HttpCompletionOption>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            factory.Verify(f => f.Create(It.IsAny<string>()), Times.Never);
         }
 
         [Test]
@@ -259,7 +323,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var mockToolFactory = new Mock<ICompositeToolFactory>();
             mockToolFactory.Setup(t => t.GetAllToolDefinitions()).Returns(new System.Collections.Generic.List<ToolDefinition> { toolDef });
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, mockToolFactory.Object));
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, mockToolFactory.Object), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");

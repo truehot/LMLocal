@@ -7,7 +7,6 @@ namespace LMLocal.Infrastructure.Streaming
 {
     /// <summary>
     /// Watches for inactivity and cancels the operation when the configured timeout (in seconds) is exceeded.
-    /// Can be used for streams, HTTP requests, MCP calls, or any long-running operation.
     /// </summary>
     internal interface IStreamInactivityWatcher
     {

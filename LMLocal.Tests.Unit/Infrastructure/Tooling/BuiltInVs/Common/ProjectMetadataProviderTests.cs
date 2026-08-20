@@ -27,9 +27,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [Test]
         public void GetMetadata_ReturnsUnknown_ForNullOrEmptyPath()
         {
-            var res1 = ProjectMetadataProvider.GetMetadata(null);
-            Assert.That(res1.Language, Is.EqualTo("Unknown"));
-            Assert.That(res1.TargetFramework, Is.Null);
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(null);
+            Assert.That(Language, Is.EqualTo("Unknown"));
+            Assert.That(TargetFramework, Is.Null);
 
             var res2 = ProjectMetadataProvider.GetMetadata(string.Empty);
             Assert.That(res2.Language, Is.EqualTo("Unknown"));
@@ -42,11 +42,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var file = Path.Combine(_root, "MyProj.csproj");
             var content = "<Project><PropertyGroup><TargetFramework>net472</TargetFramework></PropertyGroup></Project>";
             File.WriteAllText(file, content);
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(file);
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
-
-            Assert.That(meta.Language, Is.EqualTo("C#"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("net472"));
+            Assert.That(Language, Is.EqualTo("C#"));
+            Assert.That(TargetFramework, Is.EqualTo("net472"));
         }
 
         [Test]
@@ -56,10 +55,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var content = "<Project><PropertyGroup><TargetFrameworks>net5.0;netcoreapp3.1</TargetFrameworks></PropertyGroup></Project>";
             File.WriteAllText(file, content);
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(file);
 
-            Assert.That(meta.Language, Is.EqualTo("C#"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("net5.0"));
+            Assert.That(Language, Is.EqualTo("C#"));
+            Assert.That(TargetFramework, Is.EqualTo("net5.0"));
         }
 
         [Test]
@@ -69,11 +68,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             Directory.CreateDirectory(dir);
             var file = Path.Combine(dir, "Contained.csproj");
             File.WriteAllText(file, "<Project><PropertyGroup><TargetFramework>netstandard2.0</TargetFramework></PropertyGroup></Project>");
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(dir);
 
-            var meta = ProjectMetadataProvider.GetMetadata(dir);
-
-            Assert.That(meta.Language, Is.EqualTo("C#"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("netstandard2.0"));
+            Assert.That(Language, Is.EqualTo("C#"));
+            Assert.That(TargetFramework, Is.EqualTo("netstandard2.0"));
         }
 
         [Test]
@@ -82,11 +80,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var file = Path.Combine(_root, "weird.projx");
             File.WriteAllText(file, "This file mentions csharp in content but has unknown extension: csharp");
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(file);
 
             // Current implementation does not read files for unknown extensions, so language remains Unknown
-            Assert.That(meta.Language, Is.EqualTo("Unknown"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("Unknown"));
+            Assert.That(Language, Is.EqualTo("Unknown"));
+            Assert.That(TargetFramework, Is.EqualTo("Unknown"));
         }
 
         [Test]
@@ -101,11 +99,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             sb.Append("</PropertyGroup></Project>");
             File.WriteAllText(file, sb.ToString());
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
+            var (Language, TargetFramework, _) = ProjectMetadataProvider.GetMetadata(file);
 
             // Language is known by extension, but target framework is not read for large files
-            Assert.That(meta.Language, Is.EqualTo("C#"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("Unknown"));
+            Assert.That(Language, Is.EqualTo("C#"));
+            Assert.That(TargetFramework, Is.EqualTo("Unknown"));
         }
 
         [Test]
@@ -114,11 +112,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var file = Path.Combine(_root, "Native.vcxproj");
             File.WriteAllText(file, "<Project><PropertyGroup><ConfigurationType>Application</ConfigurationType></PropertyGroup></Project>");
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
+            var (Language, TargetFramework, IsNativeTestProject) = ProjectMetadataProvider.GetMetadata(file);
 
-            Assert.That(meta.Language, Is.EqualTo("C++"));
-            Assert.That(meta.TargetFramework, Is.EqualTo("Unknown"));
-            Assert.That(meta.IsNativeTestProject, Is.False);
+            Assert.That(Language, Is.EqualTo("C++"));
+            Assert.That(TargetFramework, Is.EqualTo("Unknown"));
+            Assert.That(IsNativeTestProject, Is.False);
         }
 
         [Test]
@@ -127,11 +125,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var file = Path.Combine(_root, "NativeTest.vcxproj");
             var content = "<Project><PropertyGroup><ConfigurationType>DynamicLibrary</ConfigurationType><UseNativeUnitTest>true</UseNativeUnitTest></PropertyGroup></Project>";
             File.WriteAllText(file, content);
+            var (Language, _, IsNativeTestProject) = ProjectMetadataProvider.GetMetadata(file);
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
-
-            Assert.That(meta.Language, Is.EqualTo("C++"));
-            Assert.That(meta.IsNativeTestProject, Is.True);
+            Assert.That(Language, Is.EqualTo("C++"));
+            Assert.That(IsNativeTestProject, Is.True);
         }
 
         [Test]
@@ -140,11 +137,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var file = Path.Combine(_root, "NativeNoTest.vcxproj");
             var content = "<Project><PropertyGroup><UseNativeUnitTest>false</UseNativeUnitTest></PropertyGroup></Project>";
             File.WriteAllText(file, content);
+            var (Language, _, IsNativeTestProject) = ProjectMetadataProvider.GetMetadata(file);
 
-            var meta = ProjectMetadataProvider.GetMetadata(file);
-
-            Assert.That(meta.Language, Is.EqualTo("C++"));
-            Assert.That(meta.IsNativeTestProject, Is.False);
+            Assert.That(Language, Is.EqualTo("C++"));
+            Assert.That(IsNativeTestProject, Is.False);
         }
     }
 }

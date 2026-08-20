@@ -23,7 +23,7 @@ export const providerResolver = {
             if (!p) return false;
             if (p.providerType !== Provider) return false;
             if (p.customBaseUrl !== LmStudioBaseUrl) return false;
-            if (p.customApiKey !== ApiKey) return false;
+            if (p.customApiKey && p.customApiKey !== ApiKey) return false;
             return true;
         });
 

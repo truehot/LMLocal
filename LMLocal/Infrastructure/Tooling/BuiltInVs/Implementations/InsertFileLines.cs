@@ -271,7 +271,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (response.AutoCorrected == true)
                     msg += $" (auto-corrected from position {response.OriginalPosition} to {response.AppliedPosition})";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
-                    msg += $" with {response.SyntaxErrors.Length} syntax error(s)";
+                    msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
 
                 msg += ".";
                 return msg;

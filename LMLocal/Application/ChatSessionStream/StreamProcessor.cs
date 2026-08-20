@@ -2,19 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Net.Sockets;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Streaming;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Application.ChatSessionStream
 {
+    /// <summary>
+    /// Parses an SSE response stream.
+    /// </summary>
     internal interface IStreamProcessor
     {
         Task<StreamCompletionResult> ProcessStreamAsync(Stream stream, CancellationToken cancellationToken, Func<TextStreamChunk, TokenGenerationStats, Task> onChunk, int batchIntervalMs = 50);
@@ -27,8 +30,6 @@ namespace LMLocal.Application.ChatSessionStream
 
         private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata =
             new Dictionary<int, (string CallId, string FunctionName)>();
-
-        private readonly List<string> _rawToolCallBlocks = new List<string>();
 
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
@@ -46,7 +47,6 @@ namespace LMLocal.Application.ChatSessionStream
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            _rawToolCallBlocks.Clear();
             _toolCallMetadata.Clear();
 
             var fullResponse = new StringBuilder();
@@ -165,9 +165,6 @@ namespace LMLocal.Application.ChatSessionStream
                                                     toolCallBuffers[bufferIndex] = new StringBuilder();
                                                 toolCallBuffers[bufferIndex].Append(textChunk.Text);
                                                 break;
-                                            case ChunkKind.ToolCallRaw:
-                                                _rawToolCallBlocks.Add(textChunk.Text);
-                                                break;
                                         }
 
                                         currentTokens++;
@@ -276,12 +273,6 @@ namespace LMLocal.Application.ChatSessionStream
 
             result.ContentResponse = fullResponse.ToString();
 
-            foreach (var rawBlock in _rawToolCallBlocks)
-            {
-                ParseRawToolCallBlock(rawBlock, _toolCallMetadata, toolCallBuffers);
-                InternalLogger.Info($"Parse raw xml tool block completed");
-            }
-
             var toolCalls = new List<ToolCallRecord>();
             foreach (var bufferEntry in toolCallBuffers.OrderBy(kvp => kvp.Key))
             {
@@ -290,12 +281,20 @@ namespace LMLocal.Application.ChatSessionStream
 
                 if (_toolCallMetadata.TryGetValue(index, out var metadata))
                 {
+                    bool isValid = IsValidJson(argumentsJson);
+
+                    if (!isValid)
+                    {
+                        InternalLogger.Warn($"[StreamProcessor] Invalid tool arguments for '{metadata.FunctionName}' (id: {metadata.CallId})");
+                    }
+
                     toolCalls.Add(new ToolCallRecord
                     {
                         Index = index,
                         CallId = metadata.CallId,
                         FunctionName = metadata.FunctionName,
-                        ArgumentsJson = argumentsJson
+                        ArgumentsJson = isValid ? argumentsJson : "{}",
+                        IsInvalid = !isValid
                     });
                 }
                 else
@@ -317,74 +316,29 @@ namespace LMLocal.Application.ChatSessionStream
         }
 
         /// <summary>
-        /// Parses a raw tool call block like &lt;tool_call&gt;function_name arguments&lt;/tool_call&gt;
-        /// and extracts function name and arguments into the tool call buffers.
+        /// Validates that accumulated tool arguments are a JSON object. 
         /// </summary>
-        private void ParseRawToolCallBlock(string rawBlock,
-            Dictionary<int, (string, string)> toolCallMetadata,
-            Dictionary<int, StringBuilder> toolCallBuffers)
+        private static bool IsValidJson(string argumentsJson)
         {
-            const string ToolCallStart = "<tool_call>";
-            const string ToolCallEnd = "</tool_call>";
+            if (string.IsNullOrWhiteSpace(argumentsJson))
+                return true;
 
-            string trimmed = rawBlock.Trim();
-            if (!trimmed.StartsWith(ToolCallStart) || !trimmed.EndsWith(ToolCallEnd))
+            try
             {
-                InternalLogger.Warn($"Invalid tool call block: {rawBlock}");
-                return;
+                JObject.Parse(argumentsJson);
+                return true;
             }
-
-            int contentStart = ToolCallStart.Length;
-            int contentEnd = trimmed.Length - ToolCallEnd.Length;
-            string inner = trimmed.Substring(contentStart, contentEnd - contentStart);
-
-            if (string.IsNullOrWhiteSpace(inner))
+            catch (JsonException)
             {
-                return;
+                return false;
             }
-
-            var funcMatch = Regex.Match(inner, @"<function\s*=\s*([^>]+)>");
-            if (!funcMatch.Success)
-            {
-                InternalLogger.Warn($"No <function=...> in tool call block: {inner}");
-                return;
-            }
-
-            string functionName = funcMatch.Groups[1].Value;
-            int argsStart = funcMatch.Index + funcMatch.Length;
-            int endFunc = inner.IndexOf("</function>", argsStart);
-            string arguments = (endFunc != -1)
-                ? inner.Substring(argsStart, endFunc - argsStart)
-                : inner.Substring(argsStart);
-            arguments = arguments.Trim();
-
-            int toolIndex = toolCallMetadata.Count;
-            toolCallMetadata[toolIndex] = ($"call_{toolIndex}", functionName);
-            if (!toolCallBuffers.ContainsKey(toolIndex))
-            {
-                toolCallBuffers[toolIndex] = new StringBuilder();
-            }
-
-            if (!string.IsNullOrEmpty(arguments))
-            {
-                string argumentsJson = ConvertToolParametersToJson(arguments);
-                toolCallBuffers[toolIndex].Append(argumentsJson);
-            }
-
-            InternalLogger.Info($"[StreamProcessor] Parsed tool: {functionName}, args length={arguments.Length}");
-        }
-
-        private string ConvertToolParametersToJson(string xmlParameters)
-        {
-            var dict = new Dictionary<string, string>();
-            var matches = Regex.Matches(xmlParameters, @"<parameter=([^>]+)>([\s\S]*?)</parameter>");
-            foreach (Match m in matches)
-            {
-                string name = m.Groups[1].Value;
-                string value = m.Groups[2].Value.Trim();
-                dict[name] = value;
-            }
-            return JsonConvert.SerializeObject(dict);
         }
     }
 }
+
+
+
+
+
+
+

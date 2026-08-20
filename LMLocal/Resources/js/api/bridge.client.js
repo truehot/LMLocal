@@ -138,6 +138,12 @@ class BridgeClient {
         return JSON.parse(result);
     }
 
+    async testCertificate(payload) {
+        const payloadJson = JSON.stringify(payload);
+        const result = await this._callSettings("TestCertificateAsync", payloadJson);
+        return JSON.parse(result);
+    }
+
     _getMcpHost() {
         return window.__mcpOverride ?? window.chrome?.webview?.hostObjects?.mcp;
     }

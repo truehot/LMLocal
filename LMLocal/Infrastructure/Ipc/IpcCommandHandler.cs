@@ -163,8 +163,7 @@ internal static class IpcCommandHandler
                     };
 
                     var results = new JArray();
-                    var references = obj["references"] as JArray;
-                    if (references != null)
+                    if (obj["references"] is JArray references)
                     {
                         foreach (var r in references)
                         {

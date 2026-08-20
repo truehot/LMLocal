@@ -166,6 +166,10 @@ class AppDataService {
         return await bridgeClient.testConnection(details);
     }
 
+    async testCertificateAsync(payload) {
+        return await bridgeClient.testCertificate(payload);
+    }
+
     async getMcpConfigAsync() {
         return await bridgeClient.getMcpConfigAsync();
     }
@@ -187,11 +191,13 @@ class AppDataService {
         try {
             const result = await bridgeClient.getProvidersAsync();
             const config = result.defaultProviders || result.providers ? result : { defaultProviders: [], providers: [] };
+            const defaultProviders = config.defaultProviders || [];
+            const providers = config.providers || [];
             providersStore.setState({
-                defaultProviders: config.defaultProviders || [],
-                providers: config.providers || [],
+                defaultProviders,
+                providers,
                 loading: false,
-                loaded: true,
+                loaded: defaultProviders.length > 0 || providers.length > 0,
                 error: null
             });
             return result;

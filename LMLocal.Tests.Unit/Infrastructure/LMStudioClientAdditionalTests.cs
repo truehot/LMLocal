@@ -4,8 +4,10 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Core.Exceptions;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -39,7 +41,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
             var messageContext = new MessageContext(new List<ChatMessage>());
             var modelContext = new ModelContext("test-model");
             var result = await lm.SendChatAsync(messageContext, modelContext, CancellationToken.None);
@@ -59,7 +61,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
             var messageContext = new MessageContext(new List<ChatMessage>());
             var modelContext = new ModelContext("test-model");
             var ex = Assert.ThrowsAsync<ApiException>(async () => await lm.SendChatAsync(messageContext, modelContext, CancellationToken.None));

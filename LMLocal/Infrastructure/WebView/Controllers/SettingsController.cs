@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.ModelsList;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
@@ -18,6 +19,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
         Task<string> GetSettingsAsync();
         Task<bool> UpdateSettingsAsync(string newSettingsJson);
         Task<string> TestConnectionAsync(string payload);
+        Task<string> TestCertificateAsync(string payload);
         Task<bool> SetAiToolsAsync(string json);
     }
 
@@ -25,12 +27,14 @@ namespace LMLocal.Infrastructure.WebView.Controllers
     public class SettingsController : ISettingsController
     {
         private readonly ISettingsManager _settingsManager;
-        private readonly IModelsListService _modelsListService;
+        private readonly ITestConnectionService _testConnectionService;
+        private readonly ICertificatePathValidator _certificatePathValidator;
 
-        internal SettingsController(ISettingsManager settingsManager, IModelsListService modelsListService)
+        internal SettingsController(ISettingsManager settingsManager, ITestConnectionService testConnectionService, ICertificatePathValidator certificatePathValidator)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
-            _modelsListService = modelsListService ?? throw new ArgumentNullException(nameof(modelsListService));
+            _testConnectionService = testConnectionService ?? throw new ArgumentNullException(nameof(testConnectionService));
+            _certificatePathValidator = certificatePathValidator ?? throw new ArgumentNullException(nameof(certificatePathValidator));
         }
 
         public Task<string> GetSettingsAsync()
@@ -98,30 +102,76 @@ namespace LMLocal.Infrastructure.WebView.Controllers
             try
             {
                 if (string.IsNullOrWhiteSpace(payload))
-                    return new { success = false, error = "Invalid parameters" }.ToJson();
+                    return ErrorResponse("Invalid parameters");
 
                 var request = payload.FromJson<TestConnectionRequest>();
                 if (request == null || string.IsNullOrWhiteSpace(request.Provider) || string.IsNullOrWhiteSpace(request.Url))
-                    return new { success = false, error = "Provider and URL are required" }.ToJson();
+                    return ErrorResponse("Provider and URL are required");
 
                 var requestTimeout = _settingsManager.RequestTimeoutSeconds;
                 using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(requestTimeout)))
                 {
-                    bool success = await _modelsListService.TestConnectionAsync(
-                        request.Url,
+                    TestConnectionResult result = await _testConnectionService.TestAsync(
                         request.Provider,
+                        request.Url,
                         request.ApiKey ?? string.Empty,
+                        request.CertificatePath,
                         cts.Token
                     ).ConfigureAwait(false);
 
-                    return new { success, error = success ? (string)null : "Failed to connect" }.ToJson();
+                    return new TestConnectionResponse
+                    {
+                        Success = result.Success,
+                        Error = result.Error == null ? null : new ErrorInfo { Message = result.Error }
+                    }.ToJson();
                 }
             }
             catch (Exception ex)
             {
                 InternalLogger.Error("TestConnectionAsync failed", ex);
-                return new { success = false, error = ex.Message }.ToJson();
+                return ErrorResponse(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Validates that the configured certificate file can be loaded and reports its thumbprint.
+        /// </summary>
+        public Task<string> TestCertificateAsync(string payload)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(payload))
+                    return Task.FromResult(ErrorResponse("Certificate path is required"));
+
+                var request = payload.FromJson<TestCertificateRequest>();
+                if (request == null || string.IsNullOrWhiteSpace(request.Path))
+                    return Task.FromResult(ErrorResponse("Certificate path is required"));
+
+                CertificateInfo info = _certificatePathValidator.ValidateOrThrow(request.Path);
+
+                return Task.FromResult(new TestCertificateResponse
+                {
+                    Success = true,
+                    Thumbprint = info.Thumbprint
+                }.ToJson());
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("TestCertificateAsync failed", ex);
+                return Task.FromResult(ErrorResponse(ex.Message));
+            }
+        }
+
+        /// <summary>
+        /// Builds a failure response matching the frontend contract: error is an object with a "message" property (the toast in settings.dialog.js reads result.error.message).
+        /// </summary>
+        private static string ErrorResponse(string message)
+        {
+            return new TestConnectionResponse
+            {
+                Success = false,
+                Error = new ErrorInfo { Message = message }
+            }.ToJson();
         }
     }
 }

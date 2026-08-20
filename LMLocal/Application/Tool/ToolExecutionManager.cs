@@ -47,6 +47,20 @@ namespace LMLocal.Services.Tool
 
             InternalLogger.Info($"ToolExecutionManager.ExecuteToolAsync: {toolCall.FunctionName} (id: {toolCall.CallId})");
 
+            if (toolCall.IsInvalid)
+            {
+                var userMsg = $"Tool '{toolCall.FunctionName}' call '{toolCall.CallId}': arguments are not valid JSON, tool was not executed.";
+                var errorMsg = userMsg + " Do not repeat the same full request; split large changes into smaller patches/chunks.";
+                InternalLogger.Warn($"[ToolExecutionManager] Skipping {toolCall.FunctionName} (id: {toolCall.CallId}): invalid tool arguments.");
+                return new ToolExecutionResult
+                {
+                    ToolId = toolCall.CallId,
+                    ToolName = toolCall.FunctionName,
+                    Error = errorMsg,
+                    UserMessage = userMsg
+                };
+            }
+
             try
             {
                 Dictionary<string, object> parameters = new Dictionary<string, object>();
@@ -123,6 +137,9 @@ namespace LMLocal.Services.Tool
         {
             if (toolCall == null)
                 return "Processing...";
+
+            if (toolCall.IsInvalid)
+                return "Invalid tool arguments";
 
             Dictionary<string, object> parameters = new Dictionary<string, object>();
             if (!string.IsNullOrWhiteSpace(toolCall.ArgumentsJson))

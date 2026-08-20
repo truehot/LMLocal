@@ -162,7 +162,7 @@ namespace LMLocal.Tests.Unit.Internal
                     });
             // When tool executed, return error
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", CompletionMessage = null });
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", UserMessage = "failed" });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -183,8 +183,7 @@ namespace LMLocal.Tests.Unit.Internal
             Assert.That(callMsg, Is.Not.Null, $"StreamToolCall should exist. Messages: {messages.Count}, types: {string.Join(", ", messages.Take(10).Select(m => m.Type))}");
             Assert.That(endMsg, Is.Not.Null, $"StreamToolEnd should exist. Messages: {messages.Count}, types: {string.Join(", ", messages.Take(10).Select(m => m.Type))}");
             Assert.That(endMsg.IsError, Is.True);
-            Assert.That(endMsg.Error, Is.EqualTo("failed"));
-            Assert.That(endMsg.Error, Is.EqualTo("failed"));
+            Assert.That(endMsg.Message, Is.EqualTo("failed"));
         }
 
         // ================================================================

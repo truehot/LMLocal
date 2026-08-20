@@ -1,6 +1,8 @@
 using System.Net.Http;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Tests.Unit.Infrastructure;
@@ -39,7 +41,7 @@ namespace LMLocal.Tests.Unit.Internal
             var mockToolFactory = new Mock<ICompositeToolFactory>();
 
             // Act
-            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, new ApiRequestBuilder(mockSettingsManager.Object, mockToolFactory.Object));
+            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, new ApiRequestBuilder(mockSettingsManager.Object, mockToolFactory.Object), new Mock<ITemporaryHttpClientFactory>().Object);
 
             // Assert
             Assert.That(client, Is.Not.Null);

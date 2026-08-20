@@ -286,7 +286,7 @@ export class InstructionsDialog {
 
         state.enabled = enabledCheckbox ? enabledCheckbox.checked : true;
         state.prompt = promptTextarea ? promptTextarea.value : '';
-        state.temperature = temperatureInput ? (parseFloat(temperatureInput.value) || 0.5) : 0.5;
+        state.temperature = temperatureInput ? (parseFloat(temperatureInput.value) ?? 0.5) : 0.5;
 
         this.dataManager.setTabState(tabId, state);
     }

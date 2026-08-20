@@ -400,6 +400,18 @@
                         </label>
                     </div>
                 </div>
+                <div class="settings-group">
+                    <label for="TrustedServerCertificatePath" class="settings-label">Trusted server certificate</label>
+                    <span class="settings-description">
+                        Path to a public certificate (.cer/.crt/.pem) for self-signed or private CA servers. Leave empty for default trust.
+                    </span>
+                    <div class="input-with-button">
+                        <input type="text" name="TrustedServerCertificatePath" data-setting="TrustedServerCertificatePath" placeholder="C:\certs\my-server.cer">
+                        <button type="button" class="test-certificate-btn btn-secondary" title="Test certificate file">
+                            <span class="btn-icon-slot"></span>
+                        </button>
+                    </div>
+                </div>
             </form>
         </div>
         <div class="modal-footer">

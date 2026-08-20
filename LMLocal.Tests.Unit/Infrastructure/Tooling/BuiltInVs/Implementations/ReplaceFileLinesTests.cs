@@ -5,7 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Syntax;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
@@ -201,6 +200,31 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
             Assert.That(resp.ErrorMessage, Does.Contain("Old content not found in file"));
+        }
+
+        [Test]
+        public async Task ExecuteAsync_FirstLineLeadingWhitespace_MatchesIgnoringIndent()
+        {
+            SetupFileContent("    /// <summary>");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "/// <summary>", newLines: "    /// <summary>"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.ErrorMessage, Is.Null);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_FirstLineLeadingWhitespace_MultiLineBlock_Matches()
+        {
+            SetupFileContent("    public void M()\n    {\n        return;\n    }");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "public void M()\n    {\n        return;\n    }",
+                newLines: "    public void M2()\n    {\n        return;\n    }"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
         }
 
         [Test]

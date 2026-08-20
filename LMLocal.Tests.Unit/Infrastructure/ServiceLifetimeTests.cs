@@ -2,8 +2,10 @@ using System;
 using System.Net.Http;
 using LMLocal.Application.Chat;
 using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -55,7 +57,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             // Act - Create the complete service chain
             var persistence = new ChatPersistenceService(settingsManager, fileSystem);
             var history = new ChatHistoryManager(settingsManager, persistence);
-            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolFactory));
+            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
 
             // Assert - Verify all services were created successfully
             Assert.That(persistence, Is.Not.Null, "IChatPersistenceService should be created");

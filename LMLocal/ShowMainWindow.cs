@@ -89,8 +89,7 @@ namespace LMLocal
                 return;
             }
 
-            var windowFrame = window.Frame as IVsWindowFrame;
-            if (windowFrame == null)
+            if (!(window.Frame is IVsWindowFrame windowFrame))
                 return;
 
             int vis = windowFrame.IsVisible();

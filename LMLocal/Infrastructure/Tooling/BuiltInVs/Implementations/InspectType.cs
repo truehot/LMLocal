@@ -114,18 +114,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
-            var componentModel = (IComponentModel)ServiceProvider.GlobalProvider.GetService(typeof(SComponentModel));
-            if (componentModel == null)
-                throw new InvalidOperationException("Component model is not available.");
-
-            var workspace = componentModel.GetService<VisualStudioWorkspace>();
-            if (workspace == null)
-                throw new InvalidOperationException("Visual Studio workspace is not available.");
-
-            var solution = workspace.CurrentSolution;
-            if (solution == null)
-                throw new InvalidOperationException("No solution is currently open.");
-
+            var componentModel = (IComponentModel)ServiceProvider.GlobalProvider.GetService(typeof(SComponentModel)) ?? throw new InvalidOperationException("Component model is not available.");
+            var workspace = componentModel.GetService<VisualStudioWorkspace>() ?? throw new InvalidOperationException("Visual Studio workspace is not available.");
+            var solution = workspace.CurrentSolution ?? throw new InvalidOperationException("No solution is currently open.");
             var projects = solution.Projects.ToList();
             if (!string.IsNullOrEmpty(projectName))
                 projects = projects.Where(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase)).ToList();

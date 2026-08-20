@@ -108,6 +108,32 @@ namespace LMLocal.Tests.Unit.Services.Tool
         }
 
         [Test]
+        public async Task ExecuteToolAsync_IsInvalid_ReturnsErrorWithoutExecutingTool()
+        {
+            var call = new ToolCallRecord { CallId = "id6", FunctionName = "invalid", ArgumentsJson = "{}", IsInvalid = true };
+            _vsToolFactory.Setup(f => f.ToolExists("invalid")).Returns(true);
+
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+
+            Assert.That(res.ToolId, Is.EqualTo("id6"));
+            Assert.That(res.ToolName, Is.EqualTo("invalid"));
+            Assert.That(res.Error, Does.Contain("not valid JSON"));
+            Assert.That(res.IsSuccess, Is.False);
+            _vsToolFactory.Verify(
+                f => f.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public void GetProcessingMessage_IsInvalid_ReturnsDefault()
+        {
+            var mgr = new ToolExecutionManager(_vsToolFactory.Object);
+            var call = new ToolCallRecord { FunctionName = "f", ArgumentsJson = "{}", IsInvalid = true };
+            Assert.That(mgr.GetProcessingMessage(call), Is.EqualTo("Invalid tool arguments"));
+        }
+
+        [Test]
         public void GetProcessingMessage_NullOrInvalidJson_ReturnsDefault()
         {
             var mgr = new ToolExecutionManager(_vsToolFactory.Object);

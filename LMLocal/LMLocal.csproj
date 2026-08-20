@@ -73,6 +73,8 @@
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\Chat\ChatSessionSummary.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
+    <Compile Include="Application\ModelsList\TestConnectionResult.cs" />
+    <Compile Include="Application\ModelsList\TestConnectionService.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
     <Compile Include="Commands\AddUnitTestsCommand.cs" />
@@ -111,6 +113,8 @@
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTagger.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTextViewCreationListener.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\TabCommandHandler.cs" />
+    <Compile Include="Infrastructure\HttpWrapper\HttpClientHandlerFactory.cs" />
+    <Compile Include="Infrastructure\HttpWrapper\TemporaryHttpClientFactory.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiErrorParser.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiRequestBuilder.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
@@ -132,6 +136,11 @@
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
     <Compile Include="Infrastructure\Persistence\ChatLogSerializer.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
+    <Compile Include="Infrastructure\Security\CertificatePathValidator.cs" />
+    <Compile Include="Infrastructure\Security\ServerCertificateTrust.cs" />
+    <Compile Include="Infrastructure\Security\ServerCertificateValidator.cs" />
+    <Compile Include="Infrastructure\Security\TestConnectionErrorClassifier.cs" />
+    <Compile Include="Infrastructure\Security\X509CertificateLoader.cs" />
     <Compile Include="Infrastructure\Syntax\ISyntaxChecker.cs" />
     <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactory.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInTool.cs" />
@@ -321,8 +330,10 @@
     <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\SetAiToolsRequest.cs" />
+    <Compile Include="Infrastructure\WebView\Models\TestCertificateRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestCompletionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
+    <Compile Include="Infrastructure\WebView\Models\TestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\ToolsListResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ChatSessionIteratingMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2MessageType.cs" />
@@ -633,7 +644,7 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="LICENSE.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\workers\marked\marked.udm.js">

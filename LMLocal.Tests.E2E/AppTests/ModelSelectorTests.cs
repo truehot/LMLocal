@@ -359,4 +359,415 @@ public class ModelSelectorTests : AppTestBase
         Assert.That(rejections, Is.Empty, "Reopened dialog must handle provider change without unhandled rejections");
     }
 
+    private async Task SeedProviderSelectorAsync(string settingsJson, string providersJson)
+    {
+        await Page.EvaluateAsync(
+            @"(args) => {
+                const settings = JSON.parse(args.settingsJson);
+                const providers = JSON.parse(args.providersJson);
+
+                window.__settingsOverride = {
+                    GetSettingsAsync: async () => JSON.stringify(settings),
+                    UpdateSettingsAsync: async (json) => {
+                        window.__lastSavedSettings = json;
+                        return true;
+                    },
+                    TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
+                    SetAiToolsAsync: async (json) => true,
+                };
+
+                window.__providersOverride = {
+                    GetProvidersAsync: async () => JSON.stringify(providers),
+                    UpdateProvidersAsync: async (json) => true,
+                };
+            }",
+            new { settingsJson, providersJson });
+
+        // Перезагружаем settingsStore из нашего __settingsOverride.
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-settings']").ClickAsync();
+        await Expect(Page.Locator("#settings-dialog")).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#settings-dialog form')?.children.length > 0");
+        await Page.Keyboard.PressAsync("Escape");
+        await Expect(Page.Locator("#settings-dialog")).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    private async Task<string> GetSelectedProviderTextAsync() =>
+        await Page.EvaluateAsync<string>(
+            "() => { const s = document.getElementById('model-provider-select'); return s && s.options[s.selectedIndex] ? s.options[s.selectedIndex].textContent : null; }");
+
+    private async Task<bool> HasProviderOptionAsync(string name) =>
+        await Page.EvaluateAsync<bool>(
+            "(n) => Array.from(document.getElementById('model-provider-select').options).some(o => o.textContent === n)",
+            name);
+
+    private async Task SelectProviderByNameAsync(string name) =>
+        await Page.EvaluateAsync(
+            @"(n) => {
+                const s = document.getElementById('model-provider-select');
+                const idx = Array.from(s.options).findIndex(o => o.textContent === n);
+                if (idx >= 0) {
+                    s.selectedIndex = idx;
+                    s.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }",
+            name);
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_ActiveOpenAiCompatible_IsSelected()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "openai",
+              "ProviderId": 3,
+              "LmStudioBaseUrl": "https://api.x.ai/v1",
+              "ApiKey": "",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 3, "providerType": "openai", "name": "OpenAI compatible", "customBaseUrl": "", "customApiKey": "" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "openai", "displayName": "OpenAI" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
+
+        var selected = await GetSelectedProviderTextAsync();
+        Assert.That(selected, Is.EqualTo("OpenAI compatible"));
+        await Expect(Page.Locator("#models-list-container .model-card")).ToHaveCountAsync(1);
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_InactiveOpenAiCompatible_IsHidden()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "lmstudio",
+              "ProviderId": 0,
+              "LmStudioBaseUrl": "http://localhost:1234",
+              "ApiKey": "",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 3, "providerType": "openai", "name": "OpenAI compatible", "customBaseUrl": "", "customApiKey": "" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "openai", "displayName": "OpenAI" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 1");
+
+        Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
+        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("LM Studio (local)"));
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_Save_UpdatesSettingsWithProviderDetails()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "lmstudio",
+              "ProviderId": 0,
+              "LmStudioBaseUrl": "http://localhost:1234",
+              "ApiKey": "",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 1, "providerType": "ollama", "name": "Ollama", "customBaseUrl": "http://localhost:11434", "customApiKey": "" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "ollama", "displayName": "Ollama" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
+
+        await SelectProviderByNameAsync("Ollama");
+
+        await Page.WaitForFunctionAsync("() => window.__lastSavedSettings != null");
+        var ok = await Page.EvaluateAsync<bool>(
+            "() => { const s = JSON.parse(window.__lastSavedSettings); return s.Provider === 'ollama' && s.ProviderId === 1 && s.LmStudioBaseUrl === 'http://localhost:11434'; }");
+        Assert.That(ok, Is.True, "Provider change must persist provider details to settings");
+
+        // после сохранения происходит перезагрузка моделей
+        await Expect(Page.Locator("#models-list-container .model-card")).ToHaveCountAsync(1);
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_LegacyFallback_MatchesByUrlAndKey()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "openai",
+              "ProviderId": null,
+              "LmStudioBaseUrl": "https://api.x.ai/v1",
+              "ApiKey": "key-a",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [],
+              "providers": [
+                { "id": 10, "providerType": "openai", "name": "My xAI", "customBaseUrl": "https://api.x.ai/v1", "customApiKey": "key-a" }
+              ],
+              "providerTypes": [
+                { "key": "openai", "displayName": "OpenAI" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 1");
+
+        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("My xAI"));
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_CustomOpenAiActive_DefaultCompatibleHidden()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "openai",
+              "ProviderId": 10,
+              "LmStudioBaseUrl": "https://api.x.ai/v1",
+              "ApiKey": "key-a",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 3, "providerType": "openai", "name": "OpenAI compatible", "customBaseUrl": "", "customApiKey": "" }
+              ],
+              "providers": [
+                { "id": 10, "providerType": "openai", "name": "My xAI", "customBaseUrl": "https://api.x.ai/v1", "customApiKey": "key-a" }
+              ],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "openai", "displayName": "OpenAI" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
+
+        Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
+        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("My xAI"));
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_IdMatchOnIndexZero_Wins()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "lmstudio",
+              "ProviderId": 0,
+              "LmStudioBaseUrl": "http://localhost:1234",
+              "ApiKey": "",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 2, "providerType": "lmstudio", "name": "LM Studio Dup", "customBaseUrl": "http://localhost:1234", "customApiKey": "other" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
+
+        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("LM Studio (local)"));
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_AfterSwitchingAway_OpenAiCompatibleHidden()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        const string settings = """
+            {
+              "Provider": "openai",
+              "ProviderId": 3,
+              "LmStudioBaseUrl": "https://api.x.ai/v1",
+              "ApiKey": "",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 3, "providerType": "openai", "name": "OpenAI compatible", "customBaseUrl": "", "customApiKey": "" },
+                { "id": 1, "providerType": "ollama", "name": "Ollama", "customBaseUrl": "http://localhost:11434", "customApiKey": "" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "openai", "displayName": "OpenAI" },
+                { "key": "ollama", "displayName": "Ollama" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 3");
+
+        await SelectProviderByNameAsync("Ollama");
+        await Page.WaitForFunctionAsync("() => window.__lastSavedSettings != null");
+        await Page.WaitForTimeoutAsync(250); // даём store обновиться после успешного save
+
+        await Page.Keyboard.PressAsync("Escape");
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync(
+            "() => { const s = document.getElementById('model-provider-select'); return s && s.options[s.selectedIndex]?.textContent === 'Ollama'; }");
+
+        Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
+    }
+
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ProviderSelect_LegacyFallback_KeyInSettings_NotInProviderList()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Ключ задан в Settings вручную; в профилях провайдеров его нет (customApiKey="").
+        // Строгое сравнение p.customApiKey === savedApiKey дало бы «нет совпадения» -> индекс 0.
+        const string settings = """
+            {
+              "Provider": "openai",
+              "ProviderId": null,
+              "LmStudioBaseUrl": "https://api.x.ai/v1",
+              "ApiKey": "user-secret-key",
+              "AutoLoadOnStartup": true
+            }
+            """;
+
+        const string providers = """
+            {
+              "defaultProviders": [
+                { "id": 0, "providerType": "lmstudio", "name": "LM Studio (local)", "customBaseUrl": "http://localhost:1234", "customApiKey": "" },
+                { "id": 3, "providerType": "openai", "name": "OpenAI compatible", "customBaseUrl": "https://api.x.ai/v1", "customApiKey": "" }
+              ],
+              "providers": [],
+              "providerTypes": [
+                { "key": "lmstudio", "displayName": "LM Studio" },
+                { "key": "openai", "displayName": "OpenAI" }
+              ]
+            }
+            """;
+
+        await SeedProviderSelectorAsync(settings, providers);
+
+        await Page.Locator("#model-name").ClickAsync();
+        await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
+        await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
+
+        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("OpenAI compatible"));
+    }
+
+
 }

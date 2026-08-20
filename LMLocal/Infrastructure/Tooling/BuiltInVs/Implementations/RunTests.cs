@@ -399,7 +399,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Tests failed. {stats}";
                 }
             }
-            return "Test run finished.";
+            return "Test passed.";
         }
 
         public ToolDefinition GetToolInfo()

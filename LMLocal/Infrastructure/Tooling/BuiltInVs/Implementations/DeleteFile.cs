@@ -123,7 +123,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is DeleteFileResponse response)
                 return response.Success ? "File deleted." : $"File deletion failed: {response.ErrorMessage}";
-            return "File deletion finished.";
+            return "File deleted.";
         }
 
         private (string filePath, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)

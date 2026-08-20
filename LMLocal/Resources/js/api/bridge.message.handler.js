@@ -149,7 +149,7 @@ class BridgeMessageHandler {
             status: AppStatus.RESPONDING,
             toolCallId: toolCall.CallId,
             toolWithError: toolCall.IsError,
-            toolMessage: toolCall.IsError ? toolCall.Error : toolCall.Message
+            toolMessage: toolCall.Message
         });
     }
 

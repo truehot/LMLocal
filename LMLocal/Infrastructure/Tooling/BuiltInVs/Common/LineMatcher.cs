@@ -25,6 +25,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         public static bool LinesEqual(string a, string b) => a.TrimEnd() == b.TrimEnd();
 
         /// <summary>
+        /// Compares two lines ignoring leading and trailing whitespace. Used for the first line of old_lines as a fallback when models omit the initial indentation.
+        /// </summary>
+        public static bool LinesEqualIgnoringLeadingWhitespace(string a, string b) => a.TrimStart().TrimEnd() == b.TrimStart().TrimEnd();
+
+        /// <summary>
         /// Searches for a single line in the file lines within ±SearchWindow of aroundLine. Returns 1-indexed line numbers of all matches.
         /// </summary>
         public static List<int> FindMatches(List<string> lines, string line, int aroundLine)

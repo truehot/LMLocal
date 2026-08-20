@@ -134,8 +134,13 @@ namespace LMLocal.Core.Models
         /// <summary>
         /// Complete JSON-formatted arguments for this tool call.
         /// Accumulated from streaming JSON fragments during generation.
-        /// Valid JSON that can be deserialized to the tool's expected parameter type.
+        /// For invalid/truncated calls this is sanitized to "{}".
         /// </summary>
         public string ArgumentsJson { get; set; }
+
+        /// <summary>
+        /// True when the accumulated arguments were not valid JSON and were sanitized to "{}".
+        /// </summary>
+        public bool IsInvalid { get; set; }
     }
 }

@@ -187,7 +187,7 @@ To use LMLocal, you need:
 - ⏳ **Customizable Timeout** – Adjustable streaming inactivity limit for slower local models (0 = never timeout).
 - 📂 **Local Chat Logging** – Appends all conversation events to .jsonl files in `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. This persistent log serves as the data source for session recovery when Visual Studio starts.
 - 🌐 **Streamable MCP Support** – Supports the Model Context Protocol to dynamically scale the AI's toolkit via both local process-based (`stdio`) and remote network-based (`http`) transports.
-
+- 🔒 **Trusted server certificate** – Support for self‑signed/private‑CA certificates via a configurable path to the public certificate.
 
 
 ## ⚙️ Providers
@@ -237,7 +237,9 @@ How to configure a custom remote endpoint and activate it inside the extension.
 | **Cohere** | OpenAI compatible | `https://api.cohere.ai/compatibility/` |
 | **Google AI Studio** | Gemini (cloud) | `https://generativelanguage.googleapis.com` |
 | **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
-| **GitHub Models** | Github Models via Azure (cloud) | `No longer available, will be removed in next releases` |
+| **Requesty** | OpenAI compatible | `https://router.requesty.ai/` |
+| **Novita** | OpenAI compatible | `https://api.novita.ai/openai/` |
+| **Bitdeer** | OpenAI compatible | `https://api-inference.bitdeer.ai/` |
 
 ### 💳 Pay to Try (Commercial / Premium)
 
@@ -273,7 +275,7 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 
 | Tool | Description | Supported Languages | Limitations / Notes |
 |------|-------------|----------------------|----------------------|
-| `create_file` | Creates a new file with initial content. | All | Syntax check applies only to C#. |
+| `create_file` | Creates a new file with initial content. | All | Automatic syntax check applies * |
 | `delete_file` | Deletes a file from the solution. | All | – |
 | `find_files` | Searches for files by name. | All | – |
 | `list_directory` | Lists files and folders in a given path. | All | – |
@@ -282,14 +284,16 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `read_file_lines` | Reads a specific range of lines. | All | – |
 | `search_file_content` | Searches for a text string (case‑insensitive) inside solution files. | All | – |
 | `get_active_document` | Returns the path and full text of the currently open document. | All | – |
-| `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Syntax check applies only to C#. |
-| `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Syntax check applies only to C#. |
-| `insert_file_lines` | Inserts lines at a specific position. | All | Syntax check applies only to C#. |
+| `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Automatic syntax check applies * |
+| `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Automatic syntax check applies * |
+| `insert_file_lines` | Inserts lines at a specific position. | All | Automatic syntax check applies * |
 | `format_document` | Applies Visual Studio's code formatting to a file. | Any (VS editor) | `organize_usings` applies only to C# files. |
 | `get_symbol_info` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | C# only | Uses Roslyn |
 | `inspect_type` | Inspects a fully qualified type from the open solution (source or referenced assemblies) and returns its full metadata. | C# only | Uses Roslyn. |
-| `build_solution` | Builds the currently open solution, including all its projects. | Any (MSBuild) | Uses MSBuild via Visual Studio. |
+| `build_solution` | Builds the currently open solution, including all its projects, or a specific project. | Any (MSBuild) | Uses MSBuild via Visual Studio. |
 | `run_tests` | Runs `dotnet test` for a specific `.csproj` and shows live output. | C# only | Requires the .NET SDK (`dotnet` CLI) installed on the machine; only for C# test projects. |
+
+`*` **Automatic syntax check applies to:** C# (via Roslyn).
 
 
 ### Changes panel – see what was changed and revert if needed

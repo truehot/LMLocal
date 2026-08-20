@@ -48,23 +48,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 Name = ToolName,
                 Description = "Replaces a range of lines in a file by line numbers (1-indexed). "
-                    + "The old_lines parameter must match the existing content at the target "
-                    + "location — the tool verifies this before making any changes. Differences "
-                    + "in line endings (\\r\\n vs \\n) are ignored during comparison. The range "
-                    + "ends at start_line + number_of_lines_in_old_lines - 1. After the "
-                    + "replacement, line numbers shift — re-read the file if you need accurate "
-                    + "positions for subsequent edits. If start_line exceeds the current line "
-                    + "count, the file is automatically padded with empty lines up to "
-                    + "start_line - 1, then new_lines are inserted. Set new_lines to an empty "
-                    + "string to delete the range. If syntax errors are detected after "
-                    + "replacement, they are reported in syntax_errors field but the file is "
-                    + "still saved. Apply multiple edits bottom‑up (largest line numbers first) "
-                    + "to prevent line‑shift errors. "
-                    + "If old_lines doesn't match at start_line, the tool searches nearby "
-                    + "lines (±50) for the block. If found at exactly one location, it "
-                    + "auto-corrects and applies the change (auto_corrected=true in response). "
-                    + "If found at multiple locations, candidates with start_line and text are "
-                    + "returned — use a larger old_lines block or re-read the file.",
+                    + "The old_lines parameter must exactly match the existing content at the "
+                    + "target location — the tool verifies this before making any changes. "
+                    + "old_lines must be copied verbatim from the output of read_file_lines, "
+                    + "including ALL leading spaces/tabs and character casing. Do NOT retype, "
+                    + "reformat, or manually type the lines. Only line endings (\\r\\n vs \\n) "
+                    + "and trailing whitespace are ignored during comparison; leading whitespace "
+                    + "and casing are significant. The range ends at "
+                    + "start_line + number_of_lines_in_old_lines - 1. After replacement, line "
+                    + "numbers shift — re-read the file if you need accurate positions for "
+                    + "subsequent edits. If start_line exceeds the current line count, the file "
+                    + "is padded with empty lines up to start_line - 1, then new_lines are "
+                    + "inserted. Set new_lines to an empty string to delete the range. If syntax "
+                    + "errors are detected after replacement, they are reported in syntax_errors "
+                    + "field, but the file is still saved. Apply multiple edits bottom‑up "
+                    + "(largest line numbers first) to prevent line‑shift errors. If old_lines "
+                    + "does not match at start_line, the tool searches nearby lines (±50) for "
+                    + "the block. If exactly one exact match is found, it auto-corrects and "
+                    + "applies the change (auto_corrected=true in response). If multiple exact "
+                    + "matches are found, candidates with start_line and text are returned — "
+                    + "use a larger old_lines block or re-read the file to disambiguate (no "
+                    + "retry). If no exact block match is found, the tool retries once as a "
+                    + "fallback, comparing the first line with its leading indentation ignored "
+                    + "(this covers models that type the first line without its initial "
+                    + "spaces); all other lines must still match exactly. If that relaxed "
+                    + "search finds exactly one location, it applies the change, auto-corrects "
+                    + "the position if needed, and sets matched_ignoring_first_line_indent=true "
+                    + "in the response. If multiple relaxed matches are found, candidates are "
+                    + "returned. If no match is found at all, the error advises checking "
+                    + "leading whitespace and re-reading the file.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -121,7 +133,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 while (linesList.Count < requiredTotalLines)
                     linesList.Add("");
 
-                var (resolvedStartLine, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, filePath);
+                var (resolvedStartLine, matchedIgnoringIndent, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, filePath);
                 if (errorResponse != null)
                     return errorResponse;
 
@@ -173,6 +185,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     response.AppliedStartLine = startLine;
                 }
 
+                if (matchedIgnoringIndent)
+                    response.MatchedIgnoringFirstLineIndent = true;
+
                 return response;
             }
             catch (OperationCanceledException)
@@ -186,7 +201,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private (int resolvedStartLine, ReplaceLinesResponse errorResponse) ResolveStartLine(List<string> linesList, string[] oldLinesArray, int startLine, string filePath)
+        private (int resolvedStartLine, bool matchedIgnoringIndent, ReplaceLinesResponse errorResponse) ResolveStartLine(List<string> linesList, string[] oldLinesArray, int startLine, string filePath)
         {
             int oldLinesCount = oldLinesArray.Length;
 
@@ -202,16 +217,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
 
             if (exactMatch)
-                return (startLine, null);
+                return (startLine, false, null);
 
             var blockMatches = FindBlock(linesList, oldLinesArray, startLine);
 
             if (blockMatches.Count == 1)
-                return (blockMatches[0], null);
+                return (blockMatches[0], false, null);
 
             if (blockMatches.Count > 1)
             {
-                return (0, Error(new ReplaceLinesResponse
+                return (0, false, Error(new ReplaceLinesResponse
                 {
                     Success = false,
                     FilePath = filePath,
@@ -220,11 +235,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }));
             }
 
+            // Retry with the first line compared ignoring leading whitespace; the remaining lines must still match exactly.
+            var relaxedMatches = FindBlock(linesList, oldLinesArray, startLine, ignoreLeadingWhitespaceFirstLine: true);
+
+            if (relaxedMatches.Count == 1)
+                return (relaxedMatches[0], true, null);
+
+            if (relaxedMatches.Count > 1)
+            {
+                return (0, false, Error(new ReplaceLinesResponse
+                {
+                    Success = false,
+                    FilePath = filePath,
+                    ErrorMessage = $"old_lines matches {relaxedMatches.Count} locations when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    Candidates = ToCandidates(linesList, relaxedMatches, oldLinesCount)
+                }));
+            }
+
             var firstLineMatches = LineMatcher.FindMatches(linesList, oldLinesArray[0], startLine);
 
             if (firstLineMatches.Count > 0)
             {
-                return (0, Error(new ReplaceLinesResponse
+                return (0, false, Error(new ReplaceLinesResponse
                 {
                     Success = false,
                     FilePath = filePath,
@@ -233,13 +265,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }));
             }
 
-            return (0, Error("Old content not found in file. The file may have changed significantly. Re-read the file with read_file_lines."));
+            return (0, false, Error("Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file."));
         }
 
         /// <summary>
         /// Searches for a full block match within ±SearchWindow of aroundLine.
+        /// When ignoreLeadingWhitespaceFirstLine is true, the first line of the block is
+        /// compared with leading whitespace ignored; all other lines are compared exactly.
         /// </summary>
-        private static List<int> FindBlock(List<string> lines, string[] block, int aroundLine)
+        private static List<int> FindBlock(
+            List<string> lines, string[] block, int aroundLine, bool ignoreLeadingWhitespaceFirstLine = false)
         {
             int windowLines = LineMatcher.MaxSearchWindowLines;
             int lower = Math.Max(0, aroundLine - 1 - windowLines);
@@ -250,7 +285,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 bool match = true;
                 for (int j = 0; j < block.Length; j++)
                 {
-                    if (!LineMatcher.LinesEqual(lines[i + j], block[j]))
+                    bool lineMatches = j == 0 && ignoreLeadingWhitespaceFirstLine
+                        ? LineMatcher.LinesEqualIgnoringLeadingWhitespace(lines[i + j], block[j])
+                        : LineMatcher.LinesEqual(lines[i + j], block[j]);
+
+                    if (!lineMatches)
                     {
                         match = false; break;
                     }
@@ -331,8 +370,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string msg = "Lines replaced";
                 if (response.AutoCorrected == true)
                     msg += $" (auto-corrected from line {response.OriginalStartLine} to {response.AppliedStartLine})";
+                if (response.MatchedIgnoringFirstLineIndent == true)
+                    msg += " (matched ignoring first-line indentation)";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
-                    msg += $" with {response.SyntaxErrors.Length} syntax error(s)";
+                    msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
                 msg += ".";
                 return msg;
             }
@@ -358,7 +399,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("file_path")]
         public string FilePath { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
@@ -372,6 +413,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("applied_start_line", NullValueHandling = NullValueHandling.Ignore)]
         public int? AppliedStartLine { get; set; }
+
+        [JsonProperty("matched_ignoring_first_line_indent", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? MatchedIgnoringFirstLineIndent { get; set; }
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }

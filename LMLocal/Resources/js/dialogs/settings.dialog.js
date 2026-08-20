@@ -8,12 +8,16 @@ export class SettingsDialog {
         this.onLoad = createCallback();
         this.onSave = createCallback();
         this.onTestConnection = createCallback();
+        this.onTestCertificate = createCallback();
         this.el = {};
         this._toggleHandler = null;
         this._providerChangeHandler = null;
         this._testBtnClickHandler = null;
         this._testBtnTimeout = null;
         this._testGeneration = 0;
+        this._certTestBtnClickHandler = null;
+        this._certTestBtnTimeout = null;
+        this._certTestGeneration = 0;
     }
 
     _getElements() {
@@ -30,12 +34,14 @@ export class SettingsDialog {
             apiKeyInput: dialog.querySelector('[data-setting="ApiKey"]'),
             providerSelect: dialog.querySelector('[data-setting="Provider"]'),
             baseUrlInput: dialog.querySelector('[data-setting="LmStudioBaseUrl"]'),
-            testBtn: dialog.querySelector('.test-connection-btn')
+            certPathInput: dialog.querySelector('[data-setting="TrustedServerCertificatePath"]'),
+            testBtn: dialog.querySelector('.test-connection-btn'),
+            certTestBtn: dialog.querySelector('.test-certificate-btn')
         };
     }
 
     _attachEvents() {
-        const { toggleBtn, providerSelect, testBtn } = this.el;
+        const { toggleBtn, providerSelect, testBtn, certTestBtn } = this.el;
 
         if (toggleBtn && this._toggleHandler) {
             toggleBtn.addEventListener('click', this._toggleHandler);
@@ -46,10 +52,13 @@ export class SettingsDialog {
         if (testBtn && this._testBtnClickHandler) {
             testBtn.addEventListener('click', this._testBtnClickHandler);
         }
+        if (certTestBtn && this._certTestBtnClickHandler) {
+            certTestBtn.addEventListener('click', this._certTestBtnClickHandler);
+        }
     }
 
     _detachEvents() {
-        const { toggleBtn, providerSelect, testBtn } = this.el;
+        const { toggleBtn, providerSelect, testBtn, certTestBtn } = this.el;
 
         if (toggleBtn && this._toggleHandler) {
             toggleBtn.removeEventListener('click', this._toggleHandler);
@@ -60,22 +69,32 @@ export class SettingsDialog {
         if (testBtn && this._testBtnClickHandler) {
             testBtn.removeEventListener('click', this._testBtnClickHandler);
         }
+        if (certTestBtn && this._certTestBtnClickHandler) {
+            certTestBtn.removeEventListener('click', this._certTestBtnClickHandler);
+        }
     }
 
     _cleanup() {
         this.onLoad.off();
         this.onSave.off();
         this.onTestConnection.off();
+        this.onTestCertificate.off();
         this._detachEvents();
         if (this._testBtnTimeout) {
             clearTimeout(this._testBtnTimeout);
             this._testBtnTimeout = null;
         }
+        if (this._certTestBtnTimeout) {
+            clearTimeout(this._certTestBtnTimeout);
+            this._certTestBtnTimeout = null;
+        }
         this._testGeneration += 1;
+        this._certTestGeneration += 1;
         this.el = {};
         this._toggleHandler = null;
         this._providerChangeHandler = null;
         this._testBtnClickHandler = null;
+        this._certTestBtnClickHandler = null;
     }
 
     _resetTestButton() {
@@ -96,17 +115,36 @@ export class SettingsDialog {
         }
     }
 
+    _resetCertificateTestButton() {
+        const certTestBtn = this.el?.certTestBtn;
+        if (!certTestBtn) return;
+
+        if (this._certTestBtnTimeout) {
+            clearTimeout(this._certTestBtnTimeout);
+            this._certTestBtnTimeout = null;
+        }
+
+        certTestBtn.disabled = false;
+        certTestBtn.classList.remove('success', 'error');
+
+        const iconSlot = certTestBtn.querySelector('.btn-icon-slot');
+        if (iconSlot) {
+            iconSlot.innerHTML = Icons.LINK;
+        }
+    }
+
     async show() {
         let resolved = false;
         this.el = this._getElements();
 
-        const { dialog, body, form, confirmBtn, cancelBtn, toggleBtn, apiKeyInput, providerSelect, baseUrlInput, testBtn } = this.el;
+        const { dialog, body, form, confirmBtn, cancelBtn, toggleBtn, apiKeyInput, providerSelect, baseUrlInput, certPathInput, testBtn, certTestBtn } = this.el;
 
-        if (!dialog || !body || !confirmBtn || !cancelBtn || !toggleBtn || !apiKeyInput || !providerSelect || !baseUrlInput) {
+        if (!dialog || !body || !confirmBtn || !cancelBtn || !toggleBtn || !apiKeyInput || !providerSelect || !baseUrlInput || !certPathInput) {
             throw new Error('Missing required dialog elements');
         }
 
         this._resetTestButton();
+        this._resetCertificateTestButton();
 
         try {
             const result = await this.onLoad.emitResult();
@@ -191,7 +229,8 @@ export class SettingsDialog {
                 const result = await this.onTestConnection.emitResult({
                     provider: providerType,
                     url: url,
-                    apiKey: apiKeyInput.value
+                    apiKey: apiKeyInput.value,
+                    certificatePath: certPathInput.value
                 });
 
                 if (!this.el || generation !== this._testGeneration) return;
@@ -215,6 +254,56 @@ export class SettingsDialog {
                 this._testBtnTimeout = setTimeout(() => {
                     this._resetTestButton();
                     this._testBtnTimeout = null;
+                }, 3000);
+            }
+        };
+
+        this._certTestBtnClickHandler = async (e) => {
+            e.preventDefault();
+
+            if (this._certTestBtnTimeout) {
+                clearTimeout(this._certTestBtnTimeout);
+                this._certTestBtnTimeout = null;
+            }
+
+            const generation = ++this._certTestGeneration;
+            const path = certPathInput.value;
+
+            if (!path) { certPathInput.focus(); return; }
+
+            const iconSlot = certTestBtn.querySelector('.btn-icon-slot');
+            if (!iconSlot) return;
+
+            certTestBtn.disabled = true;
+            certTestBtn.classList.remove('success', 'error');
+            iconSlot.innerHTML = '<span class="btn-spinner"></span>';
+
+            try {
+                const result = await this.onTestCertificate.emitResult({ path });
+
+                if (!this.el || generation !== this._certTestGeneration) return;
+
+                if (result && result.success) {
+                    iconSlot.innerHTML = Icons.SUCCESS;
+                    certTestBtn.classList.add('success');
+                    const thumbprint = result.thumbprint ? ' · ' + result.thumbprint : '';
+                    toast.show('Certificate valid' + thumbprint, 'success', 4000, certTestBtn);
+                } else {
+                    iconSlot.innerHTML = Icons.ERROR;
+                    certTestBtn.classList.add('error');
+                    toast.show(result?.error?.message || 'Certificate test failed', 'error', 4000, certTestBtn);
+                }
+            } catch (err) {
+                console.error('Test certificate error', err);
+                if (!this.el || generation !== this._certTestGeneration) return;
+                iconSlot.innerHTML = Icons.ERROR;
+                certTestBtn.classList.add('error');
+                toast.show(err?.message || 'Certificate test failed', 'error', 4000, certTestBtn);
+            } finally {
+                if (!this.el || generation !== this._certTestGeneration) return;
+                this._certTestBtnTimeout = setTimeout(() => {
+                    this._resetCertificateTestButton();
+                    this._certTestBtnTimeout = null;
                 }, 3000);
             }
         };

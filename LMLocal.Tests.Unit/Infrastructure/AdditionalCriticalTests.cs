@@ -11,9 +11,11 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.Autocompletions;
 using LMLocal.Core.Models;
 using LMLocal.Core.Exceptions;
+using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -278,7 +280,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             private readonly string _r;
             public DummyClient(string r) { _r = r; }
-            public Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
+            public Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken, string certificatePath = null) => Task.FromResult(string.Empty);
             public Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => throw new NotImplementedException();
             public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => Task.FromResult<SendChatResponse>(null);
             public Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
@@ -307,7 +309,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var ex = Assert.ThrowsAsync<ApiException>(async () =>
                 await lm.ListModelsRawAsync("/v1/models", null, null, CancellationToken.None));
@@ -326,7 +328,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var toolFactory = new Mock<ICompositeToolFactory>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory));
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
             var cts = new CancellationTokenSource(50);
             Assert.ThrowsAsync<TaskCanceledException>(async () => await lm.SendChatAsync(new MessageContext(new List<ChatMessage>()), new ModelContext("test"), cts.Token));
         }

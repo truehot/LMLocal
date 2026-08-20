@@ -107,8 +107,7 @@ namespace LMLocal.Infrastructure.Tooling
             sb.AppendLine($"**Solution:** {solutionName} ({totalProjects} {Pluralizer.Pluralize(totalProjects, "project", "projects")}, {totalFiles} {Pluralizer.Pluralize(totalFiles, "file", "files")})");
             sb.AppendLine();
 
-            var projects = obj["projects"] as JArray;
-            if (projects != null)
+            if (obj["projects"] is JArray projects)
             {
                 foreach (var project in projects)
                 {

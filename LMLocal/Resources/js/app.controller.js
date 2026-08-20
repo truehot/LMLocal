@@ -194,6 +194,9 @@ class AppController {
                     settingsDialog.onTestConnection.on(async (settings) => {
                         return await appDataService.testConnectionAsync(settings);
                     });
+                    settingsDialog.onTestCertificate.on(async (payload) => {
+                        return await appDataService.testCertificateAsync(payload);
+                    });
                     settingsDialog.onSave.on(async (settings) => {
                         return await appDataService.updateSettingsAsync(settings);
                     });

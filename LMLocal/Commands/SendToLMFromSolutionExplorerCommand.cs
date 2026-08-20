@@ -89,8 +89,7 @@ namespace LMLocal.Commands
             ThreadHelper.ThrowIfNotOnUIThread();
 
             var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
-            object[] rawItems = dte?.ToolWindows?.SolutionExplorer?.SelectedItems as object[];
-            if (rawItems == null || rawItems.Length == 0)
+            if (!(dte?.ToolWindows?.SolutionExplorer?.SelectedItems is object[] rawItems) || rawItems.Length == 0)
                 return false;
 
             var items = rawItems.Cast<UIHierarchyItem>().ToArray();
@@ -133,8 +132,7 @@ namespace LMLocal.Commands
             int commandId = menuCommand.CommandID.ID;
 
             var dte = Package.GetGlobalService(typeof(DTE)) as DTE2;
-            object[] rawItems = dte?.ToolWindows?.SolutionExplorer?.SelectedItems as object[];
-            if (rawItems == null || rawItems.Length == 0)
+            if (!(dte?.ToolWindows?.SolutionExplorer?.SelectedItems is object[] rawItems) || rawItems.Length == 0)
             {
                 InternalLogger.Warn("SendToLMFromSE: no items selected in Solution Explorer.");
                 return;

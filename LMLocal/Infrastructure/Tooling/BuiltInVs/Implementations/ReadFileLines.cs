@@ -120,9 +120,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetCompletionMessage(object result)
         {
             if (result is FileLinesResponse fileResult)
+            {
+                var total = fileResult.EndLine - fileResult.StartLine;
                 return fileResult.Success
-                    ? $"Read lines {fileResult.StartLine}-{fileResult.EndLine}."
-                    : $"Reading lines failed: {fileResult.ErrorMessage}";
+                    ? $"Read {total} lines."
+                    : $"Read lines failed: {fileResult.ErrorMessage}";
+            }
+
             return "Reading lines finished.";
         }
 

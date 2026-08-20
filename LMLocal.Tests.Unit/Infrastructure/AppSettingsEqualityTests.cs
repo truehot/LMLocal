@@ -42,5 +42,25 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(manager.Current.LmStudioBaseUrl, Is.EqualTo("HTTP://EXAMPLE.COM"));
             Assert.That(observed, Is.Null);
         }
+
+        [Test]
+        public void AppSettings_Equals_IsCaseInsensitiveForTrustedServerCertificatePath()
+        {
+            var a = new AppSettings { TrustedServerCertificatePath = "C:\\CERTS\\MY-SERVER.CER" };
+            var b = new AppSettings { TrustedServerCertificatePath = "c:\\certs\\my-server.cer" };
+            Assert.That(a.Equals(b), Is.True);
+            Assert.That(b.Equals(a), Is.True);
+            Assert.That(a.Equals((object)b), Is.True);
+            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void AppSettings_Equals_IsFalseForDifferentTrustedServerCertificatePaths()
+        {
+            var a = new AppSettings { TrustedServerCertificatePath = "C:\\certs\\a.cer" };
+            var b = new AppSettings { TrustedServerCertificatePath = "C:\\certs\\b.cer" };
+            Assert.That(a.Equals(b), Is.False);
+            Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+        }
     }
 }

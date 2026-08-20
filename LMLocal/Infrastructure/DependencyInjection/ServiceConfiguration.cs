@@ -24,6 +24,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.Autocompletions;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Infrastructure.WebView.Controllers;
 using LMLocal.Services.Tool;
@@ -122,6 +123,13 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISyntaxCheckerFactory>(sp =>
                 new SyntaxCheckerFactory(
                     sp.GetRequiredService<CSharpSyntaxChecker>()));
+            services.AddSingleton<IX509CertificateLoader, X509CertificateLoader>();
+            services.AddSingleton<IServerCertificateValidator, ServerCertificateValidator>();
+            services.AddSingleton<ICertificatePathValidator, CertificatePathValidator>();
+            services.AddSingleton<IHttpClientHandlerFactory, HttpClientHandlerFactory>();
+            services.AddSingleton<ITemporaryHttpClientFactory, TemporaryHttpClientFactory>();
+            services.AddSingleton<ITestConnectionErrorClassifier, TestConnectionErrorClassifier>();
+            services.AddSingleton<IServerCertificateTrust, ServerCertificateTrust>();
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
             services.AddSingleton<IChatPersistenceService, ChatPersistenceService>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
@@ -133,6 +141,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
+            services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
 
@@ -151,7 +160,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IInstructionsController, InstructionsController>();
             services.AddSingleton<IProvidersController, ProvidersController>();
             services.AddSingleton<IToolsController, ToolsController>();
-            services.AddSingleton<ISettingsController>(sp => new SettingsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>()));
+            services.AddSingleton<ISettingsController>(sp => new SettingsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<ITestConnectionService>(), sp.GetRequiredService<ICertificatePathValidator>()));
             services.AddSingleton<IMcpController>(sp => new McpController(sp.GetRequiredService<IMcpConfigManager>(), sp.GetRequiredService<IMcpToolManager>(), sp.GetRequiredService<ISettingsManager>()));
             services.AddSingleton<IModelsController>(sp => new ModelsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>(), sp.GetRequiredService<IActiveModelContext>()));
             services.AddSingleton<IAutocompletionsController>(sp => new AutocompletionsController(sp.GetRequiredService<IAutocompletionsConfigManager>(), sp.GetRequiredService<IAutocompletionsService>(), sp.GetRequiredService<IModelsListService>()));

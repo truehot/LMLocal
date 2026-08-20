@@ -27,16 +27,10 @@ namespace LMLocal.Infrastructure.WebView
 
         /// <summary>
         /// For StreamToolCall: Processing message describing what the tool is doing (e.g., "Searching for 'X'...").
-        /// For StreamToolEnd: Completion message with result summary (e.g., "Found 5 matches").
+        /// For StreamToolEnd: single user-facing text — result summary on success (e.g., "Found 5 matches"),
+        /// or a short error message when IsError is true. The full details go to the model, not here.
         /// </summary>
         public string Message { get; set; }
-
-        /// <summary>
-        /// Error message if tool execution failed.
-        /// Only populated for StreamToolEnd messages when IsError is true.
-        /// Null if execution was successful.
-        /// </summary>
-        public string Error { get; set; }
 
         /// <summary>
         /// Indicates whether tool execution failed.
@@ -45,3 +39,7 @@ namespace LMLocal.Infrastructure.WebView
         public bool IsError { get; set; }
     }
 }
+
+
+
+

@@ -2,6 +2,8 @@ import { Icons } from '@app/constants/app.globals.js';
 import { createCallback } from '@app/lib/callback.js';
 import toast from '@app/lib/toast.js';
 
+const DEPRECATED_PROVIDER_TYPES = new Set(['githubmodelsazure']);
+
 export class ProvidersDialog {
     constructor() {
         this.onLoad = createCallback();
@@ -249,9 +251,10 @@ export class ProvidersDialog {
         });
     }
 
-    _fillTypeSelect(typeSelect) {
+    _fillTypeSelect(typeSelect, { includeDeprecated = false } = {}) {
         typeSelect.innerHTML = '';
         this._providerTypes.forEach(pt => {
+            if (!includeDeprecated && DEPRECATED_PROVIDER_TYPES.has(pt.key)) return;
             const option = document.createElement('option');
             option.value = pt.key;
             option.textContent = pt.displayName;
@@ -274,7 +277,7 @@ export class ProvidersDialog {
         formView.classList.remove('hidden');
         if (formActions) formActions.classList.remove('hidden');
 
-        this._fillTypeSelect(typeSelect);
+        this._fillTypeSelect(typeSelect, { includeDeprecated: provider != null });
 
         if (provider) {
             idInput.value = provider.id || '';
