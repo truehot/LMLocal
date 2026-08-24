@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,11 +8,11 @@ using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.SearchFileContent;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -26,8 +27,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
         private readonly ISearchResultCache _searchCache;
         private readonly IFileSystem _fileSystem;
-        private const int DefaultTake = 100;
+        private const int DefaultPageSize = 25;
+        private const int MaxPageSize = 500;
         private const int MaxFilesToScan = 1500;
+
+        /// <summary>
+        /// Version of the search/matching/ranking logic.
+        /// </summary>
+        private const string CacheVersion = "sig2";
 
         public string ToolName => "search_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -51,7 +58,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Results are paginated by total number of matches (100 matches per page); if next_page_token is not null, call again with page_token set to that value. Limited to scanning the first 1500 files in the solution. The search text is plain substring matching. Example: {\"text\":\"PaymentService\",\"extension_filter\":\".cs\"}.",
+                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Files are ranked by relevance: declaration lines (class/struct/interface/enum/function/method/property/field) get a boost, and for single-token identifier queries exact whole-word matches score higher. Each match exposes is_exact_word and declaration_kind. Results are paginated by total number of matches. Limited to scanning the first 1500 files in the solution. The search text is plain substring matching.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -60,7 +67,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive) inside file contents." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. File extension filter (e.g., '.cs', '.js'). If not specified, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. " } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use 'next_page_token' from the response as 'page_token' to get next page of results." } }
+                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use 'next_page_token' from the response as 'page_token' to get next page of results." } },
+                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of matches to return per page. Default 25, max 500." } }
                     },
                     Required = new List<string> { "text" }
                 }
@@ -71,11 +79,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-                var (searchText, fileExtensions, projectFilter, pageToken, error) = ExtractAndValidateParameters(parameters);
+                var (searchText, fileExtensions, projectFilter, pageToken, pageSize, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
                     return Error(error);
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
+                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
 
                 if (!_vsDependencies.IsSolutionOpen)
                     return Error("No solution is currently open.");
@@ -124,6 +132,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await TaskScheduler.Default;
 
                 var allResults = new List<SearchResult>();
+                bool isIdentifierQuery = QueryClassifier.IsIdentifierQuery(searchText);
 
                 foreach (var absolutePath in allFiles)
                 {
@@ -138,16 +147,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     try
                     {
                         var matches = new List<SearchMatch>();
+                        int exactWordCount = 0;
+                        int declarationWeightSum = 0;
+                        string extension = Path.GetExtension(absolutePath);
+
                         await _fileSystem.ReadLinesAsync(absolutePath, (lineNumber, line) =>
                         {
-                            if (line.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                            var m = ContentSearchMatcher.Match(line, searchText, extension, isIdentifierQuery);
+                            if (!m.IsMatch)
+                                return;
+
+                            matches.Add(new SearchMatch
                             {
-                                matches.Add(new SearchMatch
-                                {
-                                    LineNumber = lineNumber,
-                                    LineText = line.Trim()
-                                });
-                            }
+                                LineNumber = lineNumber,
+                                LineText = line.Trim(),
+                                IsExactWord = m.IsExactWord,
+                                DeclarationKind = m.Kind == SearchMatchKind.Other ? null : m.Kind.ToString()
+                            });
+
+                            if (m.IsExactWord)
+                                exactWordCount++;
+                            if (m.Kind != SearchMatchKind.Other)
+                                declarationWeightSum += DeclarationWeights.WeightOf(m.Kind);
                         }, cancellationToken).ConfigureAwait(false);
 
                         if (matches.Count > 0)
@@ -155,11 +176,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                                 relativePath = absolutePath;
 
+                            int declarationCount = 0;
+                            for (int i = 0; i < matches.Count; i++)
+                            {
+                                if (matches[i].DeclarationKind != null)
+                                    declarationCount++;
+                            }
+
                             allResults.Add(new SearchResult
                             {
                                 FilePath = relativePath,
                                 Matches = matches,
-                                MatchCount = matches.Count
+                                MatchCount = matches.Count,
+                                Score = ComputeScore(matches.Count, exactWordCount, declarationWeightSum),
+                                ExactWordCount = exactWordCount,
+                                DeclarationCount = declarationCount > 0 ? (int?)declarationCount : null
                             });
                         }
                     }
@@ -173,9 +204,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                 }
 
-                allResults.Sort((a, b) => b.MatchCount.CompareTo(a.MatchCount));
+                allResults.Sort((a, b) =>
+                {
+                    int c = b.Score.CompareTo(a.Score);
+                    if (c != 0) return c;
+                    c = b.MatchCount.CompareTo(a.MatchCount);
+                    if (c != 0) return c;
+                    return string.CompareOrdinal(a.FilePath, b.FilePath);
+                });
 
-                var pages = PaginateByMatches(allResults, DefaultTake);
+                var pages = PaginateByMatches(allResults, pageSize);
                 int totalMatches = allResults.Sum(r => r.MatchCount);
                 int totalFiles = allResults.Count;
 
@@ -274,7 +312,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             FilePath = result.FilePath,
                             Matches = result.Matches.Skip(matchOffset).Take(chunkSize).ToList(),
-                            MatchCount = chunkSize
+                            MatchCount = chunkSize,
+                            Score = result.Score,
+                            ExactWordCount = result.ExactWordCount,
+                            DeclarationCount = result.DeclarationCount
                         };
 
                         currentPage.Add(chunk);
@@ -314,7 +355,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var ext = extensionFilter ?? string.Empty;
             var proj = projectFilter ?? string.Empty;
             var txt = text ?? string.Empty;
-            return $"{txt}||{ext}||{proj}";
+
+            return $"{txt}||{ext}||{proj}||{CacheVersion}";
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
@@ -361,20 +403,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return "Search finished.";
         }
 
-        private (string searchText, string fileExtensions, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(
+        private static int ComputeScore(int matchCount, int exactWordCount, int declarationWeightSum)
+        {
+            return matchCount + exactWordCount * DeclarationWeights.ExactWordBonus + declarationWeightSum;
+        }
+
+        private (string searchText, string fileExtensions, string projectFilter, string pageToken, int pageSize, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, null, null, null, "Parameters cannot be null.");
+                return (null, null, null, null, DefaultPageSize, "Parameters cannot be null.");
             if (!parameters.TryGetValue("text", out object textObj) || !(textObj is string))
-                return (null, null, null, null, "Parameter 'text' is required and must be a string.");
+                return (null, null, null, null, DefaultPageSize, "Parameter 'text' is required and must be a string.");
 
             var searchText = (string)textObj;
             var fileExtensions = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            return (searchText, fileExtensions, projectFilter, pageToken, null);
+            int pageSize = DefaultPageSize;
+            if (parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
+                pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+
+            return (searchText, fileExtensions, projectFilter, pageToken, pageSize, null);
         }
 
         public class SearchMatch
@@ -384,6 +435,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("text")]
             public string LineText { get; set; }
+
+            [JsonProperty("is_exact_word")]
+            public bool IsExactWord { get; set; }
+
+            [JsonProperty("declaration_kind", NullValueHandling = NullValueHandling.Ignore)]
+            public string DeclarationKind { get; set; }
         }
 
         public class SearchResult
@@ -396,6 +453,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("match_count")]
             public int MatchCount { get; set; }
+
+            [JsonProperty("score")]
+            public int Score { get; set; }
+
+            [JsonProperty("exact_word_count")]
+            public int ExactWordCount { get; set; }
+
+            [JsonProperty("declaration_count", NullValueHandling = NullValueHandling.Ignore)]
+            public int? DeclarationCount { get; set; }
         }
 
         public class SearchResultsResponse
@@ -403,7 +469,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("results")]
             public List<SearchResult> Results { get; set; }
 
-            [JsonProperty("next_page_token")]
+            [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
             public string NextPageToken { get; set; }
 
             [JsonProperty("total_matches")]
@@ -415,7 +481,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("success")]
             public bool Success { get; set; }
 
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
         }
 

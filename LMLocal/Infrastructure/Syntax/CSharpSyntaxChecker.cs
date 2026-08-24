@@ -1,23 +1,15 @@
 using System.Collections.Generic;
 using System.Linq;
-using LMLocal.Infrastructure.Persistence;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
 namespace LMLocal.Infrastructure.Syntax
 {
     /// <summary>
-    /// Fast syntax checker using Roslyn's C# parser. Uses IFileSystem for file access to support testability.
+    /// Fast syntax checker using Roslyn's C# parser.
     /// </summary>
     internal class CSharpSyntaxChecker : ISyntaxChecker
     {
-        private readonly IFileSystem _fileSystem;
-
-        public CSharpSyntaxChecker(IFileSystem fileSystem)
-        {
-            _fileSystem = fileSystem ?? throw new System.ArgumentNullException(nameof(fileSystem));
-        }
-
         public bool IsSyntaxValid(string sourceCode, out List<SyntaxError> errors)
         {
             if (string.IsNullOrEmpty(sourceCode))
@@ -40,18 +32,6 @@ namespace LMLocal.Infrastructure.Syntax
                 Severity = "Error"
             }).ToList();
             return errors.Count == 0;
-        }
-
-        public bool IsSupported(string filePath)
-        {
-            if (string.IsNullOrEmpty(filePath))
-                return false;
-
-            string extension = _fileSystem.GetFileExtension(filePath);
-            if (string.IsNullOrEmpty(extension))
-                return false;
-
-            return extension.Equals(".cs", System.StringComparison.OrdinalIgnoreCase);
         }
     }
 }

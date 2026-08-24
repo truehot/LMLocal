@@ -1,6 +1,6 @@
-﻿# 🤖 LMLocal
+﻿# 🤖 LM Local
 
-**LMLocal** is a local AI chat assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow.
+**LM Local** is a local AI chat assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow.
 
 ![Visual Studio](https://img.shields.io/badge/Visual%20Studio-2022%20%2F%202026-purple?style=flat&logo=visual-studio)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -24,28 +24,29 @@
 
 ## 📖 Table of Contents
 
-- [Core Features](#user-content--core-features)
-- [Requirements](#user-content--requirements)
-- [Installation](#user-content--installation)
-- [Getting Started](#user-content--getting-started)
-- [All Features](#user-content--all-features)
-- [AI Instructions & Modes](#user-content--ai-instructions--modes)
-- [Providers](#user-content-️-providers)
-- [Chat History Dialog](#user-content--chat-history-dialog)
-- [Image Attachments (Multimodal Chat)](#user-content-️-image-attachments-multimodal-chat)
-- [Built‑in AI Tools](#user-content-builtin-ai-tools)
-- [List of built‑in tools](#user-content-list-of-builtin-tools)
-- [Smart Workflows & Best Practices](#user-content--smart-workflows--best-practices)
-- [Auto-Completions](#user-content-auto-completions)
-- [Context Menu Commands](#user-content-context-menu-commands)
-- [History Optimization: Clean Whitespace](#user-content--history-optimization-clean-whitespace)
-- [Model Context Protocol (MCP) Support](#user-content--model-context-protocol-mcp-support)
-- [How to Configure MCP Servers](#user-content-️-how-to-configure-mcp-servers)
-- [Troubleshooting](#user-content--troubleshooting)
-- [Data & Configuration](#user-content--data--configuration)
-- [License & Compliance & Third-Party](#user-content--license--compliance--third-party)
+- [Core Features](#content--core-features)
+- [Requirements](#content--requirements)
+- [Installation](#content--installation)
+- [Getting Started](#content--getting-started)
+- [All Features](#content--all-features)
+- [AI Instructions & Modes](#content--ai-instructions--modes)
+- [Providers](#content--providers)
+- [Chat History Dialog](#content--chat-history-dialog)
+- [Image Attachments (Multimodal Chat)](#content--image-attachments-multimodal-chat)
+- [Built‑in AI Tools](#content--builtin-ai-tools)
+- [List of built‑in tools](#content--list-of-builtin-tools)
+- [Smart Workflows & Best Practices](#content--smart-workflows--best-practices)
+- [Auto-Completions](#content--auto-completions)
+- [Context Menu Commands](#content--context-menu-commands)
+- [History Optimization: Clean Whitespace](#content--history-optimization-clean-whitespace)
+- [Model Context Protocol (MCP) Support](#content--model-context-protocol-mcp-support)
+- [How to Configure MCP Servers](#content--how-to-configure-mcp-servers)
+- [Troubleshooting](#content--troubleshooting)
+- [Data & Configuration](#content--data--configuration)
+- [License & Compliance & Third-Party](#content--license--compliance--third-party)
 
 
+<a id="content--core-features"></a>
 ## ⚡ Core Features
 
 - **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, manual rollback via the Changes panel, **and code autocompletions** as you type.
@@ -59,9 +60,10 @@
 
 
 
+<a id="content--requirements"></a>
 ## 🛠 Requirements
 
-To use LMLocal, you need:
+To use LM Local, you need:
 - [x] **Visual Studio 2022 or 2026**
 - [x] **An AI Backend / Provider** (choose one):
   * **Cloud Providers:** Any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Google AI Studio, etc. — requires an API key).
@@ -73,12 +75,13 @@ To use LMLocal, you need:
 
 
 
+<a id="content--installation"></a>
 ## 🚀 Installation
 
 ### Option 1: Visual Studio Marketplace (Recommended)
 1. Open Visual Studio.
 2. Go to `Extensions` > `Manage Extensions`.
-3. Search for **LMLocal** and click **Download**.
+3. Search for **LM Local** and click **Download**.
 4. Restart Visual Studio to complete the installation.
 
 ### Option 2: Manual VSIX
@@ -87,6 +90,7 @@ To use LMLocal, you need:
 
 
 
+<a id="content--getting-started"></a>
 ## 🏁 Getting Started
 
 ### Part 1. Initial Setup (One-Time Configuration)
@@ -147,6 +151,7 @@ To use LMLocal, you need:
 
 
 
+<a id="content--all-features"></a>
 ## ✨ All features
 
 ### Interface & User Experience
@@ -190,6 +195,7 @@ To use LMLocal, you need:
 - 🔒 **Trusted server certificate** – Support for self‑signed/private‑CA certificates via a configurable path to the public certificate.
 
 
+<a id="content--providers"></a>
 ## ⚙️ Providers
 
 The **"Providers..."** dialog allows you to create and save multiple provider profiles (servers) so you don't have to re-enter your API keys and base URLs every time. You can store as many profiles as you need, including both **local servers** (like Ollama running on your machine) and **cloud remote services** (like Groq, OpenAI, or Gemini).
@@ -252,6 +258,7 @@ How to configure a custom remote endpoint and activate it inside the extension.
 
 
 
+<a id="content--builtin-ai-tools"></a>
 ## Built‑in AI Tools
 
 The built‑in tools let the AI read, edit, build, and test your code. You control which tools are enabled, can review all changes before accepting them and manually roll back any change.
@@ -271,6 +278,7 @@ The built‑in tools let the AI read, edit, build, and test your code. You contr
 **In the Built‑in Tools… dialog (list of built‑in tools):**  
 Open this from the extension's main menu. You’ll see all built‑in tools (for example, `delete_file`, `replace_file_content`). Each tool can be enabled or disabled individually. Even if the global write/modify checkbox is on, you can still turn off specific tools like `delete_file`. Use “Enable All” or “Disable All” to change many at once, then click Save.
 
+<a id="content--list-of-builtin-tools"></a>
 ### List of built‑in tools
 
 | Tool | Description | Supported Languages | Limitations / Notes |
@@ -289,16 +297,17 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `insert_file_lines` | Inserts lines at a specific position. | All | Automatic syntax check applies * |
 | `format_document` | Applies Visual Studio's code formatting to a file. | Any (VS editor) | `organize_usings` applies only to C# files. |
 | `get_symbol_info` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | C# only | Uses Roslyn |
+| `get_symbol_info_js` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | JS only | only .js, .mjs, .cjs |
 | `inspect_type` | Inspects a fully qualified type from the open solution (source or referenced assemblies) and returns its full metadata. | C# only | Uses Roslyn. |
 | `build_solution` | Builds the currently open solution, including all its projects, or a specific project. | Any (MSBuild) | Uses MSBuild via Visual Studio. |
 | `run_tests` | Runs `dotnet test` for a specific `.csproj` and shows live output. | C# only | Requires the .NET SDK (`dotnet` CLI) installed on the machine; only for C# test projects. |
 
-`*` **Automatic syntax check applies to:** C# (via Roslyn).
+`*` **Automatic syntax check applies to:** C# and VB (via Roslyn), .js/.mjs/.cjs (via Acornima).
 
 
 ### Changes panel – see what was changed and revert if needed
 
-When a tool edits a file, the changes are applied to the actual files in your solution. LMLocal tracks all modified files and shows them in a collapsible **Changes** panel inside the chat window. This list persists across solution reloads and Visual Studio restarts, so you can always review what the AI did.
+When a tool edits a file, the changes are applied to the actual files in your solution. LM Local tracks all modified files and shows them in a collapsible **Changes** panel inside the chat window. This list persists across solution reloads and Visual Studio restarts, so you can always review what the AI did.
 
 The panel lets you:
 - Click any file to see a diff of the changes.
@@ -315,6 +324,7 @@ The panel lets you:
 
 
 
+<a id="content--ai-instructions--modes"></a>
 ## 🎭 AI Instructions & Modes
 
 The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, and **Tests**.
@@ -336,9 +346,10 @@ Once configured, you can instantly switch between these system roles using the d
 
 
 
+<a id="content--history-optimization-clean-whitespace"></a>
 ## 📉 History Optimization: Clean Whitespace
 
-When the **"Clean whitespace in history"** option is enabled in the extension settings, LMLocal automatically runs a cleanup pass on previous conversation turns before forwarding the payload to your AI backend. This reduces token overhead for local models by stripping redundant spaces, tabs, and excess newlines.
+When the **"Clean whitespace in history"** option is enabled in the extension settings, LM Local automatically runs a cleanup pass on previous conversation turns before forwarding the payload to your AI backend. This reduces token overhead for local models by stripping redundant spaces, tabs, and excess newlines.
 
 > [!NOTE]  
 > **Under the Hood Only:** This optimization is **invisible** in the user interface. Your active chat window will always display responses with full formatting. The cleanup process only alters the raw background history array sent to the model to save context tokens.
@@ -352,6 +363,7 @@ When the **"Clean whitespace in history"** option is enabled in the extension se
 
 
 
+<a id="content--chat-history-dialog"></a>
 ## 💬 Chat History Dialog
 
 The **Chat History** dialog (accessible from the top‑right menu **`…`** → **Chat History**) lets you browse and restore past conversations from the local chat logs.
@@ -370,9 +382,10 @@ The **Chat History** dialog (accessible from the top‑right menu **`…`** → 
 | **Loading a session forks it** | When you load a past session, the extension **creates a brand‑new session** initialized with that session's message history. Your continuation is saved under a new session ID — the original session remains untouched. |
 
 
+<a id="content--image-attachments-multimodal-chat"></a>
 ## 🖼️ Image Attachments (Multimodal Chat)
 
-LMLocal lets you attach images to a message so vision-capable models can "see" screenshots, diagrams, or designs. Paste (`Ctrl+V`) or drag-and-drop an image into the chat input — a thumbnail appears above the field, where you can review or remove it before sending.
+LM Local lets you attach images to a message so vision-capable models can "see" screenshots, diagrams, or designs. Paste (`Ctrl+V`) or drag-and-drop an image into the chat input — a thumbnail appears above the field, where you can review or remove it before sending.
 
 ### How it works
 
@@ -396,6 +409,7 @@ Images are sent to the model in the OpenAI multimodal format (`image_url` with a
 
 
 
+<a id="content--smart-workflows--best-practices"></a>
 ## 💡 Smart Workflows & Best Practices
 
 
@@ -419,7 +433,7 @@ The AI doesn't have a full filesystem index — it relies on the context you pro
 
 ### 🎯 How can I improve my development plans by hot-swapping models?
 
-LMLocal allows you to switch the active LLM on the fly **without clearing the chat**. You can use this to pass the conversation history from one model to another **sequentially** – each model builds on or critiques the previous output, refining the plan step by step.
+LM Local allows you to switch the active LLM on the fly **without clearing the chat**. You can use this to pass the conversation history from one model to another **sequentially** – each model builds on or critiques the previous output, refining the plan step by step.
 
 It's simple. Just ask one AI model to write a plan, then switch to a different model in the same chat and tell it: "Critique this and update the plan." The new model reads the whole conversation and gives you a fresh perspective, catching edge cases the first one missed.
 
@@ -427,8 +441,8 @@ It's simple. Just ask one AI model to write a plan, then switch to a different m
 
 ### 📉 Hitting Context Limits
 
-**Method 1: Use LMLocal's UI cleanup**
-If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LMLocal's cleanup feature instead of losing your work:
+**Method 1: Use LM Local's UI cleanup**
+If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LM Local's cleanup feature instead of losing your work:
 * Click the **"Clear chat"** button next to the menu.
 * Choose **"Summarize and move context"** or **"Consolidate last exchange"** or **Move last prompt and response**. 
 * This will automatically compress the entire debate or pull just your final refined plan into a fresh, clean chat session, resetting model context usage back to the baseline.
@@ -444,8 +458,8 @@ If the chat history grows too long during this multi-model review loop and you s
 Context window accumulation can lead to high API costs or local performance drops. You can optimize your budget by applying these patterns:
 
 * **The "Smart Context Collector" Tiering:** Don't waste your expensive cloud tokens on reading massive files or building initial context. Instead, start the session with a lighter, cheaper model (like *GPT-4o-mini* or a local *Ministral 3.x*) to read your code files, list directories, and pull together the initial workspace data. Once the heavy context is captured and a baseline draft is formed in the history, hot-swap to a premium OpenAI-compatible model (like *DeepSeek V4-Pro* or *GPT-5.5*) to run the high-level analysis and critical edits.
-* **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LMLocal continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
-* **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LMLocal to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
+* **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LM Local continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
+* **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LM Local to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
 * **Use a lightweight project map (no RAG):** Create a context.md file (manually or ask the model to generate it) describing your project structure, main classes, and patterns. Attach it to the first message to give the model a "project map" without attaching the whole codebase. This saves tokens and reduces context size.
 * **Enable History Whitespace Cleaning:** Toggle **"Clean whitespace in history"** in the settings. This compresses redundant spaces, tabs, and excess newlines in background turns—slightly reducing context size and saving tokens without altering your rich-text UI.
 
@@ -463,6 +477,7 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
 
 
 
+<a id="content--auto-completions"></a>
 ## Auto-Completions
 
 Provides fast, **single-line ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
@@ -470,7 +485,7 @@ Provides fast, **single-line ghost completions** (inline grey text code suggesti
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
 
-> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LMLocal’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommend enabling only one autocompletion provider at a time** – either the built‑in LMLocal one or your external tool, but not both simultaneously.
+> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LM Local’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommend enabling only one autocompletion provider at a time** – either the built‑in LM Local one or your external tool, but not both simultaneously.
 
 ### Supported Providers & Models
 
@@ -490,6 +505,7 @@ For optimal results, use base models trained natively on Fill-in-the-Middle (FIM
 > ⚠️ **Note:** Make sure you are using the **Base** versions of these models rather than the Instruct/Chat versions, as base models are specifically optimized for raw code completion.
 
 
+<a id="content--context-menu-commands"></a>
 ## Context Menu Commands
 
 LM Local adds two groups of commands to Visual Studio — in the **code editor** context menu
@@ -537,9 +553,10 @@ All editor commands are **disabled** while a chat session is running. If no text
 
 
 
+<a id="content--model-context-protocol-mcp-support"></a>
 ## 🌐 Model Context Protocol (MCP) Support
 
-LMLocal supports external tool integration via the **Model Context Protocol (MCP)**. This allows you to hook up custom or third-party servers to give your local AI even more capabilities.
+LM Local supports external tool integration via the **Model Context Protocol (MCP)**. This allows you to hook up custom or third-party servers to give your local AI even more capabilities.
 
 > [!WARNING]
 > **Security Notice & Trusted Sources Only**
@@ -549,12 +566,13 @@ LMLocal supports external tool integration via the **Model Context Protocol (MCP
 
 ### ⚠️ Scope & Supported Transports
 * **Protocol Version:** Compatible with the **MCP `2025-11-25`** specification standard.
-* **Tools-Only Support:** LMLocal **exclusively** loads and registers **Tools** exposed by your MCP servers. These are separate from the built‑in tools and are configured independently. Other MCP features like custom *Prompts* or *Resources* are currently ignored and will not be utilized by the assistant.
+* **Tools-Only Support:** LM Local **exclusively** loads and registers **Tools** exposed by your MCP servers. These are separate from the built‑in tools and are configured independently. Other MCP features like custom *Prompts* or *Resources* are currently ignored and will not be utilized by the assistant.
 * **Transports:** Supports both local process-based (stdio) and network-based streamable (http) transports.
 * **NOT Supported:** Legacy `sse` (Server-Sent Events) transports are unsupported (no plans).
 
 
 
+<a id="content--how-to-configure-mcp-servers"></a>
 ## ⚙️ How to Configure MCP Servers
 
 You can set up and manage connections to external MCP servers directly inside the configuration dialog:
@@ -574,8 +592,8 @@ The extension saves your settings locally to `%LOCALAPPDATA%\LMLocalChat\mcp.jso
 You can organize your configuration using either the `servers` or `mcpServers` root keys.
 
 > [!NOTE]
-> **LMLocal Custom Extensions**
-> The following parameters are custom LMLocal properties and are not part of the official MCP specification:
+> **LM Local Custom Extensions**
+> The following parameters are custom LM Local properties and are not part of the official MCP specification:
 > - `"disabled"` *(boolean)*: Temporarily deactivates an entire server process or HTTP connection without deleting its configuration block.
 > - `"permissions"` *(object)*: Used to mute specific tools discovered on the server.
 
@@ -625,11 +643,12 @@ You can organize your configuration using either the `servers` or `mcpServers` r
 
 ### 🔗 Developer Resources
 
-Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and compile your own custom MCP servers compatible with LMLocal.
+Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and compile your own custom MCP servers compatible with LM Local.
 `https://github.com/modelcontextprotocol/csharp-sdk`
 
 
 
+<a id="content--troubleshooting"></a>
 ## 🔧 Troubleshooting
 
 | Issue | Solution |
@@ -645,13 +664,15 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | **`image_url` variant error** ("unknown variant `image_url`, expected `text`") | The loaded model does **not** support vision/multimodal inputs – it only accepts `text` messages. **Do not include image attachments in your request**. If you need image understanding, switch to a multimodal model (e.g., LLaVA, Qwen-VL, or any model with vision capabilities). |
 
 
+<a id="content--data--configuration"></a>
 ## 💾 Data & Configuration
 
-LMLocal keeps things simple and stores your preferences locally. Configuration files are maintained in:
+LM Local keeps things simple and stores your preferences locally. Configuration files are maintained in:
 
 `%LOCALAPPDATA%\LMLocalChat\`
 
 
+<a id="content--license--compliance--third-party"></a>
 ## 📜 License & Compliance & Third-Party
 
 - **License:** MIT License. See [LICENSE.txt](./LICENSE.txt) for details.
@@ -659,3 +680,4 @@ LMLocal keeps things simple and stores your preferences locally. Configuration f
 - **Components:**
   - `marked` v15.0.12 (MIT)
   - `highlight.js` v11.9.0 (BSD-3-Clause) 
+  - `Acornima` v1.7.0 (BSD-3-Clause) 

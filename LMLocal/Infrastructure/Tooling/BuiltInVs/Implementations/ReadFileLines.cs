@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -74,10 +75,26 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
 
-                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, endLine + 1, cancellationToken).ConfigureAwait(false);
+                // Read one extra line past the requested range to detect if more content exists.
+                int readEnd = endLine == int.MaxValue ? int.MaxValue : endLine + 1;
+                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, readEnd, cancellationToken).ConfigureAwait(false);
+
                 bool hasMore = lines.Count > (endLine - startLine + 1);
                 if (hasMore && lines.Count > 0)
                     lines.RemoveAt(lines.Count - 1);
+
+                if (lines.Count == 0)
+                {
+                    return new FileLinesResponse
+                    {
+                        Success = true,
+                        FilePath = relativePath,
+                        StartLine = startLine,
+                        EndLine = startLine - 1,
+                        Text = string.Empty,
+                        HasMore = false
+                    };
+                }
 
                 string text = string.Join(Environment.NewLine, lines);
                 int actualEndLine = startLine + lines.Count - 1;
@@ -121,9 +138,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is FileLinesResponse fileResult)
             {
-                var total = fileResult.EndLine - fileResult.StartLine;
+                var total = fileResult.EndLine - fileResult.StartLine + 1;
                 return fileResult.Success
-                    ? $"Read {total} lines."
+                    ? total > 0 ? $"Read {total} {Pluralizer.Pluralize(total, "line", "lines")}." : "No lines found."
                     : $"Read lines failed: {fileResult.ErrorMessage}";
             }
 
@@ -193,7 +210,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("success")]
             public bool Success { get; set; }
 
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
         }
     }

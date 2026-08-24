@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -8,19 +7,28 @@ using System.Threading.Tasks;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     internal interface IRunTests : IBuiltInTool { }
 
+    /// <summary>
+    /// Runs tests for a single .NET project. Always builds/runs in the project's own Debug configuration.
     internal class RunTests : IRunTests
     {
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
+
+        private static readonly TimeSpan TestRunTimeout = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(5);
+
+        private const int MaxSummaryOutputChars = 6000;
+        private const int CompletionErrorMaxChars = 200;
 
         public string ToolName => "run_tests";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.Execution;
@@ -34,7 +42,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+            cancellationToken.ThrowIfCancellationRequested();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             if (!_vsDependencies.IsSolutionOpen)
                 return ErrorResponse("No solution is open.");
@@ -46,10 +55,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters?.TryGetValue("project_path", out var pp) != true || !(pp is string projectPathParam) || string.IsNullOrEmpty(projectPathParam))
                 return ErrorResponse("Parameter 'project_path' is required (relative or absolute path to .csproj).");
 
-
             bool includeFullOutput = false;
             if (parameters?.TryGetValue("include_full_output", out var fullOutObj) == true && fullOutObj is bool fullOut)
                 includeFullOutput = fullOut;
+
+            bool restore = false;
+            if (parameters?.TryGetValue("restore", out var restoreObj) == true && restoreObj is bool restoreVal)
+                restore = restoreVal;
+
+            string filter = null;
+            if (parameters?.TryGetValue("filter", out var filterObj) == true && filterObj is string filterStr && !string.IsNullOrWhiteSpace(filterStr))
+                filter = TestArgumentsBuilder.SanitizeFilter(filterStr.Trim());
 
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (!_pathResolver.TryResolveFilePath(projectPathParam, solutionDir, out string absoluteProjectPath))
@@ -64,13 +80,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!absoluteProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                 return ErrorResponse($"Specified file is not a .csproj: {absoluteProjectPath}");
 
-            var (Success, Output, Total, Passed, Failed, Skipped) = await RunDotnetTestAsync(absoluteProjectPath, solutionDir, includeFullOutput, cancellationToken).ConfigureAwait(false);
+            bool isSdk = await SdkProjectDetector.IsSdkStyleAsync(_fileSystem, absoluteProjectPath, cancellationToken).ConfigureAwait(false);
+
+            var (Success, Output, Total, Passed, Failed, Skipped) = isSdk
+                ? await RunSdkTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, cancellationToken).ConfigureAwait(false)
+                : await RunLegacyTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, cancellationToken).ConfigureAwait(false);
+
+            string errorMessage = null;
+            if (!Success)
+            {
+                errorMessage = Total == 0
+                    ? "No tests were executed or dotnet failed."
+                    : $"Tests failed. Passed: {Passed}, Failed: {Failed}, Skipped: {Skipped}.";
+            }
 
             return new RunProjectTestsResponse
             {
                 Success = Success,
                 TestRunOutput = Output,
-                ErrorMessage = Success ? null : $"Tests failed. Passed: {Passed}, Failed: {Failed}, Skipped: {Skipped}.",
+                ErrorMessage = errorMessage,
                 TotalTests = Total,
                 PassedTests = Passed,
                 FailedTests = Failed,
@@ -78,46 +106,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private async Task<bool> IsSdkStyleProjectAsync(string projectPath, CancellationToken cancellationToken)
-        {
-            try
-            {
-                var lines = await _fileSystem.ReadLinesRangeAsync(projectPath, 1, 1, cancellationToken);
-                string firstLine = lines.Count > 0 ? lines[0] : null;
-                return !string.IsNullOrEmpty(firstLine) && firstLine.Contains("Sdk=\"Microsoft.NET.Sdk\"");
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunDotnetTestAsync(
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunSdkTestsAsync(
             string projectPath,
             string workingDirectory,
+            string filter,
             bool includeFullOutput,
+            bool restore,
             CancellationToken cancellationToken)
         {
-            bool isSdk = await IsSdkStyleProjectAsync(projectPath, cancellationToken);
-            return isSdk
-                ? await RunSdkProjectTestsAsync(projectPath, workingDirectory, includeFullOutput, cancellationToken)
-                : await RunLegacyProjectTestsAsync(projectPath, workingDirectory, includeFullOutput, cancellationToken);
+            string arguments = TestArgumentsBuilder.BuildSdkTestArguments(projectPath, filter, restore);
+            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunSdkProjectTestsAsync(
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunLegacyTestsAsync(
             string projectPath,
             string workingDirectory,
+            string filter,
             bool includeFullOutput,
-            CancellationToken cancellationToken)
-        {
-            string arguments = $"test \"{projectPath}\" --no-restore --verbosity normal";
-            return await RunDotNetProcessAsync(arguments, workingDirectory, includeFullOutput, cancellationToken);
-        }
-
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunLegacyProjectTestsAsync(
-            string projectPath,
-            string workingDirectory,
-            bool includeFullOutput,
+            bool restore,
             CancellationToken cancellationToken)
         {
             string projectDir = Path.GetDirectoryName(projectPath);
@@ -125,232 +131,115 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (!_fileSystem.FileExists(dllPath))
             {
-                var (Success, Output) = await BuildProjectAsync(projectPath, workingDirectory, cancellationToken);
-                if (!Success)
-                    return (false, Output, 0, 0, 0, 0);
+                var buildResult = await DotnetProcessRunner.RunAsync(
+                    TestArgumentsBuilder.BuildBuildArguments(projectPath, restore),
+                    workingDirectory,
+                    BuildTimeout,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (buildResult.Cancelled)
+                    return (false, "Build cancelled.", 0, 0, 0, 0);
+                if (buildResult.TimedOut)
+                    return (false, $"Build timed out after {BuildTimeout.TotalMinutes:0} minute(s).", 0, 0, 0, 0);
+                if (buildResult.ExitCode != 0)
+                {
+                    string detail = TestOutputParser.ExtractDiagnosticSummary(buildResult.StdErr)
+                        ?? TestOutputParser.ExtractDiagnosticSummary(buildResult.StdOut)
+                        ?? (string.IsNullOrWhiteSpace(buildResult.StdErr) ? buildResult.StdOut : buildResult.StdErr);
+                    string errorMsg = $"Build failed (exit code {buildResult.ExitCode}).\n{LimitOutput(detail, MaxSummaryOutputChars)}";
+                    return (false, errorMsg, 0, 0, 0, 0);
+                }
 
                 if (!_fileSystem.FileExists(dllPath))
                     return (false, $"Test DLL not found after build: {dllPath}", 0, 0, 0, 0);
             }
 
-            string arguments = $"vstest \"{dllPath}\" --logger:console;verbosity=normal";
-            return await RunDotNetProcessAsync(arguments, workingDirectory, includeFullOutput, cancellationToken);
+            string arguments = TestArgumentsBuilder.BuildLegacyVstestArguments(dllPath, filter);
+            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunDotNetProcessAsync(
+        private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunAndSummarizeAsync(
             string arguments,
             string workingDirectory,
             bool includeFullOutput,
             CancellationToken cancellationToken)
         {
-            var startInfo = new ProcessStartInfo
+            var runResult = await DotnetProcessRunner.RunAsync(arguments, workingDirectory, TestRunTimeout, cancellationToken).ConfigureAwait(false);
+            return Summarize(runResult, includeFullOutput);
+        }
+
+        private (bool Success, string Output, int Total, int Passed, int Failed, int Skipped) Summarize(DotnetProcessResult runResult, bool includeFullOutput)
+        {
+            if (runResult.Cancelled)
+                return (false, "Test execution cancelled by user.", 0, 0, 0, 0);
+            if (runResult.TimedOut)
+                return (false, $"Test execution timed out ({TestRunTimeout.TotalMinutes:0} minutes).", 0, 0, 0, 0);
+
+            string fullOutput = runResult.StdOut + (string.IsNullOrEmpty(runResult.StdErr) ? "" : "\n" + runResult.StdErr);
+            var (total, passed, failed, skipped) = TestOutputParser.ParseStatisticsUniversal(fullOutput);
+            bool success = (runResult.ExitCode == 0) && total > 0 && failed == 0;
+
+            string resultOutput;
+            if (includeFullOutput)
             {
-                FileName = "dotnet",
-                Arguments = arguments,
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using (var process = new System.Diagnostics.Process { StartInfo = startInfo })
+                var sb = new StringBuilder();
+                sb.AppendLine("===== STDOUT =====");
+                sb.AppendLine(runResult.StdOut);
+                if (!string.IsNullOrEmpty(runResult.StdErr))
+                {
+                    sb.AppendLine("===== STDERR =====");
+                    sb.AppendLine(runResult.StdErr);
+                }
+                sb.AppendLine($"===== Exit code: {runResult.ExitCode} =====");
+                resultOutput = sb.ToString();
+            }
+            else if (success)
             {
-                process.Start();
-                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-                Task<string> errorTask = process.StandardError.ReadToEndAsync();
-
-                using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(10)))
-                using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token))
+                resultOutput = $"All {total} tests passed. Passed: {passed}, Skipped: {skipped}.";
+            }
+            else
+            {
+                resultOutput = TestOutputParser.ExtractFailedDetails(fullOutput);
+                if (string.IsNullOrWhiteSpace(resultOutput))
                 {
-                    var cancellationTokenForWait = linkedCts.Token;
+                    resultOutput = TestOutputParser.ExtractDiagnosticSummary(runResult.StdErr)
+                        ?? TestOutputParser.ExtractDiagnosticSummary(runResult.StdOut);
 
-                    try
+                    if (string.IsNullOrWhiteSpace(resultOutput))
                     {
-                        await Task.Run(
-                            () =>
-                            {
-                                while (!process.WaitForExit(3000))
-                                {
-                                    cancellationTokenForWait.ThrowIfCancellationRequested();
-                                }
-                            }
-                            , cancellationTokenForWait);
+                        resultOutput = !string.IsNullOrWhiteSpace(runResult.StdErr)
+                            ? runResult.StdErr
+                            : runResult.StdOut;
                     }
-                    catch (OperationCanceledException)
-                    {
-                        if (!process.HasExited)
-                        {
-                            try { process.Kill(); } catch { }
-                            process.WaitForExit(3000);
-                        }
 
-                        if (cancellationToken.IsCancellationRequested) { 
-                            return (false, "Test execution cancelled by user.", 0, 0, 0, 0);
-                        }
-                        else
-                        {
-                            return (false, "Test execution timed out (10 minutes).", 0, 0, 0, 0);
-                        }
-                            
-                    }
-                }
-
-                string output = await outputTask;
-                string error = await errorTask;
-
-                string fullOutput = output + (string.IsNullOrEmpty(error) ? "" : "\n" + error);
-                var (total, passed, failed, skipped) = ParseTestStatisticsUniversal(fullOutput);
-                bool success = (process.ExitCode == 0) && total > 0 && failed == 0;
-
-                string resultOutput;
-                if (includeFullOutput)
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("===== STDOUT =====");
-                    sb.AppendLine(output);
-                    if (!string.IsNullOrEmpty(error))
-                    {
-                        sb.AppendLine("===== STDERR =====");
-                        sb.AppendLine(error);
-                    }
-                    sb.AppendLine($"===== Exit code: {process.ExitCode} =====");
-                    resultOutput = sb.ToString();
-                }
-                else if (success)
-                {
-                    resultOutput = $"All {total} tests passed. Passed: {passed}, Skipped: {skipped}.";
-                }
-                else
-                {
-                    resultOutput = ExtractFailedDetails(fullOutput);
                     if (string.IsNullOrWhiteSpace(resultOutput))
                         resultOutput = "No detailed failure information captured. Check test logs.";
                 }
 
-                if (total == 0 && !includeFullOutput)
-                    resultOutput += "\n[WARNING] No tests were executed. Check test adapter and project references.";
-
-                return (success, resultOutput, total, passed, failed, skipped);
-            }
-        }
-
-        /// <summary>
-        /// Extracts from the full output only the blocks related to failed tests (lines with [FAIL] and following details).
-        /// </summary>
-        private string ExtractFailedDetails(string fullOutput)
-        {
-            if (string.IsNullOrWhiteSpace(fullOutput))
-                return null;
-
-            var lines = fullOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            var errorBlocks = new List<string>();
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string line = lines[i];
-                if (line.Contains("[FAIL]") || line.Contains("Failed:") || line.Contains("  [FAIL]"))
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine(line);
-                    for (int j = i + 1; j < lines.Length; j++)
-                    {
-                        string next = lines[j];
-                        if (next.Contains("[FAIL]") || next.Contains("[PASS]") || next.Contains("[SKIP]") ||
-                            next.Contains("  [FAIL]") || next.Contains("  [PASS]") || next.Contains("  [SKIP]") ||
-                            next.Contains("Passed:") || next.Contains("Failed:") || next.Contains("Skipped:"))
-                            break;
-
-                        if (string.IsNullOrWhiteSpace(next))
-                        {
-                            if (j + 1 < lines.Length && string.IsNullOrWhiteSpace(lines[j + 1]))
-                                break;
-                            sb.AppendLine();
-                            continue;
-                        }
-                        sb.AppendLine(next);
-                    }
-                    errorBlocks.Add(sb.ToString().TrimEnd());
-                }
+                resultOutput = LimitOutput(resultOutput, MaxSummaryOutputChars);
             }
 
-            if (errorBlocks.Count == 0)
-                return null;
+            if (total == 0 && !includeFullOutput)
+                resultOutput += "\n[WARNING] No tests were executed. Check test adapter and project references.";
 
-            return string.Join("\n\n", errorBlocks);
+            return (success, resultOutput, total, passed, failed, skipped);
         }
 
-        private async Task<(bool Success, string Output)> BuildProjectAsync(string projectPath, string workingDirectory, CancellationToken cancellationToken)
+
+        private static string LimitOutput(string value, int maxChars)
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"build \"{projectPath}\" --no-restore --configuration Debug",
-                WorkingDirectory = workingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            using (var buildProcess = new System.Diagnostics.Process { StartInfo = startInfo })
-            {
-                buildProcess.Start();
-                using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    cts.CancelAfter(TimeSpan.FromMinutes(5));
-                    var cancellationTokenForWait = cts.Token;
-                    try
-                    {
-                        await Task.Run(
-                            () =>
-                            {
-                                while (!buildProcess.WaitForExit(3000))
-                                {
-                                    cancellationTokenForWait.ThrowIfCancellationRequested();
-                                }
-                            }
-                            , cancellationTokenForWait);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        if (!buildProcess.HasExited)
-                        {
-                            try { buildProcess.Kill(); } catch { }
-                            buildProcess.WaitForExit(3000);
-                        }
-                        return (false, "Build cancelled or timed out.");
-                    }
-                }
-                string buildOutput = await buildProcess.StandardOutput.ReadToEndAsync();
-                string buildError = await buildProcess.StandardError.ReadToEndAsync();
-                if (buildProcess.ExitCode != 0)
-                {
-                    string errorMsg = $"Build failed (exit code {buildProcess.ExitCode}).\n[STDOUT]\n{buildOutput}\n[STDERR]\n{buildError}";
-                    return (false, errorMsg);
-                }
-                return (true, "Build succeeded.");
-            }
+            if (string.IsNullOrEmpty(value) || value.Length <= maxChars)
+                return value;
+
+            return value.Substring(0, maxChars) + Environment.NewLine + $"[output truncated to {maxChars} chars]";
         }
 
-        private (int total, int passed, int failed, int skipped) ParseTestStatisticsUniversal(string output)
+        private static string Shorten(string value, int maxChars)
         {
-            int total = 0, passed = 0, failed = 0, skipped = 0;
+            if (string.IsNullOrEmpty(value) || value.Length <= maxChars)
+                return value;
 
-            var totalMatch = System.Text.RegularExpressions.Regex.Match(output, @"(?:Total tests:|total:)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.RightToLeft);
-            if (totalMatch.Success) int.TryParse(totalMatch.Groups[1].Value, out total);
-
-            var passedMatch = System.Text.RegularExpressions.Regex.Match(output, @"(?:Passed:|succeeded:)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.RightToLeft);
-            if (passedMatch.Success) int.TryParse(passedMatch.Groups[1].Value, out passed);
-
-            var failedMatch = System.Text.RegularExpressions.Regex.Match(output, @"(?:Failed:|failed:)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.RightToLeft);
-            if (failedMatch.Success) int.TryParse(failedMatch.Groups[1].Value, out failed);
-
-            var skippedMatch = System.Text.RegularExpressions.Regex.Match(output, @"(?:Skipped:|skipped:)\s*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.RightToLeft);
-            if (skippedMatch.Success) int.TryParse(skippedMatch.Groups[1].Value, out skipped);
-
-            if (total == 0 && (passed > 0 || failed > 0 || skipped > 0))
-                total = passed + failed + skipped;
-
-            return (total, passed, failed, skipped);
+            return value.Substring(0, maxChars) + "...";
         }
 
         private static RunProjectTestsResponse ErrorResponse(string message)
@@ -368,9 +257,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var fullOutput = false;
             if (parameters?.TryGetValue("include_full_output", out var fullObj) == true && fullObj is bool full)
                 fullOutput = full;
+            var restore = false;
+            if (parameters?.TryGetValue("restore", out var restoreObj) == true && restoreObj is bool restoreVal)
+                restore = restoreVal;
+            var filter = parameters?.TryGetValue("filter", out var f) == true ? f?.ToString() : null;
+
             var msg = $"Running tests for '{proj}'";
             if (fullOutput)
                 msg += " (full output enabled)";
+            if (restore)
+                msg += " (restore enabled)";
+            if (!string.IsNullOrWhiteSpace(filter))
+                msg += $", filter: '{filter}'";
             return msg + "... ";
         }
 
@@ -388,16 +286,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (resp.SkippedTests > 0)
                     parts.Add($"Skipped: {resp.SkippedTests}");
 
-                string stats = parts.Count > 0 ? string.Join(", ", parts) : "No test statistics available.";
-
-                if (resp.Success)
-                {
-                    return $"Tests passed. {stats}";
-                }
+                string stats;
+                if (parts.Count > 0)
+                    stats = string.Join(", ", parts);
+                else if (resp.Success)
+                    stats = "no tests executed";
                 else
-                {
-                    return $"Tests failed. {stats}";
-                }
+                    stats = string.IsNullOrWhiteSpace(resp.ErrorMessage)
+                        ? "no test statistics available"
+                        : Shorten(resp.ErrorMessage, CompletionErrorMaxChars);
+
+                return (resp.Success ? "Tests passed." : "Tests failed.") + " " + stats;
             }
             return "Test passed.";
         }
@@ -407,7 +306,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Runs tests for a .NET project. Returns only summary statistics and failure details (if any). Use 'include_full_output': true to get the complete console log.",
+                Description = "Runs tests for a .NET project in Debug configuration and returns summary statistics plus failure details (not the full log). Use 'include_full_output': true to get the complete console log, and 'filter' to run only tests whose name matches.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -418,10 +317,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             Type = "string",
                             Description = "Relative or absolute path to the .csproj file to test."
                         },
+                        ["filter"] = new ToolDetails
+                        {
+                            Type = "string",
+                            Description = "Optional test name substring. Only tests whose fully qualified name contains it are run (VSTest --filter / --TestCaseFilter)."
+                        },
                         ["include_full_output"] = new ToolDetails
                         {
                             Type = "boolean",
-                            Description = "If true, returns the full stdout/stderr log instead of just summary/failures."
+                            Description = "Defaults to false. If true, returns the full stdout/stderr log instead of just summary/failures."
+                        },
+                        ["restore"] = new ToolDetails
+                        {
+                            Type = "boolean",
+                            Description = "Defaults to false (uses --no-restore). If true, lets 'dotnet test'/'dotnet build' run NuGet restore implicitly (omit --no-restore). Use it when project.assets.json is missing or out of date."
                         }
                     },
                     Required = new List<string> { "project_path" }
@@ -438,7 +347,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("test_run_output")]
         public string TestRunOutput { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("total_tests")]

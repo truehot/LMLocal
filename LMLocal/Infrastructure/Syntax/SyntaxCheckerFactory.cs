@@ -19,11 +19,19 @@ namespace LMLocal.Infrastructure.Syntax
     {
         private readonly Dictionary<string, ISyntaxChecker> _map;
 
-        public SyntaxCheckerFactory(CSharpSyntaxChecker csChecker)
+        public SyntaxCheckerFactory(CSharpSyntaxChecker csChecker, VisualBasicSyntaxChecker vbChecker)
         {
+            var jsChecker = new JsSyntaxChecker(JsParseMode.Auto);
+            var mjsChecker = new JsSyntaxChecker(JsParseMode.ModuleOnly);
+            var cjsChecker = new JsSyntaxChecker(JsParseMode.ScriptOnly);
+
             _map = new Dictionary<string, ISyntaxChecker>(StringComparer.OrdinalIgnoreCase)
             {
                 [".cs"] = csChecker,
+                [".vb"] = vbChecker,
+                [".js"] = jsChecker,
+                [".mjs"] = mjsChecker,
+                [".cjs"] = cjsChecker
             };
         }
 

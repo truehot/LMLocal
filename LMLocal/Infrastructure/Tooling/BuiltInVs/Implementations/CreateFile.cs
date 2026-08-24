@@ -188,7 +188,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("created_successfully")]
         public bool CreatedSuccessfully { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]

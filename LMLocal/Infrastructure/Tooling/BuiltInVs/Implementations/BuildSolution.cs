@@ -10,6 +10,7 @@ using EnvDTE80;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
 
@@ -28,11 +29,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// Default cap (seconds) for waiting on a build result. Protects against hung builds / modal dialogs blocking the tool forever.
         /// </summary>
         private const int DefaultBuildTimeoutSeconds = 600;
-
-        /// <summary>
-        /// Grace period (ms) after BuildDone before reading the Error List, letting it settle.
-        /// </summary>
-        private const int ErrorListSettleDelayMs = 300;
 
         /// <summary>
         /// Initial wait (ms) before the first build-output stabilization poll.
@@ -55,9 +51,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int ErrorDetailTailLineCount = 10;
 
         /// <summary>
-        /// Conventional fallback configuration name when none can be resolved.
+        /// How many trailing lines of the build pane to read (single bounded COM read).
         /// </summary>
-        private const string FallbackConfigurationName = "Debug";
+        private const int BuildOutputTailLines = 300;
+
+        /// <summary>
+        /// Max number of error messages reported. Taken from the tail of the build output (most recent last).
+        /// </summary>
+        private const int MaxReportedErrors = 25;
+
 
         public BuildSolution(IVsDependencies vsDependencies)
         {
@@ -98,47 +100,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             string selectedProjectName = null;
             if (!string.IsNullOrWhiteSpace(projectName))
             {
-                var matches = FindProjects(dte.Solution, projectName);
+                var matches = ProjectFinder.FindByName(dte.Solution, projectName);
                 if (matches.Count == 0)
                     return ErrorResponse($"Project '{projectName}' not found in the open solution.", solutionName, solutionPath);
                 if (matches.Count > 1)
                 {
-                    var names = string.Join(", ", matches.Select(p => SafeProjectName(p, ProjectField.Name)));
+                    var names = string.Join(", ", matches.Select(p => ProjectFinder.SafeName(p, ProjectField.Name)));
                     return ErrorResponse($"Project name '{projectName}' is ambiguous. Matches: {names}", solutionName, solutionPath);
                 }
 
                 selectedProject = matches[0];
-                projectUniqueName = SafeProjectName(selectedProject, ProjectField.UniqueName);
-                selectedProjectName = SafeProjectName(selectedProject, ProjectField.Name);
+                projectUniqueName = ProjectFinder.SafeName(selectedProject, ProjectField.UniqueName);
+                selectedProjectName = ProjectFinder.SafeName(selectedProject, ProjectField.Name);
                 if (string.IsNullOrEmpty(projectUniqueName))
                     return ErrorResponse($"Project '{projectName}' has no buildable UniqueName.", solutionName, solutionPath);
-            }
-
-            int initialErrorCount = 0;
-            HashSet<string> preBuildErrorKeys = null;
-            try
-            {
-                if (dte?.ToolWindows?.ErrorList?.ErrorItems != null)
-                {
-                    initialErrorCount = dte.ToolWindows.ErrorList.ErrorItems.Count;
-                    preBuildErrorKeys = SnapshotErrorKeys(dte);
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"BuildSolution: Error List snapshot failed: {ex.Message}");
-            }
-
-            OutputWindowPane buildPane = null;
-            EditPoint buildStartPoint = null;
-            try
-            {
-                buildPane = LocateBuildPaneByName(dte);
-                buildStartPoint = buildPane?.TextDocument?.EndPoint?.CreateEditPoint();
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"BuildSolution: Could not capture build pane start: {ex.Message}");
             }
 
             var tcs = new TaskCompletionSource<bool>();
@@ -179,8 +154,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     else
                     {
-                        string configuration = ResolveBuildConfigurationName(dte);
-                        dte.Solution.SolutionBuild.BuildProject(configuration, projectUniqueName, false);
+                        string solutionConfiguration = dte.Solution.SolutionBuild.ActiveConfiguration?.Name;
+                        if (string.IsNullOrEmpty(solutionConfiguration))
+                            return ErrorResponse("No active solution configuration is available.", solutionName, solutionPath);
+
+                        dte.Solution.SolutionBuild.BuildProject(solutionConfiguration, projectUniqueName, false);
                     }
 
                     Task<bool> buildTask = tcs.Task;
@@ -208,11 +186,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     if (!buildSucceeded)
                     {
-                        string fullOutput = await StabilizeBuildOutputAsync(dte, ct, buildPane, buildStartPoint);
+                        string tailOutput = await StabilizeBuildOutputAsync(dte, ct);
 
-                        if (!string.IsNullOrEmpty(fullOutput))
+                        if (!string.IsNullOrEmpty(tailOutput))
                         {
-                            messages = await Task.Run(() => ParseBuildOutput(fullOutput), ct).ConfigureAwait(false);
+                            string section = TrimToLastBuildSection(tailOutput);
+                            messages = await Task.Run(() => ParseBuildOutput(section), ct).ConfigureAwait(false);
+
+                            if (messages.Count > MaxReportedErrors)
+                                messages.RemoveRange(MaxReportedErrors, messages.Count - MaxReportedErrors);
 
                             if (projectUniqueName != null)
                             {
@@ -222,13 +204,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             }
                         }
 
-                        await CollectErrorMessagesAsync(messages, ct, initialErrorCount, preBuildErrorKeys, projectUniqueName);
-
                         if (messages.Count == 0)
                         {
-                            if (!string.IsNullOrEmpty(fullOutput))
+                            if (!string.IsNullOrEmpty(tailOutput))
                             {
-                                var lines = fullOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                var lines = tailOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                                 int start = Math.Max(0, lines.Length - ErrorDetailTailLineCount);
                                 var tail = new string[Math.Min(ErrorDetailTailLineCount, lines.Length)];
                                 Array.Copy(lines, start, tail, 0, tail.Length);
@@ -267,339 +247,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        internal static string NormalizeProjectName(string name)
-        {
-            if (string.IsNullOrEmpty(name)) return name;
-            return name.Trim().Trim('"').Replace('/', '\\').TrimEnd('\\');
-        }
-
-        internal static bool IsProjectNameMatch(string candidateName, string candidateUniqueName, string candidateFullName, string searchName)
-        {
-            string normalizedSearch = NormalizeProjectName(searchName);
-            if (IsNameMatch(candidateName, normalizedSearch)) return true;
-            if (IsNameMatch(candidateUniqueName, normalizedSearch)) return true;
-            if (!string.IsNullOrEmpty(candidateFullName) &&
-                IsNameMatch(Path.GetFileName(candidateFullName), normalizedSearch))
-                return true;
-            return false;
-        }
-
-        private static bool IsNameMatch(string candidate, string normalizedSearch)
-        {
-            if (string.IsNullOrEmpty(candidate) || string.IsNullOrEmpty(normalizedSearch)) return false;
-            return string.Equals(NormalizeProjectName(candidate), normalizedSearch, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static List<Project> FindProjects(Solution solution, string searchName)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            var results = new List<Project>();
-            if (solution == null || string.IsNullOrWhiteSpace(searchName)) return results;
-
-            foreach (Project p in solution.Projects)
-            {
-                if (p == null) continue;
-                CollectProjectMatches(p, searchName, results);
-            }
-            return results;
-        }
-
-        private const string SolutionFolderKind = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";
-
-        private static void CollectProjectMatches(Project project, string searchName, List<Project> results)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (project == null) return;
-
-            string kind = SafeProjectName(project, ProjectField.Kind);
-            if (string.Equals(kind, SolutionFolderKind, StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    foreach (ProjectItem item in project.ProjectItems)
-                    {
-                        if (item?.SubProject == null) continue;
-                        CollectProjectMatches(item.SubProject, searchName, results);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Debug($"BuildSolution: Could not enumerate solution folder contents: {ex.Message}");
-                }
-                return;
-            }
-
-            if (IsProjectNameMatch(
-                    SafeProjectName(project, ProjectField.Name),
-                    SafeProjectName(project, ProjectField.UniqueName),
-                    SafeProjectName(project, ProjectField.FullName),
-                    searchName))
-            {
-                results.Add(project);
-            }
-        }
-
-        private enum ProjectField
-        {
-            Name,
-            UniqueName,
-            FullName,
-            Kind
-        }
-
-        private static string SafeProjectName(Project project, ProjectField field)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            try
-            {
-                switch (field)
-                {
-                    case ProjectField.Name: return project.Name;
-                    case ProjectField.UniqueName: return project.UniqueName;
-                    case ProjectField.FullName: return project.FullName;
-                    case ProjectField.Kind: return project.Kind;
-                    default: return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Debug($"BuildSolution: Could not read project field {field}: {ex.Message}");
-                return null;
-            }
-        }
-
-        private static string GetActiveConfigurationName(DTE2 dte)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            try
-            {
-                var config = dte?.Solution?.SolutionBuild?.ActiveConfiguration;
-                return string.IsNullOrEmpty(config?.Name) ? string.Empty : config.Name;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"BuildSolution: Could not read active configuration: {ex.Message}");
-                return string.Empty;
-            }
-        }
-
-        private static string ResolveBuildConfigurationName(DTE2 dte)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-
-            string active = GetActiveConfigurationName(dte);
-            if (!string.IsNullOrEmpty(active)) return active;
-
-            try
-            {
-                var configs = dte?.Solution?.SolutionBuild?.SolutionConfigurations;
-                if (configs != null)
-                {
-                    for (int i = 1; i <= configs.Count; i++)
-                    {
-                        var config = configs.Item(i);
-                        if (!string.IsNullOrEmpty(config?.Name))
-                            return config.Name;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"BuildSolution: Could not enumerate solution configurations: {ex.Message}");
-            }
-            return FallbackConfigurationName;
-        }
-
-        private async Task CollectErrorMessagesAsync(
-            List<BuildMessage> messages,
-            CancellationToken ct,
-            int initialErrorCount,
-            HashSet<string> preBuildErrorKeys,
-            string projectUniqueName = null)
-        {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
-            var dte = _vsDependencies.GetDTE();
-            if (dte?.ToolWindows?.ErrorList == null) return;
-
-            await Task.Delay(ErrorListSettleDelayMs, ct).ConfigureAwait(false);
-
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
-
-            var errorListMessages = new List<BuildMessage>();
-            ErrorItems errorItems = dte.ToolWindows.ErrorList.ErrorItems;
-            int count = errorItems.Count;
-
-            for (int i = 1; i <= count; i++)
-            {
-                ErrorItem item;
-                try
-                {
-                    item = errorItems.Item(i);
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"BuildSolution: Error item {i} unreadable: {ex.Message}");
-                    continue;
-                }
-                if (item == null) continue;
-
-                try
-                {
-                    if (item.ErrorLevel != EnvDTE80.vsBuildErrorLevel.vsBuildErrorLevelHigh)
-                        continue;
-
-                    if (projectUniqueName != null &&
-                        !string.IsNullOrEmpty(item.Project) &&
-                        !string.Equals(item.Project, projectUniqueName, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    string description = item.Description;
-                    if (string.IsNullOrEmpty(description)) continue;
-
-                    var buildMessage = new BuildMessage
-                    {
-                        File = item.FileName ?? string.Empty,
-                        Line = item.Line,
-                        Column = item.Column,
-                        Project = item.Project,
-                        Message = description
-                    };
-
-                    if (!ShouldIncludeError(initialErrorCount, count, preBuildErrorKeys, BuildMessageKey(buildMessage)))
-                        continue;
-
-                    errorListMessages.Add(buildMessage);
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"BuildSolution: Error item {i} failed to read: {ex.Message}");
-                }
-            }
-
-            if (errorListMessages.Count > 0)
-            {
-                await Task.Run(() => MergeMessages(messages, errorListMessages), ct).ConfigureAwait(false);
-            }
-        }
-
-        private static string BuildMessageKey(BuildMessage m)
-        {
-            string project = string.IsNullOrWhiteSpace(m.Project) ? string.Empty : NormalizeProjectName(m.Project);
-            return $"{project}|{m.File}|{m.Line}|{m.Message}";
-        }
-
-        /// <summary>
-        /// Collects the keys of all error-level entries currently visible in the Error List. 
-        /// </summary>
-        private static HashSet<string> SnapshotErrorKeys(DTE2 dte)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            try
-            {
-                ErrorItems items = dte?.ToolWindows?.ErrorList?.ErrorItems;
-                if (items == null) return keys;
-
-                int count = items.Count;
-                for (int i = 1; i <= count; i++)
-                {
-                    try
-                    {
-                        ErrorItem item = items.Item(i);
-                        if (item == null) continue;
-                        if (item.ErrorLevel != EnvDTE80.vsBuildErrorLevel.vsBuildErrorLevelHigh) continue;
-                        string description = item.Description;
-                        if (string.IsNullOrEmpty(description)) continue;
-                        keys.Add(BuildMessageKey(new BuildMessage
-                        {
-                            File = item.FileName ?? string.Empty,
-                            Line = item.Line,
-                            Project = item.Project,
-                            Message = description
-                        }));
-                    }
-                    catch (Exception ex)
-                    {
-                        InternalLogger.Debug($"BuildSolution: SnapshotErrorKeys: stale error entry {i} skipped: {ex.Message}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"BuildSolution: SnapshotErrorKeys failed: {ex.Message}");
-            }
-            return keys;
-        }
-
-        /// <summary>
-        /// Decides whether an Error List entry observed after the build belongs to this build or was already present before it.
-        /// </summary>
-        internal static bool ShouldIncludeError(int initialCount, int currentCount, HashSet<string> preBuildKeys, string key)
-        {
-
-            if (currentCount <= initialCount) return true;
-
-            return preBuildKeys == null || !preBuildKeys.Contains(key);
-        }
-
-        internal static void MergeMessages(List<BuildMessage> target, IEnumerable<BuildMessage> source)
-        {
-            if (target == null || source == null) return;
-
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var m in target)
-                if (m != null && !string.IsNullOrEmpty(m.Message))
-                    seen.Add(BuildMessageKey(m));
-
-            foreach (var m in source)
-            {
-                if (m == null || string.IsNullOrEmpty(m.Message)) continue;
-
-                if (!seen.Add(BuildMessageKey(m)))
-                    continue;
-
-                var existing = FindByBaseKey(target, m);
-                if (existing == null)
-                {
-                    target.Add(m);
-                    continue;
-                }
-
-                bool existingHasProject = !string.IsNullOrEmpty(existing.Project);
-                bool mHasProject = !string.IsNullOrEmpty(m.Project);
-
-                if (mHasProject && !existingHasProject)
-                {
-                    existing.Project = m.Project;
-                    existing.Column = m.Column;
-                    seen.Add(BuildMessageKey(existing));
-                    continue;
-                }
-
-                if (!mHasProject)
-                {
-                    continue;
-                }
-
-                target.Add(m);
-            }
-        }
-
-        private static string BaseKey(BuildMessage m) => $"{m.File}|{m.Line}|{m.Message}";
-
-        private static BuildMessage FindByBaseKey(List<BuildMessage> target, BuildMessage m)
-        {
-            string key = BaseKey(m);
-            foreach (var t in target)
-            {
-                if (t == null) continue;
-                if (string.Equals(BaseKey(t), key, StringComparison.OrdinalIgnoreCase))
-                    return t;
-            }
-            return null;
-        }
-
         private static readonly Regex _buildErrorRegex = new Regex(
             @"^(?:\d+>)?" +
             @"(?:(?<file>.+?)(?:\((?<line>\d+)(?:,(?<col>\d+))?\))?\s*:\s*)?" +
@@ -636,8 +283,41 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return messages;
         }
 
+        /// <summary>
+        /// Keeps only the lines belonging to the most recent build section.
+        /// </summary>
+        internal static string TrimToLastBuildSection(string output)
+        {
+            if (string.IsNullOrEmpty(output)) return output;
 
-        private static readonly string[] BuildPaneNames = { "Build", "Build Output" };
+            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            int summaryIndex = -1;
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                if (lines[i].IndexOf("==========", StringComparison.Ordinal) >= 0 &&
+                    lines[i].IndexOf("Build:", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    summaryIndex = i;
+                    break;
+                }
+            }
+            int upperExclusive = summaryIndex >= 0 ? summaryIndex : lines.Length;
+
+            int lowerInclusive = 0;
+            for (int i = upperExclusive - 1; i >= 0; i--)
+            {
+                if (lines[i].IndexOf("Build started", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    lowerInclusive = i + 1;
+                    break;
+                }
+            }
+
+            if (lowerInclusive >= upperExclusive) return output;
+            return string.Join(Environment.NewLine, lines, lowerInclusive, upperExclusive - lowerInclusive);
+        }
+
 
         private static readonly string[] BuildPaneContentMarkers = { "Build started", "==========", "Build FAILED", "Build succeeded" };
 
@@ -669,12 +349,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     string name = pane?.Name;
                     if (string.IsNullOrEmpty(name)) continue;
 
-                    foreach (var candidate in BuildPaneNames)
-                    {
-                        if (name.Equals(candidate, StringComparison.OrdinalIgnoreCase))
-                            return pane;
-                    }
-
                     if (name.IndexOf("build", StringComparison.OrdinalIgnoreCase) >= 0)
                         return pane;
                 }
@@ -699,13 +373,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 foreach (OutputWindowPane pane in dte.ToolWindows.OutputWindow.OutputWindowPanes)
                 {
                     if (pane?.TextDocument == null) continue;
-                    string text = ReadPane(pane);
+                    string text = ReadPaneTail(pane, BuildOutputTailLines);
                     if (text != null && BuildPaneContentMarkers.Any(text.Contains))
                         return pane;
                 }
 
                 var active = dte.ToolWindows.OutputWindow.ActivePane;
-                string probe = active?.TextDocument != null ? ReadPane(active) : null;
+                string probe = active?.TextDocument != null ? ReadPaneTail(active, BuildOutputTailLines) : null;
                 if (probe != null && BuildActivePaneMarkers.Any(probe.Contains))
                     return active;
 
@@ -727,48 +401,37 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 : new BuildPaneEnd(true, end.Line, end.LineLength);
         }
 
-        private static string ReadPane(OutputWindowPane pane)
+        /// <summary>
+        /// Reads at most the last <paramref name="maxLines"/> lines of the pane in a single COM call.
+        /// </summary>
+        private static string ReadPaneTail(OutputWindowPane pane, int maxLines)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            var doc = pane.TextDocument;
-            return doc?.StartPoint.CreateEditPoint().GetText(doc.EndPoint.CreateEditPoint());
-        }
-
-        private static string ReadPaneFrom(OutputWindowPane pane, EditPoint start)
-        {
-            ThreadHelper.ThrowIfNotOnUIThread();
-            if (start == null) return ReadPane(pane);
+            var doc = pane?.TextDocument;
+            if (doc == null) return null;
             try
             {
-                var doc = pane?.TextDocument;
-                if (doc == null) return null;
-
-                return start.GetText(doc.EndPoint.CreateEditPoint());
+                var end = doc.EndPoint.CreateEditPoint();
+                var start = doc.EndPoint.CreateEditPoint();
+                start.StartOfLine();
+                start.LineUp(maxLines);
+                return start.GetText(end);
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: ReadPaneFrom failed, falling back to full read: {ex.Message}");
-                try { return ReadPane(pane); }
-                catch (Exception ex2)
-                {
-                    InternalLogger.Warn($"BuildSolution: ReadPane failed: {ex2.Message}");
-                    return null;
-                }
+                InternalLogger.Warn($"BuildSolution: ReadPaneTail failed: {ex.Message}");
+                return null;
             }
         }
 
-        private async Task<string> StabilizeBuildOutputAsync(
-            DTE2 dte,
-            CancellationToken ct,
-            OutputWindowPane preBuildPane,
-            EditPoint buildStartPoint)
+        private async Task<string> StabilizeBuildOutputAsync(DTE2 dte, CancellationToken ct)
         {
             await Task.Delay(BuildOutputInitialDelayMs, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
 
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
 
-            var pane = preBuildPane ?? LocateBuildPane(dte);
+            var pane = LocateBuildPane(dte);
             if (pane?.TextDocument == null) return null;
 
             var previous = GetPaneEnd(pane);
@@ -783,10 +446,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var current = GetPaneEnd(pane);
                 if (!current.Found) continue;
                 if (current.Line == previous.Line && current.LineLength == previous.LineLength)
-                    return ReadPaneFrom(pane, buildStartPoint);
+                    return ReadPaneTail(pane, BuildOutputTailLines);
                 previous = current;
             }
-            return ReadPaneFrom(pane, buildStartPoint);
+            return ReadPaneTail(pane, BuildOutputTailLines);
         }
 
         private static BuildSolutionResponse ErrorResponse(string message, string solutionName = null, string solutionPath = null)
@@ -814,11 +477,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is BuildSolutionResponse resp)
             {
-                return resp.Success
-                    ? $"Build completed."
-                    : $"Build failed.";
+                if (resp.Success)
+                    return "Build completed.";
+
+                string firstLine = FirstLineOf(resp.ErrorMessage);
+                return string.IsNullOrWhiteSpace(firstLine)
+                    ? "Build failed."
+                    : $"Build failed. {firstLine}";
             }
             return "Build completed.";
+        }
+
+        private static string FirstLineOf(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            int index = text.IndexOfAny(new[] { '\r', '\n' });
+            return index < 0 ? text : text.Substring(0, index);
         }
 
         public ToolDefinition GetToolInfo()
@@ -826,7 +500,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Builds the currently opened VS solution asynchronously, or a single project when 'project_name' is specified. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. ",
+                Description = "Builds the currently opened VS solution asynchronously, or a single project when 'project_name' is specified. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -866,7 +540,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("project_unique_name")]
         public string ProjectUniqueName { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("build_messages")]

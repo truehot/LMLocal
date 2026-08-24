@@ -299,7 +299,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("file_path")]
         public string FilePath { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("lines_inserted")]

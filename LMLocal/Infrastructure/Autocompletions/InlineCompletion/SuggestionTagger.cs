@@ -105,13 +105,13 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
         }
 
-        private async Task<IAutocompletionsService> GetAutocompletionsServiceAsync()
+        private IAutocompletionsService GetAutocompletionsService()
         {
             if (_autocompletionsService != null)
                 return _autocompletionsService;
 
             if (!ServiceConfiguration.IsInitialized)
-                await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+                return null;
 
             _autocompletionsService = ServiceConfiguration.GetService<IAutocompletionsService>();
             return _autocompletionsService;
@@ -349,9 +349,9 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 
                 if (!_cache.TryGet(cacheKey, out string suggestion))
                 {
-                    var autocompletionsService = await GetAutocompletionsServiceAsync().ConfigureAwait(false);
-
+                    var autocompletionsService = GetAutocompletionsService();
                     if (autocompletionsService == null) return;
+
                     var parameters = new CompletionParameters
                     {
                         Prompt = prefix,

@@ -74,9 +74,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     + "spaces); all other lines must still match exactly. If that relaxed "
                     + "search finds exactly one location, it applies the change, auto-corrects "
                     + "the position if needed, and sets matched_ignoring_first_line_indent=true "
-                    + "in the response. If multiple relaxed matches are found, candidates are "
-                    + "returned. If no match is found at all, the error advises checking "
-                    + "leading whitespace and re-reading the file.",
+                    + "in the response, and the first line of new_lines is re-indented to "
+                    + "match the file's indentation. If multiple relaxed matches are found, "
+                    + "candidates are returned. If no match is found at all, the error advises "
+                    + "checking leading whitespace and re-reading the file.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -140,10 +141,23 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 bool autoCorrected = resolvedStartLine != startLine;
                 startLine = resolvedStartLine;
 
+                string matchedFirstLineIndent = matchedIgnoringIndent
+                    ? GetLeadingWhitespace(linesList[startLine - 1])
+                    : null;
+
+
                 string[] newLinesArray = null;
                 bool hasNewLines = !string.IsNullOrEmpty(newLinesText);
                 if (hasNewLines)
                     newLinesArray = SplitLines(newLinesText);
+
+                if (matchedIgnoringIndent && hasNewLines && newLinesArray.Length > 0)
+                {
+                    string firstLineContent = newLinesArray[0].TrimStart();
+                    if (firstLineContent.Length > 0)
+                        newLinesArray[0] = matchedFirstLineIndent + firstLineContent;
+                }
+
 
                 int removeStart = startLine - 1;
                 linesList.RemoveRange(removeStart, oldLinesCount);
@@ -353,6 +367,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return parts;
         }
 
+        /// <summary>
+        /// Returns the leading whitespace (spaces and tabs) of a line.
+        /// </summary>
+        private static string GetLeadingWhitespace(string line)
+        {
+            int i = 0;
+            while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+                i++;
+            return line.Substring(0, i);
+        }
+
+
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var filePath = parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "";
@@ -368,10 +394,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return "Replacing lines failed.";
 
                 string msg = "Lines replaced";
+                var notes = new List<string>();
                 if (response.AutoCorrected == true)
-                    msg += $" (auto-corrected from line {response.OriginalStartLine} to {response.AppliedStartLine})";
+                    notes.Add($"auto-corrected from line {response.OriginalStartLine} to {response.AppliedStartLine}");
                 if (response.MatchedIgnoringFirstLineIndent == true)
-                    msg += " (matched ignoring first-line indentation)";
+                    notes.Add("matched ignoring first-line indentation");
+                if (notes.Count > 0)
+                    msg += " (" + string.Join(", ", notes) + ")";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
                     msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
                 msg += ".";

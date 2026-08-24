@@ -8,7 +8,7 @@ public partial class AiToolsDropdownTests : AppTestBase
     private static Regex ActiveClass => ActiveClassRegex();
 
     private static readonly string[] ExpectedOptions =
-        { "No tools", "Read Only", "Read & Write" };
+        ["No tools", "Read Only", "Read & Write"];
 
     [Test]
     [Category("Input")]

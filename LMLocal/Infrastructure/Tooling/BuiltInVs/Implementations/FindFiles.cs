@@ -21,7 +21,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
         private readonly ISearchResultCache _searchCache;
-        private const int DefaultTake = 100;
+        private const int DefaultPageSize = 50;
+        private const int MaxPageSize = 500;
         private const int MaxFilesToScan = 1500;
 
         public string ToolName => "find_files";
@@ -42,7 +43,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Finds files by name within the current Visual Studio solution using case-insensitive matching. Supports wildcard '*' in any position: 'Program*' (starts with), '*Service' (ends with), 'Chat*Service' (starts with 'Chat' and ends with 'Service'). Use to locate files when you know part of the name. Results are paginated (100 files per page); if next_page_token is not null, call again with page_token set to that value to get the next page. Limited to scanning first 1500 files. Example: {\"file_name\":\"Chat*Service\",\"file_extension\":\".cs\"}.",
+                Description = "Finds files by name within the current Visual Studio solution using case-insensitive matching. Supports wildcard '*' in any position: 'Program*' (starts with), '*Service' (ends with), 'Chat*Service' (starts with 'Chat' and ends with 'Service'). Use to locate files when you know part of the name. Results are paginated. Limited to scanning first 1500 files.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -51,7 +52,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "file_name", new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'." } },
                         { "file_extension", new ToolDetails { Type = "string", Description = "Extension filter (e.g., '.cs'). If not specified or file_name='.', all extensions are searched." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter (substring match)." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } }
+                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } },
+                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of files to return per page. Default 50, max 500." } }
                     },
                     Required = new List<string> { "file_name" }
                 }
@@ -67,18 +69,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
-                var (fileName, fileExtension, projectFilter, pageToken, error) = ExtractAndValidateParameters(parameters);
+                var (fileName, fileExtension, projectFilter, pageToken, pageSize, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
                     return ErrorResponse(error);
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
-                int skip = pageNumber * DefaultTake;
+                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
+
+                int maxSafePage = (int.MaxValue - pageSize) / pageSize;
+                if (pageNumber > maxSafePage)
+                    pageNumber = maxSafePage;
+                int skip = pageNumber * pageSize;
 
                 string cacheKey = BuildCacheKey(fileName, fileExtension, projectFilter);
                 if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
                 {
-                    var page = cached.AllResults.Skip(skip).Take(DefaultTake).ToList();
-                    string nextToken = (skip + DefaultTake) < cached.AllResults.Count ? (pageNumber + 1).ToString() : null;
+                    var page = cached.AllResults.Skip(skip).Take(pageSize).ToList();
+                    string nextToken = (skip + pageSize) < cached.AllResults.Count ? (pageNumber + 1).ToString() : null;
                     return new FileSearchResultsResponse
                     {
                         Results = page,
@@ -115,8 +121,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     };
                     _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
-                    var page = cacheEntry.AllResults.Skip(skip).Take(DefaultTake).ToList();
-                    string nextToken = (skip + DefaultTake) < cacheEntry.AllResults.Count ? (pageNumber + 1).ToString() : null;
+                    var page = cacheEntry.AllResults.Skip(skip).Take(pageSize).ToList();
+                    string nextToken = (skip + pageSize) < cacheEntry.AllResults.Count ? (pageNumber + 1).ToString() : null;
                     return new FileSearchResultsResponse
                     {
                         Results = page,
@@ -184,20 +190,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return "File search finished.";
         }
 
-        private (string fileName, string fileExtension, string projectFilter, string pageToken, string error) ExtractAndValidateParameters(
+        private (string fileName, string fileExtension, string projectFilter, string pageToken, int pageSize, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, null, null, null, "Parameters cannot be null.");
+                return (null, null, null, null, DefaultPageSize, "Parameters cannot be null.");
             if (!parameters.TryGetValue("file_name", out object fileNameObj) || !(fileNameObj is string))
-                return (null, null, null, null, "Parameter 'file_name' is required and must be a string.");
+                return (null, null, null, null, DefaultPageSize, "Parameter 'file_name' is required and must be a string.");
 
             var fileName = (string)fileNameObj;
             var fileExtension = parameters.TryGetValue("file_extension", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
-            return (fileName, fileExtension, projectFilter, pageToken, null);
+            int pageSize = DefaultPageSize;
+            if (parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
+                pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+
+            return (fileName, fileExtension, projectFilter, pageToken, pageSize, null);
         }
 
         private static FileSearchResultsResponse ErrorResponse(string message)
@@ -224,7 +234,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("results")]
             public List<FileSearchResult> Results { get; set; }
 
-            [JsonProperty("next_page_token")]
+            [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
             public string NextPageToken { get; set; }
 
             [JsonProperty("total_files")]
@@ -233,7 +243,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("success")]
             public bool Success { get; set; }
 
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
         }
     }

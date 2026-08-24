@@ -90,14 +90,14 @@
         <Parent guid="guidLMLocalPackageCmdSet" id="MyMenuGroup" />
         <Icon guid="guidMyIconSet" id="iconLMLocal" />
         <Strings>
-          <ButtonText>LM Local Chat</ButtonText>
+          <ButtonText>LM Local</ButtonText>
         </Strings>
       </Button>
       <Button guid="guidLMLocalPackageCmdSet" id="cmdidMainWindowCommand" priority="0x0100" type="Button">
         <Parent guid="guidSHLMainMenu" id="IDG_VS_WNDO_OTRWNDWS1" />
         <Icon guid="guidMyIconSet" id="iconLMLocal" />
         <Strings>
-          <ButtonText>LM Local Chat</ButtonText>
+          <ButtonText>LM Local</ButtonText>
         </Strings>
       </Button>
 

@@ -26,7 +26,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         private Mock<ISettingsManager> CreateMockSettingsManager()
         {
             var mock = new Mock<ISettingsManager>();
-            mock.Setup(s => s.ApplicationName).Returns("LMLocalChat");
+            mock.Setup(s => s.ApplicationName).Returns("LMLocal");
             mock.Setup(s => s.LocalAppDataFolder).Returns("LMLocalChat");
             mock.Setup(s => s.ChatHistoryFolder).Returns("ChatHistory");
             mock.Setup(s => s.ChatHistoryFileLabel).Returns("chat_");

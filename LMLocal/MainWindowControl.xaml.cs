@@ -140,7 +140,7 @@ namespace LMLocal
             chatBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
 #endif
             chatBrowser.CoreWebView2.NavigationStarting += OnNavigationStarting;
-            chatBrowser.GotFocus += onGotFocus;
+            chatBrowser.GotFocus += OnGotFocus;
 
             // --- Navigate and wait for page load -----------------------------
             var navTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -203,7 +203,7 @@ namespace LMLocal
             }
         }
 
-        private void onGotFocus(object sender, RoutedEventArgs e)
+        private void OnGotFocus(object sender, RoutedEventArgs e)
         {
             if (chatBrowser?.CoreWebView2 != null && _webViewLazy.IsValueFactoryCompleted)
             {

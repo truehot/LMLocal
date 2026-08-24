@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -49,7 +50,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Retrieves navigation information for a C# symbol: all declaration sites (file path, line, column, full signature including parameters, modifiers, namespace) and optionally usages/references (file path, line, line text, symbol kind). Does NOT return method bodies, fields, properties, base classes, or dependencies — use inspect_type for structural analysis. Case‑insensitive, supports overloads/partials. Use optional file_path to limit search to a specific file. References limited to 5000, paginated by page size (default 50).",
+                Description = "Retrieves navigation information for a C# symbol: all declaration sites (file path, line, column, full signature including parameters, modifiers, namespace) and optionally usages/references (file path, line, line text, symbol kind). Does NOT return method bodies, fields, properties, base classes, or dependencies. Case‑insensitive, supports overloads/partials. Use optional file_path to limit search to a specific file. References limited to 5000, paginated by page size (default 50).",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -74,7 +75,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!string.IsNullOrEmpty(error))
                     return Error(error, symbolName);
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : pn;
+                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
+
+                int maxSafePage = (int.MaxValue - pageSize) / pageSize;
+                if (pageNumber > maxSafePage)
+                    pageNumber = maxSafePage;
                 int skip = pageNumber * pageSize;
 
                 string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences, pageSize);
@@ -102,21 +107,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!fullResult.Success)
                     return fullResult;
 
-                if (fullResult.Success)
+                var cacheEntry = new CachedToolResults<SymbolInfo>
                 {
-                    var cacheEntry = new CachedToolResults<SymbolInfo>
-                    {
-                        AllResults = new List<SymbolInfo> {
-                            new SymbolInfo {
-                                Definitions = fullResult.Definitions ?? new List<DefinitionItem>(),
-                                References = fullResult.References ?? new List<ReferenceItem>(),
-                                HasMoreResults = fullResult.HasMoreResults
-                            }
-                        },
-                        ItemsScanned = 1
-                    };
-                    _searchCache.Set(cacheKey, "", cacheEntry);
-                }
+                    AllResults = new List<SymbolInfo> {
+                        new SymbolInfo {
+                            Definitions = fullResult.Definitions ?? new List<DefinitionItem>(),
+                            References = fullResult.References ?? new List<ReferenceItem>(),
+                            HasMoreResults = fullResult.HasMoreResults
+                        }
+                    },
+                    ItemsScanned = 1
+                };
+                _searchCache.Set(cacheKey, "", cacheEntry);
 
                 var pagedRefsResult = fullResult.References?.Skip(skip).Take(pageSize).ToList() ?? new List<ReferenceItem>();
                 string nextTokenResult = (skip + pageSize) < (fullResult.References?.Count ?? 0) ? (pageNumber + 1).ToString() : null;
@@ -437,7 +439,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 includeReferences = includeBool;
 
             int pageSize = DefaultPageSize;
-            if (parameters.TryGetValue("max_references", out object maxObj) && int.TryParse(maxObj.ToString(), out int maxVal))
+            if (parameters.TryGetValue("max_references", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
                 pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
 
             string pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
@@ -461,9 +463,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!resp.Success)
                     return $"Failed: {resp.ErrorMessage}";
 
-                string msg = $"{resp.Definitions?.Count ?? 0} definition(s) found";
+                string msg = $"{resp.Definitions?.Count ?? 0} {Pluralizer.Pluralize(resp.Definitions?.Count ?? 0, "definition", "definitions")} found";
                 if (resp.References?.Count > 0)
-                    msg += $", {resp.TotalReferences} references";
+                    msg += $", {resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")}";
                 if (resp.HasMoreResults)
                     msg += " (more results exist, limit 5000 reached)";
                 return msg;
@@ -526,19 +528,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             [JsonProperty("success")]
             public bool Success { get; set; }
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
             [JsonProperty("symbol_name")]
             public string SymbolName { get; set; }
             [JsonProperty("definitions")]
             public List<DefinitionItem> Definitions { get; set; }
-            [JsonProperty("definition")]
+            [JsonProperty("definition", NullValueHandling = NullValueHandling.Ignore)]
             public DefinitionItem Definition => Definitions?.FirstOrDefault();
             [JsonProperty("references")]
             public List<ReferenceItem> References { get; set; }
             [JsonProperty("total_references")]
             public int TotalReferences { get; set; }
-            [JsonProperty("next_page_token")]
+            [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
             public string NextPageToken { get; set; }
             [JsonProperty("has_more_results")]
             public bool HasMoreResults { get; set; }

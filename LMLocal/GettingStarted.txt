@@ -1,7 +1,7 @@
-﻿LMLocal - Getting Started
+﻿LM Local - Getting Started
 
 1. Open Visual Studio.
-2. Open the "LM Local Chat" tool window using one of the following methods:
+2. Open the "LM Local" tool window using one of the following methods:
    - Method A: Open it directly from the top Extensions menu.
    - Method B: In the top menu, go to View ➔ hover over Other Windows ➔ click on LM Local Chat.
 3. Make sure your local backend (LM Studio, Ollama, or Jan) is running and a model is loaded.

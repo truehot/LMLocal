@@ -54,7 +54,7 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         response = await client.SendCommandAsync("RunTool|GetActiveDocument", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("file_path"), "Response should contain 'file_path' key");
@@ -89,7 +89,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue(obj.ContainsKey("results"), "Response should contain 'results' key");
                         var results = obj["results"] as JArray;
                         Assert.IsNotNull(results, "'results' should be an array");
-                        Assert.IsTrue(results.Count > 0, "Expected at least one search result for 'LMLocal'.");
+                        Assert.IsGreaterThan(0, results.Count, "Expected at least one search result for 'LMLocal'.");
                     }
                 }
                 finally
@@ -115,12 +115,12 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.AreEqual("OK", response);
 
                         // Wait a bit for solution to fully load
-                        await Task.Delay(2000);
+                        await Task.Delay(2000, TestContext.CancellationToken);
 
                         // Read first 5 lines of a known file inside the solution
                         response = await client.SendCommandAsync("RunTool|ReadFileLines|LMLocal\\LMLocalPackage.cs|1|5", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("file_path"), "Response should contain 'file_path' key");
@@ -132,7 +132,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         var text = obj["text"]?.ToString();
                         Assert.IsFalse(string.IsNullOrEmpty(text), "Expected non-empty text content");
                         Assert.AreEqual(1, (int)obj["start_line"], "start_line should be 1");
-                        Assert.IsTrue((int)obj["end_line"] >= 1, "end_line should be >= 1");
+                        Assert.IsGreaterThanOrEqualTo(1, (int)obj["end_line"], "end_line should be >= 1");
                     }
                 }
                 finally
@@ -158,18 +158,18 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.AreEqual("OK", response);
 
                         // Wait a bit for solution to fully load
-                        await Task.Delay(2000);
+                        await Task.Delay(2000, TestContext.CancellationToken);
 
                         response = await client.SendCommandAsync("RunTool|GetSolutionOverview", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("solution_name"), "Response should contain 'solution_name' key");
                         Assert.IsTrue(obj.ContainsKey("total_projects"), "Response should contain 'total_projects' key");
                         Assert.IsTrue(obj.ContainsKey("total_files"), "Response should contain 'total_files' key");
-                        Assert.IsTrue((int)obj["total_projects"] > 0, "Should have at least one project");
-                        Assert.IsTrue((int)obj["total_files"] > 0, "Should have at least one file");
+                        Assert.IsGreaterThan(0, (int)obj["total_projects"], "Should have at least one project");
+                        Assert.IsGreaterThan(0, (int)obj["total_files"], "Should have at least one file");
                     }
                 }
                 finally
@@ -195,19 +195,19 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.AreEqual("OK", response);
 
                         // Wait a bit for solution to fully load
-                        await Task.Delay(2000);
+                        await Task.Delay(2000, TestContext.CancellationToken);
 
                         // Search for a file that should exist in the solution
                         response = await client.SendCommandAsync("RunTool|FindFilesByName|Package|.cs", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON object, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("results"), "Response should contain 'results' key");
                         var results = obj["results"] as JArray;
                         Assert.IsNotNull(results, "'results' should be an array");
-                        Assert.IsTrue(results.Count > 0, "Expected at least one file matching 'Package'");
-                        Assert.IsTrue(results[0]["file_path"] != null, "Each result should have 'file_path' key");
+                        Assert.IsGreaterThan(0, results.Count, "Expected at least one file matching 'Package'");
+                        Assert.IsNotNull(results[0]["file_path"], "Each result should have 'file_path' key");
                     }
                 }
                 finally
@@ -232,11 +232,11 @@ namespace LMLocal.Tests.E2E.VSIX
                         string response = await client.SendCommandAsync($"OpenSolution|{solutionPath}", cts.Token);
                         Assert.AreEqual("OK", response);
 
-                        await Task.Delay(2000);
+                        await Task.Delay(2000, TestContext.CancellationToken);
 
                         response = await client.SendCommandAsync("RunTool|find_symbol_references|Dispose", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON object, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("symbol_name"), "Response should contain 'symbol_name' key");
@@ -248,9 +248,9 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         var results = obj["results"] as JArray;
                         Assert.IsNotNull(results, "'results' should be an array");
-                        Assert.IsTrue(results.Count > 0, "Expected at least one reference for 'Dispose'");
-                        Assert.IsTrue(results[0]["file_path"] != null, "Each result should have 'file_path' key");
-                        Assert.IsTrue(results[0]["matches"] != null, "Each result should have 'matches' key");
+                        Assert.IsGreaterThan(0, results.Count, "Expected at least one reference for 'Dispose'");
+                        Assert.IsNotNull(results[0]["file_path"], "Each result should have 'file_path' key");
+                        Assert.IsNotNull(results[0]["matches"], "Each result should have 'matches' key");
                     }
                 }
                 finally
@@ -276,12 +276,12 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.AreEqual("OK", response);
 
                         // Wait a bit for solution to fully load
-                        await Task.Delay(2000);
+                        await Task.Delay(2000, TestContext.CancellationToken);
 
                         // List the root directory of the solution
                         response = await client.SendCommandAsync("RunTool|ListDirectoryContents|.", cts.Token);
                         Assert.IsFalse(string.IsNullOrEmpty(response), "Response should not be empty");
-                        Assert.IsTrue(response.StartsWith("{"), $"Response should be JSON object, but got: {response}");
+                        Assert.StartsWith("{", response, $"Response should be JSON object, but got: {response}");
 
                         var obj = JObject.Parse(response);
                         Assert.IsTrue(obj.ContainsKey("directory"), "Response should contain 'directory' key");
@@ -290,10 +290,10 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         var entries = obj["entries"] as JArray;
                         Assert.IsNotNull(entries, "'entries' should be an array");
-                        Assert.IsTrue(entries.Count > 0, "Expected at least one entry in root directory");
-                        Assert.IsTrue(entries[0]["name"] != null, "Each entry should have 'name' key");
-                        Assert.IsTrue(entries[0]["path"] != null, "Each entry should have 'path' key");
-                        Assert.IsTrue(entries[0]["type"] != null, "Each entry should have 'type' key");
+                        Assert.IsGreaterThan(0, entries.Count, "Expected at least one entry in root directory");
+                        Assert.IsNotNull(entries[0]["name"], "Each entry should have 'name' key");
+                        Assert.IsNotNull(entries[0]["path"], "Each entry should have 'path' key");
+                        Assert.IsNotNull(entries[0]["type"], "Each entry should have 'type' key");
                     }
                 }
                 finally
@@ -328,5 +328,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 throw;
             }
         }
+
+        public TestContext TestContext { get; set; }
     }
 }

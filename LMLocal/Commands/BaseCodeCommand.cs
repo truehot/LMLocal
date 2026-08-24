@@ -103,6 +103,7 @@ namespace LMLocal.Commands
                             $"Failed to resolve instruction '{InstructionDisplayName}': {ex.Message}");
                     }
                 }
+                await _package.JoinableTaskFactory.SwitchToMainThreadAsync();
 
                 await CodeCommandHelper.InjectIntoChatAsync(
                     _package,

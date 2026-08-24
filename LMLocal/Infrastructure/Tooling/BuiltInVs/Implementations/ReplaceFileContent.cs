@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces the entire content of a file with new content. This is a full overwrite — the old content is completely replaced, not merged. After this operation, line numbers shift, so re-read the file if you need accurate line positions. Use for small files or when replacing the whole file is simpler than targeting specific lines. For partial edits, prefer replace_file_lines. Fails if the file does not exist. Path can be absolute or relative to solution root. Example: {\"file_path\":\"src/Config.cs\",\"new_content\":\"public static class Config { public const int Port = 8080; }\"}.",
+                Description = "Replaces the entire content of a file with new content. This is a full overwrite — the old content is completely replaced, not merged. After this operation, line numbers shift, so re-read the file if you need accurate line positions. Use for small files or when replacing the whole file is simpler than targeting specific lines. For partial edits, prefer replace_file_lines. Fails if the file does not exist. Path can be absolute or relative to solution root.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -176,7 +176,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("file_path")]
         public string FilePath { get; set; }
 
-        [JsonProperty("error_message")]
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]

@@ -21,6 +21,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.Autocompletions;
@@ -91,6 +92,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();
             services.AddTransient<IVsSolutionFilesScanner, VsSolutionFilesScanner>();
+            services.AddTransient<IJsConfigResolver, JsConfigResolver>();
 
             services.AddSingleton<IFileLockManager, FileLockManager>();
 
@@ -102,6 +104,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, CreateFile>();
             services.AddTransient<IBuiltInTool, DeleteFile>();
             services.AddTransient<IBuiltInTool, FindFiles>();
+            services.AddTransient<IBuiltInTool, GetSymbolInfoJs>();
             services.AddTransient<IBuiltInTool, GetSymbolInfo>();
             services.AddTransient<IBuiltInTool, InspectType>();
             services.AddTransient<IBuiltInTool, FormatDocument>();
@@ -120,9 +123,11 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
             services.AddSingleton<CSharpSyntaxChecker>();
+            services.AddSingleton<VisualBasicSyntaxChecker>();
             services.AddSingleton<ISyntaxCheckerFactory>(sp =>
                 new SyntaxCheckerFactory(
-                    sp.GetRequiredService<CSharpSyntaxChecker>()));
+                    sp.GetRequiredService<CSharpSyntaxChecker>(),
+                    sp.GetRequiredService<VisualBasicSyntaxChecker>()));
             services.AddSingleton<IX509CertificateLoader, X509CertificateLoader>();
             services.AddSingleton<IServerCertificateValidator, ServerCertificateValidator>();
             services.AddSingleton<ICertificatePathValidator, CertificatePathValidator>();

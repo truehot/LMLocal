@@ -27,7 +27,5 @@ namespace LMLocal.Infrastructure.Syntax
         /// Checks whether the given source code is syntactically valid.
         /// </summary>
         bool IsSyntaxValid(string sourceCode, out List<SyntaxError> errors);
-
-        bool IsSupported(string filePath);
     }
 }

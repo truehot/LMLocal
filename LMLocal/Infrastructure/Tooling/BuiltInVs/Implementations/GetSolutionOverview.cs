@@ -7,7 +7,6 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
-using static LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations.GetSolutionOverview;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -32,7 +31,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns a high-level summary of the current Visual Studio solution: name, path, project list (with language, file count, test project flag), solution folders, and total file count. Use as a first step to understand the codebase layout before diving into specific files. The projects array is limited to 200 entries; has_more_results=true means some projects were not included. Results are cached for performance — call once and refer to it. Example: (no parameters) → {\"success\":true,\"solution_name\":\"MyApp\",\"solution_path\":\"C:\\dev\\MyApp.sln\",\"total_projects\":4,\"total_files\":209,\"has_more_results\":false,\"projects\":[{\"name\":\"MyApp\",\"language\":\"C#\",\"path\":\"MyApp/MyApp.csproj\",\"file_count\":132,\"is_test_project\":false}],\"solution_folders\":[]}.",
+                Description = "Returns a high-level summary of the current Visual Studio solution: name, path, project list (with language, file count, test project flag), solution folders, and total file count. Use as a first step to understand the codebase layout before diving into specific files. The projects array is limited to 200 entries; has_more_results=true means some projects were not included. Results are cached for performance — call once and refer to it.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -52,7 +51,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     return Error("No solution is currently open");
                 }
-                
+
                 var overview = SolutionInspector.GetSolutionOverview(solution, maxProjects: 200);
 
                 var response = new SolutionOverviewResponse
@@ -145,7 +144,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("success")]
             public bool Success { get; set; }
 
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
         }
 

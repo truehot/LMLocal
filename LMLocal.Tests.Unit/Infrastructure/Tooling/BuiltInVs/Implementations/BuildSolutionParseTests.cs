@@ -1,5 +1,4 @@
-using System;
-using System.Collections.Generic;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using NUnit.Framework;
 
@@ -178,86 +177,40 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public void MergeMessages_RemovesDuplicates()
+        public void TrimToLastBuildSection_CutsPreviousBuildAndSummary()
         {
-            var target = new List<BuildMessage>
-            {
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first" }
-            };
-            var source = new List<BuildMessage>
-            {
-                // duplicate of existing (column differs -> still duplicate)
-                new BuildMessage { File = "a.cs", Line = 1, Column = 5, Message = "first" },
-                new BuildMessage { File = "b.cs", Line = 2, Column = 0, Message = "second" },
-                new BuildMessage { File = "c.cs", Line = 3, Column = 0, Message = string.Empty }
-            };
+            var output =
+                "1>old.cs(1,1): error CS1002: old\n" +
+                "========== Build: 0 succeeded, 1 failed ==========\n" +
+                "1>------ Build started: Project: A ------\n" +
+                "1>a.cs(5,2): error CS0103: new\n" +
+                "========== Build: 0 succeeded, 1 failed, 0 up-to-date, 0 skipped ==========";
 
-            BuildSolution.MergeMessages(target, source);
+            var result = BuildSolution.TrimToLastBuildSection(output);
 
-            Assert.That(target, Has.Count.EqualTo(2));
-            Assert.That(target[1].Message, Is.EqualTo("second"));
+            // Only the current build's body survives: previous build and both anchors are cut.
+            Assert.That(result, Is.EqualTo("1>a.cs(5,2): error CS0103: new"));
         }
 
         [Test]
-        public void MergeMessages_ProjectUpgrade_EnrichesExistingProjectLessEntry()
+        public void TrimToLastBuildSection_NoAnchors_ReturnsInput()
         {
-            var target = new List<BuildMessage>
-            {
-                // Error captured from the parse path: no project attribution.
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first" }
-            };
-            var source = new List<BuildMessage>
-            {
-                // Same error from the Error List, which knows the project.
-                new BuildMessage { File = "a.cs", Line = 1, Column = 7, Message = "first", Project = "MyApp" }
-            };
-
-            BuildSolution.MergeMessages(target, source);
-
-            Assert.That(target, Has.Count.EqualTo(1));
-            Assert.That(target[0].Project, Is.EqualTo("MyApp"));
-            // The richer column from the Error List entry wins.
-            Assert.That(target[0].Column, Is.EqualTo(7));
+            Assert.That(BuildSolution.TrimToLastBuildSection("just text"), Is.EqualTo("just text"));
+            Assert.That(BuildSolution.TrimToLastBuildSection(null), Is.Null);
+            Assert.That(BuildSolution.TrimToLastBuildSection(string.Empty), Is.Empty);
         }
 
         [Test]
-        public void MergeMessages_SameErrorFromDifferentProjects_KeepsBoth()
+        public void TrimToLastBuildSection_NoStartAnchor_KeepsPreSummaryContent()
         {
-            var target = new List<BuildMessage>
-            {
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first", Project = "ProjectA" }
-            };
-            var source = new List<BuildMessage>
-            {
-                // Same shared source file built into a second project.
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first", Project = "ProjectB" }
-            };
+            // Tail window cut off the "Build started" header: keep everything before the summary.
+            var result = BuildSolution.TrimToLastBuildSection(
+                "1>a.cs(1,1): error CS1002: x\n" +
+                "========== Build: 0 succeeded, 1 failed ==========");
 
-            BuildSolution.MergeMessages(target, source);
-
-            Assert.That(target, Has.Count.EqualTo(2));
-            Assert.That(target[1].Project, Is.EqualTo("ProjectB"));
+            Assert.That(result, Does.Contain("a.cs"));
+            Assert.That(result, Does.Not.Contain("========== Build:"));
         }
-
-        [Test]
-        public void MergeMessages_ProjectLessDuplicateWhenExistingHasProject_IsDropped()
-        {
-            var target = new List<BuildMessage>
-            {
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first", Project = "ProjectA" }
-            };
-            var source = new List<BuildMessage>
-            {
-                // Project-less duplicate of an entry that already has a project.
-                new BuildMessage { File = "a.cs", Line = 1, Column = 0, Message = "first" }
-            };
-
-            BuildSolution.MergeMessages(target, source);
-
-            Assert.That(target, Has.Count.EqualTo(1));
-            Assert.That(target[0].Project, Is.EqualTo("ProjectA"));
-        }
-
 
         [Test]
         public void IsProjectNameMatch_MatchesByNameUniqueNameAndFileName()
@@ -266,63 +219,25 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             const string uniqueName = @"MyApp\MyApp.csproj";
             const string fullName = @"C:\src\MyApp\MyApp.csproj";
 
-            Assert.That(BuildSolution.IsProjectNameMatch(name, uniqueName, fullName, "myapp"), Is.True);
-            Assert.That(BuildSolution.IsProjectNameMatch(name, uniqueName, fullName, "MyApp.csproj"), Is.True);
-            Assert.That(BuildSolution.IsProjectNameMatch(name, uniqueName, fullName, @"myapp/myapp.csproj"), Is.True);
-            Assert.That(BuildSolution.IsProjectNameMatch(name, uniqueName, fullName, "Other"), Is.False);
+            Assert.That(ProjectFinder.IsProjectNameMatch(name, uniqueName, fullName, "myapp"), Is.True);
+            Assert.That(ProjectFinder.IsProjectNameMatch(name, uniqueName, fullName, "MyApp.csproj"), Is.True);
+            Assert.That(ProjectFinder.IsProjectNameMatch(name, uniqueName, fullName, @"myapp/myapp.csproj"), Is.True);
+            Assert.That(ProjectFinder.IsProjectNameMatch(name, uniqueName, fullName, "Other"), Is.False);
         }
 
         [Test]
         public void IsProjectNameMatch_NullFields_DoesNotThrow()
         {
-            Assert.That(BuildSolution.IsProjectNameMatch(null, null, null, "MyApp"), Is.False);
-            Assert.That(BuildSolution.IsProjectNameMatch("MyApp", null, null, "MyApp"), Is.True);
+            Assert.That(ProjectFinder.IsProjectNameMatch(null, null, null, "MyApp"), Is.False);
+            Assert.That(ProjectFinder.IsProjectNameMatch("MyApp", null, null, "MyApp"), Is.True);
         }
 
         [Test]
         public void NormalizeProjectName_TrimsQuotesAndNormalizesSlashes()
         {
-            Assert.That(BuildSolution.NormalizeProjectName(@"""MyApp\MyApp.csproj"""), Is.EqualTo(@"MyApp\MyApp.csproj"));
-            Assert.That(BuildSolution.NormalizeProjectName("MyApp/MyApp.csproj"), Is.EqualTo(@"MyApp\MyApp.csproj"));
-            Assert.That(BuildSolution.NormalizeProjectName(null), Is.Null);
-        }
-
-        [Test]
-        public void ShouldIncludeError_ListGrew_ExcludesPreExistingKeys()
-        {
-            var preBuild = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "a.cs|1|old error",
-                "b.cs|2|another old error"
-            };
-
-            // Stale entry already on screen before the build -> excluded.
-            Assert.That(BuildSolution.ShouldIncludeError(2, 4, preBuild, "a.cs|1|old error"), Is.False);
-            // Brand new entry -> included even though the list grew.
-            Assert.That(BuildSolution.ShouldIncludeError(2, 4, preBuild, "c.cs|3|new error"), Is.True);
-        }
-
-        [Test]
-        public void ShouldIncludeError_ListReset_IncludesEverything()
-        {
-            var preBuild = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "a.cs|1|old error"
-            };
-
-            // List was cleared/replaced (count did not grow): the same key is
-            // relevant again for this build.
-            Assert.That(BuildSolution.ShouldIncludeError(2, 1, preBuild, "a.cs|1|old error"), Is.True);
-            Assert.That(BuildSolution.ShouldIncludeError(2, 2, preBuild, "a.cs|1|old error"), Is.True);
-            Assert.That(BuildSolution.ShouldIncludeError(0, 0, preBuild, "a.cs|1|old error"), Is.True);
-        }
-
-        [Test]
-        public void ShouldIncludeError_NoSnapshot_IncludesAll()
-        {
-            // When the pre-build snapshot is unavailable, never drop anything.
-            Assert.That(BuildSolution.ShouldIncludeError(2, 5, null, "anything"), Is.True);
+            Assert.That(ProjectFinder.NormalizeProjectName(@"""MyApp\MyApp.csproj"""), Is.EqualTo(@"MyApp\MyApp.csproj"));
+            Assert.That(ProjectFinder.NormalizeProjectName("MyApp/MyApp.csproj"), Is.EqualTo(@"MyApp\MyApp.csproj"));
+            Assert.That(ProjectFinder.NormalizeProjectName(null), Is.Null);
         }
     }
 }
-

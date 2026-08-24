@@ -64,6 +64,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 return await GetActiveDocumentInfoAsync(cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                return Error("Operation was cancelled.");
+            }
             catch (Exception ex)
             {
                 return new ActiveDocumentResponse
@@ -189,7 +193,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("success")]
             public bool Success { get; set; }
 
-            [JsonProperty("error_message")]
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
         }
     }
