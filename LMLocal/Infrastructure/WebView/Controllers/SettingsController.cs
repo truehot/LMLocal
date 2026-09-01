@@ -5,7 +5,7 @@ using LMLocal.Application.ModelsList;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.WebView.Models;
 using LMLocal.Models;
 
@@ -21,6 +21,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
         Task<string> TestConnectionAsync(string payload);
         Task<string> TestCertificateAsync(string payload);
         Task<bool> SetAiToolsAsync(string json);
+        Task<bool> SetSubAgentsAsync(string json);
     }
 
     [System.Runtime.InteropServices.ComVisible(true)]
@@ -93,6 +94,31 @@ namespace LMLocal.Infrastructure.WebView.Controllers
             catch (Exception ex)
             {
                 InternalLogger.Error("SetAiToolsAsync failed", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Updates only the Sub Agents setting (EnableSubAgents).
+        /// Expects JSON: { "enabled": true | false }.
+        /// </summary>
+        public async Task<bool> SetSubAgentsAsync(string json)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(json))
+                    return false;
+
+                var request = json.FromJson<SetSubAgentsRequest>();
+                if (request == null)
+                    return false;
+
+                await _settingsManager.SetSubAgentsEnabledAsync(request.Enabled).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("SetSubAgentsAsync failed", ex);
                 return false;
             }
         }

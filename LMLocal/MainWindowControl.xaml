@@ -8,9 +8,16 @@
              Background="{DynamicResource {x:Static vsshell:VsBrushes.WindowKey}}"
              Foreground="{DynamicResource {x:Static vsshell:VsBrushes.WindowTextKey}}"
              mc:Ignorable="d"
-             d:DesignHeight="300" d:DesignWidth="300"
-             Name="MyToolWindow">
-    <Grid Name="MainGrid">
-        <wv2:WebView2 Name="chatBrowser" DefaultBackgroundColor="#1e1e1e" />
-    </Grid>
+             AutomationProperties.Name="LM Local"
+             Focusable="True"
+             d:DesignHeight="600" d:DesignWidth="400"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch"
+             Loaded="OnControlLoaded">
+    <wv2:WebView2 x:Name="chatBrowser"
+                  DefaultBackgroundColor="#1e1e1e" />
 </UserControl>
+
+
+
+

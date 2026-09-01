@@ -71,6 +71,11 @@ namespace LMLocal.Core.Models
         public bool EnableAiWriteTools { get; set; } = false;
 
         /// <summary>
+        /// When true, the SubAgent feature is enabled.
+        /// </summary>
+        public bool EnableSubAgents { get; set; } = false;
+
+        /// <summary>
         /// When true, large code blocks are collapsed to limit height and keep chat history clean.
         /// </summary>
         public bool EnableCodeCollapse { get; set; } = false;
@@ -110,6 +115,7 @@ namespace LMLocal.Core.Models
                 && AutoLoadLastHistory == other.AutoLoadLastHistory
                 && EnableAiTools == other.EnableAiTools
                 && EnableAiWriteTools == other.EnableAiWriteTools
+                && EnableSubAgents == other.EnableSubAgents
                 && EnableCodeCollapse == other.EnableCodeCollapse
                 && CollapseToolCalls == other.CollapseToolCalls
                 && ShowTokenStats == other.ShowTokenStats
@@ -136,6 +142,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + AutoLoadLastHistory.GetHashCode();
                 hash = hash * 23 + EnableAiTools.GetHashCode();
                 hash = hash * 23 + EnableAiWriteTools.GetHashCode();
+                hash = hash * 23 + EnableSubAgents.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
                 hash = hash * 23 + ShowTokenStats.GetHashCode();

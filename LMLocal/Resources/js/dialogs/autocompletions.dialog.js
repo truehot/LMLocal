@@ -3,6 +3,7 @@ import { createCallback } from '@app/lib/callback.js';
 import { AsyncGuard } from '@app/lib/async.guard.js';
 import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
 import toast from '@app/lib/toast.js';
+import { escapeHtml } from '@app/lib/escape.js';
 
 export class AutocompletionsDialog {
     constructor() {
@@ -146,7 +147,7 @@ export class AutocompletionsDialog {
             console.error('Failed to load models:', err);
             if (!this.el || !this._guard.isCurrent(generation)) return;
             const c = this.el.modelsContainer;
-            if (c) c.innerHTML = `<div class="empty-placeholder"><span style="color:var(--danger-color);padding:20px;">Error: ${this._escapeHtml(err.message)}</span></div>`;
+            if (c) c.innerHTML = `<div class="empty-placeholder"><span style="color:var(--danger-color);padding:20px;">Error: ${escapeHtml(err.message)}</span></div>`;
             this._models = [];
         }
     }
@@ -195,21 +196,14 @@ export class AutocompletionsDialog {
                     badgeHtml = '<span class="model-status-badge status-unloaded">NOT LOADED</span>';
                 }
             }
-            return `<div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${this._escapeHtml(modelId)}">
+            return `<div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${escapeHtml(modelId)}">
                 <div class="model-card-header">
-                    <div class="model-name">${this._escapeHtml(modelName)}</div>
+                    <div class="model-name">${escapeHtml(modelName)}</div>
                     ${badgeHtml}
                 </div>
-                <div class="model-id">${this._escapeHtml(modelId)}</div>
+                <div class="model-id">${escapeHtml(modelId)}</div>
             </div>`;
         }).join('');
-    }
-
-    _escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     _resetTestButton() {

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.WebView;
 
@@ -24,7 +25,6 @@ namespace LMLocal.Application.ChatSession
 
         /// <summary>
         /// Attempts to stop the currently running session.
-        /// Returns true if a session was stopped, false if no session is running.
         /// </summary>
         bool TryStopSession();
 
@@ -38,15 +38,20 @@ namespace LMLocal.Application.ChatSession
     {
         private readonly IChatSessionOrchestrator _orchestrator;
         private readonly ISearchResultCache _searchCache;
+        private readonly ISubAgentsConfigManager _subAgentsConfigManager;
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
         private volatile bool _isSessionRunning = false;
 
         public bool IsSessionRunning => _isSessionRunning;
 
-        public SessionManager(IChatSessionOrchestrator orchestrator, ISearchResultCache searchCache)
+        public SessionManager(
+            IChatSessionOrchestrator orchestrator,
+            ISearchResultCache searchCache,
+            ISubAgentsConfigManager subAgentsConfigManager)
         {
             _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _subAgentsConfigManager = subAgentsConfigManager ?? throw new ArgumentNullException(nameof(subAgentsConfigManager));
         }
 
         public async Task<bool> TryStartSessionAsync(
@@ -71,6 +76,8 @@ namespace LMLocal.Application.ChatSession
                 _searchCache.Clear();
                 _isSessionRunning = true;
                 InternalLogger.Info("SessionManager: Starting new session");
+
+                await _subAgentsConfigManager.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
                 try
                 {

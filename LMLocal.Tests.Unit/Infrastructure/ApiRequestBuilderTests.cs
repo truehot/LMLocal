@@ -1,7 +1,7 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
@@ -12,20 +12,28 @@ namespace LMLocal.Tests.Unit.Infrastructure
     public class ApiRequestBuilderTests
     {
         private Mock<ISettingsManager> _mockSettings;
-        private Mock<ICompositeToolFactory> _mockToolFactory;
+        private Mock<IToolQueueProvider> _mockToolQueueProvider;
 
         [SetUp]
         public void SetUp()
         {
             _mockSettings = new Mock<ISettingsManager>();
             _mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            _mockToolFactory = new Mock<ICompositeToolFactory>();
+            _mockToolQueueProvider = new Mock<IToolQueueProvider>();
+            _mockToolQueueProvider
+                .Setup(p => p.GetMainQueue())
+                .Returns(ToolQueue.Main(new List<ToolDefinition>()));
+        }
+
+        private ApiRequestBuilder CreateBuilder()
+        {
+            return new ApiRequestBuilder(_mockSettings.Object, _mockToolQueueProvider.Object);
         }
 
         [Test]
         public void BuildRequest_NullMessageContext_Throws()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             Assert.That(
                 () => builder.BuildRequest(null, new ModelContext("m"), true),
@@ -35,7 +43,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildRequest_NullModelContext_Throws()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             Assert.That(
                 () => builder.BuildRequest(new MessageContext(new ChatMessage[0]), null, true),
@@ -45,7 +53,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildRequest_SetsModelFromContext()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
             var mc = new MessageContext(new ChatMessage[0]);
 
             var result = builder.BuildRequest(mc, new ModelContext("gemini-pro"), stream: false);
@@ -56,7 +64,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildRequest_CopiesMessages()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
             var mc = new MessageContext(new[]
             {
                 new ChatMessage("user", "hello"),
@@ -73,7 +81,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildRequest_Streaming_SetsStreamAndOptions()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             var result = builder.BuildRequest(
                 new MessageContext(new ChatMessage[0]),
@@ -88,7 +96,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildRequest_NonStreaming_NoStreamOptions()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             var result = builder.BuildRequest(
                 new MessageContext(new ChatMessage[0]),
@@ -102,7 +110,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void BuildRequest_ToolsDisabled_NoToolsInRequest()
         {
             _mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableAiTools = false });
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             var result = builder.BuildRequest(
                 new MessageContext(new ChatMessage[0]),
@@ -111,13 +119,14 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 useTools: true);
 
             Assert.That(result.Tools, Is.Null);
+            _mockToolQueueProvider.Verify(p => p.GetMainQueue(), Times.Never);
         }
 
         [Test]
         public void BuildRequest_UseToolsFalse_NoToolsEvenWhenEnabled()
         {
             _mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableAiTools = true });
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
 
             var result = builder.BuildRequest(
                 new MessageContext(new ChatMessage[0]),
@@ -126,12 +135,52 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 useTools: false);
 
             Assert.That(result.Tools, Is.Null);
+            _mockToolQueueProvider.Verify(p => p.GetMainQueue(), Times.Never);
+        }
+
+        [Test]
+        public void BuildRequest_MainQueueTools_AddedWhenEnabled()
+        {
+            _mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableAiTools = true });
+            _mockToolQueueProvider
+                .Setup(p => p.GetMainQueue())
+                .Returns(ToolQueue.Main(new List<ToolDefinition> { new ToolDefinition { Name = "read_file_lines" } }));
+            var builder = CreateBuilder();
+
+            var result = builder.BuildRequest(
+                new MessageContext(new ChatMessage[0]),
+                new ModelContext("m"),
+                stream: false,
+                useTools: true);
+
+            Assert.That(result.Tools, Is.Not.Null);
+            Assert.That(result.Tools.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BuildRequest_ExplicitTools_AddsTools()
+        {
+            var builder = CreateBuilder();
+            var tools = new List<ToolDefinition>
+            {
+                new ToolDefinition { Name = "read_file_lines" },
+                new ToolDefinition { Name = "search_file_content" }
+            };
+
+            var result = builder.BuildRequest(
+                new MessageContext(new ChatMessage[0]),
+                new ModelContext("m"),
+                stream: false,
+                tools);
+
+            Assert.That(result.Tools, Is.Not.Null);
+            Assert.That(result.Tools.Count, Is.EqualTo(2));
         }
 
         [Test]
         public void BuildRequest_ModelParameters_AreMapped()
         {
-            var builder = new ApiRequestBuilder(_mockSettings.Object, _mockToolFactory.Object);
+            var builder = CreateBuilder();
             var model = new ModelContext(
                 modelId: "m",
                 temperature: 0.7,

@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.ChatSession;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.WebView;
 using Moq;
@@ -18,13 +19,14 @@ namespace LMLocal.Tests.Unit.Internal
         {
             var orchestratorMock = new Mock<IChatSessionOrchestrator>();
             var cacheMock = new Mock<ISearchResultCache>();
+            var subAgentsConfigMock = new Mock<ISubAgentsConfigManager>();
 
             var tcs = new TaskCompletionSource<object>();
             // First call to GenerateWithToolsAsync will not complete until we set the TCS
             orchestratorMock.Setup(o => o.RunSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<System.Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
                 .Returns(() => tcs.Task);
 
-            var manager = new SessionManager(orchestratorMock.Object, cacheMock.Object);
+            var manager = new SessionManager(orchestratorMock.Object, cacheMock.Object, subAgentsConfigMock.Object);
 
             var ctx = new GenerateStreamContext { Prompt = "p", ModelId = "m" };
 

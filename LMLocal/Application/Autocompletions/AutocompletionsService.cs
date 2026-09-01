@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Autocompletions;
@@ -166,13 +167,14 @@ namespace LMLocal.Application.Autocompletions
 
                 var modelLower = modelId.ToLowerInvariant();
 
-                if (modelLower.Contains("qwen") || modelLower.Contains("codegemma")) return ("<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>");
+                if (modelLower.Contains("qwen") || modelLower.Contains("codegemma"))
+                    return ("<|fim_prefix|>", "<|fim_suffix|>", "<|fim_middle|>");
 
-                if (modelLower.Contains("starcoder") || modelLower.Contains("refact")) return ("<fim_prefix>", "<fim_suffix>", "<fim_middle>");
+                if (modelLower.Contains("starcoder") || modelLower.Contains("refact") || modelLower.Contains("stable-code"))
+                    return ("<fim_prefix>", "<fim_suffix>", "<fim_middle>");
 
-                if (modelLower.Contains("stable-code")) return ("<fim_prefix>", "<fim_suffix>", "<fim_middle>");
-
-                if (modelLower.Contains("deepseek")) return ("<｜fim▁begin｜>", "<｜fim▁hole｜>", "<｜fim▁end｜>");
+                if (modelLower.Contains("deepseek"))
+                    return ("<｜fim▁begin｜>", "<｜fim▁hole｜>", "<｜fim▁end｜>");
 
                 return GetDefaultTokens();
             }

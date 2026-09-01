@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,7 +6,8 @@ using LMLocal.Application.ModelsList;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Infrastructure.ModelsConfig;
 using Moq;
 using NUnit.Framework;
 
@@ -75,15 +76,27 @@ namespace LMLocal.Tests.Unit.Infrastructure
         private static ModelsListService CreateService(
             Mock<IOpenApiAdapter> adapter,
             string settingsBaseUrl = "http://localhost:1234",
-            string provider = null)
+            string provider = null,
+            int? providerId = null,
+            Mock<IModelsConfigManager> modelsConfigManager = null)
         {
             var settings = new Mock<ISettingsManager>();
             settings.Setup(s => s.Current).Returns(new AppSettings
             {
                 LmStudioBaseUrl = settingsBaseUrl,
-                Provider = provider
+                Provider = provider,
+                ProviderId = providerId
             });
-            return new ModelsListService(adapter.Object, settings.Object);
+
+            if (modelsConfigManager == null)
+            {
+                modelsConfigManager = new Mock<IModelsConfigManager>();
+                modelsConfigManager
+                    .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new ModelsConfigFile { Models = new System.Collections.Generic.List<ModelDefinition>() });
+            }
+
+            return new ModelsListService(adapter.Object, settings.Object, modelsConfigManager.Object);
         }
 
         private static Mock<IOpenApiAdapter> CreateAdapter(Func<string, string> responder)
@@ -240,5 +253,196 @@ namespace LMLocal.Tests.Unit.Infrastructure
             adapter.Verify(a => a.ListModelsRawAsync("/api/ps", settingsBaseUrl, null, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
             adapter.Verify(a => a.ListModelsRawAsync("/v1/models", settingsBaseUrl, null, It.IsAny<CancellationToken>(), It.IsAny<string>()), Times.Once);
         }
+
+        // =====================================================================
+        // Enrichment (models.config.json overrides) — ListModelsAsync
+        // =====================================================================
+
+        private static Mock<IModelsConfigManager> ConfigManagerWith(params ModelDefinition[] profiles)
+        {
+            var manager = new Mock<IModelsConfigManager>();
+            manager
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ModelsConfigFile { Models = profiles.ToList() });
+            return manager;
+        }
+
+        [Test]
+        public async Task ListModelsAsync_OverrideContextLength_WinsOverKnownModelContexts()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // gpt-4o
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 1,
+                ModelId = "gpt-4o",
+                ProviderType = "openai",
+                ContextLength = 123456
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Error, Is.Null);
+            var model = result.Models.First(m => m.Id == "gpt-4o");
+            Assert.That(model.MaxTokens, Is.EqualTo(123456));
+            Assert.That(model.SupportsMaxTokens, Is.True);
+        }
+
+        [Test]
+        public async Task ListModelsAsync_OverrideDisplayName_ChangesName()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // gpt-4o
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 1,
+                ModelId = "gpt-4o",
+                ProviderType = "openai",
+                DisplayName = "My GPT-4o"
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            var model = result.Models.First(m => m.Id == "gpt-4o");
+            Assert.That(model.Name, Is.EqualTo("My GPT-4o"));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_CustomModel_IsAppendedWhenMissing()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // only gpt-4o
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 2,
+                ModelId = "my-manual-model",
+                ProviderType = "openai",
+                DisplayName = "Manual Model",
+                ContextLength = 4096,
+                IsCustom = true
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Models.Any(m => m.Id == "my-manual-model"), Is.True);
+            var custom = result.Models.First(m => m.Id == "my-manual-model");
+            Assert.That(custom.Name, Is.EqualTo("Manual Model"));
+            Assert.That(custom.MaxTokens, Is.EqualTo(4096));
+            Assert.That(custom.SupportsMaxTokens, Is.True);
+        }
+
+        [Test]
+        public async Task ListModelsAsync_NonCustomProfile_DoesNotAppendUnknownModel()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // only gpt-4o
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 3,
+                ModelId = "unknown-model",
+                ProviderType = "openai",
+                IsCustom = false
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Models.Any(m => m.Id == "unknown-model"), Is.False);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_ProfileOfAnotherProviderType_IsIgnored()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // gpt-4o, provider=openai
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 4,
+                ModelId = "gpt-4o",
+                ProviderType = "ollama", // different provider
+                ContextLength = 999999
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            var model = result.Models.First(m => m.Id == "gpt-4o");
+            Assert.That(model.MaxTokens, Is.Not.EqualTo(999999));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_ProfileOfAnotherProviderId_IsIgnored()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // gpt-4o, provider=openai
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 5,
+                ModelId = "gpt-4o",
+                ProviderType = "openai",
+                ProviderId = 42, // current ProviderId is null
+                ContextLength = 888888
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            var model = result.Models.First(m => m.Id == "gpt-4o");
+            Assert.That(model.MaxTokens, Is.Not.EqualTo(888888));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_DisabledProfile_IsIgnored()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson); // gpt-4o
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 6,
+                ModelId = "gpt-4o",
+                ProviderType = "openai",
+                ContextLength = 777777,
+                Enabled = false
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            var model = result.Models.First(m => m.Id == "gpt-4o");
+            Assert.That(model.MaxTokens, Is.Not.EqualTo(777777));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_EmptyConfig_DoesNotChangeAnything()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson);
+            var manager = ConfigManagerWith();
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Models, Has.Count.EqualTo(1));
+            Assert.That(result.Models[0].Id, Is.EqualTo("gpt-4o"));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_ConfigManagerThrows_StillReturnsProviderModels()
+        {
+            var adapter = CreateAdapter(_ => OpenAiJson);
+            var manager = new Mock<IModelsConfigManager>();
+            manager
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("config error"));
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Models, Has.Count.EqualTo(1));
+            Assert.That(result.Models[0].Id, Is.EqualTo("gpt-4o"));
+        }
     }
 }
+
+
+
+
+
+
+

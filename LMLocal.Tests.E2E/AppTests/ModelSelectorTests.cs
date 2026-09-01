@@ -3,6 +3,9 @@ namespace LMLocal.Tests.E2E.AppTests;
 [TestFixture]
 public class ModelSelectorTests : AppTestBase
 {
+    // Expected recency order used by ModelSelector_DefaultOrder_ShowsRecentlyUsedFirst (CA1861).
+    private static readonly string[] RecentOrder = new[] { "model-zzz", "model-aaa" };
+
     [Test]
     [Category("ModelSelector")]
     public async Task Open_ModelSelector_IsVisibleAndShowsModels()
@@ -769,5 +772,122 @@ public class ModelSelectorTests : AppTestBase
         Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("OpenAI compatible"));
     }
 
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ModelSelector_DefaultOrder_ShowsRecentlyUsedFirst()
+    {
+        // Two models; alphabetical order differs from recency order.
+        await Page.AddInitScriptAsync(@"window.__mockModels = [
+                { id: 'model-aaa', name: 'A Model', isLoaded: true, supportsMaxTokens: false, maxTokens: 0 },
+                { id: 'model-zzz', name: 'Z Model', isLoaded: true, supportsMaxTokens: false, maxTokens: 0 }
+            ];
+            window.__mockRecentEntries = [
+                { providerType: 'lmstudio', providerId: null, modelId: 'model-zzz', modelName: 'Z Model', lastUsedUtc: '2026-01-15T12:34:56.1Z' },
+                { providerType: 'lmstudio', providerId: null, modelId: 'model-aaa', modelName: 'A Model', lastUsedUtc: '2026-01-10T09:00:00Z' }
+            ];");
+        await GotoWithMockAsync("webview-mock-recent-models.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#model-name").ClickAsync();
+        var dialog = Page.Locator("#model-selector-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(Page.Locator("#models-list-container .model-card")).ToHaveCountAsync(2);
+
+        var order = await Page.EvaluateAsync<string[]>(
+            "() => Array.from(document.querySelectorAll('#models-list-container .model-card')).map(c => c.getAttribute('data-model-id'))");
+        Assert.That(order, Is.EqualTo(RecentOrder),
+            "Recently used model must be first, not alphabetical");
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ModelSelector_SortButton_CyclesRecent_NameAsc_NameDesc()
+    {
+        await Page.AddInitScriptAsync(@"window.__mockModels = [
+                { id: 'model-aaa', name: 'A Model', isLoaded: true, supportsMaxTokens: false, maxTokens: 0 },
+                { id: 'model-zzz', name: 'Z Model', isLoaded: true, supportsMaxTokens: false, maxTokens: 0 }
+            ];
+            window.__mockRecentEntries = [
+                { providerType: 'lmstudio', providerId: null, modelId: 'model-zzz', modelName: 'Z Model', lastUsedUtc: '2026-01-15T12:34:56.1Z' },
+                { providerType: 'lmstudio', providerId: null, modelId: 'model-aaa', modelName: 'A Model', lastUsedUtc: '2026-01-10T09:00:00Z' }
+            ];");
+        await GotoWithMockAsync("webview-mock-recent-models.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#model-name").ClickAsync();
+        var dialog = Page.Locator("#model-selector-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(Page.Locator("#models-list-container .model-card")).ToHaveCountAsync(2);
+
+        var sortBtn = Page.Locator("#model-sort-btn");
+
+        // Default: recent first.
+        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+
+        // Click 1 -> Name A-Z.
+        await sortBtn.ClickAsync();
+        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-aaa"));
+        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name A-Z"));
+
+        // Click 2 -> Name Z-A.
+        await sortBtn.ClickAsync();
+        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name Z-A"));
+
+        // Click 3 -> back to recent.
+        await sortBtn.ClickAsync();
+        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+    }
+
+    [Test]
+    [Category("ModelSelector")]
+    public async Task ModelSelector_SelectModel_RecordsUsage()
+    {
+        await Page.AddInitScriptAsync(@"window.__mockSettings = { AutoLoadOnStartup: true, Provider: 'lmstudio', ProviderId: 3 };
+            window.__mockModels = [
+                { id: 'model-1', name: 'Model One', isLoaded: true, supportsMaxTokens: false, maxTokens: 0 }
+            ];");
+        await GotoWithMockAsync("webview-mock-recent-models.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Capture the RecordModelUsageAsync payload.
+        await Page.EvaluateAsync(@"() => {
+            window.__capturedUsage = null;
+            if (window.__recentModelsOverride && typeof window.__recentModelsOverride.RecordModelUsageAsync === 'function') {
+                const orig = window.__recentModelsOverride.RecordModelUsageAsync;
+                window.__recentModelsOverride.RecordModelUsageAsync = async (payload) => {
+                    window.__capturedUsage = JSON.parse(payload);
+                    return orig(payload);
+                };
+            }
+        }");
+
+        await Page.Locator("#model-name").ClickAsync();
+        var dialog = Page.Locator("#model-selector-dialog");
+        await Expect(dialog).ToBeVisibleAsync();
+        await Expect(Page.Locator("#models-list-container .model-card")).ToHaveCountAsync(1);
+
+        await Page.Locator("#models-list-container .model-card[data-model-id='model-1']").ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        // recordModelUsage is fire-and-forget; give it a moment.
+        await Page.WaitForFunctionAsync("() => window.__capturedUsage != null", new PageWaitForFunctionOptions { Timeout = 3000 });
+        var captured = await Page.EvaluateAsync<dynamic>("() => window.__capturedUsage");
+        Assert.That((string)captured.modelId, Is.EqualTo("model-1"));
+        Assert.That((string)captured.modelName, Is.EqualTo("Model One"));
+        Assert.That((string)captured.providerType, Is.EqualTo("lmstudio"));
+        Assert.That(captured.providerId, Is.EqualTo(3));
+    }
+
+
+    private async Task<string> FirstModelIdAsync() =>
+        await Page.EvaluateAsync<string>(
+            "() => { const c = document.querySelector('#models-list-container .model-card'); return c ? c.getAttribute('data-model-id') : null; }");
 
 }

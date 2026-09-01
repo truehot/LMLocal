@@ -3,16 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.WebView;
-using LMLocal.Services.Tool;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
-using Moq;
-using NUnit.Framework;
-using LMLocal.Core.Models;
-using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
+using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.Tool;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
+using LMLocal.Infrastructure.WebView;
+using Moq;
+using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Internal
 {

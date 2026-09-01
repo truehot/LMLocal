@@ -2,8 +2,9 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using NUnit.Framework;
+using LMLocal.Infrastructure.Settings;
 
 namespace LMLocal.Tests.Unit.Infrastructure
 {
@@ -176,6 +177,88 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 Assert.That(manager.Current.LmStudioBaseUrl, Is.EqualTo("http://a"));
                 Assert.That(manager.Current.EnableAiTools, Is.True);
             });
+        }
+
+        // =========================================================================
+        // SetSubAgentsEnabledAsync
+        // =========================================================================
+
+        [Test]
+        public async Task SetSubAgentsEnabledAsync_True_SetsFlagAndPersists()
+        {
+            var fs = new InMemoryFileSystem();
+            var path = "settings.json";
+            var manager = new SettingsManager(path, fs);
+            await manager.SaveAsync(new AppSettings { LmStudioBaseUrl = "http://x", EnableSubAgents = false });
+
+            await manager.SetSubAgentsEnabledAsync(true);
+
+            Assert.That(manager.Current.EnableSubAgents, Is.True);
+
+            var content = fs.ReadAllText(path);
+            Assert.That(content, Does.Contain("\"EnableSubAgents\": true"));
+        }
+
+        [Test]
+        public async Task SetSubAgentsEnabledAsync_False_ClearsFlag()
+        {
+            var manager = new SettingsManager("settings.json", new InMemoryFileSystem());
+            await manager.SaveAsync(new AppSettings { LmStudioBaseUrl = "http://x", EnableSubAgents = true });
+
+            await manager.SetSubAgentsEnabledAsync(false);
+
+            Assert.That(manager.Current.EnableSubAgents, Is.False);
+        }
+
+        [Test]
+        public async Task SetSubAgentsEnabledAsync_DoesNotMutateCachedInstance()
+        {
+            var manager = new SettingsManager("settings.json", new InMemoryFileSystem());
+            var original = new AppSettings { LmStudioBaseUrl = "http://x", EnableSubAgents = false };
+            await manager.SaveAsync(original);
+
+            var cachedBefore = manager.Current;
+            await manager.SetSubAgentsEnabledAsync(true);
+
+            Assert.That(ReferenceEquals(manager.Current, cachedBefore), Is.False, "A new instance should be saved.");
+            // The original cached instance must remain untouched.
+            Assert.That(original.EnableSubAgents, Is.False);
+        }
+
+        [Test]
+        public async Task SetSubAgentsEnabledAsync_LoadsWhenNotLoaded()
+        {
+            var fs = new InMemoryFileSystem();
+            var path = "settings.json";
+            var json = "{\"LmStudioBaseUrl\":\"http://a\",\"EnableSubAgents\":false}";
+            fs.WriteAllBytesAsync(path, Encoding.UTF8.GetBytes(json)).Wait();
+
+            var manager = new SettingsManager(path, fs);
+
+            await manager.SetSubAgentsEnabledAsync(true);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(manager.Current.LmStudioBaseUrl, Is.EqualTo("http://a"));
+                Assert.That(manager.Current.EnableSubAgents, Is.True);
+            });
+        }
+
+        [Test]
+        public async Task SetSubAgentsEnabledAsync_RaisesSettingsChanged()
+        {
+            var fs = new InMemoryFileSystem();
+            var path = "settings.json";
+            var manager = new SettingsManager(path, fs);
+            await manager.SaveAsync(new AppSettings { LmStudioBaseUrl = "http://x", EnableSubAgents = false });
+
+            AppSettings observed = null;
+            manager.SettingsChanged += s => observed = s;
+
+            await manager.SetSubAgentsEnabledAsync(true);
+
+            Assert.That(observed, Is.Not.Null, "Changing only EnableSubAgents must raise SettingsChanged.");
+            Assert.That(observed.EnableSubAgents, Is.True);
         }
 
 

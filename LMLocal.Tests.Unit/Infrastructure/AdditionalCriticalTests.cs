@@ -7,15 +7,15 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Application.Chat;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Autocompletions;
-using LMLocal.Core.Models;
+using LMLocal.Application.Chat;
 using LMLocal.Core.Exceptions;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
@@ -36,7 +36,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public void CreateDirectory(string path) { }
             public bool FileExists(string path) => _files.ContainsKey(N(path));
             public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_files[N(path)].Length, DateTime.MinValue);
-            public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]);
+            public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]).TrimStart('\uFEFF');
             public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
             public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
             {
@@ -282,7 +282,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public DummyClient(string r) { _r = r; }
             public Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken, string certificatePath = null) => Task.FromResult(string.Empty);
             public Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => throw new NotImplementedException();
+            public Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken) => throw new NotImplementedException();
             public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken) => Task.FromResult<SendChatResponse>(null);
+            public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken) => Task.FromResult<SendChatResponse>(null);
             public Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken) => Task.FromResult(string.Empty);
         }
 
@@ -306,10 +308,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var response = new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent(json) };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = new Mock<IToolQueueProvider>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var ex = Assert.ThrowsAsync<ApiException>(async () =>
                 await lm.ListModelsRawAsync("/v1/models", null, null, CancellationToken.None));
@@ -325,10 +327,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
             var client = new HttpClient(new DelayedHandler(response, 500));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = new Mock<IToolQueueProvider>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
             var cts = new CancellationTokenSource(50);
             Assert.ThrowsAsync<TaskCanceledException>(async () => await lm.SendChatAsync(new MessageContext(new List<ChatMessage>()), new ModelContext("test"), cts.Token));
         }

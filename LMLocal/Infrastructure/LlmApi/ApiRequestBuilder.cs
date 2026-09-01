@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Requests;
-using LMLocal.Infrastructure.Settings;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 
@@ -13,21 +13,25 @@ namespace LMLocal.Infrastructure.LlmApi
     internal interface IApiRequestBuilder
     {
         /// <summary>
-        /// Builds objects from message/model contexts.
+        /// Builds a request using the main chat tool queue.
         /// </summary>
         SendChatRequest BuildRequest(MessageContext messageContext, ModelContext modelContext, bool stream, bool useTools = true);
-    }
 
+        /// <summary>
+        /// Builds a request with an explicit tool set.
+        /// </summary>
+        SendChatRequest BuildRequest(MessageContext messageContext, ModelContext modelContext, bool stream, IReadOnlyList<ToolDefinition> tools);
+    }
 
     internal class ApiRequestBuilder : IApiRequestBuilder
     {
         private readonly ISettingsManager _settingsManager;
-        private readonly ICompositeToolFactory _toolFactory;
+        private readonly IToolQueueProvider _toolQueueProvider;
 
-        public ApiRequestBuilder(ISettingsManager settingsManager, ICompositeToolFactory toolFactory)
+        public ApiRequestBuilder(ISettingsManager settingsManager, IToolQueueProvider toolQueueProvider)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
-            _toolFactory = toolFactory ?? throw new ArgumentNullException(nameof(toolFactory));
+            _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
         }
 
         public SendChatRequest BuildRequest(MessageContext messageContext, ModelContext modelContext, bool stream, bool useTools = true)
@@ -35,6 +39,28 @@ namespace LMLocal.Infrastructure.LlmApi
             if (messageContext == null) throw new ArgumentNullException(nameof(messageContext));
             if (modelContext == null) throw new ArgumentNullException(nameof(modelContext));
 
+            var request = CreateRequest(messageContext, modelContext, stream);
+
+            if (_settingsManager.Current.EnableAiTools && useTools)
+            {
+                AddTools(request, _toolQueueProvider.GetMainQueue().Definitions);
+            }
+
+            return request;
+        }
+
+        public SendChatRequest BuildRequest(MessageContext messageContext, ModelContext modelContext, bool stream, IReadOnlyList<ToolDefinition> tools)
+        {
+            if (messageContext == null) throw new ArgumentNullException(nameof(messageContext));
+            if (modelContext == null) throw new ArgumentNullException(nameof(modelContext));
+
+            var request = CreateRequest(messageContext, modelContext, stream);
+            AddTools(request, tools);
+            return request;
+        }
+
+        private static SendChatRequest CreateRequest(MessageContext messageContext, ModelContext modelContext, bool stream)
+        {
             var messages = new List<Message>();
 
             foreach (var msg in messageContext.Input)
@@ -49,7 +75,7 @@ namespace LMLocal.Infrastructure.LlmApi
                 messages.Add(apiMessage);
             }
 
-            var request = new SendChatRequest
+            return new SendChatRequest
             {
                 Model = modelContext.ModelId,
                 Messages = messages,
@@ -62,27 +88,24 @@ namespace LMLocal.Infrastructure.LlmApi
                 ReasoningEffort = modelContext.Reasoning,
                 StreamOptions = stream ? new StreamOptions { IncludeUsage = stream } : null
             };
+        }
 
-            if (_settingsManager.Current.EnableAiTools && useTools)
+        private static void AddTools(SendChatRequest request, IReadOnlyList<ToolDefinition> tools)
+        {
+            if (tools == null || tools.Count == 0)
+                return;
+
+            try
             {
-                try
-                {
-                    var vsTools = _toolFactory.GetAllToolDefinitions();
-                    if (vsTools.Count > 0)
-                    {
-                        var openAiTools = ToolDefinitionConverter.ConvertToOpenAiFormat(vsTools);
-                        request.Tools = openAiTools;
-                        request.ToolChoice = "auto";
-                        request.ParallelToolCalls = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"ApiRequestBuilder: failed to add tools to request: {ex.Message}");
-                }
+                var openAiTools = ToolDefinitionConverter.ConvertToOpenAiFormat(tools);
+                request.Tools = openAiTools;
+                request.ToolChoice = "auto";
+                request.ParallelToolCalls = true;
             }
-
-            return request;
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"ApiRequestBuilder: failed to add tools to request: {ex.Message}");
+            }
         }
 
         private static List<ToolCall> ConvertToolCalls(object toolCalls)

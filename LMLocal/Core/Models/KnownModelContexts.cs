@@ -14,6 +14,8 @@ namespace LMLocal.Core.Models
             ["deepseek-v4"] = 1_048_576,
             ["deepseek-v4-pro"] = 1_048_576,
             ["deepseek-v4-flash"] = 1_048_576,
+            ["deepseek-ai/DeepSeek-V4-Flash"] = 1_048_576,
+            ["deepseek-ai/DeepSeek-V4-Pro"] = 1_048_576,
 
             // ========== Kimi (Moonshot AI, 2026) ==========
             ["kimi-k3"] = 1_048_576,
@@ -34,6 +36,8 @@ namespace LMLocal.Core.Models
             ["minimax-m2.5"] = 204_800,
             ["minimax-m2.5-highspeed"] = 204_800,
 
+            ["MiniMaxAI/MiniMax-M3"] = 1_000_000,
+
             // ========== Google Gemini (2026) ==========
             ["gemini-3.6-flash"] = 1_048_576,
             ["gemini-3.5-flash-cyber"] = 1_048_576,
@@ -49,6 +53,8 @@ namespace LMLocal.Core.Models
             ["glm-5"] = 200_000,
             ["glm-4.5"] = 128_000,
             ["glm-4.5-x"] = 128_000,
+
+            ["zai-org/GLM-5.3-Flash"] = 1_048_576,
 
             // ========== Gemma 4 (Google, 2026) ==========
             ["gemma-4-26b-a4b"] = 256_000,
@@ -73,17 +79,25 @@ namespace LMLocal.Core.Models
             ["nemotron-3-nano-30b"] = 256_000,
             ["nemotron-3-nano-omni-30b"] = 256_000,
 
-            // ========== Qwen 3.5 (Alibaba, 2026) ==========
+            // ========== Qwen (Alibaba, 2026) ==========
+            // 3.5
             ["qwen3.5-plus"] = 1_000_000,
             ["qwen3.5-flash"] = 1_000_000,
             ["qwen3.5-35b-a3b"] = 262_144,
             ["qwen3.5-2b"] = 262_144,
-
-            // ========== Qwen 3.6 (Alibaba, 2026) ==========
+            // 3.6
             ["qwen3.6-plus"] = 1_000_000,
             ["qwen3.6-flash"] = 1_000_000,
             ["qwen3.6-35b-a3b"] = 262_144,
             ["qwen3.6-27b"] = 262_144,
+            // 3.7 (added)
+            ["qwen3.7-plus"] = 1_000_000,
+            ["qwen3.7-flash"] = 1_000_000,
+            ["qwen3.7-35b-a3b"] = 262_144,
+            ["qwen3.7-27b"] = 262_144,
+            // 3.8 (from your entries)
+            ["Qwen/Qwen3.8-Flash"] = 1_000_000,
+            ["qwen3.8-flash"] = 1_000_000,   // canonical alias
 
             // ========== Additional 2026 models ==========
             ["mistral-large-3"] = 128_000,      // Mistral Large 3

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.ModelsList;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.WebView.Controllers;
 using Moq;
 using NUnit.Framework;
@@ -149,6 +149,80 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result, Is.False);
             _settingsManagerMock.Verify(
                 m => m.SetAiToolsModeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        // =========================================================================
+        // SetSubAgentsAsync
+        // =========================================================================
+
+        [Test]
+        public async Task SetSubAgentsAsync_True_ReturnsTrueAndDelegatesEnabled()
+        {
+            var json = "{\"enabled\":true}";
+            var result = await _controller.SetSubAgentsAsync(json);
+
+            Assert.That(result, Is.True);
+            _settingsManagerMock.Verify(
+                m => m.SetSubAgentsEnabledAsync(true, It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task SetSubAgentsAsync_False_ReturnsTrueAndDelegatesEnabled()
+        {
+            var json = "{\"enabled\":false}";
+            var result = await _controller.SetSubAgentsAsync(json);
+
+            Assert.That(result, Is.True);
+            _settingsManagerMock.Verify(
+                m => m.SetSubAgentsEnabledAsync(false, It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task SetSubAgentsAsync_WhenManagerThrows_ReturnsFalse()
+        {
+            _settingsManagerMock
+                .Setup(m => m.SetSubAgentsEnabledAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("disk failure"));
+
+            var json = "{\"enabled\":true}";
+            var result = await _controller.SetSubAgentsAsync(json);
+
+            Assert.That(result, Is.False);
+        }
+
+        [Test]
+        public async Task SetSubAgentsAsync_NullJson_ReturnsFalse()
+        {
+            var result = await _controller.SetSubAgentsAsync(null);
+
+            Assert.That(result, Is.False);
+            _settingsManagerMock.Verify(
+                m => m.SetSubAgentsEnabledAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SetSubAgentsAsync_EmptyJson_ReturnsFalse()
+        {
+            var result = await _controller.SetSubAgentsAsync("");
+
+            Assert.That(result, Is.False);
+            _settingsManagerMock.Verify(
+                m => m.SetSubAgentsEnabledAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task SetSubAgentsAsync_InvalidJson_ReturnsFalse()
+        {
+            var result = await _controller.SetSubAgentsAsync("{not valid}");
+
+            Assert.That(result, Is.False);
+            _settingsManagerMock.Verify(
+                m => m.SetSubAgentsEnabledAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
 

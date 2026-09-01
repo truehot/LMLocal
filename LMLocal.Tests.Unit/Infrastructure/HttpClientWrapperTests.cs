@@ -3,7 +3,7 @@ using System.Net.Http;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using Moq;
 using NUnit.Framework;
 

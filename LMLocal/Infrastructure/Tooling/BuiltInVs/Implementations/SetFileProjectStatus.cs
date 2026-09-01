@@ -4,11 +4,14 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
+using Microsoft.VisualStudio.Shell.Interop;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -118,6 +121,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     targetProject.ProjectItems.AddFromFile(absolutePath);
                     targetProject.Save();
+                    ReloadProjectQuietly(targetProject);
 
                     return new IncludeExcludeResponse
                     {
@@ -134,6 +138,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     item.Delete();
                     targetProject.Save();
+                    ReloadProjectQuietly(targetProject);
 
                     return new IncludeExcludeResponse
                     {
@@ -189,6 +194,32 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 catch { }
             }
             return null;
+        }
+
+        private void ReloadProjectQuietly(Project project)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (project == null)
+                return;
+
+            try
+            {
+                var solution = _vsDependencies.GetSolution();
+                if (!(solution is IVsSolution4 solution4))
+                    return;
+
+                if (solution.GetProjectOfUniqueName(project.UniqueName, out IVsHierarchy hierarchy) != VSConstants.S_OK || hierarchy == null)
+                    return;
+
+                if (solution.GetGuidOfProject(hierarchy, out Guid projectGuid) != VSConstants.S_OK)
+                    return;
+
+                solution4.ReloadProject(projectGuid);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SetFileProjectStatus: failed to reload project '{project.FullName}' after save: {ex.Message}");
+            }
         }
 
         private static IncludeExcludeResponse ErrorResponse(string message)

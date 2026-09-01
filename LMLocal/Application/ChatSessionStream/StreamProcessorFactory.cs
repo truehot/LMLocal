@@ -1,5 +1,5 @@
 using System.Threading;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Streaming;
 
 namespace LMLocal.Application.ChatSessionStream

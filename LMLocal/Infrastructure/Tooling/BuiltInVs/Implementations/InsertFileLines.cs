@@ -267,7 +267,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!response.Success)
                     return $"Inserting lines failed: {response.ErrorMessage}";
 
-                string msg = $"{response.LinesInserted} line(s) inserted";
+                string msg = $"{response.LinesInserted} {Pluralizer.Pluralize(response.LinesInserted, "line", "lines")} inserted";
                 if (response.AutoCorrected == true)
                     msg += $" (auto-corrected from position {response.OriginalPosition} to {response.AppliedPosition})";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)

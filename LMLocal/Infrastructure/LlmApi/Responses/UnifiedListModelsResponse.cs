@@ -94,5 +94,29 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
         /// </summary>
         [JsonProperty("sizeInBytes", NullValueHandling = NullValueHandling.Ignore)]
         public long? SizeInBytes { get; set; }
+
+        /// <summary>
+        /// Price per 1M input tokens in USD. Reported by providers like OpenRouter.
+        /// </summary>
+        [JsonProperty("inputPricePerMillion", NullValueHandling = NullValueHandling.Ignore)]
+        public decimal? InputPricePerMillion { get; set; }
+
+        /// <summary>
+        /// Price per 1M output tokens in USD. Reported by providers like OpenRouter.
+        /// </summary>
+        [JsonProperty("outputPricePerMillion", NullValueHandling = NullValueHandling.Ignore)]
+        public decimal? OutputPricePerMillion { get; set; }
+
+        /// <summary>
+        /// Price per 1M tokens read from provider cache in USD (if reported).
+        /// </summary>
+        [JsonProperty("cacheReadPricePerMillion", NullValueHandling = NullValueHandling.Ignore)]
+        public decimal? CacheReadPricePerMillion { get; set; }
+
+        /// <summary>
+        /// Price per 1M tokens written to provider cache in USD (if reported).
+        /// </summary>
+        [JsonProperty("cacheWritePricePerMillion", NullValueHandling = NullValueHandling.Ignore)]
+        public decimal? CacheWritePricePerMillion { get; set; }
     }
 }

@@ -1,14 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Responses;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.ModelsConfig;
 
 namespace LMLocal.Application.ModelsList
 {
@@ -25,13 +28,16 @@ namespace LMLocal.Application.ModelsList
     {
         private readonly IOpenApiAdapter _openApiAdapter;
         private readonly ISettingsManager _settingsManager;
+        private readonly IModelsConfigManager _modelsConfigManager;
 
         public ModelsListService(
             IOpenApiAdapter openApiAdapter,
-            ISettingsManager settingsManager)
+            ISettingsManager settingsManager,
+            IModelsConfigManager modelsConfigManager)
         {
             _openApiAdapter = openApiAdapter ?? throw new ArgumentNullException(nameof(openApiAdapter));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
+            _modelsConfigManager = modelsConfigManager ?? throw new ArgumentNullException(nameof(modelsConfigManager));
         }
 
         public async Task<UnifiedListModelsResponse> ListModelsAsync(string currentActiveModelId, CancellationToken cancellationToken)
@@ -58,6 +64,7 @@ namespace LMLocal.Application.ModelsList
                     response = ModelResponseConverter.ConvertToUnified(json, provider);
                 }
 
+                await ApplyModelOverridesAsync(response, providerName, _settingsManager.Current?.ProviderId, cancellationToken).ConfigureAwait(false);
                 ApplyCurrentActiveModel(response, currentActiveModelId);
                 return response;
             }
@@ -92,6 +99,80 @@ namespace LMLocal.Application.ModelsList
                 return url.TrimEnd('/');
             return "http://localhost:1234";
         }
+        /// <summary>
+        /// Applies user-defined model profiles (models.config.json) on top of the models reported
+        /// by the provider: overrides context length and display name, and appends custom models
+        /// that the provider does not serve. 
+        /// </summary>
+        private async Task ApplyModelOverridesAsync(
+            UnifiedListModelsResponse response,
+            string providerType,
+            int? providerId,
+            CancellationToken cancellationToken)
+        {
+            if (response == null || response.Models == null)
+                return;
+
+            ModelsConfigFile config;
+            try
+            {
+                config = await _modelsConfigManager.GetAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("ApplyModelOverridesAsync failed to load models config: " + ex.Message, ex);
+                return;
+            }
+
+            if (config == null || config.Models == null || config.Models.Count == 0)
+                return;
+
+            var profiles = config.Models
+                .Where(m => m != null
+                            && m.Enabled
+                            && !string.IsNullOrWhiteSpace(m.ModelId)
+                            && string.Equals(m.ProviderType, providerType, StringComparison.OrdinalIgnoreCase)
+                            && Nullable.Equals(m.ProviderId, providerId))
+                .ToList();
+
+            if (profiles.Count == 0)
+                return;
+
+            foreach (var profile in profiles)
+            {
+                var model = response.Models.FirstOrDefault(
+                    m => m != null && string.Equals(m.Id, profile.ModelId, StringComparison.Ordinal));
+
+                if (model == null)
+                {
+                    if (!profile.IsCustom)
+                        continue;
+
+                    response.Models.Add(new UnifiedModelInfo
+                    {
+                        Id = profile.ModelId,
+                        Name = profile.DisplayName,
+                        MaxTokens = profile.ContextLength,
+                        SupportsMaxTokens = profile.ContextLength.HasValue,
+                        IsLoaded = false
+                    });
+                    continue;
+                }
+
+                if (profile.ContextLength.HasValue && profile.ContextLength.Value > 0)
+                {
+                    model.MaxTokens = profile.ContextLength;
+                    model.SupportsMaxTokens = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(profile.DisplayName))
+                {
+                    model.Name = profile.DisplayName;
+                }
+            }
+        }
+
+
 
         private void ApplyCurrentActiveModel(UnifiedListModelsResponse response, string currentActiveModelId)
         {

@@ -2,7 +2,7 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using LMLocal.Infrastructure.Tooling.Mcp.Client;
 using LMLocal.Infrastructure.Tooling.Mcp.Models;

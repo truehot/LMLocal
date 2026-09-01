@@ -21,7 +21,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             var key = Normalize(path);
             if (!_files.TryGetValue(key, out var bytes)) throw new System.IO.FileNotFoundException();
-            return Encoding.UTF8.GetString(bytes);
+            return Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF');
         }
         public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default)
         {
@@ -180,7 +180,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void CreateDirectory(string path) { }
         public bool FileExists(string path) => _files.ContainsKey(N(path));
         public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_files[N(path)].Length, DateTime.MinValue);
-        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]);
+        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]).TrimStart('\uFEFF');
         public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
         public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
@@ -334,7 +334,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void CreateDirectory(string path) { }
         public bool FileExists(string path) => _d.ContainsKey(N(path));
         public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_d[N(path)].Length, DateTime.MinValue);
-        public string ReadAllText(string path) => Encoding.UTF8.GetString(_d[N(path)]);
+        public string ReadAllText(string path) => Encoding.UTF8.GetString(_d[N(path)]).TrimStart('\uFEFF');
         public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
         public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
@@ -493,7 +493,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void CreateDirectory(string path) { }
         public bool FileExists(string path) => _files.ContainsKey(N(path));
         public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_files[N(path)].Length, DateTime.MinValue);
-        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]);
+        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]).TrimStart('\uFEFF');
         public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
         public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {
@@ -643,7 +643,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         public void CreateDirectory(string path) { }
         public bool FileExists(string path) => _files.ContainsKey(N(path));
         public (long Length, DateTime LastWriteTimeUtc) GetFileInfo(string path) => (_files[N(path)].Length, DateTime.MinValue);
-        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]);
+        public string ReadAllText(string path) => Encoding.UTF8.GetString(_files[N(path)]).TrimStart('\uFEFF');
         public Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult(ReadAllText(path));
         public Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
         {

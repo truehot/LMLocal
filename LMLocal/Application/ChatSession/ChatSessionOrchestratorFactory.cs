@@ -3,7 +3,6 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.Tool;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
-using LMLocal.Services.Tool;
 
 namespace LMLocal.Application.ChatSession
 {

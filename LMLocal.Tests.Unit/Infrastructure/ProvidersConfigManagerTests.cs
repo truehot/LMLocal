@@ -7,7 +7,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Providers;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure
@@ -245,6 +245,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<AppSettings> LoadAsync(System.Threading.CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
             public Task SaveAsync(AppSettings settings, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task SetAiToolsModeAsync(string mode, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetSubAgentsEnabledAsync(bool enabled, System.Threading.CancellationToken cancellationToken = default) => Task.CompletedTask;
 #pragma warning disable 0067
             public event Action<AppSettings> SettingsChanged;
 #pragma warning restore 0067

@@ -56,5 +56,9 @@ export function createModelSelectorDialog(models, activeModel = null, supportsIs
         });
     });
 
+    dialog.onLoadRecentModels.on(async () => {
+        return await appDataService.getRecentModelsAsync();
+    });
+
     return dialog;
 }

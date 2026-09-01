@@ -132,6 +132,11 @@ class BridgeClient {
         return await this._callSettings("SetAiToolsAsync", payload);
     }
 
+    async setSubAgentsAsync(enabled) {
+        const payload = JSON.stringify({ enabled });
+        return await this._callSettings("SetSubAgentsAsync", payload);
+    }
+
     async testConnection(details) {
         const payload = JSON.stringify(details);
         const result = await this._callSettings("TestConnectionAsync", payload);
@@ -194,6 +199,28 @@ class BridgeClient {
         return await this._callProviders("UpdateProvidersAsync", payload);
     }
 
+    _getModelsConfigHost() {
+        return window.__modelsConfigOverride ?? window.chrome?.webview?.hostObjects?.modelsConfig;
+    }
+
+    async _callModelsConfig(method, ...args) {
+        const host = this._getModelsConfigHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`ModelsConfig method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
+    async getModelsConfigAsync() {
+        const res = await this._callModelsConfig("GetModelsConfigAsync");
+        return JSON.parse(res);
+    }
+
+    async updateModelsConfigAsync(modelsConfig) {
+        const payload = JSON.stringify(modelsConfig);
+        return await this._callModelsConfig("UpdateModelsConfigAsync", payload);
+    }
+
     _getToolsHost() {
         return window.__toolsOverride ?? window.chrome?.webview?.hostObjects?.tools;
     }
@@ -214,6 +241,29 @@ class BridgeClient {
     async updateToolsAsync(toolsConfig) {
         const payload = JSON.stringify(toolsConfig);
         return await this._callTools("UpdateToolsAsync", payload);
+    }
+
+    _getSubAgentsHost() {
+        return window.__subAgentsOverride ?? window.chrome?.webview?.hostObjects?.subAgents;
+    }
+
+    async _callSubAgents(method, ...args) {
+        const host = this._getSubAgentsHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`SubAgents method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
+    async getSubAgentsAsync() {
+        const res = await this._callSubAgents("GetSubAgentsAsync");
+        return JSON.parse(res);
+    }
+
+    async updateSubAgentsAsync(subAgentsConfig) {
+        const payload = JSON.stringify(subAgentsConfig);
+        const res = await this._callSubAgents("UpdateSubAgentsAsync", payload);
+        return JSON.parse(res);
     }
 
     async getSnapshotAsync() {
@@ -304,6 +354,27 @@ class BridgeClient {
     async testAutocompletionsCompletionAsync(providerType, baseUrl, apiKey, modelId) {
         const json = JSON.stringify({ providerType, baseUrl, apiKey, modelId });
         return await this._callAutocompletions("TestCompletionAsync", json);
+    }
+
+    _getRecentModelsHost() {
+        return window.__recentModelsOverride ?? window.chrome?.webview?.hostObjects?.recentModels;
+    }
+
+    async _callRecentModels(method, ...args) {
+        const host = this._getRecentModelsHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`RecentModels method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
+    async getRecentModelsAsync() {
+        const res = await this._callRecentModels("GetRecentModelsAsync");
+        return JSON.parse(res);
+    }
+
+    async recordModelUsageAsync(payload) {
+        return await this._callRecentModels("RecordModelUsageAsync", JSON.stringify(payload));
     }
 
 }

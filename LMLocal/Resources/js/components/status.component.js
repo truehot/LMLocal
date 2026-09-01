@@ -263,7 +263,8 @@ class StatusComponent {
         if (
             prevSettingsState &&
             settingsState.EnableAiTools === prevSettingsState.EnableAiTools &&
-            settingsState.EnableAiWriteTools === prevSettingsState.EnableAiWriteTools
+            settingsState.EnableAiWriteTools === prevSettingsState.EnableAiWriteTools &&
+            settingsState.EnableSubAgents === prevSettingsState.EnableSubAgents
         ) {
             return;
         }
@@ -272,11 +273,13 @@ class StatusComponent {
             ? (settingsState.EnableAiWriteTools ? 'readwrite' : 'readonly')
             : 'none';
 
+        const subAgentsSuffix = settingsState.EnableSubAgents ? ' + SubAgents' : '';
+
         let text = '';
         if (mode === 'readonly') {
-            text = 'Tools: Read';
+            text = `Tools: Read${subAgentsSuffix}`;
         } else if (mode === 'readwrite') {
-            text = 'Tools: Read & Write';
+            text = `Tools: Read & Write${subAgentsSuffix}`;
         }
         this.elements.toolsModeStatus.textContent = text;
     }

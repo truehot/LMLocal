@@ -1,18 +1,10 @@
 using System;
-using System.IO;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using LMLocal.Core.Common;
-using LMLocal.Infrastructure.DependencyInjection;
-using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
-using LMLocal.Infrastructure.Tooling.Mcp;
-using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
-using LMLocal.Infrastructure.WebView;
-using LMLocal.Infrastructure.WebView.Controllers;
+using LMLocal.Infrastructure.WebView.Initialization;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Microsoft.Web.WebView2.Core;
@@ -25,161 +17,21 @@ namespace LMLocal
     /// </summary>
     public partial class MainWindowControl : UserControl, IDisposable
     {
-        private static CoreWebView2Environment sharedEnvironment;
-        private static readonly SemaphoreSlim _envLock = new SemaphoreSlim(1, 1);
-
         private bool _disposed;
+        private readonly IWebViewInitializer _initializer;
         private readonly AsyncLazy<CoreWebView2> _webViewLazy;
         private readonly CancellationTokenSource _initCts = new CancellationTokenSource();
 
-        public MainWindowControl()
+        internal MainWindowControl(IWebViewInitializer initializer)
         {
             this.InitializeComponent();
-            this.Focusable = true;
+            _initializer = initializer ?? throw new ArgumentNullException(nameof(initializer));
 
-            _webViewLazy = new AsyncLazy<CoreWebView2>(
-                () => InitializeWebViewAsync(_initCts.Token),
-                ThreadHelper.JoinableTaskFactory);
-
-            this.Loaded += OnControlLoaded;
-        }
-
-        private async Task<CoreWebView2> InitializeWebViewAsync(CancellationToken ct)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            // --- Load settings & tools config ---------------------------------
-            var settingsManager = ServiceConfiguration.GetService<ISettingsManager>();
-            await settingsManager.LoadAsync();
-
-            var toolsConfigManager = ServiceConfiguration.GetService<IToolsConfigManager>();
-            await toolsConfigManager.LoadAsync();
-
-            // --- MCP background init (fire-and-forget with ct) ----------------
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var mcpToolManager = ServiceConfiguration.GetService<IMcpToolManager>();
-                    var configManager = ServiceConfiguration.GetService<IMcpConfigManager>();
-                    var config = await configManager.GetAsync(CancellationToken.None);
-                    if (config != null)
-                    {
-                        await mcpToolManager.RefreshServersAsync(config, CancellationToken.None);
-                    }
-                }
-                catch (OperationCanceledException) { /* Dispose */ }
-                catch (Exception ex)
-                {
-                    InternalLogger.Warn($"MCP background init failed: {ex.Message}");
-                }
-            }, ct);
-
-            var webViewBridgeFactory = ServiceConfiguration.GetService<IWebViewBridgeFactory>();
-
-            // --- Switch to UI thread (WebView2 requires it) -------------------
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-            ct.ThrowIfCancellationRequested();
-
-            // --- Shared WebView2 environment ---------------------------------
-            await _envLock.WaitAsync();
-            try
-            {
-                if (sharedEnvironment == null)
-                {
-                    string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                    string userDataFolder = Path.Combine(localAppData, settingsManager.LocalAppDataFolder, settingsManager.WebViewUserDataFolder);
-                    Directory.CreateDirectory(userDataFolder);
-                    sharedEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-                }
-            }
-            finally
-            {
-                _envLock.Release();
-            }
-
-            ct.ThrowIfCancellationRequested();
-            await chatBrowser.EnsureCoreWebView2Async(sharedEnvironment);
-
-            // --- Configure CoreWebView2 --------------------------------------
-            string assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string resourcesPath = Path.Combine(assemblyDir, "Resources");
-            chatBrowser.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                settingsManager.VirtualHostName,
-                resourcesPath,
-                CoreWebView2HostResourceAccessKind.Allow
-            );
-
-            var bridge = webViewBridgeFactory.CreateBridge(chatBrowser.CoreWebView2);
-            chatBrowser.CoreWebView2.AddHostObjectToScript("bridge", bridge);
-
-            var hostController = ServiceConfiguration.GetService<IWebViewHostController>();
-            hostController.ConfigureFocus(async () =>
-            {
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
-                chatBrowser.Focus();
-                await chatBrowser.CoreWebView2.ExecuteScriptAsync("window.lmApi?.focusInput();");
-            });
-            chatBrowser.CoreWebView2.AddHostObjectToScript("host", hostController);
-
-            chatBrowser.CoreWebView2.AddHostObjectToScript("instructions", ServiceConfiguration.GetService<IInstructionsController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("providers", ServiceConfiguration.GetService<IProvidersController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("tools", ServiceConfiguration.GetService<IToolsController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("settings", ServiceConfiguration.GetService<ISettingsController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("mcp", ServiceConfiguration.GetService<IMcpController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("models", ServiceConfiguration.GetService<IModelsController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("autocompletions", ServiceConfiguration.GetService<IAutocompletionsController>());
-            chatBrowser.CoreWebView2.AddHostObjectToScript("chatSession", ServiceConfiguration.GetService<IChatSessionController>());
-
-            chatBrowser.HorizontalAlignment = HorizontalAlignment.Stretch;
-            chatBrowser.VerticalAlignment = VerticalAlignment.Stretch;
-
-#if !DEBUG
-            chatBrowser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            chatBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-#endif
-            chatBrowser.CoreWebView2.NavigationStarting += OnNavigationStarting;
             chatBrowser.GotFocus += OnGotFocus;
 
-            // --- Navigate and wait for page load -----------------------------
-            var navTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void OnNavCompleted(object s, CoreWebView2NavigationCompletedEventArgs e)
-            {
-                chatBrowser.CoreWebView2.NavigationCompleted -= OnNavCompleted;
-                if (e.IsSuccess)
-                {
-                    try { _ = chatBrowser.CoreWebView2.ExecuteScriptAsync("window.lmInit()"); }
-                    catch (Exception ex) { InternalLogger.Warn($"lmInit script failed: {ex.Message}"); }
-                }
-                navTcs.TrySetResult(e.IsSuccess);
-            }
-
-            chatBrowser.CoreWebView2.NavigationCompleted += OnNavCompleted;
-
-            // Cleanup the handler if cancellation is requested while waiting.
-            CancellationTokenRegistration ctReg = ct.Register(() =>
-            {
-                chatBrowser.CoreWebView2.NavigationCompleted -= OnNavCompleted;
-                navTcs.TrySetCanceled();
-            });
-
-            try
-            {
-                ct.ThrowIfCancellationRequested();
-                string html = await GetHtmlFromResourceAsync(settingsManager.HtmlResourcePath).ConfigureAwait(false);
-                chatBrowser.NavigateToString(html);
-
-                if (!await navTcs.Task)
-                    throw new InvalidOperationException("WebView2 navigation failed");
-            }
-            finally
-            {
-                ctReg.Dispose();
-            }
-
-            return chatBrowser.CoreWebView2;
+            _webViewLazy = new AsyncLazy<CoreWebView2>(
+                () => _initializer.InitializeAsync(chatBrowser, _initCts.Token),
+                ThreadHelper.JoinableTaskFactory);
         }
 
         private void OnControlLoaded(object sender, RoutedEventArgs e)
@@ -197,6 +49,10 @@ namespace LMLocal
             {
                 InternalLogger.Info("Dispose was called before the page finished loading.");
             }
+            catch (ObjectDisposedException ex)
+            {
+                InternalLogger.Info($"WebView2 control was disposed before the page finished loading: {ex.Message}");
+            }
             catch (Exception ex)
             {
                 InternalLogger.Error("WebView2 initialization failed.", ex);
@@ -211,23 +67,6 @@ namespace LMLocal
             }
         }
 
-        private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
-        {
-            if (e.NavigationKind != CoreWebView2NavigationKind.NewDocument)
-            {
-                e.Cancel = true;
-            }
-        }
-
-        private async Task<string> GetHtmlFromResourceAsync(string resourceName)
-        {
-            var uri = new Uri($"/{Assembly.GetExecutingAssembly().GetName().Name};component/{resourceName}", UriKind.Relative);
-            var streamInfo = System.Windows.Application.GetResourceStream(uri) ?? throw new InvalidOperationException("Resource not found: " + resourceName);
-            using (var reader = new StreamReader(streamInfo.Stream))
-            {
-                return await reader.ReadToEndAsync();
-            }
-        }
         public void SendKeyToWebView(int keyCode, bool shift)
         {
             if (chatBrowser?.CoreWebView2 == null)
@@ -260,6 +99,16 @@ namespace LMLocal
             {
                 core = await _webViewLazy.GetValueAsync(_initCts.Token);
             }
+            catch (OperationCanceledException)
+            {
+                InternalLogger.Info("InjectTextIntoInputAsync skipped: the window is closing/disposed.");
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                InternalLogger.Info("InjectTextIntoInputAsync skipped: the window is closing/disposed.");
+                return;
+            }
             catch (Exception ex)
             {
                 InternalLogger.Error("WebView2 initialization failed.", ex);
@@ -280,6 +129,16 @@ namespace LMLocal
             try
             {
                 core = await _webViewLazy.GetValueAsync(_initCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                InternalLogger.Info("InjectTextAndSendAsync skipped: the window is closing/disposed.");
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                InternalLogger.Info("InjectTextAndSendAsync skipped: the window is closing/disposed.");
+                return;
             }
             catch (Exception ex)
             {
@@ -303,23 +162,74 @@ namespace LMLocal
 
             _disposed = true;
             this.Loaded -= OnControlLoaded;
+            chatBrowser.GotFocus -= OnGotFocus;
 
-            try { _initCts?.Cancel(); } catch (ObjectDisposedException) { }
+            try { _initCts?.Cancel(); }
+            catch (ObjectDisposedException ex)
+            {
+                InternalLogger.Info($"WebView2 init token already disposed during window dispose: {ex.Message}");
+            }
 
             _initCts?.Dispose();
 
-            if (chatBrowser != null)
+            if (chatBrowser == null)
             {
-                try
-                {
-                    chatBrowser.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    InternalLogger.Error("Failed to dispose WebView2 control.", ex);
-                }
+                GC.SuppressFinalize(this);
+                return;
             }
+
+            if (_webViewLazy.IsValueFactoryCompleted)
+            {
+                DisposeWebView();
+            }
+            else
+            {
+                InternalLogger.Info("WebView2 initialization not completed; control will be disposed after it settles.");
+                _ = DisposeWebViewAfterInitSettlesAsync();
+            }
+
             GC.SuppressFinalize(this);
+        }
+
+        private void DisposeWebView()
+        {
+            if (chatBrowser == null)
+                return;
+
+            try
+            {
+                chatBrowser.Dispose();
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("Failed to dispose WebView2 control.", ex);
+            }
+        }
+
+        private async Task DisposeWebViewAfterInitSettlesAsync()
+        {
+            try
+            {
+                await _webViewLazy.GetValueAsync(CancellationToken.None);
+            }
+            catch (OperationCanceledException)
+            {
+                InternalLogger.Info("WebView2 init settled with cancellation; disposing control.");
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Info($"WebView2 init settled with an error while disposing; disposing control anyway: {ex.Message}");
+            }
+
+            try
+            {
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+                DisposeWebView();
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("Failed to dispose WebView2 control.", ex);
+            }
         }
     }
 }

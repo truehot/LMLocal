@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Api;
 

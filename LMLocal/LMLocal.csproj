@@ -69,13 +69,20 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Application\Abstractions\Ports\IToolRouter.cs" />
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
+    <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
     <Compile Include="Application\Chat\ChatSessionSummary.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
     <Compile Include="Application\ModelsList\TestConnectionResult.cs" />
     <Compile Include="Application\ModelsList\TestConnectionService.cs" />
+    <Compile Include="Application\SubAgents\ISubAgentsService.cs" />
+    <Compile Include="Application\SubAgents\SubAgentRunRequest.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsRunResponse.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsService.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
+    <Compile Include="Application\Tool\ToolMessageFactory.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
     <Compile Include="Commands\AddUnitTestsCommand.cs" />
     <Compile Include="Commands\BaseCodeCommand.cs" />
@@ -100,9 +107,12 @@
     <Compile Include="Core\Models\KnownModelContexts.cs" />
     <Compile Include="Core\Models\ListModelsParameters.cs" />
     <Compile Include="Core\Models\McpConfig.cs" />
+    <Compile Include="Core\Models\ModelsConfig.cs" />
     <Compile Include="Core\Models\MessageContent.cs" />
     <Compile Include="Core\Models\ProvidersConfig.cs" />
     <Compile Include="Core\Models\ProviderTypeInfo.cs" />
+    <Compile Include="Core\Models\RecentModelEntry.cs" />
+    <Compile Include="Core\Models\SubAgentsConfig.cs" />
     <Compile Include="Core\Models\ToolsConfigFile.cs" />
     <Compile Include="Infrastructure\Autocompletions\AutocompletionsConfigManager.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\CompletionCache.cs" />
@@ -117,6 +127,7 @@
     <Compile Include="Infrastructure\HttpWrapper\TemporaryHttpClientFactory.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiErrorParser.cs" />
     <Compile Include="Infrastructure\LlmApi\ApiRequestBuilder.cs" />
+    <Compile Include="Infrastructure\LlmApi\ProviderContext.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ApiEndpoints.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderDisplayAttribute.cs" />
     <Compile Include="Infrastructure\LlmApi\Provider\ProviderResolver.cs" />
@@ -134,13 +145,20 @@
     <Compile Include="Infrastructure\LlmApi\Responses\TogetherAiModelInfo.cs" />
     <Compile Include="Infrastructure\LlmApi\Responses\UnifiedListModelsResponse.cs" />
     <Compile Include="Infrastructure\LlmApi\Converter\ToolDefinitionConverter.cs" />
+    <Compile Include="Infrastructure\ModelsConfig\ModelsConfigManager.cs" />
     <Compile Include="Infrastructure\Persistence\ChatLogSerializer.cs" />
     <Compile Include="Infrastructure\Providers\ProvidersConfigManager.cs" />
+    <Compile Include="Infrastructure\RecentModels\RecentModelsManager.cs" />
     <Compile Include="Infrastructure\Security\CertificatePathValidator.cs" />
     <Compile Include="Infrastructure\Security\ServerCertificateTrust.cs" />
     <Compile Include="Infrastructure\Security\ServerCertificateValidator.cs" />
     <Compile Include="Infrastructure\Security\TestConnectionErrorClassifier.cs" />
     <Compile Include="Infrastructure\Security\X509CertificateLoader.cs" />
+    <Compile Include="Application\Abstractions\Ports\ISettingsManager.cs" />
+    <Compile Include="Infrastructure\Streaming\ActivityReportingStream.cs" />
+    <Compile Include="Infrastructure\SubAgents\ISubAgentsCatalog.cs" />
+    <Compile Include="Infrastructure\SubAgents\SubAgentsConfigManager.cs" />
+    <Compile Include="Infrastructure\SubAgents\SubAgentsToolSource.cs" />
     <Compile Include="Infrastructure\Syntax\ISyntaxChecker.cs" />
     <Compile Include="Infrastructure\Syntax\JsSyntaxChecker.cs" />
     <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactory.cs" />
@@ -180,6 +198,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotSolutionEvents.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotPathsFactory.cs" />
     <Compile Include="Core\Common\AsyncLock.cs" />
+    <Compile Include="Application\Abstractions\Ports\IToolQueueProvider.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpServerStatus.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Models\McpToolDefinition.cs" />
     <Compile Include="Infrastructure\Tooling\Mcp\Client\HttpMcpClient.cs" />
@@ -201,7 +220,6 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsSolutionFilesScanner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsDependencies.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsUiThreadGuard.cs" />
-    <Compile Include="Infrastructure\Tooling\CompositeToolProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetActiveDocument.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLines.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Js\JsConfigResolver.cs" />
@@ -247,6 +265,18 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\dialogs\subagents.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\escape.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\lib\formatting.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\lm-api.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -276,6 +306,14 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\dialogs\models.list.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\dialogs\models.config.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\store\models.config.store.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -327,7 +365,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Compile Include="Infrastructure\Tooling\ToolQueue.cs" />
+    <Compile Include="Infrastructure\Tooling\ToolQueueProvider.cs" />
     <Compile Include="Infrastructure\Tooling\ToolResultMarkdownFormatter.cs" />
+    <Compile Include="Infrastructure\Tooling\ToolRouter.cs" />
     <Compile Include="Infrastructure\Tooling\ToolsConfigManager.cs" />
     <Compile Include="Infrastructure\VisualStudio\DiffViewer.cs" />
     <Compile Include="Infrastructure\VisualStudio\FileViewer.cs" />
@@ -335,15 +376,30 @@
     <Compile Include="Infrastructure\WebView\Controllers\ChatSessionController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\InstructionsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\McpController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\ModelsConfigController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ModelsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ProvidersController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\RecentModelsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\SettingsController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\SubAgentsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\ToolsController.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\WebViewHostController.cs" />
+    <Compile Include="Infrastructure\WebView\Environment\DefaultCoreWebView2EnvironmentFactory.cs" />
+    <Compile Include="Infrastructure\WebView\Environment\ICoreWebView2EnvironmentFactory.cs" />
+    <Compile Include="Infrastructure\WebView\Environment\IWebViewEnvironmentProvider.cs" />
+    <Compile Include="Infrastructure\WebView\Environment\WebViewEnvironmentProvider.cs" />
+    <Compile Include="Infrastructure\WebView\Hosting\IWebViewHostObjectRegistrar.cs" />
+    <Compile Include="Infrastructure\WebView\Hosting\IWebViewHostObjectSink.cs" />
+    <Compile Include="Infrastructure\WebView\Hosting\WebViewHostObjectRegistrar.cs" />
+    <Compile Include="Infrastructure\WebView\Hosting\WebViewHostObjectSink.cs" />
+    <Compile Include="Infrastructure\WebView\Initialization\IWebViewInitializer.cs" />
+    <Compile Include="Infrastructure\WebView\Initialization\WebViewInitializer.cs" />
     <Compile Include="Infrastructure\WebView\Models\ChatSessionsResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\GetLastChatSessionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\McpTestConnectionResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\SetAiToolsRequest.cs" />
+    <Compile Include="Infrastructure\WebView\Models\SetSubAgentsRequest.cs" />
+    <Compile Include="Infrastructure\WebView\Models\SubAgentsListResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestCertificateRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestCompletionRequest.cs" />
     <Compile Include="Infrastructure\WebView\Models\TestConnectionRequest.cs" />
@@ -356,6 +412,11 @@
     <Compile Include="Infrastructure\WebView\Models\WebView2SessionCompleteMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2SnapshotMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2ToolCallMessage.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\IWebView2Page.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\IWebViewNavigator.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\WebView2NavigationGuard.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\WebView2Page.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\WebViewNavigator.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridge.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridgeFactory.cs" />
     <Compile Include="Infrastructure\Ipc\IpcCommandHandler.cs" />
@@ -658,7 +719,10 @@
     </VSCTCompile>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Resources\app.html" />
+    <Content Include="Resources\app.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="GettingStarted.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>

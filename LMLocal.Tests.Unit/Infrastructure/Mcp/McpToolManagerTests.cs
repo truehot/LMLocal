@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using Moq;
 using NUnit.Framework;

@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Streaming;
 using NUnit.Framework;
 
@@ -52,6 +52,7 @@ namespace LMLocal.Tests.Unit
             public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(Current);
             public Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetSubAgentsEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
         }
 
         private class MockTokenSpeedCalculator : ITokenSpeedCalculator

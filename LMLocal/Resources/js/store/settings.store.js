@@ -17,6 +17,7 @@ class SettingsStoreClass extends BaseStoreClass {
             AutoLoadLastHistory: false,
             EnableAiTools: false,
             EnableAiWriteTools: false,
+            EnableSubAgents: false,
             CollapseToolCalls: false,
             EnableCodeCollapse: false,
             ShowTokenStats: false

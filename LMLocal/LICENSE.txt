@@ -1,7 +1,7 @@
 This software includes both original code and third-party components.
 
 -------------------------------------------------------------------------------
-1. LMLocal - MIT License
+1. LM Local - MIT License
 -------------------------------------------------------------------------------
 
 MIT License

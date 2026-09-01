@@ -30,6 +30,7 @@ class InputComponent {
         this.onEnter = createCallback();
         this.onTabChanged = createCallback();
         this.onAiToolsChanged = createCallback();
+        this.onSubAgentsToggled = createCallback();
 
         this._resizeState = { active: false, startY: 0, startHeight: 0 };
         this._resizerBound = { down: null, move: null, up: null };
@@ -63,6 +64,7 @@ class InputComponent {
             aiToolsDropdown: document.getElementById('aiToolsDropdown'),
             aiToolsSelectedOption: document.getElementById('aiToolsSelectedOption'),
             aiToolsDropdownMenu: document.getElementById('aiToolsDropdownMenu'),
+            subAgentsToggleBtn: document.getElementById('subAgentsToggleBtn'),
         };
     }
 
@@ -289,6 +291,10 @@ class InputComponent {
         this.elements.contextToggleBtn.classList.toggle('active');
     };
 
+    _handleSubAgentsToggle = async (e) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        this.onSubAgentsToggled.emit();
+    };
 
     _handleDropdownToggle = (e) => {
         if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
@@ -515,6 +521,9 @@ class InputComponent {
         userInput.addEventListener('paste', this._handlePaste);
         mainBtn.addEventListener('click', this._handleClick);
         contextToggleBtn.addEventListener('click', this._handleContextToggle);
+        if (this.elements.subAgentsToggleBtn) {
+            this.elements.subAgentsToggleBtn.addEventListener('click', this._handleSubAgentsToggle);
+        }
         if (this.elements.openFileBtn) {
             this.elements.openFileBtn.addEventListener('click', this._handleOpenFileClick);
         }
@@ -553,6 +562,9 @@ class InputComponent {
         if (contextToggleBtn) {
             contextToggleBtn.removeEventListener('click', this._handleContextToggle);
         }
+        if (this.elements.subAgentsToggleBtn) {
+            this.elements.subAgentsToggleBtn.removeEventListener('click', this._handleSubAgentsToggle);
+        }
         if (this.elements.openFileBtn) {
             this.elements.openFileBtn.removeEventListener('click', this._handleOpenFileClick);
         }
@@ -589,6 +601,7 @@ class InputComponent {
 
         this.elements.userInput.disabled = !canSend;
         this.elements.contextToggleBtn.disabled = !canSend;
+        if (this.elements.subAgentsToggleBtn) this.elements.subAgentsToggleBtn.disabled = !canSend;
         this.elements.mainBtn.disabled = isStopping;
         if (this.elements.openFileBtn) this.elements.openFileBtn.disabled = !canSend;
         if (this.elements.attachFileInput) this.elements.attachFileInput.disabled = !canSend;
@@ -690,6 +703,7 @@ class InputComponent {
             'userInput',
             'mainBtn',
             'contextToggleBtn',
+            'subAgentsToggleBtn',
             'dropdownTrigger',
             'dropdown',
         ];
@@ -787,10 +801,12 @@ class InputComponent {
     updateSettingsState(state, prev) {
         if (!this.elements.aiToolsSelectedOption) return;
 
+        const subAgentsBtn = this.elements.subAgentsToggleBtn;
         if (
             prev &&
             state.EnableAiTools === prev.EnableAiTools &&
-            state.EnableAiWriteTools === prev.EnableAiWriteTools
+            state.EnableAiWriteTools === prev.EnableAiWriteTools &&
+            (!subAgentsBtn || state.EnableSubAgents === prev.EnableSubAgents)
         ) {
             return;
         }
@@ -802,6 +818,10 @@ class InputComponent {
         const option = InputComponent.AI_TOOLS_OPTIONS.find(o => o.value === mode);
         if (option) {
             this.elements.aiToolsSelectedOption.textContent = option.label;
+        }
+
+        if (subAgentsBtn) {
+            subAgentsBtn.classList.toggle('active', !!state.EnableSubAgents);
         }
     }
 };

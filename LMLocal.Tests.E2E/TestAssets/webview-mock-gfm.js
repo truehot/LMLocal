@@ -87,6 +87,10 @@ function __startMock() {
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,
         };
+        window.__recentModelsOverride = {
+            GetRecentModelsAsync: async () => JSON.stringify({ entries: [] }),
+            RecordModelUsageAsync: async () => true,
+        };
         window.__chatSessionOverride = {
             GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
             GetChatSessionsAsync: async () => JSON.stringify({ sessions: [] }),

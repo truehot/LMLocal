@@ -4,47 +4,13 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 
 namespace LMLocal.Infrastructure.Settings
 {
-    /// <summary>
-    /// Manages application settings persisted to a local JSON file under
-    /// the user's LocalApplicationData folder and provides cached access to those settings.
-    /// Also provides access to default configuration values.
-    /// </summary>
-    public interface ISettingsManager
-    {
-        AppSettings Current { get; }
-        Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default);
-        Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default);
-        Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default);
-        event Action<AppSettings> SettingsChanged;
-
-        // Default configuration values
-        string ApplicationName { get; }
-        string SettingsFileName { get; }
-        string LocalAppDataFolder { get; }
-        string LocalAppSettingFileName { get; }
-        string LocalAppInstructionsFileName { get; }
-        string LocalAppMcpFileName { get; }
-        string WebViewUserDataFolder { get; }
-        string ChatHistoryFolder { get; }
-        string ChatHistoryFileLabel { get; }
-        string HtmlResourcePath { get; }
-        string VirtualHostName { get; }
-        string SystemPrompt { get; }
-        int BatchIntervalMs { get; }
-        int WindowSeconds { get; }
-        int RequestTimeoutSeconds { get; }
-        string SnapshotFolder { get; }
-        string LocalSnapshotsFileName { get; }
-        string UserAgent { get; }
-        string AssistantPlaceholder { get; }
-    }
-
     internal class SettingsManager : ISettingsManager, IDisposable
     {
         private readonly string _filePath;
@@ -75,7 +41,7 @@ namespace LMLocal.Infrastructure.Settings
         private const int DefaultBatchIntervalMs = 100;
         private const int DefaultWindowSeconds = 5;
         private const int DefaultRequestTimeoutSeconds = 105;
-        
+
         public event Action<AppSettings> SettingsChanged;
 
         public SettingsManager()
@@ -255,7 +221,6 @@ namespace LMLocal.Infrastructure.Settings
 
             var current = _cachedSettings ?? await LoadAsync(cancellationToken).ConfigureAwait(false);
 
-            // Clone so the cached Current instance is not mutated before the save succeeds.
             var updated = current.ToJson().FromJson<AppSettings>();
 
             switch (mode.ToLowerInvariant())
@@ -273,6 +238,21 @@ namespace LMLocal.Infrastructure.Settings
                     updated.EnableAiWriteTools = false;
                     break;
             }
+
+            await SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Updates only the Sub Agents setting (EnableSubAgents).
+        /// </summary>
+        public async Task SetSubAgentsEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+
+            var current = _cachedSettings ?? await LoadAsync(cancellationToken).ConfigureAwait(false);
+
+            var updated = current.ToJson().FromJson<AppSettings>();
+            updated.EnableSubAgents = enabled;
 
             await SaveAsync(updated, cancellationToken).ConfigureAwait(false);
         }

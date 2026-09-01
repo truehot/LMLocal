@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure

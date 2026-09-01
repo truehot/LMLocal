@@ -3,10 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
-using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi;
-using LMLocal.Infrastructure.Settings;
 
 
 namespace LMLocal.Application.ChatSessionStream
@@ -29,23 +26,14 @@ namespace LMLocal.Application.ChatSessionStream
 
     internal class ChatStreamService : IChatStreamService
     {
-        private readonly IOpenApiAdapter _openApiAdapter;
+        private readonly IStreamingRoundService _roundService;
         private readonly IChatHistoryManager _history;
-        private readonly ISettingsManager _settingsManager;
-        private readonly IStreamProcessorFactory _streamProcessorFactory;
-
         private readonly SemaphoreSlim _requestLock = new SemaphoreSlim(1, 1);
 
-        public ChatStreamService(
-            IOpenApiAdapter openApiAdapter,
-            IChatHistoryManager history,
-            ISettingsManager settingsManager,
-            IStreamProcessorFactory streamProcessorFactory)
+        public ChatStreamService(IStreamingRoundService roundService, IChatHistoryManager history)
         {
-            _openApiAdapter = openApiAdapter ?? throw new ArgumentNullException(nameof(openApiAdapter));
+            _roundService = roundService ?? throw new ArgumentNullException(nameof(roundService));
             _history = history ?? throw new ArgumentNullException(nameof(history));
-            _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
-            _streamProcessorFactory = streamProcessorFactory ?? throw new ArgumentNullException(nameof(streamProcessorFactory));
         }
 
         public async Task GenerateStreamAsync(
@@ -55,119 +43,36 @@ namespace LMLocal.Application.ChatSessionStream
             Func<StreamCompletionResult, Task> onComplete,
             CancellationToken cancellationToken)
         {
-            await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-            CancellationTokenSource linkedCts = null;
+            await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
-                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-                bool isToolRound = toolResults != null && toolResults.Count > 0;
-
-                if (!isToolRound)
+                var request = new StreamRoundRequest
                 {
-                    _history.EnsureHistoryNormalized();
-                }
+                    History = _history,
+                    IsToolRound = toolResults != null && toolResults.Count > 0,
+                    ToolResults = toolResults,
+                    Prompt = context.Prompt,
+                    ActiveDocumentContent = context.ActiveDocumentContent,
+                    Images = context.Images,
+                    SystemPrompt = context.AdditionalPrompt,
+                    ModelId = context.ModelId,
+                    Temperature = context.Temperature,
+                    OnChunk = onChunk
+                };
 
-                if (isToolRound)
-                {
-                    var pendingToolMessages = new List<ChatMessage>(toolResults.Count);
-                    foreach (var toolResult in toolResults)
-                    {
-                        string toolContent;
-                        if (toolResult.Result == null)
-                        {
-                            toolContent = "";
-                        }
-                        else if (toolResult.Result is string str)
-                        {
-                            toolContent = str;
-                        }
-                        else
-                        {
-                            toolContent = toolResult.Result.ToJson();
-                        }
-
-                        var chatMessage = new ChatMessage("tool", toolContent, toolResult.ToolCallId.ToString());
-                        pendingToolMessages.Add(chatMessage);
-                    }
-
-                    _history.AddToolExecutionResultMessages(pendingToolMessages);
-                }
-                else
-                {
-                    _history.AddUserMessage(context.Prompt, context.ActiveDocumentContent, context.Images);
-                }
-
-                var messages = _history.BuildUserMessagesWithHistory(context.AdditionalPrompt);
-
-                if (_settingsManager.Current?.EnableHistoryCompression ?? false)
-                    messages = ChatHistoryNormalizer.NormalizeMessages(messages);
-
-                var processor = _streamProcessorFactory.Create(linkedCts);
-
-                var messageContext = new MessageContext(messages);
-                var modelContext = new ModelContext(context.ModelId, temperature: context.Temperature);
-
-                StreamCompletionResult result;
-                using (var streaming = await _openApiAdapter.SendChatStreamingAsync(messageContext, modelContext, linkedCts.Token).ConfigureAwait(false))
-                {
-                    result = await processor.ProcessStreamAsync(
-                        streaming.Stream,
-                        linkedCts.Token,
-                        onChunk,
-                        _settingsManager.BatchIntervalMs).ConfigureAwait(false);
-                }
-
-                if (!result.WasCancelled && string.IsNullOrEmpty(result.ErrorMessage))
-                {
-                    if (IsGenerationIncomplete(result.FinishReason))
-                    {
-                        result.ToolCalls = Array.Empty<ToolCallRecord>();
-                        result.ErrorMessage = string.Equals(result.FinishReason, "content_filter", StringComparison.OrdinalIgnoreCase)
-                            ? "\n\nResponse blocked by content filter."
-                            : "\n\nResponse truncated — token limit reached.";
-
-                        _history.AddAssistantMessage(result.ContentResponse, null);
-                    }
-                    else
-                    {
-                        bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
-                        if (hasToolCalls)
-                        {
-                            _history.SetPendingAssistant(result.ContentResponse, result.ToolCalls);
-                        }
-                        else
-                        {
-                            _history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
-                        }
-                    }
-                }
+                var roundResult = await _roundService.RunAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (onComplete != null)
                 {
-                    await onComplete(result).ConfigureAwait(false);
+                    await onComplete(roundResult.Stream).ConfigureAwait(false);
                 }
             }
-
             finally
             {
-                linkedCts?.Dispose();
                 _requestLock.Release();
             }
-        }
-
-        /// <summary>
-        /// True when the finish reason indicates the generation did not complete normally.
-        /// </summary>
-        private bool IsGenerationIncomplete(string finishReason)
-        {
-            if (string.IsNullOrEmpty(finishReason))
-                return false;
-
-            var msg = finishReason.ToLower();
-            return msg == "length" || msg == "content_filter";
         }
     }
 }

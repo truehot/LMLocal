@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure
@@ -102,6 +102,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public AppSettings Current => new AppSettings();
             public Task<AppSettings> LoadAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
             public Task SetAiToolsModeAsync(string mode, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetSubAgentsEnabledAsync(bool enabled, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
             [Test]
             public async Task GetInstructionTabIdByDisplayNameAsync_ReturnsId_WhenFoundAndEnabled()

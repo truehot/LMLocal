@@ -55,6 +55,12 @@
     <Reference Include="nunit.framework.legacy, Version=4.5.1.0, Culture=neutral, PublicKeyToken=2638cd05610744eb, processorArchitecture=MSIL">
       <HintPath>..\packages\NUnit.4.5.1\lib\net462\nunit.framework.legacy.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>..\LMLocal\bin\Debug\Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.Wpf">
+      <HintPath>..\LMLocal\bin\Debug\Microsoft.Web.WebView2.Wpf.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
@@ -66,6 +72,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Application\SubAgents\SubAgentsConfigTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
@@ -89,18 +96,22 @@
     <Compile Include="Infrastructure\Mcp\StdioMcpClientExtendedTests.cs" />
     <Compile Include="Infrastructure\Mcp\StdioMcpClientTests.cs" />
     <Compile Include="Infrastructure\ModelResponseConverterTests.cs" />
+    <Compile Include="Infrastructure\ModelsConfigManagerTests.cs" />
     <Compile Include="Infrastructure\ModelsListServiceTests.cs" />
     <Compile Include="Infrastructure\OpenApiAdapterHighPriorityTests.cs" />
     <Compile Include="Infrastructure\PathHelperTests.cs" />
     <Compile Include="Infrastructure\PathResolverTests.cs" />
     <Compile Include="Infrastructure\ProviderResolverTests.cs" />
     <Compile Include="Infrastructure\ProvidersConfigManagerTests.cs" />
+    <Compile Include="Infrastructure\RecentModelsManagerTests.cs" />
     <Compile Include="Infrastructure\ServerCertificateTrustTests.cs" />
     <Compile Include="Infrastructure\ServerCertificateValidatorTests.cs" />
     <Compile Include="Infrastructure\ServiceLifetimeTests.cs" />
     <Compile Include="Infrastructure\SettingsControllerTests.cs" />
     <Compile Include="Infrastructure\SettingsManagerTests.cs" />
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />
+    <Compile Include="Infrastructure\SubAgentsControllerTests.cs" />
+    <Compile Include="Infrastructure\SubAgents\SubAgentsToolSourceTests.cs" />
     <Compile Include="Infrastructure\Syntax\JsSyntaxCheckerTests.cs" />
     <Compile Include="Infrastructure\Syntax\SyntaxCheckerFactoryTests.cs" />
     <Compile Include="Infrastructure\Syntax\VisualBasicSyntaxCheckerTests.cs" />
@@ -130,11 +141,18 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InsertFileLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContentTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileLinesTests.cs" />
-    <Compile Include="Infrastructure\Vs\CompositeVsToolFactoryTests.cs" />
+    <Compile Include="Infrastructure\Tooling\ToolQueueProviderTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
+    <Compile Include="Infrastructure\Vs\ToolRouterTests.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
+    <Compile Include="Infrastructure\WebView\WebView2NavigationGuardTests.cs" />
+    <Compile Include="Infrastructure\WebView\WebViewEnvironmentProviderTests.cs" />
+    <Compile Include="Infrastructure\WebView\WebViewHostObjectRegistrarTests.cs" />
+    <Compile Include="Infrastructure\WebView\WebViewInitializerTests.cs" />
+    <Compile Include="Infrastructure\WebView\WebViewNavigatorTests.cs" />
     <Compile Include="Infrastructure\X509CertificateLoaderTests.cs" />
     <Compile Include="InstructionsControllerTests.cs" />
+    <Compile Include="Internal\ActivityReportingStreamTests.cs" />
     <Compile Include="Internal\ChatGenerationServiceTests.cs" />
     <Compile Include="Internal\ChatHistoryManagerTests.cs" />
     <Compile Include="Internal\ChatHistoryNormalizerTests.cs" />
@@ -180,7 +198,9 @@
       <Name>LMLocal</Name>
     </ProjectReference>
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="Application\SubAgent\" />
+  </ItemGroup>
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

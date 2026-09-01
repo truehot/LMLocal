@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Persistence
@@ -66,15 +66,25 @@ namespace LMLocal.Infrastructure.Persistence
         /// Creates a persistence service bound to the configured local chat history directory.
         /// </summary>
         public ChatPersistenceService(ISettingsManager settingsManager, IFileSystem fileSystem)
+            : this(settingsManager, fileSystem, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a persistence service bound to an explicit directory.
+        /// </summary>
+        public ChatPersistenceService(ISettingsManager settingsManager, IFileSystem fileSystem, string explicitDirectory)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
 
-            _chatHistoryDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                _settingsManager.LocalAppDataFolder,
-                _settingsManager.ChatHistoryFolder
-            );
+            _chatHistoryDir = string.IsNullOrWhiteSpace(explicitDirectory)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    _settingsManager.LocalAppDataFolder,
+                    _settingsManager.ChatHistoryFolder
+                )
+                : explicitDirectory;
             _fileSystem.CreateDirectory(_chatHistoryDir);
 
             _currentSessionId = Guid.NewGuid();

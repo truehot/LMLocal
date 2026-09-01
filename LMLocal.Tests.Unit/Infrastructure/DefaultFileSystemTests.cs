@@ -66,5 +66,42 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var read = await fs.ReadAllTextAsync(filePath).ConfigureAwait(false);
             Assert.That(read, Is.EqualTo(content));
         }
+
+        [Test]
+        public async Task ReadAllTextAsync_StripsUtf8Bom()
+        {
+            var fs = new DefaultFileSystem();
+            var filePath = Path.Combine(_tempDir, "bom.json");
+
+            var content = "{ \"agents\": [] }";
+            var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+            var body = Encoding.UTF8.GetBytes(content);
+            var withBom = new byte[bom.Length + body.Length];
+            Array.Copy(bom, 0, withBom, 0, bom.Length);
+            Array.Copy(body, 0, withBom, bom.Length, body.Length);
+
+            await fs.WriteAllBytesAsync(filePath, withBom).ConfigureAwait(false);
+
+            // Like File.ReadAllText, the BOM must not leak into the returned text.
+            var read = await fs.ReadAllTextAsync(filePath).ConfigureAwait(false);
+            Assert.That(read, Is.EqualTo(content));
+        }
+
+        [Test]
+        public async Task ReadAllTextAsync_HandlesMultibyteCharsAcrossBufferBoundary()
+        {
+            var fs = new DefaultFileSystem();
+            var filePath = Path.Combine(_tempDir, "multibyte.txt");
+
+            // '€' is 3 bytes in UTF-8; 2000 of them = 6000 bytes, so the internal 4096-byte
+            // read chunk splits the 1366th character. A byte-chunk Encoding.UTF8.GetString
+            // decoder would emit U+FFFD here; StreamReader-based decoding must not.
+            var content = new string('€', 2000);
+            await fs.WriteAllBytesAsync(filePath, Encoding.UTF8.GetBytes(content)).ConfigureAwait(false);
+
+            var read = await fs.ReadAllTextAsync(filePath).ConfigureAwait(false);
+            Assert.That(read, Is.EqualTo(content));
+            Assert.That(read, Does.Not.Contain('\uFFFD'));
+        }
     }
 }

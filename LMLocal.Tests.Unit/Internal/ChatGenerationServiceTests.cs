@@ -3,13 +3,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Application.Chat;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Autocompletions;
+using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.ModelsConfig;
+using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
 
@@ -24,6 +26,7 @@ namespace LMLocal.Tests.Unit
         private Mock<ISettingsManager> _settingsMock;
         private Mock<IStreamProcessor> _mockProcessor;
         private Mock<IStreamProcessorFactory> _mockFactory;
+        private Mock<IModelsConfigManager> _modelsConfigMock;
         private ChatStreamService _service;
 
         [SetUp]
@@ -46,7 +49,13 @@ namespace LMLocal.Tests.Unit
             _mockFactory = new Mock<IStreamProcessorFactory>();
             _mockFactory.Setup(f => f.Create(It.IsAny<System.Threading.CancellationTokenSource>())).Returns(_mockProcessor.Object);
 
-            _service = new ChatStreamService(_clientMock.Object, _historyMock.Object, _settingsMock.Object, _mockFactory.Object);
+            _modelsConfigMock = new Mock<IModelsConfigManager>();
+            _modelsConfigMock
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ModelsConfigFile { Models = new List<ModelDefinition>() });
+
+            var roundService = new StreamingRoundService(_clientMock.Object, _settingsMock.Object, _mockFactory.Object, _modelsConfigMock.Object);
+            _service = new ChatStreamService(roundService, _historyMock.Object);
         }
 
 
@@ -111,9 +120,14 @@ namespace LMLocal.Tests.Unit
                 return Task.FromResult(streaming);
             }
 
+            public Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken)
+                => SendChatStreamingAsync(messageContext, modelContext, cancellationToken);
+
             public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken)
                 => Task.FromResult<SendChatResponse>(null);
 
+            public Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken)
+                => Task.FromResult<SendChatResponse>(null);
 
             public Task<string> SendCompletionAsync(CompletionContext context, CancellationToken cancellationToken)
                 => Task.FromResult(string.Empty);
@@ -163,7 +177,14 @@ namespace LMLocal.Tests.Unit
 
             var mockFactory = new Mock<IStreamProcessorFactory>();
             mockFactory.Setup(f => f.Create(It.IsAny<System.Threading.CancellationTokenSource>())).Returns(mockProcessor.Object);
-            var svc = new ChatStreamService(client, history, settingsMock.Object, mockFactory.Object);
+
+            var modelsConfigMock = new Mock<IModelsConfigManager>();
+            modelsConfigMock
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ModelsConfigFile { Models = new List<ModelDefinition>() });
+
+            var roundService = new StreamingRoundService(client, settingsMock.Object, mockFactory.Object, modelsConfigMock.Object);
+            var svc = new ChatStreamService(roundService, history);
 
             var context = new GenerateStreamContext
             {
@@ -455,6 +476,59 @@ namespace LMLocal.Tests.Unit
                     It.Is<string>(s => s.Contains("partial response")),
                     It.Is<IReadOnlyList<ToolCallRecord>>(tc => tc == null)),
                 Times.Once);
+        }
+
+        [Test]
+        public async Task GenerateStreamAsync_UsesModelsConfigProfile_ForReasoningAndContext()
+        {
+            var messages = new List<ChatMessage>();
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
+
+            // Profile matching current provider (lmstudio, default profile id null).
+            _modelsConfigMock
+                .Setup(m => m.GetAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ModelsConfigFile
+                {
+                    Models = new List<ModelDefinition>
+                    {
+                        new ModelDefinition
+                        {
+                            Id = 1,
+                            ModelId = "test-model",
+                            ProviderType = "lmstudio",
+                            ProviderId = null,
+                            ReasoningEffort = "high",
+                            ContextLength = 98765,
+                            MaxTokens = 4321,
+                            Enabled = true
+                        }
+                    }
+                });
+
+            _settingsMock.Setup(s => s.Current).Returns(new AppSettings { Provider = "lmstudio", ProviderId = null });
+
+            var mockStream = new MemoryStream();
+            var mockResponse = new System.Net.Http.HttpResponseMessage();
+            var mockRequest = new System.Net.Http.HttpRequestMessage();
+            var mockContent = new System.Net.Http.StringContent("");
+            var streamingResponse = new StreamingResponse(mockStream, mockResponse, mockRequest, mockContent);
+
+            ModelContext captured = null;
+            _clientMock
+                .Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .Callback<MessageContext, ModelContext, CancellationToken>((mc, modelCtx, ct) => captured = modelCtx)
+                .ReturnsAsync(streamingResponse);
+
+            var context = new GenerateStreamContext { Prompt = "hi", ModelId = "test-model" };
+            Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
+
+            await _service.GenerateStreamAsync(context, null, onChunk, completion => Task.CompletedTask, CancellationToken.None);
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.ModelId, Is.EqualTo("test-model"));
+            Assert.That(captured.Reasoning, Is.EqualTo("high"));
+            Assert.That(captured.ContextLength, Is.EqualTo(98765));
+            Assert.That(captured.MaxOutputTokens, Is.EqualTo(4321), "main-chat request carries no MaxOutputTokens, so the profile maxTokens must win");
         }
     }
 }

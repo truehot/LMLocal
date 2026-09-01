@@ -1,8 +1,7 @@
 using System;
-using LMLocal.Services;
+using LMLocal.Infrastructure.Streaming;
 using LMLocal.Infrastructure.Time;
 using NUnit.Framework;
-using LMLocal.Infrastructure.Streaming;
 
 namespace LMLocal.Tests.Unit
 {

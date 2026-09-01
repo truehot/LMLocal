@@ -6,6 +6,7 @@ import '@app/lm-api.js';
 
 window.lmInit = async () => {
     try {
+        document.documentElement.classList.add('app-ready');
         if (!appController.initialized) {
             // Call setup if it hasn't been called yet (for tests, for example)
             await appController.setup();

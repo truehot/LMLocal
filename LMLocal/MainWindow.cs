@@ -2,6 +2,8 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Infrastructure.WebView.Initialization;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal
@@ -21,7 +23,8 @@ namespace LMLocal
         {
             this.Caption = "LM Local - AI Assistant";
 
-            _control = new MainWindowControl();
+            var initializer = ServiceConfiguration.GetService<IWebViewInitializer>();
+            _control = new MainWindowControl(initializer);
             this.Content = _control;
 
             _control.PreviewKeyDown += OnControlPreviewKeyDown;
@@ -50,7 +53,6 @@ namespace LMLocal
 
         /// <summary>
         /// Injects markdown text and automatically sends it.
-        /// Used by code analysis commands (Review, Fix, Refactor, etc.).
         /// </summary>
         public async Task InjectAndAutoSendAsync(string markdownText, string instructionTabId = null)
         {
@@ -64,6 +66,18 @@ namespace LMLocal
             if (key == Key.Left) return 0x25;
             if (key == Key.Right) return 0x27;
             return 0;
+        }
+
+        /// <summary>
+        /// Releases the tool window content.
+        /// </summary>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _control?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

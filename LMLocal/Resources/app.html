@@ -12,6 +12,16 @@
     <link rel="stylesheet" href="https://app.local/css/component.css">
     <link rel="stylesheet" href="https://app.local/css/tools.css">
     <link rel="stylesheet" href="https://app.local/css/print.css" media="print">
+    <link rel="icon" href="data:,">
+    <style>
+        html {
+            visibility: hidden;
+        }
+
+            html.app-ready {
+                visibility: visible;
+            }
+    </style>
 </head>
 <body>
 
@@ -70,15 +80,40 @@
                         <path d="M2.5 8a5.5 5.5 0 1 0 1.2-3.4" />
                         <path d="M2.5 2.2v3h3" />
                     </svg>
-                    Chat history...
+                    Chat History...
                 </button>
                 <button data-action="open-tools">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
-                        <rect x="2" y="3" width="5" height="3" rx="0.5" />
-                        <rect x="9" y="10" width="5" height="3" rx="0.5" />
-                        <path d="M4.5 6v4h4.5" />
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <circle cx="6" cy="4.5" r="2.5" />
+                        <circle cx="6" cy="4.5" r="0.8" fill="currentColor" stroke="none" />
+                        <path d="M6 2V1M8.5 4.5h1M3.5 4.5h-1M7.8 2.7l.7-.7M4.2 2.7l-.7-.7M7.8 6.3l.7.7M4.2 6.3l-.7.7" />
+                        <circle cx="7" cy="10.5" r="3.5" />
+                        <circle cx="7" cy="10.5" r="1.2" fill="currentColor" stroke="none" />
+                        <path d="M7 14v1M10.5 10.5h1M3.5 10.5h-1M9.5 13l.7.7M4.5 13l-.7.7M9.5 8l.7-.7M4.5 8l-.7-.7" />
                     </svg>
                     Built-in Tools...
+                </button>
+                <button data-action="open-subagents">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M 10 3.5 h -4 l -2 2 v 1.5 l 1 1 h 6 l 1 1 v 1.5 l -2 2 h -4" />
+                        <circle cx="11.5" cy="3.5" r="1.5" />
+                        <circle cx="11.5" cy="3.5" r="0.4" fill="currentColor" stroke="none" />
+                        <path d="M11.5 2V1 M13 3.5h1 M11.5 5v1 M12.5 2.5l.6-.6 M12.5 4.5l.6.6 M10.5 4.5l-.6.6 M10.5 2.5l-.6-.6" />
+                        <circle cx="4.5" cy="12.5" r="1.5" />
+                        <circle cx="4.5" cy="12.5" r="0.4" fill="currentColor" stroke="none" />
+                        <path d="M4.5 11v-1 M3 12.5H2 M4.5 14v1 M3.5 11.5l-.6-.6 M3.5 13.5l-.6.6 M5.5 11.5l.6-.6 M5.5 13.5l.6.6" />
+                    </svg>
+                    Sub Agents...
+                </button>
+                <button data-action="open-models">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <path d="M8 3l5 5-5 5-5-5z" />
+                        <circle cx="8" cy="3" r="1" fill="currentColor" stroke="none" />
+                        <circle cx="13" cy="8" r="1" fill="currentColor" stroke="none" />
+                        <circle cx="8" cy="13" r="1" fill="currentColor" stroke="none" />
+                        <circle cx="3" cy="8" r="1" fill="currentColor" stroke="none" />
+                    </svg>
+                    Models...
                 </button>
                 <button data-action="mcp-settings">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
@@ -153,6 +188,17 @@
                         </button>
                         <div class="dropdown-menu" id="aiToolsDropdownMenu"></div>
                     </div>
+                    <button id="subAgentsToggleBtn" class="btn-secondary" title="Enable Sub Agents" style="padding:2px">
+                        <svg class="icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M 10 3.5 h -4 l -2 2 v 1.5 l 1 1 h 6 l 1 1 v 1.5 l -2 2 h -4" />
+                            <circle cx="11.5" cy="3.5" r="1.5" />
+                            <circle cx="11.5" cy="3.5" r="0.4" fill="currentColor" stroke="none" />
+                            <path d="M11.5 2V1 M13 3.5h1 M11.5 5v1 M12.5 2.5l.6-.6 M12.5 4.5l.6.6 M10.5 4.5l-.6.6 M10.5 2.5l-.6-.6" />
+                            <circle cx="4.5" cy="12.5" r="1.5" />
+                            <circle cx="4.5" cy="12.5" r="0.4" fill="currentColor" stroke="none" />
+                            <path d="M4.5 11v-1 M3 12.5H2 M4.5 14v1 M3.5 11.5l-.6-.6 M3.5 13.5l-.6.6 M5.5 11.5l.6-.6 M5.5 13.5l.6.6" />
+                        </svg>
+                    </button>
                 </div>
                 <div class="input-footer-right">
                     <button id="openFileBtn" class="btn-secondary" title="Browse file" style="padding:2px">
@@ -228,7 +274,7 @@
         <div class="modal-body">
             <form id="settings-form">
                 <div class="settings-group">
-                    <label for="Provider" class="settings-label">AI provider</label>
+                    <label for="provider-select" class="settings-label">AI provider</label>
                     <span class="settings-description">
                         Select type of LLM server you want to use.
                     </span>
@@ -236,7 +282,7 @@
                     </select>
                 </div>
                 <div class="settings-group">
-                    <label for="LmStudioBaseUrl" class="settings-label">API base URL</label>
+                    <label for="base-url-input" class="settings-label">API base URL</label>
                     <span class="settings-description">
                         Base URL of your local or remote LLM server.
                         <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
@@ -251,12 +297,12 @@
                     </div>
                 </div>
                 <div class="settings-group">
-                    <label for="ApiKey" class="settings-label">API key</label>
+                    <label for="settings-api-key" class="settings-label">API key</label>
                     <span class="settings-description">
                         Your API key for authentication. Optional for most local servers.
                     </span>
                     <div class="password-input-container">
-                        <input type="password" name="ApiKey" data-setting="ApiKey" autocomplete="off">
+                        <input id="settings-api-key" type="password" name="ApiKey" data-setting="ApiKey" autocomplete="off">
                         <button type="button" class="password-toggle" title="Show/Hide">
                             <svg class="eye-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                                 <path d="M8 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
@@ -266,18 +312,18 @@
                     </div>
                 </div>
                 <div class="settings-group">
-                    <label for="streamTimeout" class="settings-label">Streaming timeout (seconds)</label>
+                    <label for="settings-stream-timeout" class="settings-label">Streaming timeout (seconds)</label>
                     <span class="settings-description">
                         How long to wait for the next word or token after the first one arrives. Increase for slower local models. 0 = never timeout.
                     </span>
-                    <input type="number" name="StreamInactivityTimeoutSeconds" data-setting="StreamInactivityTimeoutSeconds" min="0" max="200" value="20" step="1">
+                    <input id="settings-stream-timeout" type="number" name="StreamInactivityTimeoutSeconds" data-setting="StreamInactivityTimeoutSeconds" min="0" max="200" value="20" step="1">
                 </div>
                 <div class="settings-group checkbox-group">
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="AutoLoadOnStartup">
                         <span class="checkbox-content-wrapper">
                             <span class="checkbox-title">Connect on startup</span>
-                            <span class="checkbox-description">Automatically connect to the LLM server on startup and select the first pre-loaded model.</span>
+                            <span class="checkbox-description">Automatically connect to the server and restore the last active or loaded model.</span>
                         </span>
                     </label>
                 </div>
@@ -304,6 +350,20 @@
                                 Extends AI tools to allow automatic file editing and applying modifications directly to your solution.
                                 <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
                                     Recommended only for solutions under source control (Git) so you can review and revert any automated changes.
+                                </span>
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="EnableSubAgents">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Enable Sub Agents (beta)</span>
+                            <span class="checkbox-description">
+                                Allows the main model to execute sequential sub-agents as a replacement for standard tools.
+                                <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
+                                    Configured via %LOCALAPPDATA%\LMLocalChat\subagents.json
                                 </span>
                             </span>
                         </span>
@@ -401,12 +461,12 @@
                     </div>
                 </div>
                 <div class="settings-group">
-                    <label for="TrustedServerCertificatePath" class="settings-label">Trusted server certificate</label>
+                    <label for="trusted-server-certifiate-path" class="settings-label">Trusted server certificate</label>
                     <span class="settings-description">
                         Path to a public certificate (.cer/.crt/.pem) for self-signed or private CA servers. Leave empty for default trust.
                     </span>
                     <div class="input-with-button">
-                        <input type="text" name="TrustedServerCertificatePath" data-setting="TrustedServerCertificatePath" placeholder="C:\certs\my-server.cer">
+                        <input id="trusted-server-certifiate-path" type="text" name="TrustedServerCertificatePath" data-setting="TrustedServerCertificatePath" placeholder="C:\certs\my-server.cer">
                         <button type="button" class="test-certificate-btn btn-secondary" title="Test certificate file">
                             <span class="btn-icon-slot"></span>
                         </button>
@@ -529,7 +589,7 @@
                 <div id="mcp-dialog-config-container" class="mcp-sub-group" style="display: none;">
                     <div class="settings-group">
                         <div class="mcp-header-actions">
-                            <label for="McpServersJson" class="settings-label" style="margin-bottom: 0;">Configuration (JSON)</label>
+                            <label for="mcp-dialog-textarea" class="settings-label" style="margin-bottom: 0;">Configuration (JSON)</label>
                         </div>
                         <span class="settings-description">
                             Configure MCP servers (legacy sse transports are not supported).
@@ -600,24 +660,24 @@
                     <input type="hidden" data-setting="id" name="id">
 
                     <div class="settings-group">
-                        <label for="name" class="settings-label">Profile name</label>
+                        <label for="settings-name" class="settings-label">Profile name</label>
                         <span class="settings-description">
                             Give this configuration a recognizable name (e.g., Work Ollama, OpenRouter).
                         </span>
-                        <input type="text" data-setting="name" name="name" placeholder="e.g. My Custom OpenAI" required autocomplete="off" maxlength="40">
+                        <input type="text" id="settings-name" data-setting="name" name="name" placeholder="e.g. My Custom OpenAI" required autocomplete="off" maxlength="40">
                     </div>
 
                     <div class="settings-group">
-                        <label for="providerType" class="settings-label">Provider type</label>
+                        <label for="settings-provider-type" class="settings-label">Provider type</label>
                         <span class="settings-description">
                             Select the API protocol used by your target server.
                         </span>
-                        <select name="providerType" data-setting="providerType" class="settings-select">
+                        <select id="settings-provider-type" name="providerType" data-setting="providerType" class="settings-select">
                         </select>
                     </div>
 
                     <div class="settings-group">
-                        <label for="customBaseUrl" class="settings-label">API base URL</label>
+                        <label for="settingsCustomBaseUrl" class="settings-label">API base URL</label>
                         <span class="settings-description">
                             The full endpoint URL for the API.
                             <span style="display: block; margin-top: 6px; opacity: 0.8; font-size: 1em; font-style: italic;">
@@ -625,7 +685,7 @@
                             </span>
                         </span>
                         <div class="input-with-button">
-                            <input type="url" data-setting="customBaseUrl" name="customBaseUrl" placeholder="https://api.openai.com/" required pattern="https?://.+">
+                            <input type="url" id="settingsCustomBaseUrl" data-setting="customBaseUrl" name="customBaseUrl" placeholder="https://api.openai.com/" required pattern="https?://.+">
                             <button type="button" class="test-connection-btn btn-secondary" title="Test connection to the provider">
                                 <span class="btn-icon-slot"></span>
                             </button>
@@ -633,12 +693,12 @@
                     </div>
 
                     <div class="settings-group">
-                        <label for="customApiKey" class="settings-label">API key</label>
+                        <label for="settingsCustomApiKey" class="settings-label">API key</label>
                         <span class="settings-description">
                             Your API key for authentication.
                         </span>
                         <div class="password-input-container">
-                            <input type="password" data-setting="customApiKey" name="customApiKey" autocomplete="off" placeholder="sk-...">
+                            <input type="password" id="settingsCustomApiKey" data-setting="customApiKey" name="customApiKey" autocomplete="off" placeholder="sk-...">
                             <button type="button" class="password-toggle" title="Show/Hide">
                                 <svg class="eye-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
                                     <path d="M8 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" />
@@ -660,6 +720,128 @@
             <div id="providers-form-actions">
                 <button type="button" id="provider-form-cancel" class="btn-secondary">Cancel</button>
                 <button type="submit" form="provider-crud-form" id="provider-form-save" class="btn-primary">Apply</button>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="models-config-dialog">
+        <div class="modal-header">
+            <span id="models-config-modal-title">Models</span>
+        </div>
+        <div class="modal-body">
+            <div id="models-config-list-view">
+                <div class="modal-toolbar">
+                    <div class="toolbar-left">
+                        <input type="text" id="models-config-filter-input" placeholder="Filter models..." autocomplete="off">
+                        <button id="models-config-sort-btn" class="ui-icon-btn" title="Sort by Name">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5h10M11 9h7M11 13h4M3 17l3 3 3-3M6 18V4" /></svg>
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <button type="button" id="model-adjust-current-btn" class="btn-secondary" title="Edit the selected model entry, or add it when it is not configured yet">
+                            Adjust Active Model
+                        </button>
+                        <button type="button" id="model-add-btn" class="btn-secondary">
+                            + Add Model
+                        </button>
+                    </div>
+                </div>
+
+                <div class="modal-container">
+                    <div id="models-config-list-container" class="models-grid">
+                        <div class="loading-placeholder" id="models-config-empty-state">
+                            <span>No models added yet. Click "+ Add Model" to create one.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="model-form-view" class="hidden">
+                <form id="model-crud-form">
+                    <input type="hidden" data-setting="id" name="id">
+
+                    <div class="settings-group checkbox-group">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="modelsConfigEnabled" data-setting="enabled" name="enabled" checked>
+                            <span class="checkbox-content-wrapper">
+                                <span class="checkbox-title">Enabled</span>
+                                <span class="checkbox-description">If disabled, these custom settings will not be applied to the model.</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigProvider" class="settings-label">Provider profile</label>
+                        <span class="settings-description">
+                            The provider serving this model (e.g., OpenAI, LM Studio).
+                        </span>
+                        <select id="modelsConfigProvider" name="provider" data-setting="provider" class="settings-select">
+                        </select>
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigModelId" class="settings-label">Model ID</label>
+                        <span class="settings-description">
+                            Exact identifier required by the provider's API (e.g. qwen2.5-coder-32b-instruct).
+                        </span>
+                        <input type="text" id="modelsConfigModelId" data-setting="modelId" name="modelId" placeholder="e.g. deepseek-chat" required autocomplete="off" maxlength="120">
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigDisplayName" class="settings-label">Display name</label>
+                        <span class="settings-description">
+                            Friendly name shown in the UI. Required for custom models.
+                        </span>
+                        <input type="text" id="modelsConfigDisplayName" data-setting="displayName" name="displayName" placeholder="e.g. Qwen Coder 32B" autocomplete="off" maxlength="40">
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigContextLength" class="settings-label">Context length</label>
+                        <span class="settings-description">
+                            Override the default context window. Leave blank to inherit from the provider.
+                        </span>
+                        <input type="number" id="modelsConfigContextLength" data-setting="contextLength" name="contextLength" placeholder="Default" min="1" step="1" autocomplete="off">
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigMaxTokens" class="settings-label">Max tokens</label>
+                        <span class="settings-description">
+                            Maximum number of output tokens. Leave blank to use the default.
+                        </span>
+                        <input type="number" id="modelsConfigMaxTokens" data-setting="maxTokens" name="maxTokens" placeholder="Default" min="1" step="1" autocomplete="off">
+                    </div>
+
+                    <div class="settings-group">
+                        <label for="modelsConfigReasoningEffort" class="settings-label">Reasoning effort</label>
+                        <span class="settings-description">
+                            Adjust reasoning depth for supported models (e.g., GPT-5.6 Sol, DeepSeek V4 Pro).
+                        </span>
+                        <select id="modelsConfigReasoningEffort" name="reasoningEffort" data-setting="reasoningEffort" class="settings-select">
+                        </select>
+                    </div>
+
+                    <div class="settings-group checkbox-group">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="modelsConfigIsCustom" data-setting="isCustom" name="isCustom">
+                            <span class="checkbox-content-wrapper">
+                                <span class="checkbox-title">Custom model</span>
+                                <span class="checkbox-description">Mark as a manually added model, bypassing automatic provider discovery.</span>
+                            </span>
+                        </label>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <div id="models-config-list-actions">
+                <button type="button" id="models-config-modal-cancel" class="btn-secondary">Cancel</button>
+                <button type="button" id="models-config-modal-confirm" class="btn-primary">Save</button>
+            </div>
+
+            <div id="models-config-form-actions">
+                <button type="button" id="model-form-cancel" class="btn-secondary">Cancel</button>
+                <button type="submit" form="model-crud-form" id="model-form-save" class="btn-primary">Apply</button>
             </div>
         </div>
     </dialog>
@@ -694,6 +876,35 @@
             <button type="button" id="tools-modal-save" class="btn-primary">Save</button>
         </div>
     </dialog>
+    <dialog id="subagents-dialog">
+        <div class="modal-header">
+            <span id="subagents-modal-title">Sub Agents</span>
+        </div>
+
+        <div class="modal-body">
+            <div class="modal-toolbar">
+                <div class="toolbar-left">
+                    <input type="text" id="subagents-filter-input" placeholder="Filter agents..." autocomplete="off">
+                </div>
+                <div class="toolbar-right">
+                    <button type="button" id="subagents-enable-all-btn" class="btn-text-action">Enable All</button>
+                    <button type="button" id="subagents-disable-all-btn" class="btn-text-action">Disable All</button>
+                </div>
+            </div>
+
+            <div class="modal-container">
+                <div id="subagents-list-container" class="subagents-list">
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" id="subagents-modal-close" class="btn-secondary">Cancel</button>
+            <button type="button" id="subagents-modal-save" class="btn-primary">Save</button>
+        </div>
+    </dialog>
+
+
 
     <dialog id="autocompletions-selector-dialog" class="model-modal">
         <div class="modal-header">

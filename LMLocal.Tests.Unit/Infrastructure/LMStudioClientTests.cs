@@ -3,8 +3,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Tests.Unit.Infrastructure;
 using Moq;
 using NUnit.Framework;
@@ -38,10 +37,10 @@ namespace LMLocal.Tests.Unit.Internal
             var mockSettingsManager = new Mock<ISettingsManager>();
             mockSettingsManager.Setup(s => s.SystemPrompt).Returns("Test prompt");
             mockSettingsManager.Setup(s => s.VirtualHostName).Returns("app.local");
-            var mockToolFactory = new Mock<ICompositeToolFactory>();
+            var mockToolQueueProvider = new Mock<IToolQueueProvider>();
 
             // Act
-            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, new ApiRequestBuilder(mockSettingsManager.Object, mockToolFactory.Object), new Mock<ITemporaryHttpClientFactory>().Object);
+            var client = new OpenApiAdapter(mockHttpClientWrapper, mockSettingsManager.Object, new ApiRequestBuilder(mockSettingsManager.Object, mockToolQueueProvider.Object), new Mock<ITemporaryHttpClientFactory>().Object);
 
             // Assert
             Assert.That(client, Is.Not.Null);

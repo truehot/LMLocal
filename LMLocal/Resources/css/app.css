@@ -1056,6 +1056,10 @@ body {
         transform: rotate(90deg);
     }
 
+    #subAgentsToggleBtn.active .icon {
+        transform: none;
+    }
+
     .input-container .btn-secondary:hover {
         filter: brightness(1.1);
         background: var(--hover-bg-alpha);

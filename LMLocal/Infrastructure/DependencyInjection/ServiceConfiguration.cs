@@ -1,34 +1,42 @@
 using System;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
-using LMLocal.Application.Autocompletions;
+using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Autocompletions;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.ModelsConfig;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Providers;
+using LMLocal.Infrastructure.RecentModels;
+using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot.Infrastructure;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
-using LMLocal.Infrastructure.Autocompletions;
-using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Infrastructure.WebView.Controllers;
-using LMLocal.Services.Tool;
+using LMLocal.Infrastructure.WebView.Environment;
+using LMLocal.Infrastructure.WebView.Hosting;
+using LMLocal.Infrastructure.WebView.Initialization;
+using LMLocal.Infrastructure.WebView.Navigation;
 using Microsoft.Extensions.DependencyInjection;
 namespace LMLocal.Infrastructure.DependencyInjection
 {
@@ -81,9 +89,11 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IInstructionsManager, InstructionsManager>();
             services.AddSingleton<IMcpConfigManager, McpConfigManager>();
             services.AddSingleton<IProvidersConfigManager, ProvidersConfigManager>();
+            services.AddSingleton<IModelsConfigManager, ModelsConfigManager>();
             services.AddSingleton<IToolsConfigManager, ToolsConfigManager>();
             services.AddSingleton<IMcpToolManager, McpToolManager>();
             services.AddSingleton<ISettingsManager, SettingsManager>();
+            services.AddSingleton<IRecentModelsManager, RecentModelsManager>();
             services.AddSingleton<IPathResolver, PathResolver>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
@@ -141,16 +151,36 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
-            services.AddSingleton<ICompositeToolFactory, CompositeToolProvider>();
+
+            services.AddSingleton<Func<ISubAgentsService>>(sp => () => sp.GetRequiredService<ISubAgentsService>());
+
+            services.AddSingleton<ISubAgentsCatalog>(sp => (ISubAgentsCatalog)sp.GetRequiredService<ISubAgentsConfigManager>());
+            services.AddSingleton<IToolQueueProvider, ToolQueueProvider>();
+
+            services.AddSingleton<ISubAgentsToolSource, SubAgentsToolSource>();
+            services.AddSingleton<IToolRouter, ToolRouter>();
             services.AddSingleton<IToolResultMarkdownFormatter, ToolResultMarkdownFormatter>();
 
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
+            services.AddSingleton<ISubAgentsConfigManager, SubAgentsConfigManager>();
+            services.AddSingleton<ISubAgentsService>(sp => new SubAgentsService(
+                sp.GetRequiredService<ISettingsManager>(),
+                sp.GetRequiredService<IFileSystem>(),
+                sp.GetRequiredService<IStreamingRoundService>(),
+                () => sp.GetRequiredService<IToolExecutionManager>(),
+                sp.GetRequiredService<IToolQueueProvider>(),
+                sp.GetRequiredService<IToolCallLoopDetector>()));
             services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
 
             services.AddSingleton<IWebViewBridgeFactory, WebViewBridgeFactory>();
+            services.AddSingleton<ICoreWebView2EnvironmentFactory, DefaultCoreWebView2EnvironmentFactory>();
+            services.AddSingleton<IWebViewEnvironmentProvider, WebViewEnvironmentProvider>();
+            services.AddSingleton<IWebViewHostObjectRegistrar, WebViewHostObjectRegistrar>();
+            services.AddSingleton<IWebViewNavigator, WebViewNavigator>();
+            services.AddSingleton<IWebViewInitializer, WebViewInitializer>();
             services.AddSingleton<IChatSessionOrchestratorFactory, ChatSessionOrchestratorFactory>();
             services.AddSingleton<IActiveModelContext, ActiveModelContext>();
             services.AddSingleton<IHistoryCompactor, HistoryCompactor>();
@@ -158,20 +188,26 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IToolCallLoopDetector, ToolCallLoopDetector>();
 
             services.AddSingleton<IChatSessionOrchestrator, ChatSessionOrchestrator>();
+            services.AddSingleton<IStreamingRoundService, StreamingRoundService>();
             services.AddSingleton<IChatStreamService, ChatStreamService>();
             services.AddSingleton<IToolExecutionManager, ToolExecutionManager>();
             services.AddSingleton<ISessionManager, SessionManager>();
 
             services.AddSingleton<IInstructionsController, InstructionsController>();
             services.AddSingleton<IProvidersController, ProvidersController>();
+            services.AddSingleton<IModelsConfigController, ModelsConfigController>();
             services.AddSingleton<IToolsController, ToolsController>();
+            services.AddSingleton<ISubAgentsController, SubAgentsController>();
             services.AddSingleton<ISettingsController>(sp => new SettingsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<ITestConnectionService>(), sp.GetRequiredService<ICertificatePathValidator>()));
             services.AddSingleton<IMcpController>(sp => new McpController(sp.GetRequiredService<IMcpConfigManager>(), sp.GetRequiredService<IMcpToolManager>(), sp.GetRequiredService<ISettingsManager>()));
+
             services.AddSingleton<IModelsController>(sp => new ModelsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>(), sp.GetRequiredService<IActiveModelContext>()));
+            services.AddSingleton<IRecentModelsController>(sp => new RecentModelsController(sp.GetRequiredService<IRecentModelsManager>()));
             services.AddSingleton<IAutocompletionsController>(sp => new AutocompletionsController(sp.GetRequiredService<IAutocompletionsConfigManager>(), sp.GetRequiredService<IAutocompletionsService>(), sp.GetRequiredService<IModelsListService>()));
             services.AddSingleton<IChatSessionController>(sp => new ChatSessionController(sp.GetRequiredService<IChatHistoryManager>()));
             services.AddSingleton<IWebViewHostController, WebViewHostController>();
         }
+
 
         /// <summary>
         /// Retrieves a registered service from the container.

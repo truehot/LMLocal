@@ -1,18 +1,21 @@
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Autocompletions;
 using LMLocal.Core.Common;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
+using LMLocal.Infrastructure.LlmApi.Provider;
+using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.LlmApi.Responses;
-using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json;
-using System;
-using System.Net.Http;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace LMLocal.Infrastructure.LlmApi
 {
@@ -27,14 +30,24 @@ namespace LMLocal.Infrastructure.LlmApi
         Task<string> ListModelsRawAsync(string endpoint, string baseUrl, string apiKey, CancellationToken cancellationToken, string certificatePath = null);
 
         /// <summary>
-        /// Opens a streaming chat request and returns the response stream.
+        /// Sends a chat request and returns the full response content.
         /// </summary>
         Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Sends a chat request with an explicit provider connection and restricted tools (used by SubAgent).
+        /// </summary>
+        Task<SendChatResponse> SendChatAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken);
 
         /// <summary>
         /// Sends chat request and returns the full response content.
         /// </summary>
         Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Sends a streaming chat request with an explicit provider connection and restricted tools (used by SubAgent).
+        /// </summary>
+        Task<StreamingResponse> SendChatStreamingAsync(MessageContext messageContext, ModelContext modelContext, ProviderContext provider, IReadOnlyList<ToolDefinition> tools, CancellationToken cancellationToken);
 
         /// <summary>
         /// Sends a text completion request (FIM - Fill In the Middle) and returns the generated text.
@@ -156,6 +169,41 @@ namespace LMLocal.Infrastructure.LlmApi
         {
             var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: true);
 
+            return await SendChatStreamingCoreAsync(
+                openAiRequest,
+                GetBaseUrl(),
+                GetChatCompletionsEndpoint(),
+                _settingsManager.Current?.ApiKey,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends a streaming chat request with an explicit provider connection and restricted tools.
+        /// </summary>
+        public async Task<StreamingResponse> SendChatStreamingAsync(
+            MessageContext messageContext,
+            ModelContext modelContext,
+            ProviderContext provider,
+            IReadOnlyList<ToolDefinition> tools,
+            CancellationToken cancellationToken)
+        {
+            var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: true, tools);
+
+            var baseUrl = ResolveBaseUrl(provider?.BaseUrl);
+            var apiKey = ResolveApiKey(provider?.ApiKey);
+            var providerType = ResolveProviderType(provider?.ProviderType);
+            var endpoint = ProviderResolver.GetChatCompletionsEndpoint(providerType);
+
+            return await SendChatStreamingCoreAsync(openAiRequest, baseUrl, endpoint, apiKey, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<StreamingResponse> SendChatStreamingCoreAsync(
+            SendChatRequest openAiRequest,
+            string baseUrl,
+            string endpoint,
+            string apiKey,
+            CancellationToken cancellationToken)
+        {
             var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json");
             HttpRequestMessage request = null;
             HttpResponseMessage response = null;
@@ -163,12 +211,12 @@ namespace LMLocal.Infrastructure.LlmApi
 
             try
             {
-                request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content };
+                request = new HttpRequestMessage(HttpMethod.Post, baseUrl + endpoint) { Content = content };
 
                 if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
                     request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
-                if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
-                    request.Headers.Add("Authorization", $"Bearer {_settingsManager.Current.ApiKey}");
+                if (!string.IsNullOrEmpty(apiKey))
+                    request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
                 response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
 
@@ -198,21 +246,54 @@ namespace LMLocal.Infrastructure.LlmApi
             }
         }
 
-        public async Task<SendChatResponse> SendChatAsync(
+        public Task<SendChatResponse> SendChatAsync(
             MessageContext messageContext,
             ModelContext modelContext,
             CancellationToken cancellationToken)
         {
             var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: false, useTools: false);
+            return SendChatCoreAsync(
+                openAiRequest,
+                GetBaseUrl(),
+                GetChatCompletionsEndpoint(),
+                _settingsManager.Current?.ApiKey,
+                cancellationToken);
+        }
 
+        /// <summary>
+        /// Sends a chat request with an explicit provider connection and a restricted tool set.
+        /// </summary>
+        public Task<SendChatResponse> SendChatAsync(
+            MessageContext messageContext,
+            ModelContext modelContext,
+            ProviderContext provider,
+            IReadOnlyList<ToolDefinition> tools,
+            CancellationToken cancellationToken)
+        {
+            var openAiRequest = _requestBuilder.BuildRequest(messageContext, modelContext, stream: false, tools);
+
+            var baseUrl = ResolveBaseUrl(provider?.BaseUrl);
+            var apiKey = ResolveApiKey(provider?.ApiKey);
+            var providerType = ResolveProviderType(provider?.ProviderType);
+            var endpoint = ProviderResolver.GetChatCompletionsEndpoint(providerType);
+
+            return SendChatCoreAsync(openAiRequest, baseUrl, endpoint, apiKey, cancellationToken);
+        }
+
+        private async Task<SendChatResponse> SendChatCoreAsync(
+            SendChatRequest openAiRequest,
+            string baseUrl,
+            string endpoint,
+            string apiKey,
+            CancellationToken cancellationToken)
+        {
             using (var content = new StringContent(openAiRequest.ToJson(), Encoding.UTF8, "application/json"))
-            using (var request = new HttpRequestMessage(HttpMethod.Post, GetBaseUrl() + GetChatCompletionsEndpoint()) { Content = content })
+            using (var request = new HttpRequestMessage(HttpMethod.Post, baseUrl + endpoint) { Content = content })
             {
                 if (!string.IsNullOrEmpty(_settingsManager.UserAgent))
                     request.Headers.UserAgent.ParseAdd(_settingsManager.UserAgent);
-                if (!string.IsNullOrEmpty(_settingsManager.Current.ApiKey))
-                    request.Headers.Add("Authorization", $"Bearer {_settingsManager.Current.ApiKey}");
-
+                if (!string.IsNullOrEmpty(apiKey))
+                    request.Headers.Add("Authorization", $"Bearer {apiKey}");
 
                 using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
                 {
@@ -233,9 +314,40 @@ namespace LMLocal.Infrastructure.LlmApi
                     {
                         InternalLogger.Error("SendChatAsync: failed to parse response JSON", ex);
                     }
+
                     return null;
                 }
             }
+        }
+
+        private string ResolveBaseUrl(string explicitUrl)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitUrl))
+            {
+                return explicitUrl.TrimEnd('/');
+            }
+
+            return GetBaseUrl();
+        }
+
+        private string ResolveApiKey(string explicitKey)
+        {
+            if (!string.IsNullOrEmpty(explicitKey))
+            {
+                return explicitKey;
+            }
+
+            return _settingsManager.Current?.ApiKey;
+        }
+
+        private ModelProvider ResolveProviderType(string explicitProviderType)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitProviderType))
+            {
+                return ProviderResolver.ResolveProvider(explicitProviderType);
+            }
+
+            return ProviderResolver.ResolveProvider(_settingsManager.Current?.Provider);
         }
 
         /// <summary>

@@ -25,7 +25,9 @@ import { SettingsDialog } from '@app/dialogs/settings.dialog.js';
 import { InstructionsDialog } from '@app/dialogs/instructions.dialog.js';
 import { McpSettingsDialog } from '@app/dialogs/mcp.settings.dialog.js';
 import { ProvidersDialog } from '@app/dialogs/providers.dialog.js';
+import { ModelsConfigDialog } from '@app/dialogs/models.config.dialog.js';
 import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
+import { SubAgentsDialog } from '@app/dialogs/subagents.dialog.js';
 import { AutocompletionsDialog } from '@app/dialogs/autocompletions.dialog.js';
 import { ChatHistoryDialog } from '@app/dialogs/chat.history.dialog.js';
 
@@ -163,6 +165,11 @@ class AppController {
             return await appDataService.setAiToolsModeAsync(mode);
         });
 
+        inputComponent.onSubAgentsToggled.on(async () => {
+            const enabled = !settingsStore.getState().EnableSubAgents;
+            return await appDataService.setSubAgentsEnabledAsync(enabled);
+        });
+
         chatController.onCopyCode.on(async (text) => {
             return await appManager.performCopyCode(text);
         });
@@ -264,6 +271,17 @@ class AppController {
                     menuComponent.hideMenu();
                     await toolsDialog.show();
                     return true;
+                case 'open-subagents':
+                    const subAgentsDialog = new SubAgentsDialog();
+                    subAgentsDialog.onLoad.on(async () => {
+                        return await appDataService.getSubAgentsConfigAsync();
+                    });
+                    subAgentsDialog.onSave.on(async (config) => {
+                        return await appDataService.updateSubAgentsConfigAsync(config);
+                    });
+                    menuComponent.hideMenu();
+                    await subAgentsDialog.show();
+                    return true;
                 case 'open-fim':
                     const autocompletionsDialog = new AutocompletionsDialog();
                     autocompletionsDialog.onLoad.on(async () => {
@@ -284,6 +302,20 @@ class AppController {
                     });
                     menuComponent.hideMenu();
                     await autocompletionsDialog.show();
+                    return true;
+                case 'open-models':
+                    const modelsConfigDialog = new ModelsConfigDialog();
+                    modelsConfigDialog.onLoad.on(async () => {
+                        return await appDataService.getModelsConfigAsync();
+                    });
+                    modelsConfigDialog.onLoadProviders.on(async () => {
+                        return await appDataService.getProvidersForModelsAsync();
+                    });
+                    modelsConfigDialog.onSave.on(async (config) => {
+                        return await appDataService.updateModelsConfigAsync(config);
+                    });
+                    menuComponent.hideMenu();
+                    await modelsConfigDialog.show();
                     return true;
                 default:
                     return false;

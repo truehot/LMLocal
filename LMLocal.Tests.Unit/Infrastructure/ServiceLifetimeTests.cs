@@ -6,8 +6,7 @@ using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
+using LMLocal.Application.Abstractions.Ports;
 using Moq;
 using NUnit.Framework;
 
@@ -52,12 +51,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var httpClient = new HttpClient();
             var httpClientWrapper = new TestHttpClientWrapper(httpClient);
             var fileSystem = new Mock<IFileSystem>().Object;
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = new Mock<IToolQueueProvider>().Object;
 
             // Act - Create the complete service chain
             var persistence = new ChatPersistenceService(settingsManager, fileSystem);
             var history = new ChatHistoryManager(settingsManager, persistence);
-            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             // Assert - Verify all services were created successfully
             Assert.That(persistence, Is.Not.Null, "IChatPersistenceService should be created");

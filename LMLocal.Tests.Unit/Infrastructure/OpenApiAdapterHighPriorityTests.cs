@@ -12,7 +12,7 @@ using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
 using Newtonsoft.Json;
@@ -62,6 +62,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
             }
         }
 
+        private static Mock<IToolQueueProvider> EmptyQueueProviderMock()
+        {
+            var mock = new Mock<IToolQueueProvider>();
+            mock.Setup(p => p.GetMainQueue()).Returns(ToolQueue.Main(new System.Collections.Generic.List<ToolDefinition>()));
+            return mock;
+        }
+
         [Test]
         public async Task StreamingResponse_ParsesChunkedStream()
         {
@@ -80,9 +87,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = EmptyQueueProviderMock().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
@@ -113,9 +120,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = EmptyQueueProviderMock().Object;
 
-            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var adapter = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("test-model");
@@ -142,9 +149,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { LmStudioBaseUrl = "http://example.com:8080/" });
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = EmptyQueueProviderMock().Object;
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");
@@ -169,12 +176,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = EmptyQueueProviderMock().Object;
 
             var adapter = new OpenApiAdapter(
                 Mock.Of<IHttpClientWrapper>(),
                 mockSettings.Object,
-                new ApiRequestBuilder(mockSettings.Object, toolFactory),
+                new ApiRequestBuilder(mockSettings.Object, toolQueueProvider),
                 factory.Object);
 
             var json = await adapter.ListModelsRawAsync(
@@ -201,12 +208,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = EmptyQueueProviderMock().Object;
 
             var adapter = new OpenApiAdapter(
                 mockWrapper.Object,
                 mockSettings.Object,
-                new ApiRequestBuilder(mockSettings.Object, toolFactory),
+                new ApiRequestBuilder(mockSettings.Object, toolQueueProvider),
                 factory.Object);
 
             var json = await adapter.ListModelsRawAsync("/v1/models", "https://api.openai.com", "sk", CancellationToken.None);
@@ -320,10 +327,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 Parameters = new ToolParameters { Type = "object" }
             };
 
-            var mockToolFactory = new Mock<ICompositeToolFactory>();
-            mockToolFactory.Setup(t => t.GetAllToolDefinitions()).Returns(new System.Collections.Generic.List<ToolDefinition> { toolDef });
+            var mockToolQueueProvider = new Mock<IToolQueueProvider>();
+            mockToolQueueProvider
+                .Setup(p => p.GetMainQueue())
+                .Returns(ToolQueue.Main(new System.Collections.Generic.List<ToolDefinition> { toolDef }));
 
-            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, mockToolFactory.Object), new Mock<ITemporaryHttpClientFactory>().Object);
+            var adapter = new OpenApiAdapter(mockWrapper.Object, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, mockToolQueueProvider.Object), new Mock<ITemporaryHttpClientFactory>().Object);
 
             var messageContext = new MessageContext(new ChatMessage[0]);
             var modelContext = new ModelContext("mymodel");

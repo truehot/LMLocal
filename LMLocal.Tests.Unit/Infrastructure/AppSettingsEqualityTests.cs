@@ -1,8 +1,9 @@
 using System.Text;
 using System.Threading.Tasks;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using NUnit.Framework;
+using LMLocal.Infrastructure.Settings;
 
 namespace LMLocal.Tests.Unit.Infrastructure
 {

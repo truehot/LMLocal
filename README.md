@@ -31,10 +31,12 @@
 - [All Features](#content--all-features)
 - [AI Instructions & Modes](#content--ai-instructions--modes)
 - [Providers](#content--providers)
+- [Models](#content--models-dialog)
 - [Chat History Dialog](#content--chat-history-dialog)
 - [Image Attachments (Multimodal Chat)](#content--image-attachments-multimodal-chat)
 - [Built‑in AI Tools](#content--builtin-ai-tools)
 - [List of built‑in tools](#content--list-of-builtin-tools)
+- [Sub Agents](#content--subagents)
 - [Smart Workflows & Best Practices](#content--smart-workflows--best-practices)
 - [Auto-Completions](#content--auto-completions)
 - [Context Menu Commands](#content--context-menu-commands)
@@ -65,6 +67,7 @@
 
 To use LM Local, you need:
 - [x] **Visual Studio 2022 or 2026**
+- [x] Microsoft Edge WebView2 (included in Windows 10/11 by default; corporate users should ensure it is not disabled via Group Policy)
 - [x] **An AI Backend / Provider** (choose one):
   * **Cloud Providers:** Any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Google AI Studio, etc. — requires an API key).
   * **Local Engines** (must be installed and running with a loaded model):
@@ -238,14 +241,17 @@ How to configure a custom remote endpoint and activate it inside the extension.
 | **Hugging Face** | OpenAI compatible | `https://router.huggingface.co/` |
 | **Alibaba Cloud Model Studio** | OpenAI compatible | `https://[*].eu-central-1.maas.aliyuncs.com/compatible-mode/` |
 | **Parasail** | OpenAI compatible | `https://api.parasail.io/` |
-| **Perplexity.ai** | OpenAI compatible | `https://api.perplexity.ai/router/` |
 | **Mistral** | OpenAI compatible | `https://api.mistral.ai/` |
 | **Cohere** | OpenAI compatible | `https://api.cohere.ai/compatibility/` |
 | **Google AI Studio** | Gemini (cloud) | `https://generativelanguage.googleapis.com` |
-| **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
 | **Requesty** | OpenAI compatible | `https://router.requesty.ai/` |
 | **Novita** | OpenAI compatible | `https://api.novita.ai/openai/` |
 | **Bitdeer** | OpenAI compatible | `https://api-inference.bitdeer.ai/` |
+
+Limited availability
+
+| **Perplexity.ai** | OpenAI compatible | `https://api.perplexity.ai/router/` |
+| **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
 
 ### 💳 Pay to Try (Commercial / Premium)
 
@@ -255,7 +261,20 @@ How to configure a custom remote endpoint and activate it inside the extension.
 | **Together AI** | Together AI (cloud) | `https://api.together.ai/` |
 | **Fireworks AI** | OpenAI compatible | `https://api.fireworks.ai/inference/` |
 | **OpenAI** | OpenAI compatible | `https://api.openai.com` |
+| **DigitalOcean** | OpenAI compatible | `https://inference.do-ai.run/` |
+| **GMI Cloud** | OpenAI compatible | `https://console.gmicloud.ai/api/` |
 
+
+<a id="content--models-dialog"></a>
+## 🗂️ Models
+
+The **Models** dialog (menu `… → Models…`) manages model settings in the `models.config.json` file. It is designed for two tasks:
+
+- **Override parameters** of models already returned by the provider – change the display name (`displayName`), context length (`contextLength`), token limit (`maxTokens`), or reasoning effort (`reasoningEffort`). These values take precedence over built‑in defaults.
+
+- **Add models not listed by the provider** – if you know the `modelId` of a model that the provider (e.g., OpenAI, Anthropic) does not expose via its API, you can **manually create a record** in the dialog: click “Add”, fill in the fields, set `isCustom: true`, and be sure to provide a `displayName`. After saving, the model will appear in the main selection list.
+
+The **Adjust Current** button automatically finds or prepares a record for the currently active model.
 
 
 <a id="content--builtin-ai-tools"></a>
@@ -321,6 +340,70 @@ The panel lets you:
 - Click **`Open all`** – opens all changed files in Visual Studio editor tabs.
 - Click **`Discard all`** – reverts all changes using internal backups (files are restored to their state before the AI edits).
 - Click **`Accept all`** – confirms the changes, removes the internal backups, and clears the list (you can no longer revert them afterward).
+
+
+<a id="content--subagents"></a>
+## 🤖 Subagents (Beta – Advanced Users)
+
+**Subagents** are specialised AI "workers" that the main chat can invoke as tools. Each agent runs in an isolated loop with its own provider, model, system prompt, and toolset, returning a summary to the main conversation.
+
+> [!WARNING]  
+> **Beta – Advanced Users Only.** No UI editor – you must edit the JSON file manually. The schema may change in future releases without notice.
+
+---
+
+### Configuration
+
+Define agents in `%LOCALAPPDATA%\LMLocalChat\subagents.json`. Top‑level defaults (`providerType`, `customBaseUrl`, `customApiKey`) are inherited by agents that don't override them.
+
+**Example:**
+
+```json
+{
+  "agents": [
+    {
+      "id": "research_subagent",
+      "displayName": "Research",
+      "description": "Read-only file explorer. Searches for files by name, reads file contents, and lists directories. Use this for plain text searches and finding file paths. It CANNOT modify code.",
+      "providerType": "lmstudio",
+      "customBaseUrl": "http://localhost:1234",
+      "customApiKey": null,
+      "model": "qwen3.5-4b-instruct-revised",
+      "system": "You are a read-only File Explorer. Your task is to find files and read text content based on the orchestrator's request. Do not attempt to analyze deep code structures or modify files, just locate the requested text or files. Provide a concise summary of your findings, including exact file paths and line numbers.",
+      "temperature": 0.1,
+      "timeoutSeconds": 480,
+      "maxRounds": 99,
+      "maxTokens": 16384,
+      "enabled": true,
+      "allowedTools": [
+        "get_solution_overview",
+        "list_directory",
+        "find_files",
+        "search_file_content",
+        "read_file_lines",
+        "get_active_document"
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### Managing Agents
+
+Open the Sub Agents dialog via Sub Agents… in the main menu – filter the list, enable/disable agents, and view their details.
+
+Enable subagent mode in the main chat via the **'s' icon** in the toolbar **or** the **"Enable Sub Agents (beta)"** checkbox in Settings.
+
+---
+
+### Important Notes
+
+- **Manual JSON editing** – no in‑app form. Invalid entries are skipped (logged).
+- **Sequential execution** – agents run one at a time; parallel is not supported.
+- **Beta** – schema may change without backward compatibility.
+- **Defaults baked in** – inherited top‑level values are written into each agent when the file is saved (e.g., after toggling `enabled`).
 
 
 
@@ -668,6 +751,18 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 ## 💾 Data & Configuration
 
 LM Local keeps things simple and stores your preferences locally. Configuration files are maintained in:
+
+The following configuration files are stored there:
+
+| File | Purpose |
+| :--- | :--- |
+| `settings.json` | Main extension settings (provider, model, UI, timeouts, history). |
+| `providers.json` | Saved provider profiles (see [Providers](#content--providers)). |
+| `models.config.json` | Model records & overrides (see [Models Dialog](#content--models-dialog)). |
+| `subagents.json` | Subagent (worker agent) definitions. |
+| `mcp.json` | MCP server configuration. |
+| `ChatHistory\` | Chat session logs (history dialog, session restore). |
+
 
 `%LOCALAPPDATA%\LMLocalChat\`
 

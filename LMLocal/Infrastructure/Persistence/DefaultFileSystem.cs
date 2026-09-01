@@ -103,13 +103,15 @@ namespace LMLocal.Infrastructure.Persistence
         public async Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken = default)
         {
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+            using (var reader = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
                 var sb = new StringBuilder();
-                var buffer = new byte[4096];
+                var buffer = new char[4096];
                 int read;
-                while ((read = await fs.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                while ((read = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false)) > 0)
                 {
-                    sb.Append(Encoding.UTF8.GetString(buffer, 0, read));
+                    cancellationToken.ThrowIfCancellationRequested();
+                    sb.Append(buffer, 0, read);
                 }
                 return sb.ToString();
             }

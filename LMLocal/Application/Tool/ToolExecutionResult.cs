@@ -1,4 +1,4 @@
-namespace LMLocal.Services.Tool
+namespace LMLocal.Application.Tool
 {
     /// <summary>
     /// Result of tool execution.

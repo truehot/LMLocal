@@ -8,8 +8,7 @@ using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Core.Exceptions;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
-using LMLocal.Infrastructure.Tooling;
+using LMLocal.Application.Abstractions.Ports;
 using Moq;
 using NUnit.Framework;
 
@@ -38,10 +37,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = new Mock<IToolQueueProvider>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
             var messageContext = new MessageContext(new List<ChatMessage>());
             var modelContext = new ModelContext("test-model");
             var result = await lm.SendChatAsync(messageContext, modelContext, CancellationToken.None);
@@ -58,10 +57,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
             };
             var client = new HttpClient(new FakeHandler(response));
             var wrapper = new TestHttpClientWrapper(client);
-            var toolFactory = new Mock<ICompositeToolFactory>().Object;
+            var toolQueueProvider = new Mock<IToolQueueProvider>().Object;
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolFactory), new Mock<ITemporaryHttpClientFactory>().Object);
+            var lm = new OpenApiAdapter(wrapper, mockSettings.Object, new ApiRequestBuilder(mockSettings.Object, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
             var messageContext = new MessageContext(new List<ChatMessage>());
             var modelContext = new ModelContext("test-model");
             var ex = Assert.ThrowsAsync<ApiException>(async () => await lm.SendChatAsync(messageContext, modelContext, CancellationToken.None));

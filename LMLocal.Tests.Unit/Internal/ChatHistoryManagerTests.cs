@@ -5,7 +5,7 @@ using System.Linq;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Tooling;
 using Moq;

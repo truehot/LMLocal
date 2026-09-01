@@ -1,10 +1,10 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Security;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 using Moq;
 using NUnit.Framework;
 

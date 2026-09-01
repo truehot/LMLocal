@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.ModelsList;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Settings;
+using LMLocal.Application.Abstractions.Ports;
 
 namespace LMLocal.Infrastructure.WebView.Controllers
 {

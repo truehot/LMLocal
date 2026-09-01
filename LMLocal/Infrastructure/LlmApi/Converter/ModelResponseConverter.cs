@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using LMLocal.Core.Models;
 using LMLocal.Core.Common;
@@ -153,14 +154,30 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
 
                 foreach (var model in openAiResponse.Data)
                 {
-                    var maxTokens = KnownModelContexts.TryGet(model.Id);
+                    var reportedContext = FirstPositive(
+                        model.ContextLength,
+                        model.ContextWindow,
+                        model.MaxContextLength,
+                        model.MaxModelLen);
+
+                    var maxTokens = reportedContext.HasValue
+                        ? (int)reportedContext.Value
+                        : KnownModelContexts.TryGet(model.Id);
+
                     var unifiedModel = new UnifiedModelInfo
                     {
                         Id = model.Id,
-                        Name = null,
+                        // "name" (OpenRouter) wins, falls back to Gemini "displayName"/"display_name".
+                        Name = model.Name ?? model.DisplayName ?? model.DisplayNameSnakeCase,
                         MaxTokens = maxTokens,
                         SupportsMaxTokens = maxTokens.HasValue,
-                        IsLoaded = false
+                        IsLoaded = false,
+                        SupportsVision = HasVision(model.Architecture),
+                        SupportsToolUse = HasToolUse(model.SupportedParameters),
+                        InputPricePerMillion = ToPricePerMillion(model.Pricing?.Prompt),
+                        OutputPricePerMillion = ToPricePerMillion(model.Pricing?.Completion),
+                        CacheReadPricePerMillion = ToPricePerMillion(model.Pricing?.InputCacheRead),
+                        CacheWritePricePerMillion = ToPricePerMillion(model.Pricing?.InputCacheWrite)
                     };
 
                     result.Models.Add(unifiedModel);
@@ -174,6 +191,69 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 InternalLogger.Warn($"ConvertOpenAiResponseToUnified: failed to parse OpenAI response: {ex.Message}");
                 return new UnifiedListModelsResponse { Error = "Failed to parse OpenAI-compatible response" };
             }
+        }
+
+        /// <summary>
+        /// Detects image understanding WITHOUT image generation:
+        /// </summary>
+        private static bool? HasVision(OpenAiArchitecture arch)
+        {
+            if (arch?.InputModalities == null || arch.InputModalities.Count == 0)
+                return null;
+
+            var hasImageInput = arch.InputModalities.Any(m =>
+                m.Equals("image", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasImageInput)
+                return false;
+
+            var textOnlyOutput = arch.OutputModalities == null ||
+                                 arch.OutputModalities.Count == 0 ||
+                                 arch.OutputModalities.All(m =>
+                                     m.Equals("text", StringComparison.OrdinalIgnoreCase));
+
+            return textOnlyOutput;
+        }
+
+        /// <summary>
+        /// Detects tool-use support from supported_parameters.
+        /// </summary>
+        private static bool? HasToolUse(List<string> supportedParameters)
+        {
+            if (supportedParameters == null)
+                return null;
+
+            return supportedParameters.Any(p =>
+                p.Equals("tools", StringComparison.OrdinalIgnoreCase) ||
+                p.Equals("tool_choice", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Returns the first non-null, positive value from the given context-length candidates.
+        /// </summary>
+        private static long? FirstPositive(params long?[] candidates)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (candidate.HasValue && candidate.Value > 0)
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Converts a per-token price string (e.g. "0.00000022") to USD per 1M tokens.
+        /// </summary>
+        private static decimal? ToPricePerMillion(string pricePerToken)
+        {
+            if (string.IsNullOrWhiteSpace(pricePerToken))
+                return null;
+
+            if (decimal.TryParse(pricePerToken, NumberStyles.Float, CultureInfo.InvariantCulture, out var perToken))
+                return (decimal?)(perToken * 1_000_000m);
+
+            return null;
         }
 
         /// <summary>
@@ -239,7 +319,6 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                 {
                     int? maxTokens = null;
 
-                    // Prefer settings.ContextLength if available, then fall back to parameters.MaxTokens
                     if (model.Settings?.ContextLength > 0)
                     {
                         maxTokens = model.Settings.ContextLength;

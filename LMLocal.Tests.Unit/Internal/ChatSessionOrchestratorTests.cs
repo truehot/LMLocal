@@ -10,7 +10,6 @@ using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Services.Tool;
 using Moq;
 using NUnit.Framework;
 

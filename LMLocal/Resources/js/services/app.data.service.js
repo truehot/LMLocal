@@ -3,6 +3,7 @@ import modelStore from '@app/store/model.store.js';
 import settingsStore from '@app/store/settings.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import providersStore from '@app/store/providers.store.js';
+import modelsConfigStore from '@app/store/models.config.store.js';
 import appStore from '@app/store/app.store.js';
 
 
@@ -45,9 +46,34 @@ class AppDataService {
                     error: null
                 });
             }
+
+            this.recordModelUsage(modelId, modelName || modelId);
         }
 
         return result;
+    }
+
+    async getRecentModelsAsync() {
+        try {
+            return await bridgeClient.getRecentModelsAsync();
+        } catch (e) {
+            console.warn('Recent models unavailable:', e);
+            return { entries: [] };
+        }
+    }
+
+    async recordModelUsage(modelId, modelName) {
+        try {
+            const settings = settingsStore.getState();
+            await bridgeClient.recordModelUsageAsync({
+                providerType: settings.Provider,
+                providerId: settings.ProviderId ?? null,
+                modelId,
+                modelName: modelName || modelId,
+            });
+        } catch (e) {
+            console.warn('Failed to record model usage:', e);
+        }
     }
 
     async getSettingsAsync() {
@@ -89,6 +115,16 @@ class AppDataService {
                 EnableAiTools: enableAiTools,
                 EnableAiWriteTools: enableAiWriteTools
             });
+        }
+
+        return result;
+    }
+
+    async setSubAgentsEnabledAsync(enabled) {
+        const result = await bridgeClient.setSubAgentsAsync(!!enabled);
+
+        if (result) {
+            settingsStore.setState({ EnableSubAgents: !!enabled });
         }
 
         return result;
@@ -241,6 +277,79 @@ class AppDataService {
         }
     }
 
+    async getModelsConfigAsync() {
+        modelsConfigStore.setState({
+            loading: true,
+            error: null
+        });
+
+        try {
+            const result = await bridgeClient.getModelsConfigAsync();
+            const config = result && result.models ? result : { models: [] };
+            const models = config.models || [];
+            modelsConfigStore.setState({
+                models,
+                loading: false,
+                loaded: true,
+                error: null
+            });
+            return config;
+        } catch (error) {
+            console.error('Failed to load models config:', error);
+            modelsConfigStore.setState({
+                loading: false,
+                loaded: true,
+                error: 'Failed to load models'
+            });
+            throw error;
+        }
+    }
+
+    async updateModelsConfigAsync(config) {
+        modelsConfigStore.setState({
+            loading: true,
+            error: null
+        });
+
+        try {
+            const result = await bridgeClient.updateModelsConfigAsync(config);
+            if (result) {
+                modelsConfigStore.setState({
+                    models: (config && config.models) || [],
+                    loading: false,
+                    loaded: true,
+                    error: null
+                });
+            }
+            return result;
+        } catch (error) {
+            console.error('Failed to update models config:', error);
+            modelsConfigStore.setState({
+                loading: false,
+                error: 'Failed to update models'
+            });
+            throw error;
+        }
+    }
+
+    async getProvidersForModelsAsync() {
+        const storeState = providersStore.getState();
+        let result;
+        if (storeState.loaded) {
+            result = {
+                defaultProviders: storeState.defaultProviders,
+                providers: storeState.providers,
+            };
+        } else {
+            result = await this.getProvidersAsync();
+        }
+
+        return [
+            ...(result.defaultProviders || []),
+            ...(result.providers || [])
+        ];
+    }
+
     async getToolsAsync() {
         try {
             const result = await bridgeClient.getToolsAsync();
@@ -257,6 +366,26 @@ class AppDataService {
             return result;
         } catch (error) {
             console.error('Failed to update tools:', error);
+            throw error;
+        }
+    }
+
+    async getSubAgentsConfigAsync() {
+        try {
+            const result = await bridgeClient.getSubAgentsAsync();
+            return result;
+        } catch (error) {
+            console.error('Failed to load subagents:', error);
+            throw error;
+        }
+    }
+
+    async updateSubAgentsConfigAsync(config) {
+        try {
+            const result = await bridgeClient.updateSubAgentsAsync(config);
+            return result;
+        } catch (error) {
+            console.error('Failed to update subagents:', error);
             throw error;
         }
     }

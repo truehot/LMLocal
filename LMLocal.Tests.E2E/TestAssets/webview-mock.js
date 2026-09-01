@@ -82,6 +82,19 @@ function __startMock() {
             }),
             UpdateProvidersAsync: async (json) => true,
         };
+        window.__modelsConfigOverride = {
+            GetModelsConfigAsync: async () => JSON.stringify({
+                models: [
+                    { id: 1, modelId: 'qwen2.5-coder-7b-instruct', providerType: 'lmstudio', providerId: 0, contextLength: 32768, isCustom: false, enabled: true },
+                    { id: 2, modelId: 'manual/custom-model', providerType: 'openai', providerId: 3, displayName: 'My Custom', contextLength: 8192, isCustom: true, enabled: true }
+                ]
+            }),
+            UpdateModelsConfigAsync: async (json) => {
+                console.log('[mock] UpdateModelsConfigAsync called:', json);
+                window.__lastSavedModelsConfig = json;
+                return true;
+            },
+        };
         window.__toolsOverride = {
             GetToolsAsync: async () => JSON.stringify({
                 success: true,
@@ -95,12 +108,31 @@ function __startMock() {
             }),
             UpdateToolsAsync: async (json) => true,
         };
+        window.__subAgentsOverride = {
+            GetSubAgentsAsync: async () => JSON.stringify({
+                success: true,
+                data: {
+                    agents: [
+                        { id: 'researcher', displayName: 'Researcher', description: 'Research agent', providerType: 'deepseek', customBaseUrl: 'https://api.deepseek.com', model: 'deepseek-chat', temperature: 0.3, timeoutSeconds: 90, maxRounds: 5, maxTokens: 2048, enabled: true, allowedTools: ['get_solution_overview', 'find_files'] },
+                        { id: 'coder', displayName: 'Coder', description: 'Coder agent', providerType: 'lmstudio', customBaseUrl: 'http://localhost:1234', model: 'qwen2.5-coder-7b-instruct', enabled: false, allowedTools: [] }
+                    ]
+                }
+            }),
+            UpdateSubAgentsAsync: async (json) => {
+                console.log('[mock] UpdateSubAgentsAsync called:', json);
+                return JSON.stringify({ success: true });
+            },
+        };
         window.__settingsOverride = {
             GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),
             UpdateSettingsAsync: async (json) => true,
             TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
             SetAiToolsAsync: async (json) => {
                 console.log('[mock] SetAiToolsAsync called:', json);
+                return true;
+            },
+            SetSubAgentsAsync: async (json) => {
+                console.log('[mock] SetSubAgentsAsync called:', json);
                 return true;
             },
         };
@@ -141,7 +173,12 @@ function __startMock() {
             }),
             SetActiveModelAsync: async (modelId, contextLength) => true,
         };
+        window.__recentModelsOverride = {
+            GetRecentModelsAsync: async () => JSON.stringify({ entries: [] }),
+            RecordModelUsageAsync: async () => true,
+        };
         window.__chatSessionOverride = {
+
             GetLastChatSessionAsync: async () => JSON.stringify({ hasSession: false, messages: [] }),
             GetChatSessionsAsync: async () => JSON.stringify({ sessions: [] }),
             GetChatSessionByIdAsync: async (sessionId) => JSON.stringify({ hasSession: false, messages: [] }),

@@ -165,7 +165,7 @@
         display: inline-block;
         flex-shrink: 0;
         color: var(--muted-color);
-        padding-top:2px;
+        padding-top: 2px;
         transition: color 0.15s ease;
     }
 
@@ -382,6 +382,11 @@
 
 #model-selector-dialog .model-tooluse-active {
     color: var(--success-color);
+    opacity: 0.9;
+}
+
+#model-selector-dialog .model-price {
+    color: var(--accent-color);
     opacity: 0.9;
 }
 
@@ -1555,6 +1560,361 @@
     animation: spin 0.8s linear infinite;
 }
 
+/* ====== Models Config dialog styles  ====== */
+#models-config-dialog {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 500px;
+    height: 600px;
+    max-height: 90vh;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    overflow: hidden;
+    margin: auto;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+    #models-config-dialog[open] {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #models-config-dialog::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+    #models-config-dialog .modal-header {
+        padding: 12px 16px;
+        background-color: var(--top-bar-bg);
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--strong-text);
+        font-size: 14px;
+        font-weight: 500;
+        flex-shrink: 0;
+    }
+
+    #models-config-dialog .modal-body {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    #models-config-dialog #models-config-list-view,
+    #models-config-dialog #model-form-view {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    #models-config-dialog #model-crud-form {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    #models-config-dialog .modal-footer {
+        padding: 12px 16px;
+        border-top: 1px solid var(--border-color);
+        background-color: var(--panel-bg);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+        #models-config-dialog .modal-footer > div {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+    #models-config-dialog .modal-toolbar {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 8px 12px !important;
+        background-color: var(--bg-color) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        gap: 10px !important;
+        flex-shrink: 0;
+    }
+
+    #models-config-dialog .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-grow: 1;
+    }
+
+    #models-config-dialog .toolbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    #models-config-dialog #model-adjust-current-btn.btn-secondary {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 28px !important;
+        padding: 0 12px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        min-width: auto !important;
+    }
+
+
+    #models-config-dialog #models-config-filter-input {
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 12px;
+        outline: none;
+        flex-grow: 1;
+        max-width: 200px;
+        box-sizing: border-box;
+        height: 28px;
+        transition: border-color 0.2s;
+    }
+
+        #models-config-dialog #models-config-filter-input:focus {
+            border-color: var(--accent-color);
+        }
+
+    #models-config-dialog #model-add-btn.btn-secondary {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        height: 28px !important;
+        padding: 0 12px !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        min-width: auto !important;
+    }
+
+    #models-config-dialog .modal-container {
+        padding: 8px;
+        flex: 1;
+        overflow-y: auto;
+        background-color: var(--bg-color);
+        display: flex;
+        flex-direction: column;
+    }
+
+    #models-config-dialog .models-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px;
+    }
+
+    #models-config-dialog .provider-card {
+        background-color: var(--surface-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 4px !important;
+        padding: 12px !important;
+        transition: background 0.2s, border-color 0.2s;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 10px;
+        position: relative;
+        box-sizing: border-box;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+        #models-config-dialog .provider-card:hover {
+            background-color: var(--hover-bg-alpha) !important;
+            border-color: var(--muted-color) !important;
+        }
+
+            #models-config-dialog .provider-card:hover::before {
+                content: "";
+                position: absolute;
+                left: -1px;
+                top: -1px;
+                bottom: -1px;
+                width: 3px;
+                background-color: var(--accent-color);
+                border-radius: 4px 0 0 4px;
+            }
+
+    #models-config-dialog .provider-info-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    #models-config-dialog .provider-card-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--strong-text);
+        word-break: break-all;
+    }
+
+    #models-config-dialog .provider-card-type {
+        font-size: 11px;
+        color: var(--muted-color);
+        opacity: 0.6;
+        word-break: break-all;
+    }
+
+    #models-config-dialog .provider-card-meta {
+        font-size: 11px;
+        color: var(--muted-color);
+        word-break: break-all;
+        display: flex;
+        align-items: center;
+    }
+
+        #models-config-dialog .provider-card-meta::before {
+            margin-right: 8px;
+            opacity: 0.3;
+            color: var(--muted-color);
+        }
+
+    #models-config-dialog .provider-card-actions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    #models-config-dialog .provider-card-btn {
+        background: var(--input-bg) !important;
+        color: var(--text-color) !important;
+        border: 1px solid var(--border-color) !important;
+        padding: 4px 12px !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        border-radius: 3px !important;
+        height: 24px !important;
+        min-width: 55px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.2s ease;
+    }
+
+        #models-config-dialog .provider-card-btn:hover {
+            color: var(--btn-icon-hover) !important;
+            background-color: var(--hover-bg-alpha) !important;
+            border-color: var(--muted-color) !important;
+        }
+
+        #models-config-dialog .provider-card-btn.btn-danger-text:hover {
+            border-color: var(--stop-border, rgba(199, 80, 80, 0.3)) !important;
+            color: var(--stop-text, #e07a7a) !important;
+            background-color: var(--stop-bg, rgba(199, 80, 80, 0.08)) !important;
+        }
+
+    #models-config-dialog .settings-group {
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    #models-config-dialog .settings-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--strong-text);
+    }
+
+    #models-config-dialog .settings-description {
+        font-size: 11px;
+        color: var(--muted-color);
+        opacity: 0.7;
+        line-height: 1.4;
+    }
+
+    #models-config-dialog input[type="text"],
+    #models-config-dialog input[type="number"],
+    #models-config-dialog .settings-select {
+        background: var(--input-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        outline: none;
+        box-sizing: border-box;
+        width: 100%;
+        transition: border-color 0.2s;
+    }
+
+        #models-config-dialog input:focus,
+        #models-config-dialog .settings-select:focus {
+            border-color: var(--accent-color);
+        }
+
+    #models-config-dialog .checkbox-content-wrapper {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #models-config-dialog .checkbox-title {
+        font-size: 13px;
+        color: var(--text-color);
+        font-weight: 500;
+        line-height: 1.3;
+    }
+
+    #models-config-dialog .checkbox-description {
+        font-size: 12px;
+        color: var(--muted-color);
+        line-height: 1.4;
+        margin-top: 2px;
+    }
+
+    #models-config-dialog .hidden {
+        display: none !important;
+    }
+
+    #models-config-dialog .loading-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: var(--muted-color);
+        gap: 12px;
+        text-align: center;
+        font-size: 12px;
+    }
+
+    #models-config-dialog input[type="number"]::-webkit-outer-spin-button, #models-config-dialog input[type="number"]::-webkit-inner-spin-button {
+        appearance: none;
+    }
+
 /* ====== Built-in Tools ====== */
 
 #tools-dialog {
@@ -1761,6 +2121,239 @@
         text-align: center;
         font-size: 12px;
     }
+/* ====== Sub Agents Dialog ====== */
+
+#subagents-dialog {
+    width: 560px;
+    height: 520px;
+    max-height: 85vh;
+    overflow: hidden;
+    margin: auto;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+    #subagents-dialog[open] {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #subagents-dialog .modal-body {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    #subagents-dialog .modal-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background-color: var(--top-bar-bg);
+        border-bottom: 1px solid var(--border-color);
+        gap: 12px;
+        flex-shrink: 0;
+    }
+
+    #subagents-dialog .modal-container {
+        padding: 12px;
+        background: var(--bg-color);
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    #subagents-dialog .toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+    }
+
+    #subagents-dialog #subagents-filter-input {
+        height: 28px;
+        padding: 4px 8px;
+        font-size: 12px;
+        max-width: 200px;
+    }
+
+    #subagents-dialog .btn-text-action {
+        background: none;
+        border: none;
+        color: var(--muted-color);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 3px;
+        font-weight: 500;
+        transition: color 0.15s, background-color 0.15s;
+    }
+
+        #subagents-dialog .btn-text-action:hover {
+            color: var(--strong-text);
+            background-color: var(--hover-bg-alpha);
+        }
+
+    #subagents-dialog .subagents-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    #subagents-dialog .tool-item-card {
+        background-color: var(--surface-bg, var(--panel-bg));
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 10px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        transition: border-color 0.15s ease;
+    }
+
+        #subagents-dialog .tool-item-card:hover {
+            border-color: var(--muted-color);
+        }
+
+        #subagents-dialog .tool-item-card.tool-disabled {
+            opacity: 0.65;
+        }
+
+    #subagents-dialog .tool-info-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    #subagents-dialog .tool-name-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    #subagents-dialog .tool-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--strong-text);
+        font-family: var(--vscode-editor-font-family, monospace);
+    }
+
+    #subagents-dialog .tool-description {
+        font-size: 11.5px;
+        color: var(--muted-color);
+        line-height: 1.4;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    #subagents-dialog .subagents-details {
+        font-size: 11.5px;
+        color: var(--strong-text);
+        word-break: break-all;
+        overflow-wrap: anywhere;
+    }
+
+    #subagents-dialog .subagents-params {
+        font-size: 11px;
+        color: var(--muted-color);
+    }
+
+    #subagents-dialog .subagents-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding-top: 2px;
+    }
+
+    #subagents-dialog .chip {
+        font-size: 10px;
+        background-color: var(--hover-bg-alpha);
+        color: var(--text-color);
+        padding: 1px 6px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        font-family: var(--vscode-editor-font-family, monospace);
+        word-break: break-all;
+    }
+
+        #subagents-dialog .chip.chip-muted {
+            color: var(--muted-color);
+            font-family: inherit;
+            font-style: italic;
+        }
+
+    #subagents-dialog .switch-control {
+        position: relative;
+        display: inline-block;
+        width: 34px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+
+        #subagents-dialog .switch-control input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+    #subagents-dialog .switch-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--input-bg);
+        border: 1px solid var(--border-color);
+        transition: .2s ease;
+        border-radius: 9px;
+    }
+
+        #subagents-dialog .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 2px;
+            bottom: 2px;
+            background-color: var(--text-color);
+            transition: .2s ease;
+            border-radius: 50%;
+        }
+
+    #subagents-dialog .switch-control input:checked + .switch-slider {
+        background-color: var(--accent-color);
+        border-color: transparent;
+    }
+
+        #subagents-dialog .switch-control input:checked + .switch-slider:before {
+            transform: translateX(16px);
+            background-color: var(--white, #fff);
+        }
+
+    #subagents-dialog .switch-control input:focus + .switch-slider {
+        border-color: var(--accent-color);
+    }
+
+    #subagents-dialog .loading-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        color: var(--muted-color);
+        gap: 12px;
+        text-align: center;
+        font-size: 12px;
+    }
+
+
 
 /* ====== Autocompletions Dialog (Unified & Fixed Layout) ====== */
 

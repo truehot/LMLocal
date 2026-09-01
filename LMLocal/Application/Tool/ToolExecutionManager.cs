@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Services.Tool
+namespace LMLocal.Application.Tool
 {
     /// <summary>
     /// Manages tool execution support.
@@ -15,27 +16,47 @@ namespace LMLocal.Services.Tool
     internal interface IToolExecutionManager
     {
         /// <summary>
-        /// Executes a tool call and returns the result.
+        /// Executes a tool call in the main chat context.
         /// </summary>
         Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct);
 
         /// <summary>
-        /// Gets processing message for a tool based on its tool call (parses parameters internally).
+        /// Executes a tool call against an explicit queue.
+        /// </summary>
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue);
+
+        /// <summary>
+        /// Gets processing message for a tool based on its tool call.
         /// </summary>
         string GetProcessingMessage(ToolCallRecord toolCall);
+
+        /// <summary>
+        /// Returns the maximum execution time for a tool.
+        /// </summary>
+        TimeSpan? GetToolTimeout(string toolName);
     }
 
 
     internal class ToolExecutionManager : IToolExecutionManager
     {
-        private readonly ICompositeToolFactory _compositeToolFactory;
+        private readonly IToolRouter _toolRouter;
+        private readonly IToolQueueProvider _toolQueueProvider;
 
-        public ToolExecutionManager(ICompositeToolFactory compositeToolFactory)
+        public ToolExecutionManager(
+            IToolRouter toolRouter,
+            IToolQueueProvider toolQueueProvider)
         {
-            _compositeToolFactory = compositeToolFactory ?? throw new ArgumentNullException(nameof(compositeToolFactory));
+            _toolRouter = toolRouter ?? throw new ArgumentNullException(nameof(toolRouter));
+            _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
         }
 
-        public async Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct)
+        {
+            var queue = _toolQueueProvider.GetMainQueue();
+            return ExecuteToolAsync(toolCall, ct, queue);
+        }
+
+        public async Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue)
         {
             if (toolCall == null)
             {
@@ -71,9 +92,9 @@ namespace LMLocal.Services.Tool
                     parameters = jsonObj.ToObject<Dictionary<string, object>>();
                 }
 
-                if (!_compositeToolFactory.ToolExists(toolCall.FunctionName))
+                if (queue == null || !queue.Allows(toolCall.FunctionName))
                 {
-                    var errorMsg = $"Tool '{toolCall.FunctionName}' not found";
+                    var errorMsg = $"Tool '{toolCall.FunctionName}' not found or not allowed in the current context";
                     InternalLogger.Warn($"ToolExecutionManager: {errorMsg}");
                     return new ToolExecutionResult
                     {
@@ -84,12 +105,12 @@ namespace LMLocal.Services.Tool
                 }
 
                 InternalLogger.Info($"ToolExecutionManager: Executing {toolCall.FunctionName}");
-                var result = await _compositeToolFactory.ExecuteAsync(
+                var result = await _toolRouter.ExecuteAsync(
                     toolCall.FunctionName,
                     parameters,
                     ct).ConfigureAwait(false);
 
-                var completionMessage = _compositeToolFactory.GetCompletionMessage(toolCall.FunctionName, result);
+                var completionMessage = _toolRouter.GetCompletionMessage(toolCall.FunctionName, result);
 
                 InternalLogger.Info($"ToolExecutionManager: {toolCall.FunctionName} completed successfully");
                 return new ToolExecutionResult
@@ -141,6 +162,9 @@ namespace LMLocal.Services.Tool
             if (toolCall.IsInvalid)
                 return "Invalid tool arguments";
 
+            if (string.IsNullOrWhiteSpace(toolCall.FunctionName))
+                return "Processing...";
+
             Dictionary<string, object> parameters = new Dictionary<string, object>();
             if (!string.IsNullOrWhiteSpace(toolCall.ArgumentsJson))
             {
@@ -149,13 +173,21 @@ namespace LMLocal.Services.Tool
                     var jsonObj = JObject.Parse(toolCall.ArgumentsJson);
                     parameters = jsonObj.ToObject<Dictionary<string, object>>();
                 }
-                catch
+                catch (Exception)
                 {
                     return "Processing...";
                 }
             }
 
-            return _compositeToolFactory.GetProcessingMessage(toolCall.FunctionName, parameters);
+            return _toolRouter.GetProcessingMessage(toolCall.FunctionName, parameters) ?? "Processing...";
+        }
+
+        public TimeSpan? GetToolTimeout(string toolName)
+        {
+            if (string.IsNullOrWhiteSpace(toolName))
+                return null;
+
+            return _toolRouter.GetToolTimeout(toolName);
         }
     }
 }

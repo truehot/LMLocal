@@ -1,12 +1,14 @@
 import { createCallback } from '@app/lib/callback.js';
 import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
 import { AsyncGuard } from '@app/lib/async.guard.js';
+import { escapeHtml } from '@app/lib/escape.js';
+import { formatBytes, formatTokens, formatPrice } from '@app/lib/formatting.js';
 
 export class ModelSelectorDialog {
     constructor(models = [], activeModel = null, supportsIsLoaded = true) {
         this.modelsList = models;
         this.filterText = '';
-        this.sortAsc = true;
+        this.sortAsc = null;
         this.showOnlyActive = false;
         this.isLoading = false;
         this.selectedModel = activeModel || null;
@@ -16,10 +18,12 @@ export class ModelSelectorDialog {
         this.onSelect = createCallback();
         this.onLoadProviders = createCallback();
         this.onSaveProvider = createCallback();
+        this.onLoadRecentModels = createCallback();
 
         this.previousProviderValue = null;
         this._supportsIsLoaded = supportsIsLoaded;
         this._guard = new AsyncGuard();
+        this.recentLookup = new Map();
 
         this._onRefreshClick = null;
         this._onCloseClick = null;
@@ -64,6 +68,7 @@ export class ModelSelectorDialog {
             this.modelsList = models;
             this._supportsIsLoaded = response.supportsIsLoaded !== false;
             this._updateToggleVisibility();
+            await this._loadRecentLookup();
             this._renderModels();
             return generation;
         } catch (error) {
@@ -76,6 +81,23 @@ export class ModelSelectorDialog {
             if (this.el) {
                 this.isLoading = false;
             }
+        }
+    }
+
+    async _loadRecentLookup() {
+        this.recentLookup = new Map();
+        try {
+            const result = await this.onLoadRecentModels.emitResult();
+            if (!result?.success) return;
+            const entries = Array.isArray(result.data?.entries) ? result.data.entries : [];
+            for (const e of entries) {
+                if (e && e.modelId) {
+                    const t = Date.parse(e.lastUsedUtc);
+                    this.recentLookup.set(e.modelId, isNaN(t) ? 0 : t);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to load recent models for sorting:', error);
         }
     }
 
@@ -93,7 +115,7 @@ export class ModelSelectorDialog {
         if (!this.el?.container) return;
         this.el.container.innerHTML = `
                 <div class="error-placeholder">
-                    <span style="color: var(--danger-color); padding: 20px;">Error: ${this._escapeHtml(errorMessage)}</span>
+                    <span style="color: var(--danger-color); padding: 20px;">Error: ${escapeHtml(errorMessage)}</span>
                 </div>
             `;
     }
@@ -109,7 +131,7 @@ export class ModelSelectorDialog {
                 </svg>
                 <span>
                     ${isFiltering
-                ? `No models match "<strong>${this._escapeHtml(this.filterText)}</strong>"`
+                ? `No models match "<strong>${escapeHtml(this.filterText)}</strong>"`
                 : 'No models available at the moment.'}
                 </span>
             </div>
@@ -150,7 +172,14 @@ export class ModelSelectorDialog {
 
             const nameA = (a.name || a.id).toLowerCase();
             const nameB = (b.name || b.id).toLowerCase();
-            return this.sortAsc ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+
+            if (this.sortAsc === true) return nameA.localeCompare(nameB);
+            if (this.sortAsc === false) return nameB.localeCompare(nameA);
+
+            const aRec = this.recentLookup.get(a.id) ?? 0;
+            const bRec = this.recentLookup.get(b.id) ?? 0;
+            if (aRec || bRec) return bRec - aRec;
+            return nameA.localeCompare(nameB);
         });
 
         const modelsHtml = displayList.map(model => {
@@ -161,11 +190,11 @@ export class ModelSelectorDialog {
             const metaItems = [];
 
             if (model.sizeInBytes) {
-                metaItems.push(`<div class="model-size">${(model.sizeInBytes / (1024 * 1024)).toFixed(2)} MB</div>`);
+                metaItems.push(`<div class="model-size">${formatBytes(model.sizeInBytes)}</div>`);
             }
 
             if (model.maxTokens) {
-                metaItems.push(`<div class="model-tokens">${this._escapeHtml(model.maxTokens)} context</div>`);
+                metaItems.push(`<div class="model-tokens">${escapeHtml(formatTokens(model.maxTokens))} context</div>`);
             }
 
             if (model.supportsToolUse != null) {
@@ -180,18 +209,30 @@ export class ModelSelectorDialog {
                 metaItems.push(`<div class="model-tooluse ${visionClass}">${visionText}</div>`);
             }
 
+            if (model.inputPricePerMillion != null) {
+                metaItems.push(`<div class="model-price">In ${formatPrice(model.inputPricePerMillion)}/1M</div>`);
+            }
+            if (model.outputPricePerMillion != null) {
+                metaItems.push(`<div class="model-price">Out ${formatPrice(model.outputPricePerMillion)}/1M</div>`);
+            }
+            if (model.cacheReadPricePerMillion != null) {
+                metaItems.push(`<div class="model-price">Cache read ${formatPrice(model.cacheReadPricePerMillion)}/1M</div>`);
+            }
+            if (model.cacheWritePricePerMillion != null) {
+                metaItems.push(`<div class="model-price">Cache write ${formatPrice(model.cacheWritePricePerMillion)}/1M</div>`);
+            }
 
             const badgeHtml = this._supportsIsLoaded !== false
                 ? `<div class="model-status-badge ${model.isLoaded ? 'status-loaded' : 'status-unloaded'}">${model.isLoaded ? 'Loaded' : 'Not loaded'}</div>`
                 : '';
 
             return `
-        <div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${this._escapeHtml(modelId)}">
+        <div class="model-card ${isSelected ? 'active' : ''}" data-model-id="${escapeHtml(modelId)}">
             <div class="model-card-header">
-                <div class="model-name">${this._escapeHtml(modelName)}</div>
+                <div class="model-name">${escapeHtml(modelName)}</div>
                 ${badgeHtml}
             </div>
-            <div class="model-id">${this._escapeHtml(modelId)}</div>
+            <div class="model-id">${escapeHtml(modelId)}</div>
             <div class="model-metadata">
                 ${metaItems.join('')} 
             </div>
@@ -204,9 +245,10 @@ export class ModelSelectorDialog {
     async _selectModel(model) {
         try {
             const result = await this.onSelect.emitResult(model);
+            if (!this.el) return;
             if (result?.success !== false) {
                 this.selectedModel = model;
-                if (this.el.dialog) this.el.dialog.close();
+                this.el.dialog.close();
             } else {
                 this._showErrorState('Failed to set active model');
             }
@@ -219,11 +261,15 @@ export class ModelSelectorDialog {
         }
     }
 
-    _escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    _updateSortButtonTitle() {
+        if (!this.el?.sortBtn) return;
+        if (this.sortAsc === null) {
+            this.el.sortBtn.title = 'Sort: Recently used';
+        } else if (this.sortAsc === true) {
+            this.el.sortBtn.title = 'Sort: Name A-Z';
+        } else {
+            this.el.sortBtn.title = 'Sort: Name Z-A';
+        }
     }
 
     _setControlsEnabled(enabled) {
@@ -300,7 +346,14 @@ export class ModelSelectorDialog {
             this._renderModels();
         };
         this._onSortClick = () => {
-            this.sortAsc = !this.sortAsc;
+            if (this.sortAsc === null) {
+                this.sortAsc = true;
+            } else if (this.sortAsc === true) {
+                this.sortAsc = false;
+            } else {
+                this.sortAsc = null;
+            }
+            this._updateSortButtonTitle();
             this._renderModels();
         };
         this._onToggle = (e) => {
@@ -352,11 +405,13 @@ export class ModelSelectorDialog {
 
         this.el = this._getElements();
         this.filterText = '';
-        this.sortAsc = true;
+        this.sortAsc = null;
         this.showOnlyActive = false;
         this._guard.invalidate();
 
         if (!this.el.dialog) throw new Error('Dialog #model-selector-dialog not found');
+
+        this._updateSortButtonTitle();
 
         this._setControlsEnabled(true);
 
@@ -371,6 +426,7 @@ export class ModelSelectorDialog {
                     this._detachEvents();
                     this.onLoadProviders.off();
                     this.onSaveProvider.off();
+                    this.onLoadRecentModels.off();
                     this.el.dialog.removeEventListener('close', onClose);
                     resolve(this.selectedModel || null);
                 } catch (err) {
@@ -420,6 +476,8 @@ export class ModelSelectorDialog {
 
         if (this.modelsList.length) {
             this._updateToggleVisibility();
+            await this._loadRecentLookup();
+            this._updateSortButtonTitle();
             this._renderModels();
         } else {
             await this._loadModels();

@@ -8,8 +8,10 @@ import appDataService from '@app/services/app.data.service.js';
  * StartupManager - handles application initialization and model selection logic.
  * Initializes the application by selecting an active model based on priority:
  * 1. Use active model from backend if available
- * 2. Use first active (loaded) model from the list
- * 3. Show model selector dialog for user to choose
+ * 2. Use the most recently used model among loaded models
+ * 3. Use the first active (loaded) model from the list
+ * 4. Use the most recently used model from the list (even if not loaded)
+ * 5. Show model selector dialog for user to choose
  */
 class StartupManager {
 
@@ -34,14 +36,35 @@ class StartupManager {
                 return;
             }
 
-            // Priority 2: Find first active (loaded) model.
-            const firstActiveModel = response.models.find(m => m.isLoaded);
-            if (firstActiveModel) {
-                await appDataService.setActiveModel(firstActiveModel.id, firstActiveModel.name, firstActiveModel.supportsMaxTokens, firstActiveModel.maxTokens || 0);
+            const byId = new Map(response.models.map(m => [m.id, m]));
+            const recentEntries = await this._getRecentEntries();
+
+            // Priority 2: Most recently used model among loaded models.
+            for (const e of recentEntries) {
+                const m = byId.get(e.modelId);
+                if (m && m.isLoaded === true) {
+                    await appDataService.setActiveModel(m.id, m.name, m.supportsMaxTokens, m.maxTokens || 0);
+                    return;
+                }
+            }
+
+            // Priority 3: First active (loaded) model.
+            const firstLoaded = response.models.find(m => m.isLoaded);
+            if (firstLoaded) {
+                await appDataService.setActiveModel(firstLoaded.id, firstLoaded.name, firstLoaded.supportsMaxTokens, firstLoaded.maxTokens || 0);
                 return;
             }
 
-            // Priority 3: Show model selector dialog if no active model found
+            // Priority 4: Most recently used model from the list (even if not loaded).
+            for (const e of recentEntries) {
+                const m = byId.get(e.modelId);
+                if (m) {
+                    await appDataService.setActiveModel(m.id, m.name, m.supportsMaxTokens, m.maxTokens || 0);
+                    return;
+                }
+            }
+
+            // Priority 5: Show model selector dialog if no active model found
             await this._showModelSelectorDialog(response.models, response.supportsIsLoaded);
         } catch (e) {
             console.error("Failed to initialize models:", e);
@@ -50,6 +73,16 @@ class StartupManager {
                 error: "Failed to initialize models: " + e.message,
                 tokenSpeed: 0
             });
+        }
+    }
+
+    async _getRecentEntries() {
+        try {
+            const result = await appDataService.getRecentModelsAsync();
+            return Array.isArray(result?.entries) ? result.entries : [];
+        } catch (e) {
+            console.warn('Failed to load recent models during startup:', e);
+            return [];
         }
     }
 
@@ -68,6 +101,8 @@ class StartupManager {
             tokenSpeed: 0,
             error: null
         });
+
+        appDataService.recordModelUsage(model.id, model.name || model.id);
     }
 
     async _showModelSelectorDialog(models, supportsIsLoaded = true) {

@@ -1,5 +1,6 @@
 import { createCallback } from '@app/lib/callback.js';
 import { AsyncGuard } from '@app/lib/async.guard.js';
+import { escapeHtml } from '@app/lib/escape.js';
 
 export class ChatHistoryDialog {
     constructor() {
@@ -76,7 +77,7 @@ export class ChatHistoryDialog {
         if (this.el.container) {
             this.el.container.innerHTML = `
                 <div class="error-placeholder">
-                    <span style="color: var(--danger-color); padding: 20px;">Error: ${this._escapeHtml(errorMessage)}</span>
+                    <span style="color: var(--danger-color); padding: 20px;">Error: ${escapeHtml(errorMessage)}</span>
                 </div>
             `;
         }
@@ -93,7 +94,7 @@ export class ChatHistoryDialog {
                 </svg>
                 <span>
                     ${isFiltering
-                ? `No sessions match "<strong>${this._escapeHtml(this.filterText)}</strong>"`
+                ? `No sessions match "<strong>${escapeHtml(this.filterText)}</strong>"`
                 : 'No chat history available at the moment.'}
                 </span>
             </div>
@@ -120,11 +121,11 @@ export class ChatHistoryDialog {
         });
 
         const sessionsHtml = displayList.map(session => {
-            const prompt = this._escapeHtml(session.prompt || '(empty prompt)');
+            const prompt = escapeHtml(session.prompt || '(empty prompt)');
             const timestamp = this._formatTimestamp(session.timestamp);
             const count = session.messageCount || 0;
             const stepLabel = count === 1 ? 'step' : 'steps';
-            const sessionId = this._escapeHtml(session.sessionId);
+            const sessionId = escapeHtml(session.sessionId);
 
             return `
                 <div class="chat-history-card" data-session-id="${sessionId}">
@@ -146,7 +147,7 @@ export class ChatHistoryDialog {
     _formatTimestamp(timestamp) {
         if (!timestamp) return '';
         const date = new Date(timestamp);
-        if (isNaN(date.getTime())) return this._escapeHtml(timestamp);
+        if (isNaN(date.getTime())) return escapeHtml(timestamp);
         return date.toLocaleString();
     }
 
@@ -163,13 +164,6 @@ export class ChatHistoryDialog {
             console.error('Session load failed:', error);
             this._showErrorState(`Session load failed: ${error.message}`);
         }
-    }
-
-    _escapeHtml(text) {
-        if (text == null) return '';
-        const div = document.createElement('div');
-        div.textContent = String(text);
-        return div.innerHTML;
     }
 
     _attachEvents() {
