@@ -26,7 +26,7 @@ namespace LMLocal.Infrastructure.Tooling
         private ToolQueue _cachedMainQueue;
 
         private const string TaskParam = "task";
-
+        private const string TaskDescription = "The task to delegate to the agent, including what information to retrieve and how to return it.";
         public ToolQueueProvider(
             ISettingsManager settingsManager,
             IBuiltInVsToolProvider builtInTools,
@@ -191,13 +191,13 @@ namespace LMLocal.Infrastructure.Tooling
                 if (allowed == null || allowed.Count == 0)
                 {
                     // Reasoning-only agent: always visible.
-                    agents.Add(GetToolDefinition(agent.Id, agent.Description));
+                    agents.Add(GetToolDefinition(agent));
                     continue;
                 }
 
                 var anyAvailable = allowed.Any(n => !string.IsNullOrWhiteSpace(n) && available.Contains(n.Trim()));
                 if (anyAvailable)
-                    agents.Add(GetToolDefinition(agent.Id, agent.Description));
+                    agents.Add(GetToolDefinition(agent));
             }
 
             return agents;
@@ -238,22 +238,43 @@ namespace LMLocal.Infrastructure.Tooling
             return owned;
         }
 
-        private static ToolDefinition GetToolDefinition(string name, string description)
+        private static ToolDefinition GetToolDefinition(SubAgentDefinition agent)
         {
+            var description = BuildAgentDescription(agent);
             return new ToolDefinition
             {
-                Name = name,
+                Name = agent.Id,
                 Description = description,
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { TaskParam, new ToolDetails { Type = "string", Description = description } }
+                        { TaskParam, new ToolDetails { Type = "string", Description = TaskDescription } }
                     },
                     Required = new List<string> { TaskParam }
                 }
             };
+        }
+
+        /// <summary>
+        /// Agent description seen by the main model, extended with the actual run limits (maxRounds / timeoutSeconds) so the model can size the task before delegating.
+        /// </summary>
+        private static string BuildAgentDescription(SubAgentDefinition agent)
+        {
+            var description = agent.Description?.Trim() ?? string.Empty;
+
+            var limits = new List<string>();
+            if (agent.MaxRounds.HasValue && agent.MaxRounds.Value > 0)
+                limits.Add($"up to {agent.MaxRounds.Value} tool rounds");
+            if (agent.TimeoutSeconds.HasValue && agent.TimeoutSeconds.Value > 0)
+                limits.Add($"{agent.TimeoutSeconds.Value}s timeout");
+
+            if (limits.Count == 0)
+                return description;
+
+            var suffix = "Run limits: " + string.Join(", ", limits) + ".";
+            return string.IsNullOrEmpty(description) ? suffix : description + " " + suffix;
         }
 
         private static string BuildNamesKey(IReadOnlyList<ToolDefinition> tools)

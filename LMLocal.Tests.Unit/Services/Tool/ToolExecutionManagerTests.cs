@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling;
@@ -48,7 +49,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
         public async Task ExecuteToolAsync_NullToolCall_ReturnsError()
         {
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(null, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(null, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
             Assert.That(res, Is.Not.Null);
             Assert.That(res.Error, Is.EqualTo("Tool call is null"));
         }
@@ -59,7 +60,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var call = new ToolCallRecord { CallId = "id1", FunctionName = "nonexist", ArgumentsJson = null };
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.ToolId, Is.EqualTo("id1"));
             Assert.That(res.ToolName, Is.EqualTo("nonexist"));
@@ -75,11 +76,11 @@ namespace LMLocal.Tests.Unit.Services.Tool
             _toolRouterMock.Setup(f => f.ToolExists("hidden_tool")).Returns(true);
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.Error, Does.Contain("not allowed"));
             _toolRouterMock.Verify(
-                f => f.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()),
+                f => f.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()),
                 Times.Never);
         }
 
@@ -90,11 +91,11 @@ namespace LMLocal.Tests.Unit.Services.Tool
             AllowToolsInMainQueue("mytool");
 
             var expectedResult = new { Value = 123 };
-            _toolRouterMock.Setup(f => f.ExecuteAsync("mytool", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedResult);
+            _toolRouterMock.Setup(f => f.ExecuteAsync("mytool", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(expectedResult);
             _toolRouterMock.Setup(f => f.GetCompletionMessage("mytool", expectedResult)).Returns("done");
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.ToolId, Is.EqualTo("id2"));
             Assert.That(res.ToolName, Is.EqualTo("mytool"));
@@ -108,10 +109,10 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id3", FunctionName = "cancel", ArgumentsJson = null };
             AllowToolsInMainQueue("cancel");
-            _toolRouterMock.Setup(f => f.ExecuteAsync("cancel", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new OperationCanceledException());
+            _toolRouterMock.Setup(f => f.ExecuteAsync("cancel", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ThrowsAsync(new OperationCanceledException());
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.Error, Does.Contain("cancelled"));
             Assert.That(res.IsSuccess, Is.False);
@@ -122,10 +123,10 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id4", FunctionName = "arg", ArgumentsJson = null };
             AllowToolsInMainQueue("arg");
-            _toolRouterMock.Setup(f => f.ExecuteAsync("arg", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new ArgumentException("bad"));
+            _toolRouterMock.Setup(f => f.ExecuteAsync("arg", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ThrowsAsync(new ArgumentException("bad"));
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.Error, Does.Contain("Invalid parameters"));
             Assert.That(res.IsSuccess, Is.False);
@@ -136,10 +137,10 @@ namespace LMLocal.Tests.Unit.Services.Tool
         {
             var call = new ToolCallRecord { CallId = "id5", FunctionName = "boom", ArgumentsJson = null };
             AllowToolsInMainQueue("boom");
-            _toolRouterMock.Setup(f => f.ExecuteAsync("boom", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ThrowsAsync(new Exception("boom"));
+            _toolRouterMock.Setup(f => f.ExecuteAsync("boom", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ThrowsAsync(new Exception("boom"));
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.Error, Does.Contain("Execution error"));
             Assert.That(res.IsSuccess, Is.False);
@@ -152,14 +153,14 @@ namespace LMLocal.Tests.Unit.Services.Tool
             AllowToolsInMainQueue("invalid");
 
             var mgr = CreateManager();
-            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None);
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
             Assert.That(res.ToolId, Is.EqualTo("id6"));
             Assert.That(res.ToolName, Is.EqualTo("invalid"));
             Assert.That(res.Error, Does.Contain("not valid JSON"));
             Assert.That(res.IsSuccess, Is.False);
             _toolRouterMock.Verify(
-                f => f.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()),
+                f => f.ExecuteAsync(It.IsAny<string>(), It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()),
                 Times.Never);
         }
 
@@ -173,7 +174,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
             });
 
             var expectedResult = "subagent_result";
-            _toolRouterMock.Setup(f => f.ExecuteAsync("allowed", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>())).ReturnsAsync(expectedResult);
+            _toolRouterMock.Setup(f => f.ExecuteAsync("allowed", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(expectedResult);
             _toolRouterMock.Setup(f => f.GetCompletionMessage("allowed", expectedResult)).Returns("done");
 
             var mgr = CreateManager();
@@ -214,6 +215,64 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var msg = mgr.GetProcessingMessage(call);
 
             Assert.That(msg, Is.EqualTo("working"));
+        }
+
+
+        [Test]
+        public async Task ExecuteToolAsync_SubAgentOutcomeFailure_MapsToError()
+        {
+            var call = new ToolCallRecord { CallId = "id_sub_fail", FunctionName = "agent_x", ArgumentsJson = "{}" };
+            AllowToolsInMainQueue("agent_x");
+
+            var failed = new SubAgentsRunResponse { Success = false, Error = "SubAgent detected a repeated tool call loop and stopped." };
+            _toolRouterMock.Setup(f => f.ExecuteAsync("agent_x", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(failed);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("agent_x", failed)).Returns("Error: SubAgent detected a repeated tool call loop and stopped.");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.ToolId, Is.EqualTo("id_sub_fail"));
+            Assert.That(res.Error, Does.Contain("repeated tool call loop"));
+            Assert.That(res.UserMessage, Does.Contain("repeated tool call loop"));
+            Assert.That(res.Result, Is.Null);
+            Assert.That(res.IsSuccess, Is.False);
+        }
+
+        [Test]
+        public async Task ExecuteToolAsync_SubAgentOutcomeSuccess_UnwrapsToContent()
+        {
+            var call = new ToolCallRecord { CallId = "id_sub_ok", FunctionName = "agent_x", ArgumentsJson = "{}" };
+            AllowToolsInMainQueue("agent_x");
+
+            var ok = new SubAgentsRunResponse { Success = true, Content = "final answer", Rounds = 5 };
+            _toolRouterMock.Setup(f => f.ExecuteAsync("agent_x", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(ok);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("agent_x", ok)).Returns("Done (5 steps, 1.4k tokens, 2.1s)");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.Result, Is.EqualTo("final answer"));
+            Assert.That(res.CompletionMessage, Is.EqualTo("Done (5 steps, 1.4k tokens, 2.1s)"));
+            Assert.That(res.Error, Is.Null);
+            Assert.That(res.IsSuccess, Is.True);
+        }
+
+        [Test]
+        public async Task ExecuteToolAsync_NonOutcomeResult_Unchanged()
+        {
+            var call = new ToolCallRecord { CallId = "id_plain", FunctionName = "plain", ArgumentsJson = null };
+            AllowToolsInMainQueue("plain");
+
+            var plainResult = "plain string result";
+            _toolRouterMock.Setup(f => f.ExecuteAsync("plain", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(plainResult);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("plain", plainResult)).Returns("done");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.Result, Is.SameAs(plainResult));
+            Assert.That(res.CompletionMessage, Is.EqualTo("done"));
+            Assert.That(res.IsSuccess, Is.True);
         }
 
         [Test]

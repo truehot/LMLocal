@@ -135,7 +135,9 @@ class ChatController {
         if (state.status === prev.status &&
             state.accumulatedText === prev.accumulatedText &&
             state.accumulatedThoughtText === prev.accumulatedThoughtText &&
-            state.roundNumber === prev.roundNumber) {
+            state.roundNumber === prev.roundNumber &&
+            state.toolMessage === prev.toolMessage &&
+            state.toolStep === prev.toolStep) {
 
             return;
         }
@@ -212,6 +214,11 @@ class ChatController {
 
             case AppStatus.EXECUTING:
                 this.currentAi.startTooling(state.toolCallId, state.toolMessage);
+                break;
+
+            case AppStatus.STEPPING:
+                this.currentAi?.stepTooling(state.toolCallId, state.toolStep, state.toolMessage);
+                this.scrollManager.scrollToBottom();
                 break;
 
             case AppStatus.RESPONDING:

@@ -1,0 +1,62 @@
+{
+  "agents": [
+    {
+      "id": "code_explorer_subagent",
+      "displayName": "Code explorer",
+      "description": "Read-only code explorer. Searches for files by name, reads file contents, and lists directories. Use this for plain text searches and finding file paths. It cannot modify code. ",
+      "system": "You are a read-only code explorer. Search for files, search file contents, inspect directories, and read file contents. When searching, use the tool that best matches the query. If the first result is insufficient, continue searching. When asked to read/show a file, return its content VERBATIM and COMPLETE. Do not guess paths or contents. If a tool returns empty results, do not repeat the same request; try a different search strategy.",
+      "temperature": 1.0,
+      "timeoutSeconds": 480,
+      "maxRounds": 99,
+      "maxTokens": 65536,
+      "enabled": true,
+      "allowedTools": [
+        "get_solution_overview",
+        "list_directory",
+        "find_files",
+        "search_file_content",
+        "read_file_lines",
+        "get_active_document"
+      ]
+    },
+    {
+      "id": "semantic_analyzer_subagent",
+      "displayName": "Semantic Analyzer",
+      "description": "Deep code analyzer. Finds symbol references (classes, methods), inspects types, and analyzes code architecture across the solution.",
+      "system": "You are a Semantic Code Analyzer. Understand codebase structure using symbol-inspection tools: classes, methods, references, and types. Explain component interactions with file paths and line numbers. Start by inspecting the relevant symbol or type. Do not repeat identical tool requests after empty results instead try a different search strategy. Report code declarations and signatures exactly as returned by the tools. Do not guess symbol names, members, or signatures.",
+      "temperature": 1.0,
+      "timeoutSeconds": 180,
+      "maxRounds": 99,
+      "maxTokens": 65536,
+      "enabled": true,
+      "allowedTools": [
+        "get_solution_overview",
+        "get_symbol_info",
+        "get_symbol_info_js",
+        "inspect_type"
+      ]
+    },
+    {
+      "id": "build_subagent",
+      "displayName": "Build & Test",
+      "description": "Use this agent to build the solution and run tests. It will return compiler errors and test failures if any.",
+      "system": "Use this agent to build the solution and run tests. It will return compiler errors and test failures if any. If the unit test project is not provided, first call get_solution_overview to identify the appropriate unit test project(s). Build the solution; if successful, run all unit tests. Return \"Success\" if both pass. On any failure, return errors with file path, line number, and the exact compiler or test error message verbatim. On successful build, report test counts: Total / Passed / Failed / Skipped. If 0 tests are discovered when tests are expected, treat this as a failure.",
+      "temperature": 1.0,
+      "timeoutSeconds": 480,
+      "maxRounds": 20,
+      "maxTokens": 16384,
+      "enabled": true,
+      "allowedTools": [
+        "get_solution_overview",
+        "build_solution",
+        "run_tests",
+        "read_file_lines"
+      ]
+    }
+  ],
+  "providerType": "lmstudio",
+  "customBaseUrl": "http://localhost:1234",
+  "model": "google/gemma-4-e2b",
+  "temperature": 1.0,
+  "reasoningEffort": "high"
+}

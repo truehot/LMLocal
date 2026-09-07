@@ -67,9 +67,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
 
-        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken ct = default)
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
-            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(ct);
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             if (!_vsDependencies.IsSolutionOpen)
                 return ErrorResponse("No solution is open.");
@@ -89,11 +89,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 projectName = Convert.ToString(v);
 
             int timeoutSeconds = DefaultBuildTimeoutSeconds;
-            if (parameters != null && parameters.TryGetValue("timeout_seconds", out var t) && t != null)
-            {
-                if (int.TryParse(Convert.ToString(t), out int parsed) && parsed > 0)
-                    timeoutSeconds = parsed;
-            }
+            if (parameters != null && parameters.TryGetValue("timeout_seconds", out var t) && t != null && int.TryParse(Convert.ToString(t), out int parsed) && parsed > 0)
+                timeoutSeconds = parsed;
 
             Project selectedProject = null;
             string projectUniqueName = null;
@@ -143,9 +140,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                using (ct.Register(() => tcs.TrySetCanceled()))
+                using (cancellationToken.Register(() => tcs.TrySetCanceled()))
                 {
-                    if (ct.IsCancellationRequested)
+                    if (cancellationToken.IsCancellationRequested)
                         return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
 
                     if (projectUniqueName == null)
@@ -165,11 +162,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     if (timeoutSeconds > 0)
                     {
-                        var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds), ct);
+                        var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
                         var completed = await Task.WhenAny(buildTask, timeout);
                         if (completed != buildTask)
                         {
-                            if (ct.IsCancellationRequested)
+                            if (cancellationToken.IsCancellationRequested)
                                 return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
                             return ErrorResponse(
                                 $"Build timed out after {timeoutSeconds} second(s). It may still be running in Visual Studio.",
@@ -178,7 +175,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
 
                     bool buildSucceeded = await buildTask;
-                    if (ct.IsCancellationRequested)
+                    if (cancellationToken.IsCancellationRequested)
                         return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
 
                     var messages = new List<BuildMessage>();
@@ -186,12 +183,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     if (!buildSucceeded)
                     {
-                        string tailOutput = await StabilizeBuildOutputAsync(dte, ct);
+                        string tailOutput = await StabilizeBuildOutputAsync(dte, cancellationToken);
 
                         if (!string.IsNullOrEmpty(tailOutput))
                         {
                             string section = TrimToLastBuildSection(tailOutput);
-                            messages = await Task.Run(() => ParseBuildOutput(section), ct).ConfigureAwait(false);
+                            messages = await Task.Run(() => ParseBuildOutput(section), cancellationToken).ConfigureAwait(false);
 
                             if (messages.Count > MaxReportedErrors)
                                 messages.RemoveRange(MaxReportedErrors, messages.Count - MaxReportedErrors);

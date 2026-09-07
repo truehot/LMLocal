@@ -25,7 +25,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock
                 .Setup(m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()))
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()))
                 .ReturnsAsync(new List<string>());
 
             _controller = new SubAgentsController(_configManagerMock.Object);
@@ -107,7 +108,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(first.MaxRounds, Is.EqualTo(5));
             Assert.That(first.MaxTokens, Is.EqualTo(2048));
             Assert.That(first.Enabled, Is.True);
-            Assert.That(first.AllowedTools, Is.EquivalentTo(new[] { "get_solution_overview", "find_files" }));
 
             Assert.That(response.Agents[1].Id, Is.EqualTo("coder"));
             Assert.That(response.Agents[1].Enabled, Is.False);
@@ -145,7 +145,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
                         flags.Count == 2 &&
                         flags[0].Id == "researcher" && !flags[0].Enabled &&
                         flags[1].Id == "coder" && flags[1].Enabled),
-                    It.IsAny<CancellationToken>()),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()),
                 Times.Once);
         }
 
@@ -162,7 +163,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock.Verify(
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()),
                 Times.Never);
         }
 
@@ -175,20 +177,22 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock.Verify(
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()),
                 Times.Never);
         }
 
         [Test]
         public async Task UpdateSubAgentsAsync_InvalidJson_ReturnsFailure()
         {
-            var result = await UpdateAsync(_controller, "{not valid}");
+            var result = await UpdateAsync(_controller, "{\"not valid}");
 
             Assert.That(result.Success, Is.False);
             _configManagerMock.Verify(
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()),
                 Times.Never);
         }
 
@@ -201,7 +205,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock.Verify(
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()),
                 Times.Never);
         }
 
@@ -215,7 +220,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock
                 .Setup(m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()))
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()))
                 .ThrowsAsync(new InvalidOperationException("disk failure"));
 
             var json = "{\"agents\":[{\"id\":\"researcher\",\"enabled\":false}]}";
@@ -231,7 +237,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
             _configManagerMock
                 .Setup(m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
-                    It.IsAny<CancellationToken>()))
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<SubAgentDefaults>()))
                 .ReturnsAsync(new List<string> { "agent name 'researcher' is not unique (used by another SubAgent)" });
 
             var json = "{\"agents\":[{\"id\":\"researcher\",\"enabled\":true}]}";

@@ -1,13 +1,16 @@
-// Mock that simulates tool calls during streaming: fires ToolCall, ToolEnd messages
+﻿// Collapsible multi-round mock that mirrors the real orchestrator message order:
+//   round 1 (tool call) -> nextRound -> round 2 (long final answer, multiple chunks) -> StreamEnd.
+// Used to reproduce the bug where the last-but-one rendered block is overwritten by the
+// final flush in collapsible mode.
 const _listeners = [];
 const _timers = [];
+
 window._listeners = _listeners;
 window._mock_timers = _timers;
 window.__emitBridgeMessage = (msg) => {
     try {
         console.log('[mock] __emitBridgeMessage called', msg);
-        if (msg && msg.Type === 'StreamError') {
-            console.log('[mock] StreamError emitted, clearing timers:', _timers.length);
+        if (msg && (msg.Type === 'StreamError' || msg.Type === 'ChatSessionError')) {
             while (_timers.length) {
                 const id = _timers.shift();
                 try { clearTimeout(id); } catch (e) { }
@@ -28,127 +31,110 @@ const __mockBridge = {
         }
     },
     ExecutePromptAsync: async (requestJson) => {
-        // Emit ToolCall message
+        // Round 1: short content then a tool call (streams into the initial step).
+        _timers.push(setTimeout(() => {
+            _listeners.forEach(fn => fn({
+                data: { Type: 'StreamContent', Payload: 'Searching for files in the project...', Count: 5, TokensPerSecond: 10.0 }
+            }));
+        }, 10));
+
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolCall',
-                    FunctionName: 'SearchInFiles',
+                    FunctionName: 'SearchFiles',
                     CallId: 'call_search_001',
-                    ArgumentsJson: '{"query": "test"}',
-                    Message: 'Searching for "test"...'
+                    ArgumentsJson: '{"query":"IChatHistoryManager"}',
+                    Message: 'Searching for IChatHistoryManager...'
                 }
             }));
         }, 50));
 
-        // Emit some content while tool is running
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: { Type: 'StreamContent', Payload: 'Based on the search results: ', Count: 5, TokensPerSecond: 10.0 }
-            }));
-        }, 300));
-
-        // Emit ToolEnd message (successful) — 550ms after second ToolCall for reliable test detection
-        // 1000ms keeps the STEPPING window (progress steps) long enough for stop-button tests
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolEnd',
-                    FunctionName: 'SearchInFiles',
+                    FunctionName: 'SearchFiles',
                     CallId: 'call_search_001',
-                    Message: 'Found 3 matches',
+                    Message: 'Found 1 file',
                     IsError: false
                 }
             }));
-        }, 1000));
+        }, 100));
 
-        // Emit progress steps for the first tool: tool name, then repeated "thinking" status
-        // (simulates SubAgent progress: ToolStep must not erase the previous line)
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'StreamToolStep',
-                    FunctionName: 'SearchInFiles',
-                    CallId: 'call_search_001',
-                    Message: 'searching files...',
-                    Step: 1
-                }
-            }));
-        }, 200));
-
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'StreamToolStep',
-                    FunctionName: 'SearchInFiles',
-                    CallId: 'call_search_001',
-                    Message: 'thinking',
-                    Step: 2
-                }
-            }));
-        }, 350));
-
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'StreamToolStep',
-                    FunctionName: 'SearchInFiles',
-                    CallId: 'call_search_001',
-                    Message: 'thinking',
-                    Step: 3
-                }
-            }));
-        }, 450));
-
-        // Emit second tool call (with error)
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'StreamToolCall',
-                    FunctionName: 'FindSymbolReferences',
-                    CallId: 'call_symbol_002',
-                    ArgumentsJson: '{"symbol": "MyClass"}',
-                    Message: 'Finding symbol references...'
-                }
-            }));
-        }, 650));
-
-        // Emit ToolEnd message (error) — 550ms after second ToolCall
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'StreamToolEnd',
-                    FunctionName: 'FindSymbolReferences',
-                    CallId: 'call_symbol_002',
-                    Message: 'Symbol not found',
-                    IsError: true
-                }
-            }));
-        }, 1200));
-
-        // Emit content
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: { Type: 'StreamContent', Payload: 'here is the summary.', Count: 5, TokensPerSecond: 12.0 }
-            }));
-        }, 1300));
-
-        // End streaming
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: { Type: 'StreamEnd' }
             }));
-        }, 1400));
+        }, 150));
 
-        // Session complete
+        // Transition to round 2 (not final yet): nextRound creates a new step.
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
-                data: { Type: 'ChatSessionComplete', Payload: {} }
+                data: {
+                    Type: 'ChatSessionIterating',
+                    RoundNumber: 1,
+                    ToolCount: 1,
+                    IsFinalRound: false
+                }
             }));
-        }, 1500));
+        }, 200));
+
+        // Round 2 (final answer) streams into the new step in several chunks.
+        const chunks = [
+            'Open the solution or project in Visual Studio 2022.\n\n',
+            'In the Solution Explorer window (Solution Explorer panel) find and select the source code file where the IChatHistoryManager class is defined.\n\n',
+            'Then scroll through the file contents to find mentions of the IChatHistoryManager class. It can be used in various places, for example:\n\n    When creating an instance: myInstance = new ChatHistoryManager();\n\n    As a method parameter: myMethod(IChatHistoryManager historyManager)\n\n',
+            '    As a variable type: IChatHistoryManager historyManager;\n\nWhen you find all usage locations of IChatHistoryManager, you will be able to better understand its role and purpose in your project.\n\n',
+            'If the IChatHistoryManager class is not found in the current project or solution, its definition may be located in another assembly or project.\n\nHope this helps you find all usage locations of the IChatHistoryManager class in your project!'
+        ];
+
+        let delay = 250;
+        for (const chunk of chunks) {
+            const payload = chunk;
+            _timers.push(setTimeout(() => {
+                _listeners.forEach(fn => fn({
+                    data: { Type: 'StreamContent', Payload: payload, Count: 10, TokensPerSecond: 15.5 }
+                }));
+            }, delay));
+            delay += 30;
+        }
+
+        _timers.push(setTimeout(() => {
+            _listeners.forEach(fn => fn({
+                data: { Type: 'StreamEnd' }
+            }));
+        }, delay + 5));
+
+        // Mark final round (real orchestrator sends this AFTER generation when no more tools).
+        _timers.push(setTimeout(() => {
+            _listeners.forEach(fn => fn({
+                data: {
+                    Type: 'ChatSessionIterating',
+                    RoundNumber: 2,
+                    ToolCount: 0,
+                    IsFinalRound: true
+                }
+            }));
+        }, delay + 20));
+
+        _timers.push(setTimeout(() => {
+            _listeners.forEach(fn => fn({
+                data: {
+                    Type: 'ChatSessionComplete',
+                    TotalTokens: 100,
+                    ReasoningTokens: 0,
+                    CachedTokens: 0,
+                    TokensPerSecond: 15.5
+                }
+            }));
+        }, delay + 60));
     },
     StopExecutionAsync: async () => {
-        window.__stopCallCount = (window.__stopCallCount || 0) + 1;
+        while (_timers.length) {
+            const id = _timers.shift();
+            try { clearTimeout(id); } catch (e) { }
+        }
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: { Type: 'StreamEnd' }
@@ -168,7 +154,7 @@ const __mockBridge = {
     },
     GetSettingsAsync: async () => {
         console.log('[mock] GetSettingsAsync called');
-        return JSON.stringify({ AutoLoadOnStartup: true });
+        return JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true });
     },
     UpdateSettingsAsync: async (json) => {
         console.log('[mock] UpdateSettingsAsync called');
@@ -225,7 +211,7 @@ function __startMock() {
             FocusAsync: async () => {},
         };
         window.__settingsOverride = {
-            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),
+            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true }),
             UpdateSettingsAsync: async (json) => true,
             TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
         };

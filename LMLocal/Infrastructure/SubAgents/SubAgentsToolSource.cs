@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 
@@ -21,12 +22,13 @@ namespace LMLocal.Infrastructure.SubAgents
         bool ToolExists(string toolName);
 
         /// <summary>
-        /// Runs the agent 'toolName' with a single 'task' string parameter.
+        /// Runs the agent 'toolName' with a single 'task' string parameter, streaming progress steps when a reporter is supplied.
         /// </summary>
         Task<object> ExecuteAsync(
             string toolName,
             Dictionary<string, object> parameters,
-            CancellationToken cancellationToken);
+            CancellationToken cancellationToken,
+            IProgress<ToolActivityEvent> progress = null);
 
         /// <summary>
         /// Returns the external timeout for the given agent tool, or null when the agent's timeout is off (0) or the agent is not enabled.
@@ -74,7 +76,8 @@ namespace LMLocal.Infrastructure.SubAgents
         public async Task<object> ExecuteAsync(
             string toolName,
             Dictionary<string, object> parameters,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IProgress<ToolActivityEvent> progress = null)
         {
             try
             {
@@ -114,11 +117,13 @@ namespace LMLocal.Infrastructure.SubAgents
                     Model = agent.Model,
                     System = agent.System,
                     Temperature = agent.Temperature,
+                    ReasoningEffort = agent.ReasoningEffort,
                     MaxTokens = agent.MaxTokens,
                     TimeoutSeconds = agent.TimeoutSeconds,
                     MaxRounds = agent.MaxRounds,
                     AllowedTools = agent.AllowedTools,
-                    ExcludedAgentNames = excludedAgentNames
+                    ExcludedAgentNames = excludedAgentNames,
+                    Progress = progress
                 };
 
                 return await _subAgentsServiceResolver()

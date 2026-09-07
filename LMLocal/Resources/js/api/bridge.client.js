@@ -266,6 +266,12 @@ class BridgeClient {
         return JSON.parse(res);
     }
 
+    async replaceSubAgentsConfigAsync(subAgentsConfig) {
+        const payload = JSON.stringify(subAgentsConfig);
+        const res = await this._callSubAgents("ReplaceSubAgentsConfigAsync", payload);
+        return JSON.parse(res);
+    }
+
     async getSnapshotAsync() {
         return await this._callHost("GetSnapshotAsync");
     }

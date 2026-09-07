@@ -185,6 +185,40 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
             Assert.That(third, Is.Not.SameAs(first));
         }
 
+        [Test]
+        public void GetMainQueue_AgentDescription_IncludesRunLimits()
+        {
+            SetBuiltIn(new ToolDefinition { Name = "read_file_lines" });
+            var agent = new SubAgentDefinition
+            {
+                Id = "editor",
+                Description = "Edits files.",
+                CustomBaseUrl = "http://localhost:1234",
+                Model = "m",
+                MaxRounds = 35,
+                TimeoutSeconds = 180,
+                AllowedTools = new List<string> { "read_file_lines" }
+            };
+            SetSnapshot(Config(agent));
+
+            var def = _provider.GetMainQueue().Definitions.Single(d => d.Name == "editor");
+
+            Assert.That(def.Description, Does.Contain("Edits files."));
+            Assert.That(def.Description, Does.Contain("up to 35 tool rounds"));
+            Assert.That(def.Description, Does.Contain("180s timeout"));
+        }
+
+        [Test]
+        public void GetMainQueue_AgentDescription_WithoutLimits_KeepsOriginal()
+        {
+            SetBuiltIn(new ToolDefinition { Name = "read_file_lines" });
+            SetSnapshot(Config(Agent("reasoner", new List<string>())));
+
+            var def = _provider.GetMainQueue().Definitions.Single(d => d.Name == "reasoner");
+
+            Assert.That(def.Description, Is.EqualTo("Agent reasoner"));
+        }
+
         // =====================================================================
         // GetSubAgentQueue
         // =====================================================================

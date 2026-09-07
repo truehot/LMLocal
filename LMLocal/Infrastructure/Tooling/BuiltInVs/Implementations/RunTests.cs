@@ -18,6 +18,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
     /// <summary>
     /// Runs tests for a single .NET project. Always builds/runs in the project's own Debug configuration.
+    /// </summary>
     internal class RunTests : IRunTests
     {
         private readonly IVsDependencies _vsDependencies;
@@ -67,6 +68,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters?.TryGetValue("filter", out var filterObj) == true && filterObj is string filterStr && !string.IsNullOrWhiteSpace(filterStr))
                 filter = TestArgumentsBuilder.SanitizeFilter(filterStr.Trim());
 
+            TimeSpan? customTimeout = null;
+            if (parameters?.TryGetValue("timeout_seconds", out var timeoutObj) == true && timeoutObj is int timeoutSeconds && timeoutSeconds > 0)
+            {
+                customTimeout = TimeSpan.FromSeconds(timeoutSeconds);
+            }
+
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (!_pathResolver.TryResolveFilePath(projectPathParam, solutionDir, out string absoluteProjectPath))
                 return ErrorResponse($"Cannot resolve project path: {projectPathParam}");
@@ -83,8 +90,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             bool isSdk = await SdkProjectDetector.IsSdkStyleAsync(_fileSystem, absoluteProjectPath, cancellationToken).ConfigureAwait(false);
 
             var (Success, Output, Total, Passed, Failed, Skipped) = isSdk
-                ? await RunSdkTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, cancellationToken).ConfigureAwait(false)
-                : await RunLegacyTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, cancellationToken).ConfigureAwait(false);
+                ? await RunSdkTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, customTimeout, cancellationToken).ConfigureAwait(false)
+                : await RunLegacyTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, restore, customTimeout, cancellationToken).ConfigureAwait(false);
 
             string errorMessage = null;
             if (!Success)
@@ -112,10 +119,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             string filter,
             bool includeFullOutput,
             bool restore,
+            TimeSpan? timeout,
             CancellationToken cancellationToken)
         {
             string arguments = TestArgumentsBuilder.BuildSdkTestArguments(projectPath, filter, restore);
-            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, cancellationToken).ConfigureAwait(false);
+            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, timeout, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunLegacyTestsAsync(
@@ -124,6 +132,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             string filter,
             bool includeFullOutput,
             bool restore,
+            TimeSpan? timeout,
             CancellationToken cancellationToken)
         {
             string projectDir = Path.GetDirectoryName(projectPath);
@@ -131,16 +140,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (!_fileSystem.FileExists(dllPath))
             {
+                TimeSpan buildTimeout = timeout ?? BuildTimeout;
                 var buildResult = await DotnetProcessRunner.RunAsync(
                     TestArgumentsBuilder.BuildBuildArguments(projectPath, restore),
                     workingDirectory,
-                    BuildTimeout,
+                    buildTimeout,
                     cancellationToken).ConfigureAwait(false);
 
                 if (buildResult.Cancelled)
                     return (false, "Build cancelled.", 0, 0, 0, 0);
                 if (buildResult.TimedOut)
-                    return (false, $"Build timed out after {BuildTimeout.TotalMinutes:0} minute(s).", 0, 0, 0, 0);
+                    return (false, $"Build timed out after {buildTimeout.TotalMinutes:0} minute(s).", 0, 0, 0, 0);
                 if (buildResult.ExitCode != 0)
                 {
                     string detail = TestOutputParser.ExtractDiagnosticSummary(buildResult.StdErr)
@@ -155,16 +165,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
 
             string arguments = TestArgumentsBuilder.BuildLegacyVstestArguments(dllPath, filter);
-            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, cancellationToken).ConfigureAwait(false);
+            return await RunAndSummarizeAsync(arguments, workingDirectory, includeFullOutput, timeout, cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<(bool Success, string Output, int Total, int Passed, int Failed, int Skipped)> RunAndSummarizeAsync(
             string arguments,
             string workingDirectory,
             bool includeFullOutput,
+            TimeSpan? timeout,
             CancellationToken cancellationToken)
         {
-            var runResult = await DotnetProcessRunner.RunAsync(arguments, workingDirectory, TestRunTimeout, cancellationToken).ConfigureAwait(false);
+            TimeSpan effectiveTimeout = timeout ?? TestRunTimeout;
+            var runResult = await DotnetProcessRunner.RunAsync(arguments, workingDirectory, effectiveTimeout, cancellationToken).ConfigureAwait(false);
             return Summarize(runResult, includeFullOutput);
         }
 
@@ -173,7 +185,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (runResult.Cancelled)
                 return (false, "Test execution cancelled by user.", 0, 0, 0, 0);
             if (runResult.TimedOut)
-                return (false, $"Test execution timed out ({TestRunTimeout.TotalMinutes:0} minutes).", 0, 0, 0, 0);
+                return (false, $"Test execution timed out.", 0, 0, 0, 0); 
 
             string fullOutput = runResult.StdOut + (string.IsNullOrEmpty(runResult.StdErr) ? "" : "\n" + runResult.StdErr);
             var (total, passed, failed, skipped) = TestOutputParser.ParseStatisticsUniversal(fullOutput);
@@ -225,7 +237,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (success, resultOutput, total, passed, failed, skipped);
         }
 
-
         private static string LimitOutput(string value, int maxChars)
         {
             if (string.IsNullOrEmpty(value) || value.Length <= maxChars)
@@ -261,6 +272,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters?.TryGetValue("restore", out var restoreObj) == true && restoreObj is bool restoreVal)
                 restore = restoreVal;
             var filter = parameters?.TryGetValue("filter", out var f) == true ? f?.ToString() : null;
+            var timeout = parameters?.TryGetValue("timeout_seconds", out var t) == true && t is int ts ? ts : (int?)null;
 
             var msg = $"Running tests for '{proj}'";
             if (fullOutput)
@@ -269,6 +281,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 msg += " (restore enabled)";
             if (!string.IsNullOrWhiteSpace(filter))
                 msg += $", filter: '{filter}'";
+            if (timeout.HasValue)
+                msg += $", timeout: {timeout}s";
             return msg + "... ";
         }
 
@@ -331,6 +345,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             Type = "boolean",
                             Description = "Defaults to false (uses --no-restore). If true, lets 'dotnet test'/'dotnet build' run NuGet restore implicitly (omit --no-restore). Use it when project.assets.json is missing or out of date."
+                        },
+                        ["timeout_seconds"] = new ToolDetails
+                        {
+                            Type = "integer",
+                            Description = "Optional timeout in seconds for the entire operation (build + test). If not provided, defaults to 5 minutes for build and 10 minutes for tests individually. When set, this single value applies to both build and test steps (the larger of the two is not used; both steps get this timeout)."
                         }
                     },
                     Required = new List<string> { "project_path" }

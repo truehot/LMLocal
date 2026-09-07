@@ -1,11 +1,9 @@
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
-using LMLocal.Infrastructure.Persistence;
-using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using Moq;
 using NUnit.Framework;
@@ -15,8 +13,6 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
     [TestFixture]
     public class McpToolManagerTests
     {
-        private Mock<IMcpConfigManager> _mockMcpConfigManager;
-        private Mock<IFileSystem> _mockFileSystem;
         private Mock<IHttpClientWrapper> _mockHttpClientWrapper;
         private Mock<ISettingsManager> _mockSettingsManager;
         private McpToolManager _toolManager;
@@ -24,14 +20,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Mcp
         [SetUp]
         public void SetUp()
         {
-            _mockMcpConfigManager = new Mock<IMcpConfigManager>();
-            _mockFileSystem = new Mock<IFileSystem>();
             _mockHttpClientWrapper = new Mock<IHttpClientWrapper>();
             _mockSettingsManager = new Mock<ISettingsManager>();
 
             _toolManager = new McpToolManager(
-                _mockMcpConfigManager.Object,
-                _mockFileSystem.Object,
                 _mockHttpClientWrapper.Object,
                 _mockSettingsManager.Object);
         }

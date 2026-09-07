@@ -1,5 +1,10 @@
 ﻿import { createCallback } from '@app/lib/callback.js';
 import toast from '@app/lib/toast.js';
+import modelStore from '@app/store/model.store.js';
+import settingsStore from '@app/store/settings.store.js';
+import providersStore from '@app/store/providers.store.js';
+
+const DEFAULT_SUBAGENTS_URL = 'https://app.local/json/subagents.json';
 
 export class SubAgentsDialog {
     constructor() {
@@ -11,6 +16,8 @@ export class SubAgentsDialog {
         this._filterText = '';
         this._dialogResolve = null;
         this._loadError = null;
+        this._useActiveModelApplied = null;
+        this._loadedDefaults = false;
     }
 
     _getDialog() {
@@ -29,7 +36,8 @@ export class SubAgentsDialog {
             listContainer: dialog.querySelector('#subagents-list-container'),
             filterInput: dialog.querySelector('#subagents-filter-input'),
             enableAllBtn: dialog.querySelector('#subagents-enable-all-btn'),
-            disableAllBtn: dialog.querySelector('#subagents-disable-all-btn')
+            disableAllBtn: dialog.querySelector('#subagents-disable-all-btn'),
+            useActiveModelBtn: dialog.querySelector('#subagents-use-active-model-btn')
         };
     }
 
@@ -50,6 +58,80 @@ export class SubAgentsDialog {
         this._renderList();
     };
 
+    _resolveActiveModelDefaults() {
+        const modelState = modelStore.getState();
+        const activeModelId = modelState.modelId;
+        if (!activeModelId) return null;
+
+        const settingsState = settingsStore.getState();
+        const providerState = providersStore.getState();
+        const all = [...(providerState.defaultProviders || []), ...(providerState.providers || [])];
+
+        let profile = null;
+        if (settingsState.ProviderId != null) {
+            profile = all.find(p => p && p.providerType === settingsState.Provider && p.id === settingsState.ProviderId) || null;
+        }
+
+        const defaults = { model: activeModelId };
+
+        const providerType = (profile && profile.providerType) || settingsState.Provider || 'lmstudio';
+        const customBaseUrl = (profile && profile.customBaseUrl) || settingsState.LmStudioBaseUrl || null;
+        const customApiKey = (profile && profile.customApiKey) || settingsState.ApiKey || null;
+
+        if (providerType) defaults.providerType = providerType;
+        if (customBaseUrl) defaults.customBaseUrl = customBaseUrl;
+        if (customApiKey) defaults.customApiKey = customApiKey;
+
+        return defaults;
+    }
+
+    async _loadDefaultSubAgents() {
+        const response = await fetch(DEFAULT_SUBAGENTS_URL);
+        if (!response.ok) {
+            throw new Error(`Failed to load the default SubAgents config (HTTP ${response.status}).`);
+        }
+        const data = await response.json();
+        return (data && Array.isArray(data.agents)) ? data.agents : [];
+    }
+
+    _applyActiveModel(defaults) {
+        this._agents.forEach(agent => {
+            if (agent.providerType && defaults.providerType) agent.providerType = defaults.providerType;
+            if (agent.customBaseUrl && defaults.customBaseUrl) agent.customBaseUrl = defaults.customBaseUrl;
+            if (agent.customApiKey && defaults.customApiKey) agent.customApiKey = defaults.customApiKey;
+            agent.model = defaults.model;
+        });
+    }
+
+    _onUseActiveModelClick = async (e) => {
+        e.preventDefault();
+
+        const defaults = this._resolveActiveModelDefaults();
+        if (!defaults) {
+            toast.show('No active model selected', 'error', 4000, this.el?.useActiveModelBtn);
+            return;
+        }
+
+        try {
+            if (this._agents.length === 0) {
+                const defaultAgents = await this._loadDefaultSubAgents();
+                if (!Array.isArray(defaultAgents) || defaultAgents.length === 0) {
+                    throw new Error('The default SubAgents config is empty.');
+                }
+                this._agents = defaultAgents;
+                this._loadedDefaults = true;
+            }
+
+            this._applyActiveModel(defaults);
+            this._useActiveModelApplied = defaults;
+            this._renderList();
+            toast.show('Active model applied. Press Save to persist.', 'success', 3000, this.el?.useActiveModelBtn);
+        } catch (err) {
+            console.error('Failed to apply active model to SubAgents', err);
+            toast.show(err?.message || 'Failed to apply the active model', 'error', 4000, this.el?.useActiveModelBtn);
+        }
+    };
+
     _onAgentToggle = (index, checked) => {
         const agent = this._agents[index];
         if (agent) {
@@ -60,13 +142,41 @@ export class SubAgentsDialog {
 
     _onDialogConfirm = async () => {
         try {
-            const config = {
-                agents: this._agents.map(agent => ({
-                    id: agent.id,
-                    enabled: !!agent.enabled
-                }))
-            };
-            const result = await this.onSave.emitResult(config);
+            let result;
+            if (this._loadedDefaults) {
+
+                const config = {
+                    ...(this._useActiveModelApplied || {}),
+                    __replace: true,
+                    agents: this._agents.map(agent => ({
+                        id: agent.id,
+                        displayName: agent.displayName,
+                        description: agent.description,
+                        system: agent.system,
+                        providerType: agent.providerType,
+                        customBaseUrl: agent.customBaseUrl,
+                        model: agent.model,
+                        temperature: agent.temperature,
+                        timeoutSeconds: agent.timeoutSeconds,
+                        maxRounds: agent.maxRounds,
+                        maxTokens: agent.maxTokens,
+                        reasoningEffort: agent.reasoningEffort,
+                        enabled: !!agent.enabled,
+                        allowedTools: agent.allowedTools || []
+                    }))
+                };
+                result = await this.onSave.emitResult(config);
+            } else {
+                const config = {
+                    ...(this._useActiveModelApplied || {}),
+                    agents: this._agents.map(agent => ({
+                        id: agent.id,
+                        enabled: !!agent.enabled
+                    }))
+                };
+                result = await this.onSave.emitResult(config);
+            }
+
             if (!(result && result.success)) {
                 console.error('Failed to save subagents state', result?.error);
                 this._showSaveError(result?.error?.message || 'Failed to save subagents');
@@ -88,11 +198,12 @@ export class SubAgentsDialog {
     };
 
     _attachEvents() {
-        const { dialog, confirmBtn, cancelBtn, filterInput, enableAllBtn, disableAllBtn } = this.el;
+        const { dialog, confirmBtn, cancelBtn, filterInput, enableAllBtn, disableAllBtn, useActiveModelBtn } = this.el;
 
         if (filterInput) filterInput.addEventListener('input', this._onFilterInput);
         if (enableAllBtn) enableAllBtn.addEventListener('click', this._onEnableAllClick);
         if (disableAllBtn) disableAllBtn.addEventListener('click', this._onDisableAllClick);
+        if (useActiveModelBtn) useActiveModelBtn.addEventListener('click', this._onUseActiveModelClick);
 
         if (confirmBtn) confirmBtn.onclick = this._onDialogConfirm;
         if (cancelBtn) cancelBtn.onclick = this._onDialogClose;
@@ -101,11 +212,12 @@ export class SubAgentsDialog {
 
     _detachEvents() {
         if (!this.el) return;
-        const { dialog, confirmBtn, cancelBtn, filterInput, enableAllBtn, disableAllBtn } = this.el;
+        const { dialog, confirmBtn, cancelBtn, filterInput, enableAllBtn, disableAllBtn, useActiveModelBtn } = this.el;
 
         if (filterInput) filterInput.removeEventListener('input', this._onFilterInput);
         if (enableAllBtn) enableAllBtn.removeEventListener('click', this._onEnableAllClick);
         if (disableAllBtn) disableAllBtn.removeEventListener('click', this._onDisableAllClick);
+        if (useActiveModelBtn) useActiveModelBtn.removeEventListener('click', this._onUseActiveModelClick);
 
         if (confirmBtn) confirmBtn.onclick = null;
         if (cancelBtn) cancelBtn.onclick = null;
@@ -138,6 +250,8 @@ export class SubAgentsDialog {
         this.el = null;
         this._filterText = '';
         this._loadError = null;
+        this._useActiveModelApplied = null;
+        this._loadedDefaults = false;
     }
 
     _renderList() {
@@ -168,10 +282,23 @@ export class SubAgentsDialog {
             });
         }
 
+        if (this._agents.length === 0) {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.className = 'loading-placeholder';
+            const title = document.createElement('span');
+            title.textContent = 'No SubAgents configured.';
+            const hint = document.createElement('span');
+            hint.textContent = 'Click "Use Active Model" to load the default SubAgents and apply the active model.';
+            emptyMsg.appendChild(title);
+            emptyMsg.appendChild(hint);
+            listContainer.appendChild(emptyMsg);
+            return;
+        }
+
         if (workingAgents.length === 0) {
             const emptyMsg = document.createElement('div');
             emptyMsg.className = 'loading-placeholder';
-            emptyMsg.innerHTML = '<span>No SubAgents configured.</span>';
+            emptyMsg.innerHTML = '<span>No agents match your filter.</span>';
             listContainer.appendChild(emptyMsg);
             return;
         }
@@ -219,6 +346,7 @@ export class SubAgentsDialog {
         if (typeof agent.timeoutSeconds === 'number') params.push(`timeout ${agent.timeoutSeconds}s`);
         if (typeof agent.maxRounds === 'number') params.push(`rounds ${agent.maxRounds}`);
         if (typeof agent.maxTokens === 'number') params.push(`max tokens ${agent.maxTokens}`);
+        if (typeof agent.reasoningEffort === 'string' && agent.reasoningEffort.trim() !== '') params.push(`reasoning ${agent.reasoningEffort.trim()}`);
         if (params.length > 0) {
             const paramsLine = document.createElement('div');
             paramsLine.className = 'subagents-params';
@@ -278,6 +406,8 @@ export class SubAgentsDialog {
         if (!dialog) throw new Error('Missing required dialog element #subagents-dialog');
 
         this._loadError = null;
+        this._useActiveModelApplied = null;
+        this._loadedDefaults = false;
         try {
             const result = await this.onLoad.emitResult();
             if (result && result.success === false && result.error) {

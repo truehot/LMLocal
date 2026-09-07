@@ -47,7 +47,7 @@ class BridgeMessageHandler {
     handleStreamContent(chunk, count, speed) {
         const status = appStore.getState().status;
 
-        if (status !== AppStatus.STREAMING && status === AppStatus.THINKING) {
+        if (status === AppStatus.PROCESSING || status === AppStatus.THINKING) {
             appStore.setState({ status: AppStatus.STREAMING });
         }
 
@@ -140,6 +140,15 @@ class BridgeMessageHandler {
         appStore.setState({
             status: AppStatus.EXECUTING,
             toolCallId: toolCall.CallId,
+            toolMessage: toolCall.Message
+        });
+    }
+
+    handleStreamToolStep(toolCall) {
+        appStore.setState({
+            status: AppStatus.STEPPING,
+            toolCallId: toolCall.CallId,
+            toolStep: Number.isFinite(toolCall.Step) ? toolCall.Step : null,
             toolMessage: toolCall.Message
         });
     }

@@ -81,6 +81,8 @@
     <Compile Include="Application\SubAgents\SubAgentRunRequest.cs" />
     <Compile Include="Application\SubAgents\SubAgentsRunResponse.cs" />
     <Compile Include="Application\SubAgents\SubAgentsService.cs" />
+    <Compile Include="Application\Tool\IToolExecutionOutcome.cs" />
+    <Compile Include="Application\Tool\ToolActivityEvent.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
@@ -97,6 +99,7 @@
     <Compile Include="Core\Common\MarkdownCodeBlockFormatter.cs" />
     <Compile Include="Core\Common\MarkdownLanguageHelper.cs" />
     <Compile Include="Core\Common\Pluralizer.cs" />
+    <Compile Include="Core\Common\ReadableFormatter.cs" />
     <Compile Include="Core\Common\SourceFileExtensions.cs" />
     <Compile Include="Core\Common\SourceFileFilter.cs" />
     <Compile Include="Core\Exceptions\ApiException.cs" />
@@ -265,6 +268,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\chat\tool.status.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\dialogs\subagents.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -417,6 +424,7 @@
     <Compile Include="Infrastructure\WebView\Navigation\WebView2NavigationGuard.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\WebView2Page.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\WebViewNavigator.cs" />
+    <Compile Include="Infrastructure\WebView\Messaging\ToolActivityForwarder.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridge.cs" />
     <Compile Include="Infrastructure\WebView\WebViewBridgeFactory.cs" />
     <Compile Include="Infrastructure\Ipc\IpcCommandHandler.cs" />
@@ -458,7 +466,7 @@
     <Compile Include="Core\Models\TokenGenerationStats.cs" />
     <Compile Include="Application\ChatSessionStream\StreamProcessorFactory.cs" />
     <Compile Include="Infrastructure\Streaming\TokenSpeedCalculator.cs" />
-    <Compile Include="Infrastructure\WebView\WebViewScriptExecutor.cs" />
+    <Compile Include="Infrastructure\WebView\Messaging\WebViewScriptExecutor.cs" />
     <Compile Include="MainWindow.cs" />
     <Compile Include="Commands\MainWindowCommand.cs" />
     <Compile Include="MainWindowControl.xaml.cs">
@@ -664,6 +672,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="jsconfig.json" />
+    <Content Include="Resources\json\subagents.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <None Include="source.extension.vsixmanifest">
       <SubType>Designer</SubType>
     </None>

@@ -26,6 +26,7 @@ export const AppStatus = {
 
     // Tool execution states
     EXECUTING: 'EXECUTING',         // tool is being executed
+    STEPPING: 'STEPPING',           // progress step received while a tool is still running
     RESPONDING: 'RESPONDING',       // tool execution finished
 
     // Interruption / error states

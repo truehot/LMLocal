@@ -118,6 +118,7 @@ namespace LMLocal.Application.SubAgents
                 int consecutiveDuplicateRounds = 0;
                 List<ToolResultMessage> toolResultsForRound = null;
                 bool isFirstRound = true;
+                int stepCounter = 0;
 
                 using (var overallCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
@@ -139,6 +140,7 @@ namespace LMLocal.Application.SubAgents
                             SystemPrompt = systemPrompt,
                             ModelId = modelId,
                             Temperature = request.Temperature,
+                            ReasoningEffort = request.ReasoningEffort,
                             MaxOutputTokens = request.MaxTokens,
                             Provider = provider,
                             Tools = tools,
@@ -190,7 +192,7 @@ namespace LMLocal.Application.SubAgents
                                 {
                                     overallCts.Token.ThrowIfCancellationRequested();
 
-                                    if (string.IsNullOrEmpty(toolCall.FunctionName) || !IsToolAllowed(toolCall.FunctionName, tools))
+                                    if (!toolQueue.Allows(toolCall.FunctionName))
                                     {
                                         toolResults.Add(new ToolResultMessage
                                         {
@@ -202,6 +204,12 @@ namespace LMLocal.Application.SubAgents
                                     }
 
                                     usedTools.Add(toolCall.FunctionName);
+
+                                    request.Progress?.Report(new ToolActivityEvent
+                                    {
+                                        ToolName = toolCall.FunctionName,
+                                        Step = ++stepCounter
+                                    });
 
                                     var execResult = await _toolExecutionManagerResolver()
                                         .ExecuteToolAsync(toolCall, overallCts.Token, toolQueue)
@@ -225,6 +233,7 @@ namespace LMLocal.Application.SubAgents
                                 response.Rounds = round + 1;
                                 response.ToolsUsed = new List<string>(usedTools);
                                 CopyUsage(streamResult, response);
+                                response.TokensPerSecond = streamResult.TokensPerSecond;
                                 return response;
                         }
                     }
@@ -257,19 +266,6 @@ namespace LMLocal.Application.SubAgents
                 stopwatch.Stop();
                 response.DurationMs = stopwatch.ElapsedMilliseconds;
             }
-        }
-
-        private static bool IsToolAllowed(string toolName, IReadOnlyList<ToolDefinition> tools)
-        {
-            foreach (var def in tools)
-            {
-                if (string.Equals(def.Name, toolName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static void CopyUsage(StreamCompletionResult stream, SubAgentsRunResponse response)

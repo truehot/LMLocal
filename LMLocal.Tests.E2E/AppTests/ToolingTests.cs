@@ -90,14 +90,14 @@ public class ToolingTests : AppTestBase
 
         // Verify first tool is completed and contains the search message and completion message
         var completedTools = await Page.Locator(".tool-status-completed").AllAsync();
-        Assert.That(completedTools.Count, Is.GreaterThan(0), "Should have at least one completed tool");
+        Assert.That(completedTools, Is.Not.Empty, "Should have at least one completed tool");
         var firstToolText = await completedTools[0].TextContentAsync();
         Assert.That(firstToolText, Does.Contain("Searching for"), "Completed tool should contain initial message");
         Assert.That(firstToolText, Does.Contain("Found 3 matches"), "Completed tool should contain completion message");
 
         // Verify second tool has error
         var errorElements = await Page.Locator(".tool-status-error").AllAsync();
-        Assert.That(errorElements.Count, Is.GreaterThan(0), "Should have at least one error tool status");
+        Assert.That(errorElements, Is.Not.Empty, "Should have at least one error tool status");
         var errorToolText = await errorElements[0].TextContentAsync();
         Assert.That(errorToolText, Does.Contain("Finding symbol references"), "Error tool should contain initial message");
         Assert.That(errorToolText, Does.Contain("not found"), "Error tool should contain error message");
@@ -122,5 +122,52 @@ public class ToolingTests : AppTestBase
         var messageText = await Page.Locator(".ai-message").TextContentAsync();
         Assert.That(messageText, Does.Contain("Based on the search results"), "Response should contain content before tool");
         Assert.That(messageText, Does.Contain("here is the summary"), "Response should contain content after tool");
+    }
+
+    [Test]
+    [Category("Tools")]
+    public async Task Stop_ClickDuringToolStep_CancelsGeneration()
+    {
+        await GotoWithMockAsync("webview-mock-tooling.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Search and find");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        // Wait for the STEPPING status (StreamToolStep arrived while tool is running)
+        await Page.EvaluateAsync("() => { import('/js/store/app.store.js').then(m => { window.__appStore = m.default; }); }");
+        await Page.WaitForFunctionAsync(
+            "() => window.__appStore?.getState?.().status === 'STEPPING'",
+            null, new() { Timeout = 3000 });
+
+        // Stop must be enabled and the click must actually stop the session
+        var stopBtn = Page.Locator("#mainBtn");
+        await Expect(stopBtn).Not.ToBeDisabledAsync(new() { Timeout = 1000 });
+        await stopBtn.ClickAsync();
+
+        // The mock's StopExecutionAsync emits StreamEnd → session completes → back to Send.
+        // Assert the bridge method was actually invoked (regression: it was silently skipped before the fix).
+        await Page.WaitForFunctionAsync("() => (window.__stopCallCount || 0) > 0", null, new() { Timeout = 3000 });
+        await Expect(stopBtn).ToHaveTextAsync("Send", new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("Tools")]
+    public async Task ToolStep_DoesNotEraseToolName()
+    {
+        await GotoWithMockAsync("webview-mock-tooling.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Search and find");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        // Only ONE step line is shown (the last step). Repeated "thinking" events must be
+        // appended to the current activity text instead of replacing it:
+        // 'searching files...' -> 'searching files... + thinking'
+        var stepLine = Page.Locator("[data-tool-call-id='call_search_001'] .tool-status-step");
+        await Expect(stepLine).ToHaveCountAsync(1, new() { Timeout = 3000 });
+        await Expect(stepLine).ToContainTextAsync("searching files...", new() { Timeout = 3000 });
     }
 }

@@ -57,9 +57,12 @@ const LmApi = {
 
     /**
      * Moves the caret in the currently focused editable element.
-     * Supports Home/End/ArrowLeft/ArrowRight; pass isShift to extend the selection.
+     * Supports Home/End/ArrowLeft/ArrowRight; pass isShift to extend the selection
+     * and isCtrl for document/word-level movement:
+     *   - Ctrl+Home / Ctrl+End  -> very start / very end of the whole text
+     *   - Ctrl+ArrowLeft/Right  -> jump word by word (whitespace separated)
      */
-    moveCaret(keyName, isShift) {
+    moveCaret(keyName, isShift, isCtrl) {
         const el = document.activeElement;
         if (!el || !('selectionStart' in el)) return false;
 
@@ -71,8 +74,10 @@ const LmApi = {
         const textLength = text.length;
 
         let anchor = el.dataset.selAnchor
-            ? parseInt(el.dataset.selAnchor, 10)
+            ? Number.parseInt(el.dataset.selAnchor, 10)
             : caret;
+
+        const isWordChar = (ch) => !/\s/.test(ch);
 
         const getLineStart = (pos) => {
             const idx = text.lastIndexOf('\n', pos - 1);
@@ -84,16 +89,38 @@ const LmApi = {
             return idx === -1 ? textLength : idx;
         };
 
+        const getWordStart = (pos) => {
+            let i = pos;
+            while (i > 0 && !isWordChar(text[i - 1])) i--;
+            while (i > 0 && isWordChar(text[i - 1])) i--;
+            return i;
+        };
+
+        const getWordEnd = (pos) => {
+            let i = pos;
+            while (i < textLength && !isWordChar(text[i])) i++;
+            while (i < textLength && isWordChar(text[i])) i++;
+            return i;
+        };
+
         let newPos = caret;
 
         if (keyName === 'Home') {
-            newPos = getLineStart(caret);
+            newPos = isCtrl ? 0 : getLineStart(caret);
         } else if (keyName === 'End') {
-            newPos = getLineEnd(caret);
+            newPos = isCtrl ? textLength : getLineEnd(caret);
         } else if (keyName === 'ArrowLeft') {
-            if (caret > 0) newPos = caret - 1;
+            if (isCtrl) {
+                newPos = getWordStart(caret);
+            } else if (caret > 0) {
+                newPos = caret - 1;
+            }
         } else if (keyName === 'ArrowRight') {
-            if (caret < textLength) newPos = caret + 1;
+            if (isCtrl) {
+                newPos = getWordEnd(caret);
+            } else if (caret < textLength) {
+                newPos = caret + 1;
+            }
         } else {
             return false;
         }

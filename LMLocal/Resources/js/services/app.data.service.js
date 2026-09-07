@@ -390,6 +390,16 @@ class AppDataService {
         }
     }
 
+    async replaceSubAgentsConfigAsync(config) {
+        try {
+            const result = await bridgeClient.replaceSubAgentsConfigAsync(config);
+            return result;
+        } catch (error) {
+            console.error('Failed to replace subagents config:', error);
+            throw error;
+        }
+    }
+
     async getSnapshotAsync() {
         try {
             const result = await bridgeClient.getSnapshotAsync();

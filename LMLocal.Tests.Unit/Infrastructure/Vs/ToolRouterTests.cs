@@ -1,17 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.Mcp;
 using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
 using Moq;
 using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Vs
 {
@@ -133,7 +133,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
 
             var message = _router.GetProcessingMessage("researcher", new Dictionary<string, object>());
 
-            Assert.That(message, Is.EqualTo("Running Researcher ..."));
+            Assert.That(message, Is.EqualTo("Running Researcher..."));
         }
 
         [Test]
@@ -217,7 +217,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var expectedResult = new SubAgentsRunResponse { Success = true, Content = "done" };
 
             _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
-            _subAgentsToolSourceMock.Setup(s => s.ExecuteAsync("researcher", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+            _subAgentsToolSourceMock.Setup(s => s.ExecuteAsync("researcher", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
                 .ReturnsAsync(expectedResult);
 
             var result = _router.ExecuteAsync("researcher", new Dictionary<string, object>(), CancellationToken.None).GetAwaiter().GetResult();
@@ -240,10 +240,52 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
                     Content = "ok",
                     Rounds = 3,
                     TotalTokens = 1400,
+                    DurationMs = 2100,
+                    TokensPerSecond = 45.0
+                });
+
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k tokens · 45.0 t/s · 2.1s"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_SubAgent_WithoutTokens_OmitsSpeed()
+        {
+            _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
+            _subAgentsToolSourceMock.Setup(s => s.GetDisplayName("researcher")).Returns("Researcher");
+
+            var message = _router.GetCompletionMessage(
+                "researcher",
+                new SubAgentsRunResponse
+                {
+                    Success = true,
+                    Content = "ok",
+                    Rounds = 3,
+                    TotalTokens = null,
                     DurationMs = 2100
                 });
 
-            Assert.That(message, Does.Contain("Done (3 steps, 1.4k tokens, 2.1s)"));
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 0 tokens · 2.1s"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_SubAgent_WithoutMeasuredSpeed_OmitsSpeed()
+        {
+            _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
+            _subAgentsToolSourceMock.Setup(s => s.GetDisplayName("researcher")).Returns("Researcher");
+
+            var message = _router.GetCompletionMessage(
+                "researcher",
+                new SubAgentsRunResponse
+                {
+                    Success = true,
+                    Content = "ok",
+                    Rounds = 3,
+                    TotalTokens = 1400,
+                    DurationMs = 2100,
+                    TokensPerSecond = 0
+                });
+
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k tokens · 2.1s"));
         }
 
         [Test]

@@ -71,6 +71,9 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>Max output tokens. Optional.</summary>
         public int? MaxOutputTokens { get; set; }
 
+        /// <summary>Reasoning effort override ("none"/"low"/"medium"/"high"). Optional.</summary>
+        public string ReasoningEffort { get; set; }
+
         /// <summary> Explicit provider connection.</summary>
         public ProviderContext Provider { get; set; }
 
@@ -164,7 +167,7 @@ namespace LMLocal.Application.ChatSessionStream
                     temperature: request.Temperature,
                     maxOutputTokens: request.MaxOutputTokens ?? modelProfile?.MaxTokens,
                     contextLength: modelProfile?.ContextLength,
-                    reasoning: modelProfile?.ReasoningEffort);
+                    reasoning: request.ReasoningEffort ?? modelProfile?.ReasoningEffort);
 
                 StreamCompletionResult result;
                 using (var streaming = await SendStreamingAsync(messageContext, modelContext, request, linkedCts.Token).ConfigureAwait(false))

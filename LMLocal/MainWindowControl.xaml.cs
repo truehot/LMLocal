@@ -67,7 +67,7 @@ namespace LMLocal
             }
         }
 
-        public void SendKeyToWebView(int keyCode, bool shift)
+        public void SendKeyToWebView(int keyCode, bool shift, bool ctrl)
         {
             if (chatBrowser?.CoreWebView2 == null)
                 return;
@@ -76,7 +76,7 @@ namespace LMLocal
             if (keyName == null)
                 return;
 
-            string script = $"window.lmApi?.moveCaret('{keyName}', {(shift ? "true" : "false")});";
+            string script = $"window.lmApi?.moveCaret('{keyName}', {(shift ? "true" : "false")}, {(ctrl ? "true" : "false")});";
             _ = chatBrowser.CoreWebView2.ExecuteScriptAsync(script);
         }
 

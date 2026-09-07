@@ -68,8 +68,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void TryLoadCertificate_EmptyPath_ReturnsFalse()
         {
-            Assert.That(new X509CertificateLoader().TryLoadCertificate(null, out X509Certificate2 certificate), Is.False);
-            Assert.That(new X509CertificateLoader().TryLoadCertificate("   ", out certificate), Is.False);
+            Assert.That(new X509CertificateLoader().TryLoadCertificate(null, out _), Is.False);
+            Assert.That(new X509CertificateLoader().TryLoadCertificate("   ", out _), Is.False);
         }
 
         [Test]

@@ -148,7 +148,7 @@ To use LM Local, you need:
 * ⏹️ **Stop** – Cancel an active generation.
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
   * **Start fresh:** Clear everything and open a completely empty chat.
-  * **Move the last prompt and response:** Copy your last message along with the AI's answer into the new chat's history.
+  * **Exact copy of the last exchange:** Copy your last message along with the AI's answer into the new chat's history.
   * **Consolidate last exchange:** Merge your last message, tool results (code lines), and AI response into a single clean starting history.
   * **Summarize and move context:** Send a quick request to the AI to summarize this conversation, then save it as the first message in the new chat.
 
@@ -250,6 +250,8 @@ How to configure a custom remote endpoint and activate it inside the extension.
 
 Limited availability
 
+| Provider | Provider Type | API Base URL |
+| :--- | :--- | :--- |
 | **Perplexity.ai** | OpenAI compatible | `https://api.perplexity.ai/router/` |
 | **Groq** | OpenAI compatible | `https://api.groq.com/openai/` |
 
@@ -343,18 +345,39 @@ The panel lets you:
 
 
 <a id="content--subagents"></a>
-## 🤖 Subagents (Beta – Advanced Users)
+## 🤖 Subagents (Beta, Advanced Users)
 
 **Subagents** are specialised AI "workers" that the main chat can invoke as tools. Each agent runs in an isolated loop with its own provider, model, system prompt, and toolset, returning a summary to the main conversation.
 
-> [!WARNING]  
-> **Beta – Advanced Users Only.** No UI editor – you must edit the JSON file manually. The schema may change in future releases without notice.
+Use subagents to:
+
+- **Boost speed** – run them on smaller, faster models for quick retrieval or narrow-scope tasks.
+- **Cut costs** – use a cheaper (or local) model for heavy searching and reading, avoiding expensive token usage on the main model.
+
+> **Note:** if a subagent uses the same model as the main chat, it will be **slower** and **consume more total tokens** (since it generates extra output). The speed/cost benefits only come from using a different, lighter model.
+
+
+---
+
+### Quick Start (3-Minute Setup)
+
+To quickly test subagents without manually editing JSON:
+
+1. **Load a Fast Local Model:** Open LM Studio (or Ollama), download a lightweight model like `gemma-4-e2b`, and start the local server.
+2. **Sync Settings:** In LMLocal, switch your active chat model to that local model, open **Sub Agents** from the main menu, and click **Use Active Model**. This sets up the root provider defaults and creates the predefined subagent configs automatically.
+3. **Switch Back & Run:** Switch your main chat back to your primary model (e.g., Claude, GPT-5, or a large local LLM), ensure subagents are enabled via the **'s'** toolbar icon, and send a task (e.g., *"Find my class in the solution"*).
+
+*(Alternative: You can manually create and edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` directly if you prefer custom fine-tuning.)*
 
 ---
 
 ### Configuration
 
-Define agents in `%LOCALAPPDATA%\LMLocalChat\subagents.json`. Top‑level defaults (`providerType`, `customBaseUrl`, `customApiKey`) are inherited by agents that don't override them.
+Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents as needed.
+
+Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`) serve as defaults. Agents inherit them unless they explicitly override a field.
+
+**Defaults are not baked in** – they stay at the root. Change a root value later, and all agents that don’t override it will automatically use the new one.
 
 **Example:**
 
@@ -362,18 +385,14 @@ Define agents in `%LOCALAPPDATA%\LMLocalChat\subagents.json`. Top‑level defaul
 {
   "agents": [
     {
-      "id": "research_subagent",
-      "displayName": "Research",
-      "description": "Read-only file explorer. Searches for files by name, reads file contents, and lists directories. Use this for plain text searches and finding file paths. It CANNOT modify code.",
-      "providerType": "lmstudio",
-      "customBaseUrl": "http://localhost:1234",
-      "customApiKey": null,
-      "model": "qwen3.5-4b-instruct-revised",
-      "system": "You are a read-only File Explorer. Your task is to find files and read text content based on the orchestrator's request. Do not attempt to analyze deep code structures or modify files, just locate the requested text or files. Provide a concise summary of your findings, including exact file paths and line numbers.",
-      "temperature": 0.1,
+      "id": "code_explorer_subagent",
+      "displayName": "Code explorer",
+      "description": "Read-only code explorer. Searches for files by name, reads file contents, and lists directories. Use this for plain text searches and finding file paths. It cannot modify code. ",
+      "system": "You are a read-only code explorer. Search for files, search file contents, inspect directories, and read file contents. When searching, use the tool that best matches the query. If the first result is insufficient, continue searching. When asked to read/show a file, return its content VERBATIM and COMPLETE. Do not guess paths or contents. If a tool returns empty results, do not repeat the same request; try a different search strategy.",
+      "temperature": 1.0,
       "timeoutSeconds": 480,
       "maxRounds": 99,
-      "maxTokens": 16384,
+      "maxTokens": 65536,
       "enabled": true,
       "allowedTools": [
         "get_solution_overview",
@@ -384,7 +403,12 @@ Define agents in `%LOCALAPPDATA%\LMLocalChat\subagents.json`. Top‑level defaul
         "get_active_document"
       ]
     }
-  ]
+  ],
+  "providerType": "lmstudio",
+  "customBaseUrl": "http://localhost:1234",
+  "model": "google/gemma-4-e2b",
+  "temperature": 1.0,
+  "reasoningEffort": "high"
 }
 ```
 
@@ -392,18 +416,17 @@ Define agents in `%LOCALAPPDATA%\LMLocalChat\subagents.json`. Top‑level defaul
 
 ### Managing Agents
 
-Open the Sub Agents dialog via Sub Agents… in the main menu – filter the list, enable/disable agents, and view their details.
+Open the Sub Agents dialog from the main menu.
 
-Enable subagent mode in the main chat via the **'s' icon** in the toolbar **or** the **"Enable Sub Agents (beta)"** checkbox in Settings.
+- **Enable / Disable** – toggle individual agents or all at once.
+- **Use Active Model** – copies the current main chat’s model, provider, base URL, and API key into the root defaults, and also updates any agent that already has its own `model` set. If no agents exist, it downloads a default configuration first.
+- **Save** – only `enabled` flags and root-level changes are written; all other fields remain exactly as you typed them in the JSON file (inherited fields are not expanded).
+
+Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable Sub Agents (beta)"** checkbox in Settings.
 
 ---
 
-### Important Notes
-
-- **Manual JSON editing** – no in‑app form. Invalid entries are skipped (logged).
-- **Sequential execution** – agents run one at a time; parallel is not supported.
-- **Beta** – schema may change without backward compatibility.
-- **Defaults baked in** – inherited top‑level values are written into each agent when the file is saved (e.g., after toggling `enabled`).
+**Beta note:** schema may evolve.
 
 
 
@@ -527,7 +550,7 @@ It's simple. Just ask one AI model to write a plan, then switch to a different m
 **Method 1: Use LM Local's UI cleanup**
 If the chat history grows too long during this multi-model review loop and you start hitting token limits, use LM Local's cleanup feature instead of losing your work:
 * Click the **"Clear chat"** button next to the menu.
-* Choose **"Summarize and move context"** or **"Consolidate last exchange"** or **Move last prompt and response**. 
+* Choose **"Summarize and move context"** or **"Consolidate last exchange"** or **Exact copy of the last exchange**. 
 * This will automatically compress the entire debate or pull just your final refined plan into a fresh, clean chat session, resetting model context usage back to the baseline.
 
 **Method 2: Externalize state to a file** *(Requires built-in tools enabled)*
@@ -544,6 +567,7 @@ Context window accumulation can lead to high API costs or local performance drop
 * **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LM Local continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
 * **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LM Local to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
 * **Use a lightweight project map (no RAG):** Create a context.md file (manually or ask the model to generate it) describing your project structure, main classes, and patterns. Attach it to the first message to give the model a "project map" without attaching the whole codebase. This saves tokens and reduces context size.
+* **Delegate heavy tasks to Subagents:** When performing extensive codebase searches or complex multi-step operations, enable **Subagents**. Instead of letting the main chat accumulate long chains of tool calls and raw file outputs (which quickly drains your context window), a subagent handles the task in its own isolated loop. It does the heavy lifting in the background and returns only a concise summary to your main conversation, keeping your primary session lean and significantly reducing token costs.
 * **Enable History Whitespace Cleaning:** Toggle **"Clean whitespace in history"** in the settings. This compresses redundant spaces, tabs, and excess newlines in background turns—slightly reducing context size and saving tokens without altering your rich-text UI.
 
 
@@ -557,7 +581,7 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
     * **Evaluation / Physical Batch Size**
     * **Keep Model in Memory**
 * **Drop the Temperature:** Lower your active preset temperature closer to `0.0` or `0.1`. This stops the model from creatively wandering around, forcing it to stream short, direct, and deterministic code structures.
-
+* **Enable Speculative Decoding:** If your local inference engine (such as vLLM, LM Studio, or llama.cpp) supports it, turn on Speculative Decoding. This technique pairs your main LLM with a tiny, ultra-fast "draft" model. The draft model rapidly guesses the next several tokens, and the larger target model verifies them in parallel. This drastically increases your tokens-per-second generation rate. For example, you can run a heavy target model like `gemma-4-e2b-it-assistant` alongside a lightweight drafter like `google/gemma-4-e2b`.
 
 
 <a id="content--auto-completions"></a>
@@ -721,6 +745,17 @@ You can organize your configuration using either the `servers` or `mcpServers` r
     }
   }
 }
+//or
+{
+  "mcpServers": {
+    "OmniToolBox": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["C:\\MyMCP\\bin\\Debug\\net10.0\\OmniToolBox.dll"]
+    }
+  }
+}
+
 ```
 
 
@@ -762,7 +797,7 @@ The following configuration files are stored there:
 | `subagents.json` | Subagent (worker agent) definitions. |
 | `mcp.json` | MCP server configuration. |
 | `ChatHistory\` | Chat session logs (history dialog, session restore). |
-
+| `SubAgentsLogs\` | Sub Agent session logs. |
 
 `%LOCALAPPDATA%\LMLocalChat\`
 

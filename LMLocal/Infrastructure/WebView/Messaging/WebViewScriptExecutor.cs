@@ -3,7 +3,7 @@ using Microsoft.Web.WebView2.Core;
 using System;
 using System.Threading.Tasks;
 
-namespace LMLocal.Infrastructure.WebView
+namespace LMLocal.Infrastructure.WebView.Messaging
 {
 
     /// <summary>

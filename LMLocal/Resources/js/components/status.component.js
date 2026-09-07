@@ -60,6 +60,7 @@ class StatusComponent {
             case AppStatus.THINKING:
             case AppStatus.FINISHING:
             case AppStatus.EXECUTING:
+            case AppStatus.STEPPING:
             case AppStatus.RESPONDING:
             case AppStatus.COMPACTING:
             case AppStatus.STOPPING:
@@ -123,8 +124,7 @@ class StatusComponent {
         if (!this.elements.statusText) return;
 
         const status = appState.status;
-        this.elements.statusText.classList.remove('error');
-        this.elements.statusText.classList.remove('offline');
+        this.elements.statusText.classList.remove('error', 'offline');
         switch (status) {
             case AppStatus.ERROR:
                 this.elements.statusText.textContent = UIText.STATUS_ERROR;
@@ -151,11 +151,12 @@ class StatusComponent {
             case AppStatus.CLEARING:
                 this.elements.statusText.textContent = UIText.STATUS_CLEARING;
                 break;
-            default:
+            default: {
                 const label = UIText[`STATUS_${status}`] || UIText.STATUS_UNKNOWN;
                 if (label !== this.elements.statusText.textContent) {
                     this.elements.statusText.textContent = label;
                 }
+            }
         }
     }
 

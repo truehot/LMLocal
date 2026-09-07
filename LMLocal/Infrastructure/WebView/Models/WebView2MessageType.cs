@@ -41,6 +41,12 @@ namespace LMLocal.Infrastructure.WebView
         StreamToolCall,
 
         /// <summary>
+        /// A progress step emitted while a tool runs (e.g. a SubAgent round).
+        /// Arrives between StreamToolCall and StreamToolEnd for the same call id.
+        /// </summary>
+        StreamToolStep,
+
+        /// <summary>
         /// Tool execution completed.
         /// Signals end of tool execution phase, resuming generation.
         /// </summary>

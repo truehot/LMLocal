@@ -16,14 +16,14 @@ namespace LMLocal.Application.Tool
     internal interface IToolExecutionManager
     {
         /// <summary>
-        /// Executes a tool call in the main chat context.
-        /// </summary>
-        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct);
-
-        /// <summary>
         /// Executes a tool call against an explicit queue.
         /// </summary>
         Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue);
+
+        /// <summary>
+        /// Executes a tool call in the main chat context, streaming progress steps.
+        /// </summary>
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress);
 
         /// <summary>
         /// Gets processing message for a tool based on its tool call.
@@ -50,13 +50,22 @@ namespace LMLocal.Application.Tool
             _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
         }
 
-        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue)
         {
-            var queue = _toolQueueProvider.GetMainQueue();
-            return ExecuteToolAsync(toolCall, ct, queue);
+            return ExecuteCoreAsync(toolCall, ct, queue, null);
         }
 
-        public async Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress)
+        {
+            var queue = _toolQueueProvider.GetMainQueue();
+            return ExecuteCoreAsync(toolCall, ct, queue, progress);
+        }
+
+        private async Task<ToolExecutionResult> ExecuteCoreAsync(
+            ToolCallRecord toolCall,
+            CancellationToken ct,
+            ToolQueue queue,
+            IProgress<ToolActivityEvent> progress)
         {
             if (toolCall == null)
             {
@@ -108,16 +117,34 @@ namespace LMLocal.Application.Tool
                 var result = await _toolRouter.ExecuteAsync(
                     toolCall.FunctionName,
                     parameters,
-                    ct).ConfigureAwait(false);
+                    ct,
+                    progress).ConfigureAwait(false);
 
                 var completionMessage = _toolRouter.GetCompletionMessage(toolCall.FunctionName, result);
+
+                var outcome = result as IToolExecutionOutcome;
+                if (outcome != null && !outcome.Success)
+                {
+                    var outcomeError = string.IsNullOrWhiteSpace(outcome.Error)
+                        ? $"Tool '{toolCall.FunctionName}' failed without a message."
+                        : outcome.Error;
+
+                    InternalLogger.Warn($"ToolExecutionManager: {toolCall.FunctionName} reported failure: {outcomeError}");
+                    return new ToolExecutionResult
+                    {
+                        ToolId = toolCall.CallId,
+                        ToolName = toolCall.FunctionName,
+                        Error = outcomeError,
+                        UserMessage = string.IsNullOrWhiteSpace(completionMessage) ? "Tool failed." : completionMessage
+                    };
+                }
 
                 InternalLogger.Info($"ToolExecutionManager: {toolCall.FunctionName} completed successfully");
                 return new ToolExecutionResult
                 {
                     ToolId = toolCall.CallId,
                     ToolName = toolCall.FunctionName,
-                    Result = result,
+                    Result = outcome?.Result ?? result,
                     CompletionMessage = completionMessage
                 };
             }

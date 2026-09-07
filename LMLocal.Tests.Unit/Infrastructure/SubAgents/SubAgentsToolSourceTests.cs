@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using Moq;
@@ -147,6 +148,31 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
         }
 
         [Test]
+        public async Task ExecuteAsync_WithProgress_ForwardsProgressIntoRequest()
+        {
+            var agent = Agent("researcher", new List<string> { "read_file_lines" });
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(Config(agent));
+            SetEnabledAgents(agent);
+
+            var progress = new Progress<ToolActivityEvent>();
+            SubAgentRunRequest captured = null;
+            _subAgentsServiceMock
+                .Setup(s => s.ExecutePromptAsync(It.IsAny<SubAgentRunRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SubAgentRunRequest, CancellationToken>((req, ct) => captured = req)
+                .ReturnsAsync(new SubAgentsRunResponse { Success = true, Content = "ok" });
+
+            var result = await _source.ExecuteAsync(
+                "researcher",
+                new Dictionary<string, object> { { "task", "explore" } },
+                CancellationToken.None,
+                progress);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.Progress, Is.SameAs(progress));
+        }
+
+        [Test]
         public async Task ExecuteAsync_UnknownAgent_ReturnsFailure()
         {
             var result = await _source.ExecuteAsync(
@@ -235,6 +261,56 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
         public void GetDisplayName_UnknownAgent_ReturnsToolName()
         {
             Assert.That(_source.GetDisplayName("ghost"), Is.EqualTo("ghost"));
+        }
+
+        // =====================================================================
+        // ReasoningEffort propagation
+        // =====================================================================
+
+        [Test]
+        public async Task ExecuteAsync_AgentReasoningEffort_PropagatesToRequest()
+        {
+            var agent = Agent("researcher", new List<string> { "read_file_lines" });
+            agent.ReasoningEffort = "high";
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(Config(agent));
+            SetEnabledAgents(agent);
+
+            SubAgentRunRequest captured = null;
+            _subAgentsServiceMock
+                .Setup(s => s.ExecutePromptAsync(It.IsAny<SubAgentRunRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SubAgentRunRequest, CancellationToken>((req, ct) => captured = req)
+                .ReturnsAsync(new SubAgentsRunResponse { Success = true, Content = "ok" });
+
+            var result = await _source.ExecuteAsync(
+                "researcher",
+                new Dictionary<string, object> { { "task", "explore" } },
+                CancellationToken.None);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.ReasoningEffort, Is.EqualTo("high"));
+        }
+
+        [Test]
+        public async Task ExecuteAsync_NoAgentReasoningEffort_RequestIsNull()
+        {
+            var agent = Agent("researcher", new List<string> { "read_file_lines" });
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(Config(agent));
+            SetEnabledAgents(agent);
+
+            SubAgentRunRequest captured = null;
+            _subAgentsServiceMock
+                .Setup(s => s.ExecutePromptAsync(It.IsAny<SubAgentRunRequest>(), It.IsAny<CancellationToken>()))
+                .Callback<SubAgentRunRequest, CancellationToken>((req, ct) => captured = req)
+                .ReturnsAsync(new SubAgentsRunResponse { Success = true, Content = "ok" });
+
+            await _source.ExecuteAsync(
+                "researcher",
+                new Dictionary<string, object> { { "task", "explore" } },
+                CancellationToken.None);
+
+            Assert.That(captured, Is.Not.Null);
+            Assert.That(captured.ReasoningEffort, Is.Null);
         }
     }
 }

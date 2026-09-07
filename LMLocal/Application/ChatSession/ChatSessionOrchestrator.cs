@@ -10,6 +10,7 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
+using LMLocal.Infrastructure.WebView.Messaging;
 
 namespace LMLocal.Application.ChatSession
 {
@@ -353,7 +354,8 @@ namespace LMLocal.Application.ChatSession
                         toolCts.CancelAfter(_toolManager.GetToolTimeout(toolCall.FunctionName) ??
                                             TimeSpan.FromMilliseconds(TOOL_EXECUTION_TIMEOUT_MS));
 
-                        var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token).ConfigureAwait(false);
+                        var stepProgress = new ToolActivityForwarder(toolCall.CallId, onMessage);
+                        var toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress).ConfigureAwait(false);
 
                         ct.ThrowIfCancellationRequested();
 

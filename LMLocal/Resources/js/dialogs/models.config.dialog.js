@@ -483,6 +483,7 @@ export class ModelsConfigDialog {
             const activeModelId = modelState.modelId;
             const activeProviderType = settingsState.Provider;
             const activeProviderId = settingsState.ProviderId ?? null;
+            const activeContextLength = (modelState.tokenMax > 0) ? modelState.tokenMax : undefined;
 
             if (!activeModelId) {
                 toast.show('No active model selected', 'error', 4000, this.el?.adjustCurrentBtn);
@@ -499,13 +500,14 @@ export class ModelsConfigDialog {
             });
 
             if (existing) {
-                this._showForm(existing);
+                this._showForm({ ...existing, contextLength: existing.contextLength ?? activeContextLength });
             } else {
                 this._showForm({
                     modelId: activeModelId,
                     displayName: modelState.modelName || activeModelId,
                     providerType: activeProviderType,
                     providerId: activeProviderId,
+                    contextLength: activeContextLength,
                     enabled: true,
                     isCustom: false
                 });

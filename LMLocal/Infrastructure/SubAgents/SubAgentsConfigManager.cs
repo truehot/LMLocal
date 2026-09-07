@@ -10,6 +10,7 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.SubAgents
 {
@@ -44,11 +45,12 @@ namespace LMLocal.Infrastructure.SubAgents
         IReadOnlyList<string> Validate(SubAgentsConfig config);
 
         /// <summary>
-        /// Merges enabled flags into the stored configuration, validates the whole result and saves it.
+        /// Merges enabled flags into the stored configuration and optionally applies the "Use Active Model" top-level defaults, validates the whole result and saves it.
         /// </summary>
         Task<IReadOnlyList<string>> UpdateEnabledFlagsAsync(
             IReadOnlyList<SubAgentEnabledFlag> flags,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken = default,
+            SubAgentDefaults defaults = null);
 
         /// <summary>
         /// Serializes the provided configuration to json and invalidates the snapshot so it is re-read on the next session.
@@ -65,6 +67,12 @@ namespace LMLocal.Infrastructure.SubAgents
         private readonly object _snapshotLock = new object();
         private SubAgentsConfig _snapshot = new SubAgentsConfig();
         private IReadOnlyList<string> _lastErrors = new List<string>();
+
+        private static readonly JsonSerializerSettings SubAgentsJsonSettings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
 
         public SubAgentsConfigManager(
             IFileSystem fileSystem,
@@ -163,23 +171,27 @@ namespace LMLocal.Infrastructure.SubAgents
             var allAgentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var agent in config.Agents)
             {
-                var agentName = agent.Id?.Trim();
-                if (!string.IsNullOrEmpty(agentName))
-                    allAgentNames.Add(agentName);
+                if (agent == null)
+                    continue;
+
+                var name = agent.Id?.Trim();
+                if (!string.IsNullOrEmpty(name))
+                    allAgentNames.Add(name);
             }
 
-            var seenAgentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var agent in config.Agents)
             {
+                if (agent == null)
+                    continue;
+
                 var name = agent.Id?.Trim();
                 if (string.IsNullOrEmpty(name))
                     continue;
 
-                if (!seenAgentNames.Add(name))
+                if (!seenNames.Add(name))
                 {
                     errors.Add($"agent id '{name}' is not unique (used by another SubAgent)");
-                    continue;
                 }
 
                 if (toolNames.Contains(name))
@@ -212,9 +224,11 @@ namespace LMLocal.Infrastructure.SubAgents
 
         public async Task<IReadOnlyList<string>> UpdateEnabledFlagsAsync(
             IReadOnlyList<SubAgentEnabledFlag> flags,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            SubAgentDefaults defaults = null)
         {
-            var config = await GetAsync(cancellationToken).ConfigureAwait(false);
+
+            var raw = await ReadConfigCoreAsync(cancellationToken, applyDefaults: false).ConfigureAwait(false);
 
             if (flags != null)
             {
@@ -224,16 +238,16 @@ namespace LMLocal.Infrastructure.SubAgents
 
                     if (!string.IsNullOrWhiteSpace(flag.Id))
                     {
-                        target = config.Agents.FirstOrDefault(a =>
+                        target = raw.Agents.FirstOrDefault(a =>
                             string.Equals(a.Id, flag.Id, StringComparison.OrdinalIgnoreCase));
                     }
 
                     if (target == null)
                     {
                         int index = flag.Index ?? -1;
-                        if (index >= 0 && index < config.Agents.Count)
+                        if (index >= 0 && index < raw.Agents.Count)
                         {
-                            target = config.Agents[index];
+                            target = raw.Agents[index];
                         }
                     }
 
@@ -244,14 +258,65 @@ namespace LMLocal.Infrastructure.SubAgents
                 }
             }
 
-            var errors = Validate(config);
+            if (defaults != null)
+            {
+                ApplyActiveModelDefaults(raw, defaults);
+            }
+
+            var effective = raw.Clone();
+            effective.ApplyDefaults();
+
+            var errors = Validate(effective);
             if (errors.Count > 0)
             {
                 return errors;
             }
 
-            await SaveAsync(config, cancellationToken).ConfigureAwait(false);
+            await WriteCoreAsync(raw, cancellationToken).ConfigureAwait(false);
+
+            lock (_snapshotLock)
+            {
+                _snapshot = effective;
+                _lastErrors = new List<string>();
+            }
+
             return new List<string>();
+        }
+
+        /// <summary>
+        /// Applies the "Use Active Model" top-level defaults to the raw config.
+        /// </summary>
+        private static void ApplyActiveModelDefaults(SubAgentsConfig config, SubAgentDefaults defaults)
+        {
+            if (config == null || defaults == null)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(defaults.ProviderType))
+                config.ProviderType = defaults.ProviderType;
+            if (!string.IsNullOrWhiteSpace(defaults.CustomBaseUrl))
+                config.CustomBaseUrl = defaults.CustomBaseUrl;
+            if (!string.IsNullOrWhiteSpace(defaults.CustomApiKey))
+                config.CustomApiKey = defaults.CustomApiKey;
+            if (!string.IsNullOrWhiteSpace(defaults.Model))
+                config.Model = defaults.Model;
+
+            if (config.Agents == null)
+                return;
+
+            foreach (var agent in config.Agents)
+            {
+                if (agent == null)
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(agent.ProviderType) && !string.IsNullOrWhiteSpace(defaults.ProviderType))
+                    agent.ProviderType = defaults.ProviderType;
+                if (!string.IsNullOrWhiteSpace(agent.CustomBaseUrl) && !string.IsNullOrWhiteSpace(defaults.CustomBaseUrl))
+                    agent.CustomBaseUrl = defaults.CustomBaseUrl;
+                if (!string.IsNullOrWhiteSpace(agent.CustomApiKey) && !string.IsNullOrWhiteSpace(defaults.CustomApiKey))
+                    agent.CustomApiKey = defaults.CustomApiKey;
+                if (!string.IsNullOrWhiteSpace(agent.Model) && !string.IsNullOrWhiteSpace(defaults.Model))
+                    agent.Model = defaults.Model;
+            }
         }
 
         public async Task SaveAsync(SubAgentsConfig config, CancellationToken cancellationToken = default)
@@ -259,24 +324,35 @@ namespace LMLocal.Infrastructure.SubAgents
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
 
-            var errors = Validate(config);
+            var effective = config.Clone();
+            effective.ApplyDefaults();
+
+            var errors = Validate(effective);
             if (errors.Count > 0)
                 throw new ArgumentException("SubAgents configuration is invalid: " + string.Join("; ", errors));
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            await WriteCoreAsync(config, cancellationToken).ConfigureAwait(false);
+
+            lock (_snapshotLock)
+            {
+                _snapshot = effective;
+                _lastErrors = new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Serializes the provided config (as given) and writes it to disk. 
+        /// </summary>
+        private async Task WriteCoreAsync(SubAgentsConfig config, CancellationToken cancellationToken)
+        {
             await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                string json = config.ToJsonIndented();
+                string json = JsonConvert.SerializeObject(config, SubAgentsJsonSettings);
                 var bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(json);
                 await _fileSystem.WriteAllBytesAsync(_filePath, bytes, cancellationToken).ConfigureAwait(false);
-
-                lock (_snapshotLock)
-                {
-                    _snapshot = config;
-                    _lastErrors = new List<string>();
-                }
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
@@ -290,9 +366,8 @@ namespace LMLocal.Infrastructure.SubAgents
         }
 
         /// <summary>
-        /// Reads the file, parses and validates it.
-        /// </summary>
-        private async Task<SubAgentsConfig> ReadConfigCoreAsync(CancellationToken cancellationToken)
+        /// Reads the file and parses it.
+        private async Task<SubAgentsConfig> ReadConfigCoreAsync(CancellationToken cancellationToken, bool applyDefaults = true)
         {
             await _fileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             var config = new SubAgentsConfig();
@@ -305,6 +380,11 @@ namespace LMLocal.Infrastructure.SubAgents
 
                 string fileContent = await _fileSystem.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
                 var parsed = ParseConfig(fileContent);
+
+                if (!applyDefaults)
+                {
+                    return parsed;
+                }
 
                 parsed.ApplyDefaults();
 

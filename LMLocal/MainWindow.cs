@@ -40,13 +40,14 @@ namespace LMLocal
 
         private void OnControlPreviewKeyDown(object sender, KeyEventArgs e)
         {
-            // Handle Home, End, Left, Right arrow keys
+            // Handle Home, End, Left, Right arrow keys (optionally with Shift/Ctrl)
             if (e.Key == Key.Home || e.Key == Key.End || e.Key == Key.Left || e.Key == Key.Right)
             {
                 int keyCode = GetKeyCode(e.Key);
                 bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+                bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
 
-                _control?.SendKeyToWebView(keyCode, shift);
+                _control?.SendKeyToWebView(keyCode, shift, ctrl);
                 e.Handled = true;
             }
         }

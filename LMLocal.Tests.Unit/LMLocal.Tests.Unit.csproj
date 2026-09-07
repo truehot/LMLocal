@@ -21,6 +21,7 @@
     <TestProjectType>UnitTest</TestProjectType>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <SonarQubeTestProject>True</SonarQubeTestProject>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -72,7 +73,10 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Application\SubAgents\SubAgentsActiveModelDefaultsTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsConfigTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsRawPersistenceTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsReasoningEffortTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
@@ -145,6 +149,7 @@
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\ToolRouterTests.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
+    <Compile Include="Infrastructure\WebView\ToolActivityForwarderTests.cs" />
     <Compile Include="Infrastructure\WebView\WebView2NavigationGuardTests.cs" />
     <Compile Include="Infrastructure\WebView\WebViewEnvironmentProviderTests.cs" />
     <Compile Include="Infrastructure\WebView\WebViewHostObjectRegistrarTests.cs" />

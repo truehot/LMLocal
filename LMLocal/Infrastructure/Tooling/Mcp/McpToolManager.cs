@@ -1,19 +1,18 @@
-using LMLocal.Core.Common;
-using LMLocal.Core.Models;
-using LMLocal.Infrastructure.HttpWrapper;
-using LMLocal.Infrastructure.Persistence;
-using LMLocal.Application.Abstractions.Ports;
-using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
-using LMLocal.Infrastructure.Tooling.Mcp.Client;
-using LMLocal.Infrastructure.Tooling.Mcp.Models;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Core.Common;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.HttpWrapper;
+using LMLocal.Infrastructure.Tooling.Mcp.Abstractions;
+using LMLocal.Infrastructure.Tooling.Mcp.Client;
+using LMLocal.Infrastructure.Tooling.Mcp.Models;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Tooling.Mcp
 {
@@ -22,11 +21,10 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
     /// </summary>
     internal class McpToolManager : IMcpToolManager
     {
-        private readonly IMcpConfigManager _mcpConfigManager;
-        private readonly IFileSystem _fileSystem;
         private readonly IHttpClientWrapper _httpClientWrapper;
         private readonly ISettingsManager _settingsManager;
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+        private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
 
         private readonly ConcurrentDictionary<string, McpToolInfo> _mcpToolsCache =
             new ConcurrentDictionary<string, McpToolInfo>(StringComparer.OrdinalIgnoreCase);
@@ -34,20 +32,16 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
         private readonly ConcurrentDictionary<string, McpServerStatus> _serverStatuses =
             new ConcurrentDictionary<string, McpServerStatus>(StringComparer.OrdinalIgnoreCase);
 
-        private readonly Dictionary<string, McpServerConfig> _activeServers =
-            new Dictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, McpServerConfig> _activeServers =
+            new ConcurrentDictionary<string, McpServerConfig>(StringComparer.OrdinalIgnoreCase);
 
-        private readonly Dictionary<string, IMcpClient> _activeClients =
-            new Dictionary<string, IMcpClient>(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<string, IMcpClient> _activeClients =
+            new ConcurrentDictionary<string, IMcpClient>(StringComparer.OrdinalIgnoreCase);
 
         public McpToolManager(
-            IMcpConfigManager mcpManager,
-            IFileSystem fileSystem,
             IHttpClientWrapper httpClientWrapper,
             ISettingsManager settingsManager)
         {
-            _mcpConfigManager = mcpManager ?? throw new ArgumentNullException(nameof(mcpManager));
-            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _httpClientWrapper = httpClientWrapper ?? throw new ArgumentNullException(nameof(httpClientWrapper));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
         }
@@ -60,45 +54,32 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                 if (config == null)
                     config = new McpConfigFile();
 
-                bool enableMcp = config.EnableMcp;
-                McpClientConfig serversConfig = config.GetServersConfig();
-
-                if (!enableMcp)
-                {
-                    InternalLogger.Debug("MCP is disabled, disconnecting all servers");
-                    var serversToRemove = _activeServers.Keys.ToList();
-                    foreach (var serverName in serversToRemove)
-                    {
-                        await DisconnectServerAsync(serverName, cancellationToken).ConfigureAwait(false);
-                    }
-                    _mcpToolsCache.Clear();
-                    _serverStatuses.Clear();
-                    _activeServers.Clear();
-                    return;
-                }
-
-                var serversToRemoveObsolete = _activeServers.Keys
-                    .Where(serverName => serversConfig?.Servers == null || !serversConfig.Servers.ContainsKey(serverName))
+                var activeServerNames = _activeServers.Keys
+                    .Concat(_activeClients.Keys)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                foreach (var serverName in serversToRemoveObsolete)
+                foreach (var serverName in activeServerNames)
                 {
-                    await DisconnectServerAsync(serverName, cancellationToken).ConfigureAwait(false);
+                    await DisconnectServerAsync(serverName).ConfigureAwait(false);
                 }
 
                 _mcpToolsCache.Clear();
                 _serverStatuses.Clear();
-                _activeServers.Clear();
 
-                if (serversConfig?.Servers != null && serversConfig.Servers.Count > 0)
-                {
-                    var connectTasks = serversConfig.Servers
-                        .Where(serverEntry => !serverEntry.Value.Disabled)
-                        .Select(serverEntry => ConnectAndCacheToolsAsync(serverEntry.Key, serverEntry.Value, cancellationToken))
-                        .ToList();
+                if (!config.EnableMcp)
+                    return;
 
-                    await Task.WhenAll(connectTasks).ConfigureAwait(false);
-                }
+                var serversConfig = config.GetServersConfig();
+                if (serversConfig?.Servers == null || serversConfig.Servers.Count == 0)
+                    return;
+
+                var connectTasks = serversConfig.Servers
+                    .Where(serverEntry => !serverEntry.Value.Disabled)
+                    .Select(serverEntry => ConnectAndCacheToolsAsync(serverEntry.Key, serverEntry.Value, cancellationToken))
+                    .ToList();
+
+                await Task.WhenAll(connectTasks).ConfigureAwait(false);
             }
             finally
             {
@@ -141,7 +122,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                 }
                 finally
                 {
-                    await client.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+                    await CloseClientSafelyAsync(client).ConfigureAwait(false);
                 }
             }
             finally
@@ -192,7 +173,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                await DisconnectServerAsync(serverName, cancellationToken).ConfigureAwait(false);
+                await DisconnectServerAsync(serverName).ConfigureAwait(false);
             }
             finally
             {
@@ -200,14 +181,13 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             }
         }
 
-        /// <summary>
-        /// Internal helper: connects to a server and caches its tools.
-        /// </summary>
         private async Task ConnectAndCacheToolsAsync(
             string serverName,
             McpServerConfig serverConfig,
             CancellationToken cancellationToken)
         {
+            IMcpClient client = null;
+
             try
             {
                 var validationError = serverConfig.Validate();
@@ -227,22 +207,19 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                 _activeServers[serverName] = serverConfig;
                 var transportType = serverConfig.ResolveTransportType();
 
-                var client = CreateMcpClient(serverConfig);
+                client = CreateMcpClient(serverConfig);
                 await client.InitializeAsync(cancellationToken).ConfigureAwait(false);
-
                 var tools = await client.ListToolsAsync(cancellationToken).ConfigureAwait(false);
 
-
                 _activeClients[serverName] = client;
-                int toolCount = 0;
 
+                int toolCount = 0;
                 var serverPermissions = serverConfig.Permissions ?? new Dictionary<string, string>();
 
                 foreach (var tool in tools)
                 {
                     if (serverPermissions.TryGetValue(tool.Name, out var permission) && permission == "disable")
                     {
-                        InternalLogger.Debug($"Tool '{tool.Name}' is disabled by server permissions, skipping");
                         continue;
                     }
 
@@ -259,7 +236,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                         async (parameters, ct) => await client.CallToolAsync(tool.Name, parameters, ct)
                     );
 
-                    var toolInfo = new McpToolInfo
+                    _mcpToolsCache[tool.Name] = new McpToolInfo
                     {
                         Tool = dynamicTool,
                         ServerName = serverName,
@@ -267,7 +244,6 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                         ServerId = serverName
                     };
 
-                    _mcpToolsCache[tool.Name] = toolInfo;
                     toolCount++;
                 }
 
@@ -280,8 +256,15 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                     ErrorMessage = null
                 };
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await CleanupFailedServerAsync(serverName, client).ConfigureAwait(false);
+                throw;
+            }
             catch (Exception ex)
             {
+                await CleanupFailedServerAsync(serverName, client).ConfigureAwait(false);
+
                 _serverStatuses[serverName] = new McpServerStatus
                 {
                     ServerName = serverName,
@@ -293,27 +276,37 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             }
         }
 
-        /// <summary>
-        /// Internal helper: disconnects from a server and removes its tools.
-        /// </summary>
-        private async Task DisconnectServerAsync(string serverName, CancellationToken cancellationToken)
+        private async Task CleanupFailedServerAsync(string serverName, IMcpClient client)
+        {
+            if (client != null)
+            {
+                await CloseClientSafelyAsync(client).ConfigureAwait(false);
+            }
+
+            _activeServers.TryRemove(serverName, out _);
+            _activeClients.TryRemove(serverName, out _);
+
+            var toolsToRemove = _mcpToolsCache
+                .Where(kvp => kvp.Value.ServerName == serverName)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var toolName in toolsToRemove)
+            {
+                _mcpToolsCache.TryRemove(toolName, out _);
+            }
+        }
+
+        private async Task DisconnectServerAsync(string serverName)
         {
             try
             {
-                if (_activeClients.TryGetValue(serverName, out var client))
+                if (_activeClients.TryRemove(serverName, out var client))
                 {
-                    try
-                    {
-                        await client.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        InternalLogger.Warn($"Error closing MCP client for server '{serverName}': {ex.Message}");
-                    }
-                    _activeClients.Remove(serverName);
+                    await CloseClientSafelyAsync(client).ConfigureAwait(false);
                 }
 
-                _activeServers.Remove(serverName);
+                _activeServers.TryRemove(serverName, out _);
                 _serverStatuses.TryRemove(serverName, out _);
 
                 var toolsToRemove = _mcpToolsCache
@@ -329,6 +322,28 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             catch (Exception ex)
             {
                 InternalLogger.Error($"Error disconnecting from server '{serverName}': {ex.Message}", ex);
+            }
+        }
+
+        private async Task CloseClientSafelyAsync(IMcpClient client)
+        {
+            if (client == null)
+                return;
+
+            using (var timeoutCts = new CancellationTokenSource(CloseTimeout))
+            {
+                try
+                {
+                    await client.CloseAsync(timeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    InternalLogger.Warn($"Closing MCP client timed out after {CloseTimeout.TotalSeconds} seconds.");
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"Error closing MCP client: {ex.Message}");
+                }
             }
         }
 

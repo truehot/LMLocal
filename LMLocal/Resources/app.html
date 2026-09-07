@@ -240,8 +240,8 @@
                 <label class="checkbox-container">
                     <input type="radio" name="clear-action" id="confirm-action-last-prompt">
                     <span>
-                        <span class="settings-label">Move the last prompt and response</span>
-                        <span class="settings-description">Copy your last message, the AI's answer, and all associated tool data into the new chat's history.</span>
+                        <span class="settings-label">Exact copy of the last exchange</span>
+                        <span class="settings-description">Transfers your last prompt, all background tool executions, and the AI's final response exactly as they happened.</span>
                     </span>
                 </label>
 
@@ -249,7 +249,7 @@
                     <input type="radio" name="clear-action" id="confirm-action-last-exchange">
                     <span>
                         <span class="settings-label">Consolidate last exchange</span>
-                        <span class="settings-description">Merge your last message, tool results (code lines), and AI response into a single clean starting history.</span>
+                        <span class="settings-description">Attaches read-only tool results directly to your prompt and keeps only the final response, stripping intermediate tool calls.</span>
                     </span>
                 </label>
 
@@ -889,6 +889,7 @@
                 <div class="toolbar-right">
                     <button type="button" id="subagents-enable-all-btn" class="btn-text-action">Enable All</button>
                     <button type="button" id="subagents-disable-all-btn" class="btn-text-action">Disable All</button>
+                    <button type="button" id="subagents-use-active-model-btn" class="btn-text-action" title="Use Active Model — updates provider, model and URL for all sub-agents from the active model">Use Active Model</button>
                 </div>
             </div>
 

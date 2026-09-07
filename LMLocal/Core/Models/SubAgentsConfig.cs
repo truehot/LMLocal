@@ -34,7 +34,43 @@ namespace LMLocal.Core.Models
         public string CustomApiKey { get; set; }
 
         /// <summary>
-        /// Validation errors of the most recent parse. 
+        /// Default model applied to agents that don't specify their own. Optional.
+        /// </summary>
+        [JsonProperty("model")]
+        public string Model { get; set; }
+
+        /// <summary>
+        /// Default sampling temperature (0..2) applied to agents that don't specify their own. Optional.
+        /// </summary>
+        [JsonProperty("temperature")]
+        public double? Temperature { get; set; }
+
+        /// <summary>
+        /// Default watchdog timeout in seconds applied to agents that don't specify their own. Optional.
+        /// </summary>
+        [JsonProperty("timeoutSeconds")]
+        public int? TimeoutSeconds { get; set; }
+
+        /// <summary>
+        /// Default max tool-call rounds applied to agents that don't specify their own. Optional.
+        /// </summary>
+        [JsonProperty("maxRounds")]
+        public int? MaxRounds { get; set; }
+
+        /// <summary>
+        /// Default max output tokens applied to agents that don't specify their own. Optional.
+        /// </summary>
+        [JsonProperty("maxTokens")]
+        public int? MaxTokens { get; set; }
+
+        /// <summary>
+        /// Default reasoning effort applied to agents that don't specify their own. Optional. Valid values: "none", "low", "medium", "high". Empty => not sent .
+        /// </summary>
+        [JsonProperty("reasoningEffort")]
+        public string ReasoningEffort { get; set; }
+
+        /// <summary>
+        /// Validation errors of the most recent parse.
         /// </summary>
         [JsonIgnore]
         public IReadOnlyList<string> Errors { get; set; } = new List<string>();
@@ -68,7 +104,7 @@ namespace LMLocal.Core.Models
         }
 
         /// <summary>
-        /// Fills agent-level provider settings from the top-level defaults when an agent has no value of its own.
+        /// Fills agent-level settings from the top-level defaults when an agent has no value of its own.
         /// </summary>
         public void ApplyDefaults()
         {
@@ -88,14 +124,80 @@ namespace LMLocal.Core.Models
 
                 if (string.IsNullOrWhiteSpace(agent.CustomApiKey))
                     agent.CustomApiKey = CustomApiKey;
+
+                if (string.IsNullOrWhiteSpace(agent.Model))
+                    agent.Model = Model;
+
+                if (!agent.Temperature.HasValue)
+                    agent.Temperature = Temperature;
+
+                if (!agent.TimeoutSeconds.HasValue)
+                    agent.TimeoutSeconds = TimeoutSeconds;
+
+                if (!agent.MaxRounds.HasValue)
+                    agent.MaxRounds = MaxRounds;
+
+                if (!agent.MaxTokens.HasValue)
+                    agent.MaxTokens = MaxTokens;
+
+                if (string.IsNullOrWhiteSpace(agent.ReasoningEffort))
+                    agent.ReasoningEffort = ReasoningEffort;
             }
         }
 
+        /// <summary>
+        /// Deep copy used to validate and snapshot the effective configuration without mutating the raw config.
+        /// </summary>
+        public SubAgentsConfig Clone()
+        {
+            var clone = new SubAgentsConfig
+            {
+                ProviderType = ProviderType,
+                CustomBaseUrl = CustomBaseUrl,
+                CustomApiKey = CustomApiKey,
+                Model = Model,
+                Temperature = Temperature,
+                TimeoutSeconds = TimeoutSeconds,
+                MaxRounds = MaxRounds,
+                MaxTokens = MaxTokens,
+                ReasoningEffort = ReasoningEffort
+            };
+
+            foreach (var agent in Agents)
+            {
+                if (agent == null)
+                {
+                    clone.Agents.Add(null);
+                    continue;
+                }
+
+                clone.Agents.Add(new SubAgentDefinition
+                {
+                    Id = agent.Id,
+                    DisplayName = agent.DisplayName,
+                    Description = agent.Description,
+                    ProviderType = agent.ProviderType,
+                    CustomBaseUrl = agent.CustomBaseUrl,
+                    CustomApiKey = agent.CustomApiKey,
+                    Model = agent.Model,
+                    System = agent.System,
+                    Temperature = agent.Temperature,
+                    TimeoutSeconds = agent.TimeoutSeconds,
+                    MaxRounds = agent.MaxRounds,
+                    MaxTokens = agent.MaxTokens,
+                    ReasoningEffort = agent.ReasoningEffort,
+                    Enabled = agent.Enabled,
+                    AllowedTools = agent.AllowedTools != null ? new List<string>(agent.AllowedTools) : new List<string>()
+                });
+            }
+
+            return clone;
+        }
     }
 
     /// <summary>
-    /// Configuration for a single SubAgent, one item of the subagents array in json .
-    /// <summary>
+    /// Configuration for a single SubAgent, one item of the subagents array in json.
+    /// </summary>
     public class SubAgentEnabledFlag
     {
         [JsonProperty("id")]
@@ -108,6 +210,26 @@ namespace LMLocal.Core.Models
         public bool Enabled { get; set; }
     }
 
+    /// <summary>
+    /// Top-level provider/model defaults sent by the "Use Active Model" operation in the SubAgents dialog.
+    /// </summary>
+    public class SubAgentDefaults
+    {
+        [JsonProperty("providerType")]
+        public string ProviderType { get; set; }
+
+        [JsonProperty("customBaseUrl")]
+        public string CustomBaseUrl { get; set; }
+
+        [JsonProperty("customApiKey")]
+        public string CustomApiKey { get; set; }
+
+        [JsonProperty("model")]
+        public string Model { get; set; }
+    }
+
+    /// <summary>
+    /// Configuration for a single SubAgent.
     /// </summary>
     public class SubAgentDefinition
     {
@@ -124,46 +246,71 @@ namespace LMLocal.Core.Models
         public string DisplayName { get; set; }
 
         /// <summary>
-        /// Human-readable agent description. Required. 
+        /// Human-readable agent description. Required.
         /// </summary>
         [JsonProperty("description")]
         public string Description { get; set; }
 
-        /// <summary>Provider type key: "lmstudio", "ollama", "openai", ... Falls back to "lmstudio" when neither the agent nor the top-level defaults specify one.</summary>
+        /// <summary>
+        /// Provider type key: "lmstudio", "ollama", "openai", ... Falls back to "lmstudio" when neither the agent nor the top-level defaults specify one.
+        /// </summary>
         [JsonProperty("providerType")]
         public string ProviderType { get; set; }
 
-        /// <summary>Base URL for the SubAgent's dedicated provider endpoint. Required.</summary>
+        /// <summary>
+        /// Base URL for the SubAgent's dedicated provider endpoint. Required.
+        /// </summary>
         [JsonProperty("customBaseUrl")]
         public string CustomBaseUrl { get; set; }
 
-        /// <summary>API key for the SubAgent's dedicated provider endpoint.</summary>
+        /// <summary>
+        /// API key for the SubAgent's dedicated provider endpoint.
+        /// </summary>
         [JsonProperty("customApiKey")]
         public string CustomApiKey { get; set; }
 
-        /// <summary>ModelId the SubAgent must use. Required; comes from subagents.json.</summary>
+        /// <summary>
+        /// ModelId the SubAgent must use. Required; comes from subagents.json.
+        /// </summary>
         [JsonProperty("model")]
         public string Model { get; set; }
 
-        /// <summary>System prompt for the SubAgent. Empty => fall back to the main chat system prompt.</summary>
+        /// <summary>
+        /// System prompt for the SubAgent. Empty => fall back to the main chat system prompt.
+        /// </summary>
         [JsonProperty("system")]
         public string System { get; set; }
 
-        /// <summary>Sampling temperature (0..2).</summary>
+        /// <summary>
+        /// Sampling temperature (0..2).
+        /// </summary>
         [JsonProperty("temperature")]
         public double? Temperature { get; set; }
 
-        /// <summary>Overall watchdog timeout in seconds. 0 = disabled.</summary>
+        /// <summary>
+        /// Overall watchdog timeout in seconds. 0 = disabled.
+        /// </summary>
         [JsonProperty("timeoutSeconds")]
         public int? TimeoutSeconds { get; set; }
 
-        /// <summary>Max tool-call rounds before the SubAgent stops.</summary>
+        /// <summary>
+        /// Max tool-call rounds before the SubAgent stops.
+        /// </summary>
         [JsonProperty("maxRounds")]
         public int? MaxRounds { get; set; }
 
-        /// <summary>Max output tokens for a SubAgent reply.</summary>
+        /// <summary>
+        /// Max output tokens for a SubAgent reply.
+        /// </summary>
         [JsonProperty("maxTokens")]
         public int? MaxTokens { get; set; }
+
+        /// <summary>
+        /// Reasoning effort hint for this SubAgent ("none"/"low"/"medium"/"high"). Optional.
+        /// Empty => reasoning_effort is not sent; falls back to the model profile when one matches.
+        /// </summary>
+        [JsonProperty("reasoningEffort")]
+        public string ReasoningEffort { get; set; }
 
         /// <summary>
         /// Whether the agent is enabled. Default: true.
@@ -178,7 +325,7 @@ namespace LMLocal.Core.Models
         public List<string> AllowedTools { get; set; } = new List<string>();
 
         /// <summary>
-        /// Validates all agents and returns a list of human-readable errors.
+        /// Validates the agent and returns a list of human-readable errors.
         /// </summary>
         public IReadOnlyList<string> Validate()
         {
@@ -235,16 +382,3 @@ namespace LMLocal.Core.Models
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

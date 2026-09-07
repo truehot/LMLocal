@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using LMLocal.Application.Tool;
 
 namespace LMLocal.Application.SubAgents
 {
@@ -15,10 +17,12 @@ namespace LMLocal.Application.SubAgents
         public string Model { get; set; }
         public string System { get; set; }
         public double? Temperature { get; set; }
+        public string ReasoningEffort { get; set; }
         public int? MaxTokens { get; set; }
         public int? TimeoutSeconds { get; set; }
         public int? MaxRounds { get; set; }
         public List<string> AllowedTools { get; set; }
         public IReadOnlyCollection<string> ExcludedAgentNames { get; set; }
+        public IProgress<ToolActivityEvent> Progress { get; set; }
     }
 }

@@ -1,4 +1,5 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
+import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus } from '@app/chat/tool.status.js';
 
 /**
  * Factory that creates a message DOM element, caches its internal blocks and returns an API to manipulate the message.
@@ -129,24 +130,15 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
 
         startTooling: (callId, message) => {
             stopLoadingIndicator();
+            startToolStatus(elements.toolContainer, callId, message);
+        },
 
-            const toolDiv = document.createElement('div');
-            toolDiv.className = 'tool-status';
-            toolDiv.textContent = message || 'Tooling started.';
-            toolDiv.setAttribute('data-tool-call-id', callId);
-            elements.toolContainer.appendChild(toolDiv);
+        stepTooling: (callId, step, message) => {
+            stepToolStatus(elements.toolContainer, callId, step, message);
         },
 
         finishTooling: (callId, withError, message) => {
-            const toolDiv = elements.toolContainer.querySelector(`[data-tool-call-id="${callId}"]`);
-            if (toolDiv) {
-                if (withError) {
-                    toolDiv.className = 'tool-status-error';
-                } else {
-                    toolDiv.className = 'tool-status-completed';
-                }
-                toolDiv.textContent += (message || 'Tooling stopped.');
-            }
+            finishToolStatus(elements.toolContainer, callId, withError, message);
         },
 
         stopStreaming: (message) => {

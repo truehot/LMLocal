@@ -144,8 +144,10 @@ namespace LMLocal.Tests.Unit
                         {
                             reporting.Read(buffer, 0, buffer.Length);
                         }
-                    });
-                    feeder.IsBackground = true;
+                    })
+                    {
+                        IsBackground = true
+                    };
                     feeder.Start();
 
                     await Task.Delay(1300).ConfigureAwait(false); // well beyond the 1s timeout

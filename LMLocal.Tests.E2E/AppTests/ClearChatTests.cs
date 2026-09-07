@@ -43,7 +43,7 @@ public class ClearChatTests : AppTestBase
 
         // Verify chat container is empty
         var finalCount = await Page.Locator("#chat-container > *").CountAsync();
-        Assert.That(finalCount, Is.EqualTo(0), "Chat container should be empty after clear");
+        Assert.That(finalCount, Is.Zero, "Chat container should be empty after clear");
     }
 
     [Test]

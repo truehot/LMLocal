@@ -28,8 +28,7 @@ namespace LMLocal.Application.ChatSessionStream
         private readonly ITokenSpeedCalculator _tokenSpeedCalculator;
         private readonly ISettingsManager _settingsManager;
 
-        private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata =
-            new Dictionary<int, (string CallId, string FunctionName)>();
+        private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata = new Dictionary<int, (string CallId, string FunctionName)>();
 
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
@@ -64,177 +63,176 @@ namespace LMLocal.Application.ChatSessionStream
             var syncLock = new object();
             bool isReading = true;
 
-            var cancelRegistration = cancellationToken.Register(() => stream.Close());
-
             // Create a new parser instance for this stream processing session
             var parser = new LlmSseParser();
 
             try
             {
-                var consumerTask = Task.Run(async () =>
+                using (var cancelRegistration = cancellationToken.Register(() => stream.Close()))
                 {
-                    while (true)
+                    var consumerTask = Task.Run(async () =>
                     {
-                        TextStreamChunk chunkToSend = null;
-                        TokenGenerationStats statsToSend = default;
-                        bool done = false;
-
-                        lock (syncLock)
+                        while (true)
                         {
-                            if (reasoningBuffer.Length > 0)
-                            {
-                                var t = reasoningBuffer.ToString();
-                                reasoningBuffer.Clear();
-                                chunkToSend = new TextStreamChunk(t, ChunkKind.Reasoning);
-                            }
-                            else if (contentBuffer.Length > 0)
-                            {
-                                var t = contentBuffer.ToString();
-                                contentBuffer.Clear();
-                                chunkToSend = new TextStreamChunk(t, ChunkKind.Content);
-                            }
-
-                            statsToSend = new TokenGenerationStats(currentTokens, _tokenSpeedCalculator.GetTokensPerSecond());
-                            done = !isReading && reasoningBuffer.Length == 0 && contentBuffer.Length == 0;
-                        }
-
-                        if (chunkToSend != null && !chunkToSend.IsEmpty && onChunk != null)
-                        {
-                            await onChunk(chunkToSend, statsToSend).ConfigureAwait(false);
-                        }
-
-                        if (done || cancellationToken.IsCancellationRequested)
-                        {
-                            break;
-                        }
-
-                        try
-                        {
-                            await Task.Delay(batchIntervalMs, cancellationToken).ConfigureAwait(false);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            break;
-                        }
-                    }
-                }, cancellationToken);
-
-                using (var reader = new StreamReader(stream))
-                {
-                    try
-                    {
-                        int timeoutSeconds = _settingsManager.Current.StreamInactivityTimeoutSeconds;
-                        if (stream.CanTimeout)
-                        {
-                            stream.ReadTimeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : Timeout.Infinite;
-                        }
-
-                        // Deliberately using sync ReadLine with ReadTimeout instead of ReadLineAsync,
-                        // because ReadLineAsync ignores NetworkStream.ReadTimeout on .NET Framework 4.7.2
-#pragma warning disable VSTHRD103
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
-#pragma warning restore VSTHRD103
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-
-                            if (string.IsNullOrWhiteSpace(line))
-                                continue;
-
-                            var chunks = parser.ExtractDeltas(line);
+                            TextStreamChunk chunkToSend = null;
+                            TokenGenerationStats statsToSend = default;
+                            bool done = false;
 
                             lock (syncLock)
                             {
-                                foreach (var chunk in chunks)
+                                if (reasoningBuffer.Length > 0)
                                 {
-                                    if (chunk is TextStreamChunk textChunk)
-                                    {
-                                        switch (textChunk.Kind)
-                                        {
-                                            case ChunkKind.Reasoning:
-                                                reasoningBuffer.Append(textChunk.Text);
-                                                break;
-                                            case ChunkKind.Content:
-                                                contentBuffer.Append(textChunk.Text);
-                                                fullResponse.Append(textChunk.Text);
-                                                break;
-                                            case ChunkKind.ToolCallArguments:
+                                    var t = reasoningBuffer.ToString();
+                                    reasoningBuffer.Clear();
+                                    chunkToSend = new TextStreamChunk(t, ChunkKind.Reasoning);
+                                }
+                                else if (contentBuffer.Length > 0)
+                                {
+                                    var t = contentBuffer.ToString();
+                                    contentBuffer.Clear();
+                                    chunkToSend = new TextStreamChunk(t, ChunkKind.Content);
+                                }
 
-                                                int bufferIndex = textChunk.ToolCallIndex ?? 0;
-                                                if (!toolCallBuffers.ContainsKey(bufferIndex))
-                                                    toolCallBuffers[bufferIndex] = new StringBuilder();
-                                                toolCallBuffers[bufferIndex].Append(textChunk.Text);
-                                                break;
+                                statsToSend = new TokenGenerationStats(currentTokens, _tokenSpeedCalculator.GetTokensPerSecond());
+                                done = !isReading && reasoningBuffer.Length == 0 && contentBuffer.Length == 0;
+                            }
+
+                            if (chunkToSend != null && !chunkToSend.IsEmpty && onChunk != null)
+                            {
+                                await onChunk(chunkToSend, statsToSend).ConfigureAwait(false);
+                            }
+
+                            if (done || cancellationToken.IsCancellationRequested)
+                            {
+                                break;
+                            }
+
+                            try
+                            {
+                                await Task.Delay(batchIntervalMs, cancellationToken).ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                break;
+                            }
+                        }
+                    }, cancellationToken);
+
+                    using (var reader = new StreamReader(stream))
+                    {
+                        try
+                        {
+                            int timeoutSeconds = _settingsManager.Current.StreamInactivityTimeoutSeconds;
+                            if (stream.CanTimeout)
+                            {
+                                stream.ReadTimeout = timeoutSeconds > 0 ? timeoutSeconds * 1000 : Timeout.Infinite;
+                            }
+
+                            // Deliberately using sync ReadLine with ReadTimeout instead of ReadLineAsync,
+                            // because ReadLineAsync ignores NetworkStream.ReadTimeout on .NET Framework 4.7.2
+#pragma warning disable VSTHRD103
+                            string line;
+                            while ((line = reader.ReadLine()) != null)
+#pragma warning restore VSTHRD103
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+
+                                if (string.IsNullOrWhiteSpace(line))
+                                    continue;
+
+                                var chunks = parser.ExtractDeltas(line);
+
+                                lock (syncLock)
+                                {
+                                    foreach (var chunk in chunks)
+                                    {
+                                        if (chunk is TextStreamChunk textChunk)
+                                        {
+                                            switch (textChunk.Kind)
+                                            {
+                                                case ChunkKind.Reasoning:
+                                                    reasoningBuffer.Append(textChunk.Text);
+                                                    break;
+                                                case ChunkKind.Content:
+                                                    contentBuffer.Append(textChunk.Text);
+                                                    fullResponse.Append(textChunk.Text);
+                                                    break;
+                                                case ChunkKind.ToolCallArguments:
+
+                                                    int bufferIndex = textChunk.ToolCallIndex ?? 0;
+                                                    if (!toolCallBuffers.ContainsKey(bufferIndex))
+                                                        toolCallBuffers[bufferIndex] = new StringBuilder();
+                                                    toolCallBuffers[bufferIndex].Append(textChunk.Text);
+                                                    break;
+                                            }
+
+                                            currentTokens++;
+                                            _tokenSpeedCalculator.Update(currentTokens);
+
+                                        }
+                                        else if (chunk is ToolCallMetadataChunk metadata)
+                                        {
+                                            _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName);
+
+                                            if (!toolCallBuffers.ContainsKey(metadata.Index))
+                                                toolCallBuffers[metadata.Index] = new StringBuilder();
+
+                                            if (!string.IsNullOrEmpty(metadata.InitialArguments))
+                                            {
+                                                toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
+                                            }
+                                        }
+                                        else if (chunk is ErrorStreamChunk errChunk)
+                                        {
+                                            result.ErrorMessage = errChunk.Message;
+                                            result.ErrorType = errChunk.ErrorType;
+                                            result.ErrorCode = errChunk.ErrorCode;
+                                            result.FinishReason = "error";
+                                            isReading = false;
                                         }
 
-                                        currentTokens++;
-                                        _tokenSpeedCalculator.Update(currentTokens);
-
-                                    }
-                                    else if (chunk is ToolCallMetadataChunk metadata)
-                                    {
-                                        _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName);
-
-                                        if (!toolCallBuffers.ContainsKey(metadata.Index))
-                                            toolCallBuffers[metadata.Index] = new StringBuilder();
-
-                                        if (!string.IsNullOrEmpty(metadata.InitialArguments))
+                                        else if (chunk is CompletionStreamChunk completion)
                                         {
-                                            toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
+                                            if (!string.IsNullOrEmpty(completion.FinishReason) && string.IsNullOrEmpty(result.FinishReason))
+                                            {
+                                                result.FinishReason = completion.FinishReason; //register once
+                                            }
+
+                                            if (completion.TotalTokens.HasValue)
+                                                result.TokenUsage.TotalTokens = completion.TotalTokens;
+
+                                            if (completion.PromptTokens.HasValue)
+                                                result.TokenUsage.PromptTokens = completion.PromptTokens;
+
+                                            if (completion.CompletionTokens.HasValue)
+                                                result.TokenUsage.CompletionTokens = completion.CompletionTokens;
+
+                                            if (completion.ReasoningTokens.HasValue)
+                                                result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
+
+                                            if (completion.CachedTokens.HasValue)
+                                                result.TokenUsage.CachedTokens = completion.CachedTokens;
+
+                                            if (!string.IsNullOrEmpty(completion.SystemFingerprint))
+                                                result.SystemFingerprint = completion.SystemFingerprint;
                                         }
-                                    }
-                                    else if (chunk is ErrorStreamChunk errChunk)
-                                    {
-                                        result.ErrorMessage = errChunk.Message;
-                                        result.ErrorType = errChunk.ErrorType;
-                                        result.ErrorCode = errChunk.ErrorCode;
-                                        result.FinishReason = "error";
-                                        isReading = false;
-                                    }
-
-                                    else if (chunk is CompletionStreamChunk completion)
-                                    {
-                                        if (!string.IsNullOrEmpty(completion.FinishReason) && string.IsNullOrEmpty(result.FinishReason))
-                                        {
-                                            result.FinishReason = completion.FinishReason; //register once
-                                        }
-
-                                        if (completion.TotalTokens.HasValue)
-                                            result.TokenUsage.TotalTokens = completion.TotalTokens;
-
-                                        if (completion.PromptTokens.HasValue)
-                                            result.TokenUsage.PromptTokens = completion.PromptTokens;
-
-                                        if (completion.CompletionTokens.HasValue)
-                                            result.TokenUsage.CompletionTokens = completion.CompletionTokens;
-
-                                        if (completion.ReasoningTokens.HasValue)
-                                            result.TokenUsage.ReasoningTokens = completion.ReasoningTokens;
-
-                                        if (completion.CachedTokens.HasValue)
-                                            result.TokenUsage.CachedTokens = completion.CachedTokens;
-
-                                        if (!string.IsNullOrEmpty(completion.SystemFingerprint))
-                                            result.SystemFingerprint = completion.SystemFingerprint;
                                     }
                                 }
                             }
                         }
-                    }
-                    finally
-                    {
-                        lock (syncLock)
+                        finally
                         {
-                            isReading = false;
+                            lock (syncLock)
+                            {
+                                isReading = false;
+                            }
                         }
-
-                        cancelRegistration.Dispose();
                     }
+
+                    await consumerTask.ConfigureAwait(false);
+
+                    result.TokensPerSecond = _tokenSpeedCalculator.GetAverageTokensPerSecond();
                 }
-
-                await consumerTask.ConfigureAwait(false);
-
-                result.TokensPerSecond = _tokenSpeedCalculator.GetAverageTokensPerSecond();
             }
             catch (OperationCanceledException ex)
             {
@@ -274,33 +272,45 @@ namespace LMLocal.Application.ChatSessionStream
             result.ContentResponse = fullResponse.ToString();
 
             var toolCalls = new List<ToolCallRecord>();
-            foreach (var bufferEntry in toolCallBuffers.OrderBy(kvp => kvp.Key))
+            try
             {
-                int index = bufferEntry.Key;
-                string argumentsJson = bufferEntry.Value.ToString();
-
-                if (_toolCallMetadata.TryGetValue(index, out var metadata))
+                foreach (var bufferEntry in toolCallBuffers.OrderBy(kvp => kvp.Key))
                 {
-                    bool isValid = IsValidJson(argumentsJson);
+                    int index = bufferEntry.Key;
+                    string argumentsJson = bufferEntry.Value.ToString();
 
-                    if (!isValid)
+                    if (_toolCallMetadata.TryGetValue(index, out var metadata))
                     {
-                        InternalLogger.Warn($"[StreamProcessor] Invalid tool arguments for '{metadata.FunctionName}' (id: {metadata.CallId})");
+                        bool isValid = IsValidJson(argumentsJson);
+
+                        if (!isValid)
+                        {
+                            InternalLogger.Warn($"[StreamProcessor] Invalid tool arguments for '{metadata.FunctionName}' (id: {metadata.CallId})");
+                        }
+
+                        toolCalls.Add(new ToolCallRecord
+                        {
+                            Index = index,
+                            CallId = metadata.CallId,
+                            FunctionName = metadata.FunctionName,
+                            ArgumentsJson = isValid ? argumentsJson : "{}",
+                            IsInvalid = !isValid
+                        });
                     }
-
-                    toolCalls.Add(new ToolCallRecord
+                    else
                     {
-                        Index = index,
-                        CallId = metadata.CallId,
-                        FunctionName = metadata.FunctionName,
-                        ArgumentsJson = isValid ? argumentsJson : "{}",
-                        IsInvalid = !isValid
-                    });
+                        InternalLogger.Warn($"Missing metadata for tool call at index {index}. Arguments: {argumentsJson}");
+                    }
                 }
-                else
+            }
+            finally
+            {
+                foreach (var buffer in toolCallBuffers.Values)
                 {
-                    InternalLogger.Warn($"Missing metadata for tool call at index {index}. Arguments: {argumentsJson}");
+                    buffer?.Clear();
                 }
+                toolCallBuffers.Clear();
+                _toolCallMetadata.Clear();
             }
 
             if (toolCalls.Count > 0)

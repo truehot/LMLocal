@@ -53,6 +53,7 @@ class FullRenderer {
  * tail element that updates with the currently streaming (unfinished) block.
  */
 class ProgressiveBlockRenderer {
+    static GROUPABLE_TAGS = new Set(['OL', 'UL', 'BLOCKQUOTE']);
     constructor(onUpdate) {
         this.onUpdate = onUpdate;
         this.container = null;
@@ -69,13 +70,27 @@ class ProgressiveBlockRenderer {
         this.container.appendChild(fragment);
     }
 
+    _commitableChildCount() {
+        const children = this.tempDiv.children;
+        let count = children.length;
+        while (count >= 2) {
+            const prev = children[count - 2];
+            const curr = children[count - 1];
+            if (prev.tagName === curr.tagName && ProgressiveBlockRenderer.GROUPABLE_TAGS.has(prev.tagName)) {
+                count--;
+            } else {
+                break;
+            }
+        }
+        return count;
+    }
+
     _runRender(fullText, html) {
-        if (!this.container || fullText === this.lastRenderedText) return;
-        if (html === undefined) return;
+        if (!this.container || fullText === this.lastRenderedText || html === undefined) return;
 
         if (!this.tempDiv) this.tempDiv = document.createElement('div');
         this.tempDiv.innerHTML = html;
-        const foundChildren = this.tempDiv.children.length;
+        const foundChildren = this._commitableChildCount();
 
         if (!this.activeTailDiv) {
             this.activeTailDiv = document.createElement('div');
@@ -91,15 +106,45 @@ class ProgressiveBlockRenderer {
             this.lastCompletedChildrenCount++;
         }
 
-        const lastActiveNode = this.tempDiv.lastElementChild;
-        if (lastActiveNode) {
-            const newTailContent = lastActiveNode.cloneNode(true);
-            if (!this.activeTailDiv.firstChild?.isEqualNode(newTailContent)) {
-                this.activeTailDiv.replaceChildren();
-                this.activeTailDiv.appendChild(newTailContent);
+        const children = this.tempDiv.children;
+        const tailStart = this.lastCompletedChildrenCount;
+        const tailLength = children.length - tailStart;
+
+        if (tailLength > 0) {
+            let alreadyMatches = (this.activeTailDiv.children.length === tailLength);
+            if (alreadyMatches) {
+                for (let i = 0; i < tailLength; i++) {
+                    const oldEl = this.activeTailDiv.children[i];
+                    const newEl = children[tailStart + i];
+                    if (!oldEl.isEqualNode(newEl)) {
+                        alreadyMatches = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!alreadyMatches) {
+                const fragment = document.createDocumentFragment();
+                for (let i = tailStart; i < children.length; i++) {
+                    fragment.appendChild(children[i].cloneNode(true));
+                }
+                this.activeTailDiv.replaceChildren(fragment);
+                const lastActiveNode = children[children.length - 1];
                 this.activeTailDiv.dataset.tag = lastActiveNode.tagName.toLowerCase();
             }
         }
+
+        const tailChildren = Array.from(this.tempDiv.children).slice(this.lastCompletedChildrenCount);
+        if (tailChildren.length > 0) {
+            const cloned = tailChildren.map(n => n.cloneNode(true));
+            const alreadyMatches = this.activeTailDiv.children.length === cloned.length && cloned.every((n, i) => this.activeTailDiv.children[i]?.isEqualNode(n));
+            if (!alreadyMatches) {
+                this.activeTailDiv.replaceChildren(...cloned);
+                const lastActiveNode = tailChildren[tailChildren.length - 1];
+                this.activeTailDiv.dataset.tag = lastActiveNode.tagName.toLowerCase();
+            }
+        }
+
         this.lastRenderedText = fullText;
         this.onUpdate?.();
     }
@@ -118,7 +163,6 @@ class ProgressiveBlockRenderer {
         this.activeTailDiv.replaceChildren();
         this.activeTailDiv.remove();
         this.activeTailDiv = null;
-        this.onUpdate = null;
     }
 
     start(targetElement) {
@@ -126,7 +170,9 @@ class ProgressiveBlockRenderer {
             console.error('Target element is required to start renderer');
             return;
         }
+        const savedOnUpdate = this.onUpdate;
         this.stop();
+        this.onUpdate = savedOnUpdate;
         this.container = targetElement;
         if (!this.tempDiv) this.tempDiv = document.createElement('div');
     }
@@ -145,6 +191,7 @@ class ProgressiveBlockRenderer {
             this.tempDiv.replaceChildren();
             this.tempDiv = null;
         }
+        this.onUpdate = null;
     }
 
     isActive() { return this.container !== null; }

@@ -100,9 +100,7 @@ namespace LMLocal.Application.ModelsList
             return "http://localhost:1234";
         }
         /// <summary>
-        /// Applies user-defined model profiles (models.config.json) on top of the models reported
-        /// by the provider: overrides context length and display name, and appends custom models
-        /// that the provider does not serve. 
+        /// Applies user-defined model profiles (json) on top of the models reported by the provider: overrides context length and display name, and appends custom models  that the provider does not serve. 
         /// </summary>
         private async Task ApplyModelOverridesAsync(
             UnifiedListModelsResponse response,

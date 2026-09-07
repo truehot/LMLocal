@@ -1,8 +1,8 @@
+using LMLocal.Application.Tool;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Infrastructure.Tooling;
 
 namespace LMLocal.Application.Abstractions.Ports
 {
@@ -17,12 +17,13 @@ namespace LMLocal.Application.Abstractions.Ports
         bool ToolExists(string toolName);
 
         /// <summary>
-        /// Executes a tool with the given parameters from LLM response.
+        /// Executes a tool with the given parameters from LLM response, streaming progress steps when a reporter is supplied.
         /// </summary>
         Task<object> ExecuteAsync(
             string toolName,
             Dictionary<string, object> parameters,
-            CancellationToken cancellationToken);
+            CancellationToken cancellationToken,
+            IProgress<ToolActivityEvent> progress = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its parameters.

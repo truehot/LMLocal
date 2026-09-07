@@ -4,7 +4,7 @@ namespace LMLocal.Tests.E2E.AppTests;
 public class ModelSelectorTests : AppTestBase
 {
     // Expected recency order used by ModelSelector_DefaultOrder_ShowsRecentlyUsedFirst (CA1861).
-    private static readonly string[] RecentOrder = new[] { "model-zzz", "model-aaa" };
+    private static readonly string[] RecentOrder = ["model-zzz", "model-aaa"];
 
     [Test]
     [Category("ModelSelector")]
@@ -497,8 +497,11 @@ public class ModelSelectorTests : AppTestBase
         await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
         await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 1");
 
-        Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
-        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("LM Studio (local)"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
+            Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("LM Studio (local)"));
+        }
     }
 
     [Test]
@@ -629,8 +632,11 @@ public class ModelSelectorTests : AppTestBase
         await Expect(Page.Locator("#model-selector-dialog")).ToBeVisibleAsync();
         await Page.WaitForFunctionAsync("() => document.getElementById('model-provider-select')?.options.length === 2");
 
-        Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
-        Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("My xAI"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await HasProviderOptionAsync("OpenAI compatible"), Is.False);
+            Assert.That(await GetSelectedProviderTextAsync(), Is.EqualTo("My xAI"));
+        }
     }
 
     [Test]
@@ -824,24 +830,36 @@ public class ModelSelectorTests : AppTestBase
 
         var sortBtn = Page.Locator("#model-sort-btn");
 
-        // Default: recent first.
-        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
-        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+        using (Assert.EnterMultipleScope())
+        {
+            // Default: recent first.
+            Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+            Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+        }
 
         // Click 1 -> Name A-Z.
         await sortBtn.ClickAsync();
-        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-aaa"));
-        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name A-Z"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-aaa"));
+            Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name A-Z"));
+        }
 
         // Click 2 -> Name Z-A.
         await sortBtn.ClickAsync();
-        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
-        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name Z-A"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+            Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Name Z-A"));
+        }
 
         // Click 3 -> back to recent.
         await sortBtn.ClickAsync();
-        Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
-        Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await FirstModelIdAsync(), Is.EqualTo("model-zzz"));
+            Assert.That(await sortBtn.GetAttributeAsync("title"), Is.EqualTo("Sort: Recently used"));
+        }
     }
 
     [Test]
@@ -879,10 +897,13 @@ public class ModelSelectorTests : AppTestBase
         // recordModelUsage is fire-and-forget; give it a moment.
         await Page.WaitForFunctionAsync("() => window.__capturedUsage != null", new PageWaitForFunctionOptions { Timeout = 3000 });
         var captured = await Page.EvaluateAsync<dynamic>("() => window.__capturedUsage");
-        Assert.That((string)captured.modelId, Is.EqualTo("model-1"));
-        Assert.That((string)captured.modelName, Is.EqualTo("Model One"));
-        Assert.That((string)captured.providerType, Is.EqualTo("lmstudio"));
-        Assert.That(captured.providerId, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string)captured.modelId, Is.EqualTo("model-1"));
+            Assert.That((string)captured.modelName, Is.EqualTo("Model One"));
+            Assert.That((string)captured.providerType, Is.EqualTo("lmstudio"));
+            Assert.That(captured.providerId, Is.EqualTo(3));
+        }
     }
 
 

@@ -39,6 +39,9 @@ namespace LMLocal.Infrastructure.WebView.Models
         [JsonProperty("maxTokens")]
         public int? MaxTokens { get; set; }
 
+        [JsonProperty("reasoningEffort")]
+        public string ReasoningEffort { get; set; }
+
         [JsonProperty("allowedTools")]
         public List<string> AllowedTools { get; set; } = new List<string>();
 
@@ -68,10 +71,22 @@ namespace LMLocal.Infrastructure.WebView.Models
     }
 
     /// <summary>
-    /// Update payload accepted by UpdateSubAgentsAsync: only the enabled flags are edited from the dialog; the rest of the config is preserved.
+    /// Update payload accepted by UpdateSubAgentsAsync.
     /// </summary>
     public class SubAgentsUpdateRequest
     {
+        [JsonProperty("providerType")]
+        public string ProviderType { get; set; }
+
+        [JsonProperty("customBaseUrl")]
+        public string CustomBaseUrl { get; set; }
+
+        [JsonProperty("customApiKey")]
+        public string CustomApiKey { get; set; }
+
+        [JsonProperty("model")]
+        public string Model { get; set; }
+
         [JsonProperty("agents")]
         public List<SubAgentEnabledFlag> Agents { get; set; }
     }

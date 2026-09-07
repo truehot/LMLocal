@@ -3,6 +3,7 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSession;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
+using LMLocal.Infrastructure.WebView.Messaging;
 
 namespace LMLocal.Infrastructure.WebView
 {

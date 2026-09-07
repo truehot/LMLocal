@@ -80,6 +80,6 @@ public class StreamingTests : AppTestBase
         await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
 
         var visibleAfter = await Page.Locator(".loading-indicator:visible").CountAsync();
-        Assert.That(visibleAfter, Is.EqualTo(0), "No loading indicators should be visible after stream completes");
+        Assert.That(visibleAfter, Is.Zero, "No loading indicators should be visible after stream completes");
     }
 }

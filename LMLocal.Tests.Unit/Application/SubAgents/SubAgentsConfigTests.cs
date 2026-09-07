@@ -138,6 +138,173 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public void ApplyDefaults_MissingModel_FilledFromRoot()
+        {
+            var cfg = Parse(@"{
+                ""model"": ""root-model"",
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""customBaseUrl"": ""http://x"" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            Assert.That(cfg.Agents[0].Model, Is.EqualTo("root-model"));
+        }
+
+        [Test]
+        public void ApplyDefaults_AgentModel_OverridesRoot()
+        {
+            var cfg = Parse(@"{
+                ""model"": ""root-model"",
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""customBaseUrl"": ""http://x"", ""model"": ""agent-model"" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            Assert.That(cfg.Agents[0].Model, Is.EqualTo("agent-model"));
+        }
+
+        [Test]
+        public void ApplyDefaults_EmptyAgentModel_ReplacedWithRoot()
+        {
+            var cfg = Parse(@"{
+                ""model"": ""root-model"",
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""customBaseUrl"": ""http://x"", ""model"": ""   "" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            Assert.That(cfg.Agents[0].Model, Is.EqualTo("root-model"));
+        }
+
+        [Test]
+        public void ApplyDefaults_NoRootModel_ValidationStillFails()
+        {
+            var cfg = Parse(@"{
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""customBaseUrl"": ""http://x"" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            var errors = cfg.Validate();
+            Assert.That(errors.Any(e => e.Contains("'model' is required")), Is.True);
+        }
+
+        [Test]
+        public void ApplyDefaults_MissingNumericFields_FilledFromRoot()
+        {
+            var cfg = Parse(@"{
+                ""temperature"": 0.1,
+                ""timeoutSeconds"": 480,
+                ""maxRounds"": 99,
+                ""maxTokens"": 16384,
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""model"": ""m"", ""customBaseUrl"": ""http://x"" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            var agent = cfg.Agents[0];
+            Assert.That(agent.Temperature, Is.EqualTo(0.1));
+            Assert.That(agent.TimeoutSeconds, Is.EqualTo(480));
+            Assert.That(agent.MaxRounds, Is.EqualTo(99));
+            Assert.That(agent.MaxTokens, Is.EqualTo(16384));
+        }
+
+        [Test]
+        public void ApplyDefaults_AgentNumericValues_OverrideRoot()
+        {
+            var cfg = Parse(@"{
+                ""temperature"": 0.1,
+                ""timeoutSeconds"": 480,
+                ""maxRounds"": 99,
+                ""maxTokens"": 16384,
+                ""agents"": [
+                    {
+                        ""id"": ""a"",
+                        ""description"": ""d"",
+                        ""model"": ""m"",
+                        ""customBaseUrl"": ""http://x"",
+                        ""temperature"": 0.7,
+                        ""timeoutSeconds"": 0,
+                        ""maxRounds"": 3,
+                        ""maxTokens"": 512
+                    }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            var agent = cfg.Agents[0];
+            Assert.That(agent.Temperature, Is.EqualTo(0.7));
+            Assert.That(agent.TimeoutSeconds, Is.EqualTo(0)); // explicit 0 (timeout off) is respected
+            Assert.That(agent.MaxRounds, Is.EqualTo(3));
+            Assert.That(agent.MaxTokens, Is.EqualTo(512));
+        }
+
+        [Test]
+        public void ApplyDefaults_RootInvalidValues_SurfaceInAgentValidation()
+        {
+            var cfg = Parse(@"{
+                ""temperature"": 5,
+                ""maxRounds"": 0,
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"", ""model"": ""m"", ""customBaseUrl"": ""http://x"" }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            var errors = cfg.Validate();
+            Assert.That(errors.Any(e => e.Contains("'temperature' must be between 0 and 2")), Is.True);
+            Assert.That(errors.Any(e => e.Contains("'maxRounds' must be >= 1")), Is.True);
+        }
+
+        [Test]
+        public void ApplyDefaults_MixedAgents_RootFillsOnlyEmptyFields()
+        {
+            var cfg = Parse(@"{
+                ""providerType"": ""lmstudio"",
+                ""customBaseUrl"": ""http://localhost:1234"",
+                ""model"": ""root-model"",
+                ""temperature"": 0.1,
+                ""timeoutSeconds"": 480,
+                ""maxRounds"": 99,
+                ""maxTokens"": 16384,
+                ""agents"": [
+                    { ""id"": ""coder"", ""description"": ""d"" },
+                    { ""id"": ""writer"", ""description"": ""d"", ""model"": ""writer-model"", ""temperature"": 0.7 },
+                    { ""id"": ""notimeout"", ""description"": ""d"", ""timeoutSeconds"": 0 }
+                ]
+            }");
+
+            cfg.ApplyDefaults();
+
+            var coder = cfg.Agents[0];
+            Assert.That(coder.Model, Is.EqualTo("root-model"));
+            Assert.That(coder.Temperature, Is.EqualTo(0.1));
+            Assert.That(coder.TimeoutSeconds, Is.EqualTo(480));
+            Assert.That(coder.MaxRounds, Is.EqualTo(99));
+            Assert.That(coder.MaxTokens, Is.EqualTo(16384));
+
+            var writer = cfg.Agents[1];
+            Assert.That(writer.Model, Is.EqualTo("writer-model"));
+            Assert.That(writer.Temperature, Is.EqualTo(0.7));
+            Assert.That(writer.TimeoutSeconds, Is.EqualTo(480));
+
+            var noTimeout = cfg.Agents[2];
+            Assert.That(noTimeout.TimeoutSeconds, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Parse_FullConfig_ParsesAllFields()
         {
             string json = @"{
@@ -696,6 +863,39 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(json, Does.Contain("\"enabled\": false"));
         }
 
+        [Test]
+        public void Writer_RootDefaults_RoundTrip()
+        {
+            var cfg = new SubAgentsConfig
+            {
+                ProviderType = "lmstudio",
+                CustomBaseUrl = "http://localhost:1234",
+                Model = "root-model",
+                Temperature = 0.1,
+                TimeoutSeconds = 480,
+                MaxRounds = 99,
+                MaxTokens = 16384
+            };
+            cfg.Agents.Add(new SubAgentDefinition { Id = "a", Description = "d" });
+
+            var json = cfg.ToJsonIndented();
+            var parsed = json.FromJson<SubAgentsConfig>();
+
+            Assert.That(parsed.ProviderType, Is.EqualTo("lmstudio"));
+            Assert.That(parsed.CustomBaseUrl, Is.EqualTo("http://localhost:1234"));
+            Assert.That(parsed.Model, Is.EqualTo("root-model"));
+            Assert.That(parsed.Temperature, Is.EqualTo(0.1));
+            Assert.That(parsed.TimeoutSeconds, Is.EqualTo(480));
+            Assert.That(parsed.MaxRounds, Is.EqualTo(99));
+            Assert.That(parsed.MaxTokens, Is.EqualTo(16384));
+
+            parsed.ApplyDefaults();
+
+            Assert.That(parsed.Agents[0].Model, Is.EqualTo("root-model"));
+            Assert.That(parsed.Agents[0].Temperature, Is.EqualTo(0.1));
+            Assert.That(parsed.Agents[0].MaxTokens, Is.EqualTo(16384));
+        }
+
         // =========================================================================
         // Manager
         // =========================================================================
@@ -1044,6 +1244,43 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(agent.ProviderType, Is.EqualTo("openai"));
             Assert.That(agent.CustomBaseUrl, Is.EqualTo("https://api.openai.com/"));
             Assert.That(agent.CustomApiKey, Is.EqualTo("root-key"));
+        }
+
+        [Test]
+        public async Task GetAsync_RootModelAndNumericDefaults_AppliedBeforeValidation()
+        {
+            var (manager, fs, path) = CreateManager();
+            string json = @"{
+                ""providerType"": ""lmstudio"",
+                ""customBaseUrl"": ""http://localhost:1234"",
+                ""model"": ""root-model"",
+                ""temperature"": 0.1,
+                ""timeoutSeconds"": 480,
+                ""maxRounds"": 99,
+                ""maxTokens"": 16384,
+                ""agents"": [
+                    { ""id"": ""a"", ""description"": ""d"" },
+                    { ""id"": ""b"", ""description"": ""d"", ""model"": ""own-model"", ""maxTokens"": 512 }
+                ]
+            }";
+            fs.WriteAllBytesAsync(path, System.Text.Encoding.UTF8.GetBytes(json)).GetAwaiter().GetResult();
+
+            var cfg = await manager.GetAsync();
+
+            Assert.That(manager.LastErrors, Is.Empty);
+            Assert.That(cfg.Agents, Has.Count.EqualTo(2));
+
+            var first = cfg.Agents[0];
+            Assert.That(first.Model, Is.EqualTo("root-model"));
+            Assert.That(first.Temperature, Is.EqualTo(0.1));
+            Assert.That(first.TimeoutSeconds, Is.EqualTo(480));
+            Assert.That(first.MaxRounds, Is.EqualTo(99));
+            Assert.That(first.MaxTokens, Is.EqualTo(16384));
+
+            var second = cfg.Agents[1];
+            Assert.That(second.Model, Is.EqualTo("own-model"));
+            Assert.That(second.MaxTokens, Is.EqualTo(512));
+            Assert.That(second.TimeoutSeconds, Is.EqualTo(480));
         }
 
         [Test]

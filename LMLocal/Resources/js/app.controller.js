@@ -274,9 +274,15 @@ class AppController {
                 case 'open-subagents':
                     const subAgentsDialog = new SubAgentsDialog();
                     subAgentsDialog.onLoad.on(async () => {
-                        return await appDataService.getSubAgentsConfigAsync();
+                        const providersPromise = appDataService.getProvidersForModelsAsync().catch(() => []);
+                        const config = await appDataService.getSubAgentsConfigAsync();
+                        await providersPromise;
+                        return config;
                     });
                     subAgentsDialog.onSave.on(async (config) => {
+                        if (config && config.__replace) {
+                            return await appDataService.replaceSubAgentsConfigAsync(config);
+                        }
                         return await appDataService.updateSubAgentsConfigAsync(config);
                     });
                     menuComponent.hideMenu();

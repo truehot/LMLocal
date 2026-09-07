@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +11,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
+using LMLocal.Infrastructure.WebView.Messaging;
 using Moq;
 using NUnit.Framework;
 

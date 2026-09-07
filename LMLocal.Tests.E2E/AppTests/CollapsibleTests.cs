@@ -77,7 +77,7 @@ public class CollapsibleTests : AppTestBase
         // The final response should contain non-empty content transferred from the last step
         Assert.That(finalText, Is.Not.Empty,
             "Final response should contain text content");
-        Assert.That(finalText.Length, Is.GreaterThan(5),
+        Assert.That(finalText, Has.Length.GreaterThan(5),
             "Final response should have meaningful content");
     }
 
@@ -205,8 +205,7 @@ public class CollapsibleTests : AppTestBase
         if (topLoaderCount > 0)
         {
             var visible = await Page.Locator(".ai-message > div > [data-element=\"loading-indicator\"]:visible").CountAsync();
-            Assert.That(visible, Is.EqualTo(0),
-                "Top-level loading indicator should be hidden after tooling starts");
+            Assert.That(visible, Is.Zero, "Top-level loading indicator should be hidden after tooling starts");
         }
     }
 

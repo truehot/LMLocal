@@ -86,13 +86,13 @@ public class SettingsTests : AppTestBase
                 : bool.TryParse(el.GetString(), out var v) ? v : throw new InvalidOperationException("Expected boolean value");
         }
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(doc.GetProperty("LmStudioBaseUrl").GetString(), Is.EqualTo("https://example.test"));
-            Assert.That(GetInt(doc.GetProperty("StreamInactivityTimeoutSeconds")), Is.EqualTo(0));
+            Assert.That(GetInt(doc.GetProperty("StreamInactivityTimeoutSeconds")), Is.Zero);
             Assert.That(GetBool(doc.GetProperty("AutoLoadOnStartup")), Is.False);
             Assert.That(GetInt(doc.GetProperty("Theme")), Is.EqualTo(1));
-        });
+        }
     }
 
     [Test]
