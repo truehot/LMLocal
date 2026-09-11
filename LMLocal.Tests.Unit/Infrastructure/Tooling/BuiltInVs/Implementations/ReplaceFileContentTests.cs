@@ -69,12 +69,12 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         private static Dictionary<string, object> CreateParams(
-            string filePath = FilePath, string newContent = NewContent)
+            string filePath = FilePath, string content = NewContent)
         {
             return new Dictionary<string, object>
             {
                 ["file_path"] = filePath,
-                ["new_content"] = newContent
+                ["content"] = content
             };
         }
 
@@ -92,7 +92,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         public async Task ExecuteAsync_MissingFilePath_ReturnsError()
         {
             var result = await _tool.ExecuteAsync(
-                new Dictionary<string, object> { ["new_content"] = NewContent });
+                new Dictionary<string, object> { ["content"] = NewContent });
 
             var resp = result as ApplyCodeEditResponse;
             Assert.That(resp.Success, Is.False);
@@ -107,7 +107,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             var resp = result as ApplyCodeEditResponse;
             Assert.That(resp.Success, Is.False);
-            Assert.That(resp.ErrorMessage, Does.Contain("new_content"));
+            Assert.That(resp.ErrorMessage, Does.Contain("content"));
         }
 
         [Test]
@@ -190,7 +190,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             const string contentWithLf = "public class NewClass {}\npublic class AlsoNew {}";
             const string expectedContent = "public class NewClass {}\r\npublic class AlsoNew {}";
 
-            var result = await _tool.ExecuteAsync(CreateParams(newContent: contentWithLf));
+            var result = await _tool.ExecuteAsync(CreateParams(content: contentWithLf));
 
             var resp = result as ApplyCodeEditResponse;
             Assert.That(resp.Success, Is.True);

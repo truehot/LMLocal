@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.LlmApi.Requests
 {
@@ -196,6 +197,12 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
 
         [JsonProperty("function")]
         public FunctionCallDetails Function { get; set; }
+
+        /// <summary>
+        /// Opaque per-call payload returned by the model (Gemini).
+        /// </summary>
+        [JsonProperty("extra_content", NullValueHandling = NullValueHandling.Ignore)]
+        public JToken ExtraContent { get; set; }
     }
 
     public class FunctionCallDetails

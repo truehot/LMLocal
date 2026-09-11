@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,7 +70,13 @@ namespace LMLocal.Application.ModelsList
             catch (Exception ex)
             {
                 InternalLogger.Error("ListModelsAsync failed", ex);
-                return new UnifiedListModelsResponse { Error = ex.Message };
+                var errorResponse = new UnifiedListModelsResponse { Error = ex.Message };
+                await ApplyModelOverridesAsync(
+                    errorResponse,
+                    _settingsManager.Current?.Provider ?? "lmstudio",
+                    _settingsManager.Current?.ProviderId,
+                    cancellationToken).ConfigureAwait(false);
+                return errorResponse;
             }
         }
 
@@ -167,6 +172,12 @@ namespace LMLocal.Application.ModelsList
                 {
                     model.Name = profile.DisplayName;
                 }
+            }
+
+
+            if (!string.IsNullOrEmpty(response.Error) && response.Models.Count > 0)
+            {
+                response.Error = null;
             }
         }
 

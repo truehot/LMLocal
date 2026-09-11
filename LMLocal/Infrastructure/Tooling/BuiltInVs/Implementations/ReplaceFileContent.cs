@@ -49,9 +49,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { "file_path", new ToolDetails { Type = "string", Description = "Absolute or relative path to file." } },
-                        { "new_content", new ToolDetails { Type = "string", Description = "New file content to write." } }
+                        { "content", new ToolDetails { Type = "string", Description = "New file content to write." } }
                     },
-                    Required = new List<string> { "file_path", "new_content" }
+                    Required = new List<string> { "file_path", "content" }
                 }
             };
         }
@@ -152,10 +152,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string))
                 return (null, null, "file_path parameter is required and must be a string.");
 
-            if (!parameters.TryGetValue("new_content", out object newContentObj) || !(newContentObj is string))
-                return (null, null, "new_content parameter is required and must be a string.");
+            if (!parameters.TryGetValue("content", out object contentObj) || !(contentObj is string))
+                return (null, null, "content parameter is required and must be a string.");
 
-            return ((string)filePathObj, (string)newContentObj, null);
+            return ((string)filePathObj, (string)contentObj, null);
         }
 
         private static ApplyCodeEditResponse Error(string message)

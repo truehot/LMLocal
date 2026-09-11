@@ -26,7 +26,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
     /// </summary>
     internal static class ContentSearchMatcher
     {
-        public static LineMatch Match(string line, string query, string extension, bool computeExactWord)
+        public static LineMatch Match(string line, string query, string extension, bool computeExactWord, bool classifyDeclaration = true)
         {
             if (string.IsNullOrEmpty(line) || string.IsNullOrEmpty(query))
                 return LineMatch.NoMatch;
@@ -36,7 +36,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                 return LineMatch.NoMatch;
 
             bool exactWord = computeExactWord && IsExactWord(line, query, index);
-            SearchMatchKind kind = DeclarationMatcher.Classify(extension, line);
+            SearchMatchKind kind = classifyDeclaration ? DeclarationMatcher.Classify(extension, line) : SearchMatchKind.Other;
             return new LineMatch(true, exactWord, kind);
         }
 

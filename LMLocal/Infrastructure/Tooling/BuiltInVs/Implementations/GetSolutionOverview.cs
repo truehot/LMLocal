@@ -31,7 +31,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns a high-level summary of the current Visual Studio solution: name, path, project list (with language, file count, test project flag), solution folders, and total file count. Use as a first step to understand the codebase layout before diving into specific files. The projects array is limited to 200 entries; has_more_results=true means some projects were not included. Results are cached for performance — call once and refer to it.",
+                Description = "Returns a high-level summary of the current Visual Studio solution: name, path, project list (with language, file count, test project flag), solution folders, and total file count. Use when you need to discover the solution structure or choose a project. The projects array is limited to 200 entries; has_more_results=true means some projects were not included. Results are cached for performance — call once and refer to it.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

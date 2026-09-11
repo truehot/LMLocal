@@ -35,7 +35,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file and returns the raw text content. Lines are 1-indexed. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. The response includes the actual start_line and end_line read, plus a 'has_more' flag indicating whether there are more lines beyond the returned range. Use this tool to inspect a fragment of a file without loading the entire content. When you later use replace_file_lines, copy the text from this tool's output directly into the old_lines parameter — do not retype it, as whitespace is significant.",
+                Description = "Reads a specific line range from a file and returns the raw text content. Lines are 1-indexed. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. The response includes the actual start_line and end_line read, plus a 'has_more_results' flag indicating whether there are more lines beyond the returned range. Use this tool to inspect a fragment of a file without loading the entire content, or to visually confirm a fact (e.g. a class declaration) that a content search did not conclusively return. If you don't know the exact line number, start with a reasonable line range (e.g. 1-100), and if 'has_more_results' is true and you still haven't found what you're looking for, continue reading subsequent ranges rather than concluding the fact is absent.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -91,12 +91,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         FilePath = relativePath,
                         StartLine = startLine,
                         EndLine = startLine - 1,
-                        Text = string.Empty,
-                        HasMore = false
+                        Content = string.Empty,
+                        HasMoreResults = false
                     };
                 }
 
-                string text = string.Join(Environment.NewLine, lines);
+                string content = string.Join(Environment.NewLine, lines);
                 int actualEndLine = startLine + lines.Count - 1;
 
                 return new FileLinesResponse
@@ -105,8 +105,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     FilePath = relativePath,
                     StartLine = startLine,
                     EndLine = actualEndLine,
-                    Text = text,
-                    HasMore = hasMore
+                    Content = content,
+                    HasMoreResults = hasMore
                 };
             }
             catch (Exception ex)
@@ -116,10 +116,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Success = false,
                     ErrorMessage = ex.Message,
                     FilePath = parameters?.TryGetValue("file_path", out var fp) == true ? fp?.ToString() : "",
-                    Text = null,
+                    Content = null,
                     StartLine = 0,
                     EndLine = 0,
-                    HasMore = false
+                    HasMoreResults = false
                 };
             }
         }
@@ -183,10 +183,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Success = false,
                 ErrorMessage = message,
                 FilePath = filePath,
-                Text = null,
+                Content = null,
                 StartLine = 0,
                 EndLine = 0,
-                HasMore = false
+                HasMoreResults = false
             };
         }
 
@@ -201,11 +201,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("end_line")]
             public int EndLine { get; set; }
 
-            [JsonProperty("text")]
-            public string Text { get; set; }
+            [JsonProperty("content")]
+            public string Content { get; set; }
 
-            [JsonProperty("has_more")]
-            public bool HasMore { get; set; }
+            [JsonProperty("has_more_results")]
+            public bool HasMoreResults { get; set; }
 
             [JsonProperty("success")]
             public bool Success { get; set; }

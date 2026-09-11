@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using LMLocal.Core.Models;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Streaming
@@ -171,7 +172,17 @@ namespace LMLocal.Infrastructure.Streaming
 
                     if (!string.IsNullOrEmpty(functionName) || !string.IsNullOrEmpty(callId))
                     {
-                        chunks.Add(new ToolCallMetadataChunk(index ?? 0, callId, functionName, initialArguments: arguments));
+                        var extraContentToken = toolCall["extra_content"];
+                        var extraContentJson = extraContentToken != null && extraContentToken.Type != JTokenType.Null
+                            ? extraContentToken.ToString(Formatting.None)
+                            : null;
+
+                        chunks.Add(new ToolCallMetadataChunk(
+                            index ?? 0,
+                            callId,
+                            functionName,
+                            initialArguments: arguments,
+                            extraContentJson: extraContentJson));
                     }
                     else if (!string.IsNullOrEmpty(arguments))
                     {

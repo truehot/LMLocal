@@ -50,7 +50,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                "a namespace-qualified name (e.g. 'Microsoft.VisualStudio.Language.Proposals' or 'System.Collections.Generic.List') is matched against the fully qualified name by dot-separated segments. " +
                                "Optionally filter by 'project_name', 'namespace' and/or 'assembly_name' (NuGet package id usually matches the assembly name). " +
                                "Generic types use arity for exact lookup (e.g., 'System.Collections.Generic.List`1'). " +
-                               "Member lists are capped at 100 per category; totals and a 'truncated' flag are included. " +
+                               "Member lists are capped at 100 per category; totals and a 'has_more_results' flag are included. " +
                                "Partial search results are capped at 50 matches.",
                 Parameters = new ToolParameters
                 {
@@ -596,7 +596,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 })
                 .ToList();
 
-            result.Truncated =
+            result.HasMoreResults =
                 result.TotalConstructors > MaxMembersPerCategory ||
                 result.TotalProperties > MaxMembersPerCategory ||
                 result.TotalMethods > MaxMembersPerCategory ||
@@ -715,7 +715,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     memberCounts.Add($"{data.TotalFields} {Pluralizer.Pluralize(data.TotalFields, "field", "fields")}");
 
                 string message = $"Inspected {data.FullName}: {(memberCounts.Count > 0 ? string.Join(", ", memberCounts) : "no members")}";
-                if (data.Truncated)
+                if (data.HasMoreResults)
                     message += " (truncated)";
                 return message;
             }
@@ -868,8 +868,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public List<FieldInfo> Fields { get; set; }
             [JsonProperty("total_fields")]
             public int TotalFields { get; set; }
-            [JsonProperty("truncated")]
-            public bool Truncated { get; set; }
+            [JsonProperty("has_more_results")]
+            public bool HasMoreResults { get; set; }
         }
 
         public class TypeInspectionResponse

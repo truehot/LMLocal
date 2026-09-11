@@ -43,14 +43,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Finds files by name within the current Visual Studio solution using case-insensitive matching. Supports wildcard '*' in any position: 'Program*' (starts with), '*Service' (ends with), 'Chat*Service' (starts with 'Chat' and ends with 'Service'). Use to locate files when you know part of the name. Results are paginated. Limited to scanning first 1500 files.",
+                Description = "Finds files by name within the current Visual Studio solution using case-insensitive matching. Matching is against the full file name including extension, not just the name stem — if you don't know or don't want to specify the extension, use a trailing wildcard, e.g. 'ChatLogSerializer*' rather than 'ChatLogSerializer'. Supports wildcard '*' in any position: 'Program*' (starts with), '*Service' (ends with), 'Chat*Service' (starts with 'Chat' and ends with 'Service'). Use to locate files when you know part of the name, and also as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 25 (max 500); the response includes 'next_page_token' when more results exist. Limited to scanning first 1500 files.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { "file_name", new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'." } },
-                        { "file_extension", new ToolDetails { Type = "string", Description = "Extension filter (e.g., '.cs'). If not specified or file_name='.', all extensions are searched." } },
+                        { "extension_filter", new ToolDetails { Type = "string", Description = "Extension filter (e.g., '.cs'). If not specified or file_name='.', all extensions are searched." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Project name filter (substring match)." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } },
                         { "max_results", new ToolDetails { Type = "integer", Description = "Number of files to return per page. Default 50, max 500." } }
@@ -156,7 +156,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters == null) return "Finding... ";
 
             var fileName = parameters.TryGetValue("file_name", out var fn) ? fn?.ToString() : "";
-            var ext = parameters.TryGetValue("file_extension", out var fe) ? fe?.ToString() : null;
+            var ext = parameters.TryGetValue("extension_filter", out var fe) ? fe?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var pf) ? pf?.ToString() : null;
             var pageToken = parameters.TryGetValue("page_token", out var t) ? t?.ToString() : null;
 
@@ -199,7 +199,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return (null, null, null, null, DefaultPageSize, "Parameter 'file_name' is required and must be a string.");
 
             var fileName = (string)fileNameObj;
-            var fileExtension = parameters.TryGetValue("file_extension", out object extObj) ? extObj as string : null;
+            var fileExtension = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 

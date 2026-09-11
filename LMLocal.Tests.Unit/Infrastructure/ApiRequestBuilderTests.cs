@@ -1,8 +1,11 @@
 using System.Collections.Generic;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Tooling;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Moq;
 using NUnit.Framework;
 
@@ -198,6 +201,82 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.PresencePenalty, Is.EqualTo(0.5));
             Assert.That(result.FrequencyPenalty, Is.EqualTo(0.3));
             Assert.That(result.ReasoningEffort, Is.EqualTo("high"));
+        }
+
+        // ================ Gemini extra_content echo-back ================
+
+        private static ToolCall ExtraContentToolCall(string signature)
+        {
+            return new ToolCall
+            {
+                Id = "call_1",
+                Type = "function",
+                Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{\"flight\":\"AA100\"}" },
+                ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"" + signature + "\"}}")
+            };
+        }
+
+        [Test]
+        public void BuildRequest_PassthroughToolCallList_ExtraContentSameReference()
+        {
+            var builder = CreateBuilder();
+            var toolCalls = new List<ToolCall> { ExtraContentToolCall("sigA") };
+            var chatMessage = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var result = builder.BuildRequest(new MessageContext(new[] { chatMessage }), new ModelContext("m"), stream: false);
+
+            Assert.That(result.Messages[0].ToolCalls, Is.SameAs(toolCalls));
+            Assert.That(toolCalls[0].ExtraContent["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
+        }
+
+        [Test]
+        public void SerializeRequest_ExtraContent_LandsInsideToolCall()
+        {
+            var builder = CreateBuilder();
+            var toolCalls = new List<ToolCall> { ExtraContentToolCall("sigA") };
+            var chatMessage = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var result = builder.BuildRequest(new MessageContext(new[] { chatMessage }), new ModelContext("gemini-pro"), stream: false);
+            var json = JsonConvert.SerializeObject(result);
+
+            Assert.That(json, Does.Contain("\"extra_content\":{\"google\":{\"thought_signature\":\"sigA\"}}"));
+        }
+
+        [Test]
+        public void SerializeRequest_NoExtraContent_FieldOmitted()
+        {
+            var builder = CreateBuilder();
+            var toolCalls = new List<ToolCall>
+            {
+                new ToolCall
+                {
+                    Id = "call_1",
+                    Type = "function",
+                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{}" }
+                }
+            };
+            var chatMessage = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var result = builder.BuildRequest(new MessageContext(new[] { chatMessage }), new ModelContext("openai-model"), stream: false);
+            var json = JsonConvert.SerializeObject(result);
+
+            Assert.That(json, Does.Not.Contain("extra_content"));
+        }
+
+        [Test]
+        public void BuildRequest_JArrayToolCalls_ExtraContentRestored()
+        {
+            // JArray branch of ConvertToolCalls: ToObject<List<ToolCall>>() must restore ExtraContent.
+            var builder = CreateBuilder();
+            var array = JArray.Parse(
+                "[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"check_flight\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"sigB\"}}}]");
+            var chatMessage = new ChatMessage("assistant", null) { ToolCalls = array };
+
+            var result = builder.BuildRequest(new MessageContext(new[] { chatMessage }), new ModelContext("m"), stream: false);
+
+            var call = result.Messages[0].ToolCalls[0];
+            Assert.That(call.ExtraContent, Is.Not.Null);
+            Assert.That(call.ExtraContent["google"].Value<string>("thought_signature"), Is.EqualTo("sigB"));
         }
     }
 }

@@ -11,7 +11,6 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
-using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -34,7 +33,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// <summary>
         /// Version of the search/matching/ranking logic.
         /// </summary>
-        private const string CacheVersion = "sig2";
+        private const string CacheVersion = "sig3";
 
         public string ToolName => "search_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -58,17 +57,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Searches inside file contents for a case-insensitive substring match. Does NOT search file names — use find_files for that. Files are ranked by relevance: declaration lines (class/struct/interface/enum/function/method/property/field) get a boost, and for single-token identifier queries exact whole-word matches score higher. Each match exposes is_exact_word and declaration_kind. Results are paginated by total number of matches. Limited to scanning the first 1500 files in the solution. The search text is plain substring matching.",
+                Description = "Searches file contents within the current Visual Studio solution for a case-insensitive literal substring match. Use for plain-text or identifier searches when you need matching lines and file locations. It does not search file names; use find_files for that. Supports optional extension and project filters. Use group_by to control result grouping: 'file' (default) groups matches by file; 'text' groups identical matching text together and shows their occurrence counts and file locations. Results are ranked by relevance: declaration matches receive a boost, and for single-token identifier queries exact whole-word matches receive an additional boost. IMPORTANT: this boost affects ordering only and does NOT guarantee a declaration appears within the first page — if the type has many usages (e.g. in tests), the declaration line may be on a later page. Results are paginated; the response includes 'next_page_token' when more results exist and omits/nulls it when exhausted. If 'next_page_token' is present, call this tool again with 'page_token' set to retrieve the remaining results before finalizing an answer that claims completeness. Default max_results is 25 (max 500); for exhaustive searches or searches where relevant results may be buried among many matches, use a higher max_results value (e.g. 100-200) rather than relying on the default. The search is limited to the first 1500 files in the solution.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "text", new ToolDetails { Type = "string", Description = "The plain text to search for (substring match, case-insensitive) inside file contents." } },
-                        { "extension_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. File extension filter (e.g., '.cs', '.js'). If not specified, searches all file types." } },
-                        { "project_filter", new ToolDetails { Type = "string", Description = "Use it to narrow result set. If specified, only files from projects matching this name (case-insensitive substring match) will be searched. " } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for fetching a specific page of results. Leave empty or null for the first page. Use 'next_page_token' from the response as 'page_token' to get next page of results." } },
-                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of matches to return per page. Default 25, max 500." } }
+                        { "text", new ToolDetails { Type = "string", Description = "The plain text substring to search for (case-insensitive) inside file contents." } },
+                        { "group_by", new ToolDetails { Type = "string", Description = "How to group search results. 'file' groups matches by file (default); 'text' groups identical matching text together and shows their occurrence counts and file locations." } },
+                        { "extension_filter", new ToolDetails { Type = "string", Description = "Use this to narrow the search by file extension (e.g., '.cs', '.js'). If omitted, searches all file types." } },
+                        { "project_filter", new ToolDetails { Type = "string", Description = "Use this to narrow result set. If specified, only files from projects matching this name (case-insensitive substring match) will be searched." } },
+                        { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for fetching the next page of results. Use 'next_page_token' from a previous response to continue searching." } },
+                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of results to return per page. Default 25, max 500. Use a larger value for broad or complete searches to reduce pagination." } }
                     },
                     Required = new List<string> { "text" }
                 }
@@ -77,44 +77,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
+            SearchGrouping grouping = SearchGrouping.File;
             try
             {
-                var (searchText, fileExtensions, projectFilter, pageToken, pageSize, error) = ExtractAndValidateParameters(parameters);
+                var (searchText, fileExtensions, projectFilter, pageToken, pageSize, parsedGrouping, error) = ExtractAndValidateParameters(parameters);
+                grouping = parsedGrouping;
                 if (error != null)
-                    return Error(error);
+                    return Error(grouping, error);
 
                 int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
 
                 if (!_vsDependencies.IsSolutionOpen)
-                    return Error("No solution is currently open.");
+                    return Error(grouping, "No solution is currently open.");
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
-                string cacheKey = BuildCacheKey(searchText, fileExtensions, projectFilter);
-                if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<PagedSearchResults> cached))
+                string cacheKey = BuildCacheKey(searchText, fileExtensions, projectFilter, grouping);
+                if (grouping == SearchGrouping.Text)
                 {
-                    if (pageNumber < cached.AllResults.Count)
-                    {
-                        var page = cached.AllResults[pageNumber];
-                        string nextToken = pageNumber + 1 < cached.AllResults.Count ? (pageNumber + 1).ToString() : null;
-                        return new SearchResultsResponse
-                        {
-                            Results = page.Results,
-                            NextPageToken = nextToken,
-                            TotalMatches = page.TotalMatches,
-                            TotalFiles = page.TotalFiles,
-                            Success = true
-                        };
-                    }
-
-                    return new SearchResultsResponse
-                    {
-                        Results = new List<SearchResult>(),
-                        NextPageToken = null,
-                        TotalMatches = cached.AllResults.FirstOrDefault()?.TotalMatches ?? 0,
-                        TotalFiles = cached.AllResults.FirstOrDefault()?.TotalFiles ?? 0,
-                        Success = true
-                    };
+                    if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<TextSearchPage> cachedText))
+                        return BuildTextPageResponse(cachedText.AllResults, pageNumber);
+                }
+                else if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchPage> cachedFile))
+                {
+                    return BuildFilePageResponse(cachedFile.AllResults, pageNumber);
                 }
 
                 var filter = new EnumerateSolutionFilesFilter
@@ -133,6 +119,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 var allResults = new List<SearchResult>();
                 bool isIdentifierQuery = QueryClassifier.IsIdentifierQuery(searchText);
+                bool needRanking = grouping == SearchGrouping.File;
 
                 foreach (var absolutePath in allFiles)
                 {
@@ -153,22 +140,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                         await _fileSystem.ReadLinesAsync(absolutePath, (lineNumber, line) =>
                         {
-                            var m = ContentSearchMatcher.Match(line, searchText, extension, isIdentifierQuery);
+                            var m = ContentSearchMatcher.Match(line, searchText, extension, needRanking && isIdentifierQuery, needRanking);
                             if (!m.IsMatch)
                                 return;
 
-                            matches.Add(new SearchMatch
+                            var match = new SearchMatch
                             {
                                 LineNumber = lineNumber,
-                                LineText = line.Trim(),
-                                IsExactWord = m.IsExactWord,
-                                DeclarationKind = m.Kind == SearchMatchKind.Other ? null : m.Kind.ToString()
-                            });
+                                LineText = line.Trim()
+                            };
 
-                            if (m.IsExactWord)
-                                exactWordCount++;
-                            if (m.Kind != SearchMatchKind.Other)
-                                declarationWeightSum += DeclarationWeights.WeightOf(m.Kind);
+                            if (needRanking)
+                            {
+                                match.IsExactWord = m.IsExactWord;
+                                match.DeclarationKind = m.Kind == SearchMatchKind.Other ? null : m.Kind.ToString();
+
+                                if (m.IsExactWord)
+                                    exactWordCount++;
+                                if (m.Kind != SearchMatchKind.Other)
+                                    declarationWeightSum += DeclarationWeights.WeightOf(m.Kind);
+                            }
+
+                            matches.Add(match);
                         }, cancellationToken).ConfigureAwait(false);
 
                         if (matches.Count > 0)
@@ -176,21 +169,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                                 relativePath = absolutePath;
 
-                            int declarationCount = 0;
-                            for (int i = 0; i < matches.Count; i++)
-                            {
-                                if (matches[i].DeclarationKind != null)
-                                    declarationCount++;
-                            }
-
                             allResults.Add(new SearchResult
                             {
                                 FilePath = relativePath,
                                 Matches = matches,
                                 MatchCount = matches.Count,
-                                Score = ComputeScore(matches.Count, exactWordCount, declarationWeightSum),
-                                ExactWordCount = exactWordCount,
-                                DeclarationCount = declarationCount > 0 ? (int?)declarationCount : null
+                                Score = needRanking ? ComputeScore(matches.Count, exactWordCount, declarationWeightSum) : 0
                             });
                         }
                     }
@@ -204,61 +188,69 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                 }
 
-                allResults.Sort((a, b) =>
+                if (needRanking)
                 {
-                    int c = b.Score.CompareTo(a.Score);
-                    if (c != 0) return c;
-                    c = b.MatchCount.CompareTo(a.MatchCount);
-                    if (c != 0) return c;
-                    return string.CompareOrdinal(a.FilePath, b.FilePath);
-                });
-
-                var pages = PaginateByMatches(allResults, pageSize);
-                int totalMatches = allResults.Sum(r => r.MatchCount);
-                int totalFiles = allResults.Count;
-
-                var cacheEntry = new CachedToolResults<PagedSearchResults>
-                {
-                    AllResults = pages,
-                    ItemsScanned = allFiles.Count
-                };
-                _searchCache.Set(cacheKey, solutionDir, cacheEntry);
-
-                if (pages.Count > 0)
-                {
-                    var firstPage = pages[0];
-                    string nextToken = pages.Count > 1 ? "1" : null;
-                    return new SearchResultsResponse
+                    allResults.Sort((a, b) =>
                     {
-                        Results = firstPage.Results,
-                        NextPageToken = nextToken,
-                        TotalMatches = totalMatches,
-                        TotalFiles = totalFiles,
-                        Success = true
-                    };
+                        int c = b.Score.CompareTo(a.Score);
+                        if (c != 0) return c;
+                        c = b.MatchCount.CompareTo(a.MatchCount);
+                        if (c != 0) return c;
+                        return string.CompareOrdinal(a.FilePath, b.FilePath);
+                    });
                 }
 
-                return new SearchResultsResponse
+                if (grouping == SearchGrouping.Text)
                 {
-                    Results = new List<SearchResult>(),
-                    NextPageToken = null,
-                    TotalMatches = 0,
-                    TotalFiles = 0,
-                    Success = true
-                };
+                    var groups = SearchResultGrouper.GroupByText(allResults);
+                    var textPages = SearchResultPaginator.PaginateByGroups(groups, pageSize);
+
+                    _searchCache.Set(cacheKey, solutionDir, new CachedToolResults<TextSearchPage>
+                    {
+                        AllResults = textPages,
+                        ItemsScanned = allFiles.Count
+                    });
+
+                    return BuildTextPageResponse(textPages, 0);
+                }
+                else
+                {
+                    var pages = SearchResultPaginator.PaginateByMatches(allResults, pageSize);
+
+                    _searchCache.Set(cacheKey, solutionDir, new CachedToolResults<FileSearchPage>
+                    {
+                        AllResults = pages,
+                        ItemsScanned = allFiles.Count
+                    });
+
+                    return BuildFilePageResponse(pages, 0);
+                }
             }
             catch (OperationCanceledException)
             {
-                return Error("Operation was cancelled.");
+                return Error(grouping, "Operation was cancelled.");
             }
             catch (Exception ex)
             {
-                return Error(ex.Message);
+                return Error(grouping, ex.Message);
             }
         }
 
-        private static SearchResultsResponse Error(string message)
+        private static object Error(SearchGrouping grouping, string message)
         {
+            if (grouping == SearchGrouping.Text)
+            {
+                return new SearchTextGroupResponse
+                {
+                    Success = false,
+                    ErrorMessage = message,
+                    Results = new List<SearchTextGroupResult>(),
+                    NextPageToken = null,
+                    TotalMatches = 0,
+                    TotalFiles = 0
+                };
+            }
+
             return new SearchResultsResponse
             {
                 Success = false,
@@ -270,93 +262,65 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private static List<PagedSearchResults> PaginateByMatches(List<SearchResult> allResults, int matchesPerPage)
+        private static SearchResultsResponse BuildFilePageResponse(IReadOnlyList<FileSearchPage> pages, int pageNumber)
         {
-            var pages = new List<PagedSearchResults>();
-            var currentPage = new List<SearchResult>();
-            int matchCount = 0;
-            int totalMatches = allResults.Sum(r => r.MatchCount);
-            int totalFiles = allResults.Count;
-
-            foreach (var result in allResults)
+            if (pageNumber >= 0 && pageNumber < pages.Count)
             {
-                int remainingSpaceOnPage = matchesPerPage - matchCount;
-
-                if (result.MatchCount <= remainingSpaceOnPage)
+                var page = pages[pageNumber];
+                string nextToken = pageNumber + 1 < pages.Count ? (pageNumber + 1).ToString() : null;
+                return new SearchResultsResponse
                 {
-                    currentPage.Add(result);
-                    matchCount += result.MatchCount;
-
-                    if (matchCount == matchesPerPage)
-                    {
-                        pages.Add(new PagedSearchResults
-                        {
-                            Results = currentPage,
-                            TotalMatches = totalMatches,
-                            TotalFiles = totalFiles
-                        });
-                        currentPage = new List<SearchResult>();
-                        matchCount = 0;
-                    }
-                }
-                else
-                {
-                    int matchOffset = 0;
-
-                    while (matchOffset < result.Matches.Count)
-                    {
-                        int spaceAvailableOnPage = matchesPerPage - matchCount;
-                        int chunkSize = Math.Min(spaceAvailableOnPage, result.Matches.Count - matchOffset);
-
-                        var chunk = new SearchResult
-                        {
-                            FilePath = result.FilePath,
-                            Matches = result.Matches.Skip(matchOffset).Take(chunkSize).ToList(),
-                            MatchCount = chunkSize,
-                            Score = result.Score,
-                            ExactWordCount = result.ExactWordCount,
-                            DeclarationCount = result.DeclarationCount
-                        };
-
-                        currentPage.Add(chunk);
-                        matchCount += chunkSize;
-                        matchOffset += chunkSize;
-
-                        if (matchCount == matchesPerPage)
-                        {
-                            pages.Add(new PagedSearchResults
-                            {
-                                Results = currentPage,
-                                TotalMatches = totalMatches,
-                                TotalFiles = totalFiles
-                            });
-                            currentPage = new List<SearchResult>();
-                            matchCount = 0;
-                        }
-                    }
-                }
+                    Results = page.Results,
+                    NextPageToken = nextToken,
+                    TotalMatches = page.TotalMatches,
+                    TotalFiles = page.TotalFiles,
+                    Success = true
+                };
             }
 
-            if (currentPage.Count > 0)
+            return new SearchResultsResponse
             {
-                pages.Add(new PagedSearchResults
-                {
-                    Results = currentPage,
-                    TotalMatches = totalMatches,
-                    TotalFiles = totalFiles
-                });
-            }
-
-            return pages;
+                Results = new List<SearchResult>(),
+                NextPageToken = null,
+                TotalMatches = pages.Count > 0 ? pages[0].TotalMatches : 0,
+                TotalFiles = pages.Count > 0 ? pages[0].TotalFiles : 0,
+                Success = true
+            };
         }
 
-        private string BuildCacheKey(string text, string extensionFilter, string projectFilter)
+        private static SearchTextGroupResponse BuildTextPageResponse(IReadOnlyList<TextSearchPage> pages, int pageNumber)
+        {
+            if (pageNumber >= 0 && pageNumber < pages.Count)
+            {
+                var page = pages[pageNumber];
+                string nextToken = pageNumber + 1 < pages.Count ? (pageNumber + 1).ToString() : null;
+                return new SearchTextGroupResponse
+                {
+                    Results = page.Results,
+                    NextPageToken = nextToken,
+                    TotalMatches = page.TotalMatches,
+                    TotalFiles = page.TotalFiles,
+                    Success = true
+                };
+            }
+
+            return new SearchTextGroupResponse
+            {
+                Results = new List<SearchTextGroupResult>(),
+                NextPageToken = null,
+                TotalMatches = pages.Count > 0 ? pages[0].TotalMatches : 0,
+                TotalFiles = pages.Count > 0 ? pages[0].TotalFiles : 0,
+                Success = true
+            };
+        }
+
+        private string BuildCacheKey(string text, string extensionFilter, string projectFilter, SearchGrouping grouping)
         {
             var ext = extensionFilter ?? string.Empty;
             var proj = projectFilter ?? string.Empty;
             var txt = text ?? string.Empty;
 
-            return $"{txt}||{ext}||{proj}||{CacheVersion}";
+            return $"{txt}||{ext}||{proj}||{grouping}||{CacheVersion}";
         }
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
@@ -367,6 +331,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var ext = parameters.TryGetValue("extension_filter", out var e) ? e?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var p) ? p?.ToString() : null;
             var pageToken = parameters.TryGetValue("page_token", out var t) ? t?.ToString() : null;
+            var groupBy = parameters.TryGetValue("group_by", out var g) ? g?.ToString() : null;
 
             var message = $"Searching for '{text}'";
             if (!string.IsNullOrEmpty(project))
@@ -376,6 +341,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 message += $", with extension '{ext}'";
             else
                 message += " in all files";
+
+            if (string.Equals(groupBy, "text", StringComparison.OrdinalIgnoreCase))
+                message += ", grouped by text";
 
             if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
                 message += $" (page {++pageTokenValue})";
@@ -392,15 +360,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Searching failed: {searchResults.ErrorMessage}";
 
                 int pageMatches = searchResults.Results.Sum(r => r.MatchCount);
-                var message = pageMatches == 0
-                    ? "Found no matches"
-                    : $"Found {pageMatches} {Pluralizer.Pluralize(pageMatches, "match", "matches")}";
-                if (searchResults.TotalMatches > 0 && pageMatches < searchResults.TotalMatches)
-                    message += $" (total: {searchResults.TotalMatches} {Pluralizer.Pluralize(searchResults.TotalMatches, "match", "matches")})";
-                message += ".";
-                return message;
+                return FormatCompletionMessage(pageMatches, searchResults.TotalMatches);
             }
+
+            if (result is SearchTextGroupResponse textResults)
+            {
+                if (!textResults.Success)
+                    return $"Searching failed: {textResults.ErrorMessage}";
+
+                int pageMatches = textResults.Results.Sum(r => r.OccurrenceCount);
+                return FormatCompletionMessage(pageMatches, textResults.TotalMatches);
+            }
+
             return "Search finished.";
+        }
+
+        private static string FormatCompletionMessage(int pageMatches, int totalMatches)
+        {
+            var message = pageMatches == 0
+                ? "Found no matches"
+                : $"Found {pageMatches} {Pluralizer.Pluralize(pageMatches, "match", "matches")}";
+            if (totalMatches > 0 && pageMatches < totalMatches)
+                message += $" (total: {totalMatches} {Pluralizer.Pluralize(totalMatches, "match", "matches")})";
+            message += ".";
+            return message;
         }
 
         private static int ComputeScore(int matchCount, int exactWordCount, int declarationWeightSum)
@@ -408,88 +391,32 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return matchCount + exactWordCount * DeclarationWeights.ExactWordBonus + declarationWeightSum;
         }
 
-        private (string searchText, string fileExtensions, string projectFilter, string pageToken, int pageSize, string error) ExtractAndValidateParameters(
+        private (string searchText, string fileExtensions, string projectFilter, string pageToken, int pageSize, SearchGrouping grouping, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, null, null, null, DefaultPageSize, "Parameters cannot be null.");
+                return (null, null, null, null, DefaultPageSize, SearchGrouping.File, "Parameters cannot be null.");
             if (!parameters.TryGetValue("text", out object textObj) || !(textObj is string))
-                return (null, null, null, null, DefaultPageSize, "Parameter 'text' is required and must be a string.");
+                return (null, null, null, null, DefaultPageSize, SearchGrouping.File, "Parameter 'text' is required and must be a string.");
 
             var searchText = (string)textObj;
             var fileExtensions = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
             var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
 
+            var grouping = SearchGrouping.File;
+            if (parameters.TryGetValue("group_by", out object groupObj) && groupObj is string groupStr &&
+                string.Equals(groupStr, "text", StringComparison.OrdinalIgnoreCase))
+            {
+                grouping = SearchGrouping.Text;
+            }
+
             int pageSize = DefaultPageSize;
             if (parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
                 pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
 
-            return (searchText, fileExtensions, projectFilter, pageToken, pageSize, null);
+            return (searchText, fileExtensions, projectFilter, pageToken, pageSize, grouping, null);
         }
 
-        public class SearchMatch
-        {
-            [JsonProperty("line")]
-            public int LineNumber { get; set; }
-
-            [JsonProperty("text")]
-            public string LineText { get; set; }
-
-            [JsonProperty("is_exact_word")]
-            public bool IsExactWord { get; set; }
-
-            [JsonProperty("declaration_kind", NullValueHandling = NullValueHandling.Ignore)]
-            public string DeclarationKind { get; set; }
-        }
-
-        public class SearchResult
-        {
-            [JsonProperty("file_path")]
-            public string FilePath { get; set; }
-
-            [JsonProperty("matches")]
-            public List<SearchMatch> Matches { get; set; }
-
-            [JsonProperty("match_count")]
-            public int MatchCount { get; set; }
-
-            [JsonProperty("score")]
-            public int Score { get; set; }
-
-            [JsonProperty("exact_word_count")]
-            public int ExactWordCount { get; set; }
-
-            [JsonProperty("declaration_count", NullValueHandling = NullValueHandling.Ignore)]
-            public int? DeclarationCount { get; set; }
-        }
-
-        public class SearchResultsResponse
-        {
-            [JsonProperty("results")]
-            public List<SearchResult> Results { get; set; }
-
-            [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
-            public string NextPageToken { get; set; }
-
-            [JsonProperty("total_matches")]
-            public int TotalMatches { get; set; }
-
-            [JsonProperty("total_files")]
-            public int TotalFiles { get; set; }
-
-            [JsonProperty("success")]
-            public bool Success { get; set; }
-
-            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
-            public string ErrorMessage { get; set; }
-        }
-
-        public class PagedSearchResults
-        {
-            public List<SearchResult> Results { get; set; }
-            public int TotalMatches { get; set; }
-            public int TotalFiles { get; set; }
-        }
     }
 }

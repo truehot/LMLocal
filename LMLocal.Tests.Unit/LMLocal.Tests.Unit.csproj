@@ -131,6 +131,8 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\SdkProjectDetectorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\QueryClassifierTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultGrouperTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultPaginatorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionInspectorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParserTests.cs" />

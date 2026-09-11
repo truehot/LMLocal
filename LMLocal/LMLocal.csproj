@@ -177,7 +177,11 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ContentSearchMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\DeclarationMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\QueryClassifier.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchGrouping.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchMatchKind.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultGrouper.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultModels.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultPaginator.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\DotnetProcessRunner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilder.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParser.cs" />

@@ -71,7 +71,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Retrieves navigation information for a JavaScript symbol: declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50).",
+                Description = "Retrieves navigation information for a JavaScript symbol: declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Use when the symbol is known. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50).",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

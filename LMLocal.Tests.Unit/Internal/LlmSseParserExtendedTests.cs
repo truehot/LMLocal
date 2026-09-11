@@ -312,5 +312,89 @@ namespace LMLocal.Tests.Unit
             Assert.That(c.CachedTokens, Is.EqualTo(4224));
         }
 
+        // ================ Gemini extra_content (thought_signature echo-back) ================
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_AlongsideIdAndName_IsCapturedAsRawJson()
+        {
+            // extra_content arrives in the SAME delta that carries id/name (OpenAI-compat Gemini layer).
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""id"":""call0"",""function"":{""name"":""fn0""},""extra_content"":{""google"":{""thought_signature"":""sigA""}}}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results, Is.Not.Empty);
+            Assert.That(results[0], Is.TypeOf<ToolCallMetadataChunk>());
+            var meta = (ToolCallMetadataChunk)results[0];
+
+            Assert.That(meta.CallId, Is.EqualTo("call0"));
+            Assert.That(meta.FunctionName, Is.EqualTo("fn0"));
+            Assert.That(meta.ExtraContentJson, Is.EqualTo("{\"google\":{\"thought_signature\":\"sigA\"}}"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_Missing_IsNull()
+        {
+            // Non-Gemini / calls without signature: no extra_content key => null.
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""id"":""call0"",""function"":{""name"":""fn0""}}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results[0], Is.TypeOf<ToolCallMetadataChunk>());
+            var meta = (ToolCallMetadataChunk)results[0];
+            Assert.That(meta.ExtraContentJson, Is.Null);
+        }
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_ExplicitNull_IsNull()
+        {
+            // Some layers may emit extra_content:null on non-signature calls.
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""id"":""call0"",""function"":{""name"":""fn0""},""extra_content"":null}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results[0], Is.TypeOf<ToolCallMetadataChunk>());
+            var meta = (ToolCallMetadataChunk)results[0];
+            Assert.That(meta.ExtraContentJson, Is.Null);
+        }
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_NormalizedToCompactJson()
+        {
+            // Whitespace/pretty-printed input must be normalized to compact JSON via ToString(Formatting.None).
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""id"":""c"",""function"":{""name"":""f""},""extra_content"":{ ""google"" : { ""thought_signature"" : ""sigB"" } }}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            var meta = (ToolCallMetadataChunk)results[0];
+            Assert.That(meta.ExtraContentJson, Is.EqualTo("{\"google\":{\"thought_signature\":\"sigB\"}}"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_WithInitialArguments_IsCarried()
+        {
+            // id + name + extra_content + an inline argument fragment in a single delta.
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""id"":""c"",""function"":{""name"":""f"",""arguments"":""{\""a\"":1}""},""extra_content"":{""google"":{""thought_signature"":""sigC""}}}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            var meta = (ToolCallMetadataChunk)results[0];
+            Assert.That(meta.InitialArguments, Is.EqualTo("{\"a\":1}"));
+            Assert.That(meta.ExtraContentJson, Is.EqualTo("{\"google\":{\"thought_signature\":\"sigC\"}}"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ExtraContent_OnArgsOnlyDelta_IsNotCaptured()
+        {
+            // Known v9 limitation (risk 6.4): if extra_content arrives on an index-only arguments delta
+            // WITHOUT id/name, the parser emits a plain TextStreamChunk and the signature is dropped.
+            // Pinned here so a future change to this contract is visible.
+            var json = @"data: {""choices"":[{""delta"":{""tool_calls"":[{""index"":0,""function"":{""arguments"":""{\""a\"":1}""},""extra_content"":{""google"":{""thought_signature"":""sigD""}}}]}}]}";
+
+            var results = _parser.ExtractDeltas(json);
+
+            Assert.That(results[0], Is.TypeOf<TextStreamChunk>());
+            Assert.That(((TextStreamChunk)results[0]).Kind, Is.EqualTo(ChunkKind.ToolCallArguments));
+        }
+
     }
 }

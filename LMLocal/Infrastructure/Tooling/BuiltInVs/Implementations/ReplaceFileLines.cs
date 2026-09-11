@@ -47,37 +47,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces a range of lines in a file by line numbers (1-indexed). "
-                    + "The old_lines parameter must exactly match the existing content at the "
-                    + "target location — the tool verifies this before making any changes. "
-                    + "old_lines must be copied verbatim from the output of read_file_lines, "
-                    + "including ALL leading spaces/tabs and character casing. Do NOT retype, "
-                    + "reformat, or manually type the lines. Only line endings (\\r\\n vs \\n) "
-                    + "and trailing whitespace are ignored during comparison; leading whitespace "
-                    + "and casing are significant. The range ends at "
-                    + "start_line + number_of_lines_in_old_lines - 1. After replacement, line "
-                    + "numbers shift — re-read the file if you need accurate positions for "
-                    + "subsequent edits. If start_line exceeds the current line count, the file "
-                    + "is padded with empty lines up to start_line - 1, then new_lines are "
-                    + "inserted. Set new_lines to an empty string to delete the range. If syntax "
-                    + "errors are detected after replacement, they are reported in syntax_errors "
-                    + "field, but the file is still saved. Apply multiple edits bottom‑up "
-                    + "(largest line numbers first) to prevent line‑shift errors. If old_lines "
-                    + "does not match at start_line, the tool searches nearby lines (±50) for "
-                    + "the block. If exactly one exact match is found, it auto-corrects and "
-                    + "applies the change (auto_corrected=true in response). If multiple exact "
-                    + "matches are found, candidates with start_line and text are returned — "
-                    + "use a larger old_lines block or re-read the file to disambiguate (no "
-                    + "retry). If no exact block match is found, the tool retries once as a "
-                    + "fallback, comparing the first line with its leading indentation ignored "
-                    + "(this covers models that type the first line without its initial "
-                    + "spaces); all other lines must still match exactly. If that relaxed "
-                    + "search finds exactly one location, it applies the change, auto-corrects "
-                    + "the position if needed, and sets matched_ignoring_first_line_indent=true "
-                    + "in the response, and the first line of new_lines is re-indented to "
-                    + "match the file's indentation. If multiple relaxed matches are found, "
-                    + "candidates are returned. If no match is found at all, the error advises "
-                    + "checking leading whitespace and re-reading the file.",
+                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Before this call, obtain a fresh read_file_lines result for the same file and copy old_lines verbatim from it — never retype it or use search results or an older read. The tool verifies old_lines before changing the file. Leading whitespace and character casing are significant; trailing whitespace and line-ending differences are ignored. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. After a replacement, line numbers may shift; re-read before making further edits, or apply multiple edits bottom-up (largest line numbers first). If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1, then new_lines are inserted. If start_line is valid but the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. Set new_lines to an empty string to delete the range. If syntax_errors is non-empty, the file is still saved, but the change is not complete; re-read the affected range and fix the errors before considering the task complete. If old_lines does not match at start_line, the tool searches nearby lines (±50). If exactly one exact match is found, it auto-corrects and applies the change (auto_corrected=true); re-read before making another edit. If multiple exact matches are found, candidates are returned; re-read a wider range and expand old_lines to disambiguate. If no exact match is found, the tool retries once with the first line's leading indentation ignored. If exactly one relaxed match is found, it applies the change, sets matched_ignoring_first_line_indent=true, and re-indents the first line of new_lines to match the file. Re-read before continuing. If multiple relaxed matches are found, candidates are returned. If no match is found, check leading whitespace and re-read the file.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -85,7 +55,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     {
                         { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file." } },
                         { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, inclusive, positive integer (>= 1))." } },
-                        { "old_lines", new ToolDetails { Type = "string", Description = "The exact text currently occupying the lines from start_line through the end of the block. The tool verifies this text matches (ignoring line ending differences) before replacing. If the file has fewer lines than needed, missing lines are treated as empty strings. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty." } },
+                        { "old_lines", new ToolDetails { Type = "string", Description = "Exact text currently occupying the lines from start_line through the end of the block. Copy it verbatim from a fresh read_file_lines result for the same file — never retype it and never use search results or an older read. Leading whitespace and character casing must match exactly; trailing whitespace and line-ending style (\r\n vs \n) are ignored during comparison. If the requested range extends past the current line count, missing trailing lines are treated as empty strings for comparison. Can contain multiple lines separated by \n or \r\n. Must not be empty." } },
                         { "new_lines", new ToolDetails { Type = "string", Description = "New text to replace the lines. Can contain multiple lines separated by \\n or \\r\\n. If empty string, the line range is deleted." } }
                     },
                     Required = new List<string> { "file_path", "start_line", "old_lines", "new_lines" }

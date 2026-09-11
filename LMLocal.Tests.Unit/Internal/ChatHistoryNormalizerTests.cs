@@ -199,5 +199,32 @@ namespace LMLocal.Tests.Unit
             Assert.That(result.Count, Is.EqualTo(1));
             Assert.That(result[0].Content, Is.SameAs(jsonContent));
         }
+
+        [Test]
+        public void NormalizeMessages_PreservesExtraContent_ByReference()
+        {
+            // ToolCalls are copied by reference, so the Gemini extra_content JToken on a ToolCall survives.
+            var toolCall = new ToolCall
+            {
+                Id = "call1",
+                Type = "function",
+                Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{}" },
+                ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")
+            };
+            var toolCalls = new List<ToolCall> { toolCall };
+
+            var messages = new List<ChatMessage>
+            {
+                new ChatMessage("assistant", null) { ToolCalls = toolCalls }
+            };
+
+            var result = ChatHistoryNormalizer.NormalizeMessages(messages);
+
+            Assert.That(result[0].ToolCalls, Is.SameAs(toolCalls));
+
+            var preserved = (List<ToolCall>)result[0].ToolCalls;
+            Assert.That(preserved[0], Is.SameAs(toolCall));
+            Assert.That(preserved[0].ExtraContent["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
+        }
     }
 }

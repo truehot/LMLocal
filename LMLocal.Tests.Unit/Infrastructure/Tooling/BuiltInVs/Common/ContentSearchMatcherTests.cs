@@ -61,6 +61,13 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             Assert.That(m.IsMatch, Is.True);
             Assert.That(m.Kind, Is.EqualTo(SearchMatchKind.Type));
         }
+        [Test]
+        public void Match_DeclarationClassification_CanBeSkipped()
+        {
+            var m = ContentSearchMatcher.Match("public class Foo", "Foo", ".cs", true, false);
+            Assert.That(m.IsMatch, Is.True);
+            Assert.That(m.Kind, Is.EqualTo(SearchMatchKind.Other));
+        }
 
         [Test]
         public void IsExactWord_HandlesStartAndEndOfString()

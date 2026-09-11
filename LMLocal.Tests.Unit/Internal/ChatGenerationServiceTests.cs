@@ -321,6 +321,49 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public async Task GenerateStreamAsync_ExtraContentOnToolCalls_ReachesSetPendingAssistant()
+        {
+            // Gemini signature must survive the whole round: StreamCompletionResult.ToolCalls →
+            // SetPendingAssistant (which flushes into AddAssistantMessage on the next tool round).
+            var messages = new List<ChatMessage>();
+            _historyMock.Setup(h => h.BuildUserMessagesWithHistory(It.IsAny<string>())).Returns(messages);
+
+            var mockStream = new MemoryStream();
+            var mockResponse = new System.Net.Http.HttpResponseMessage();
+            var mockRequest = new System.Net.Http.HttpRequestMessage();
+            var mockContent = new System.Net.Http.StringContent("");
+            var streamingResponse = new StreamingResponse(mockStream, mockResponse, mockRequest, mockContent);
+            _clientMock.Setup(c => c.SendChatStreamingAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(streamingResponse);
+
+            var toolCalls = new List<ToolCallRecord>
+            {
+                new ToolCallRecord
+                {
+                    CallId = "c1",
+                    FunctionName = "check_flight",
+                    ArgumentsJson = "{\"flight\":\"AA100\"}",
+                    ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}"
+                }
+            };
+            _mockProcessor.Setup(p => p.ProcessStreamAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>(),
+                    It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(), It.IsAny<int>()))
+                .ReturnsAsync(new StreamCompletionResult { ContentResponse = "using tool", ToolCalls = toolCalls.AsReadOnly() });
+
+            var context = new GenerateStreamContext { Prompt = "check flight", ModelId = null };
+            Task onChunk(TextStreamChunk chunk, TokenGenerationStats t) => Task.CompletedTask;
+
+            await _service.GenerateStreamAsync(context, null, onChunk, completion => Task.CompletedTask, CancellationToken.None);
+
+            _historyMock.Verify(h => h.SetPendingAssistant(
+                "using tool",
+                It.Is<IReadOnlyList<ToolCallRecord>>(tc =>
+                    tc.Count == 1 &&
+                    tc[0].ExtraContentJson == "{\"google\":{\"thought_signature\":\"sigA\"}}")),
+                Times.Once);
+        }
+
+        [Test]
         public async Task GenerateStreamAsync_WasCancelled_DoesNotSaveAssistantMessage()
         {
             var messages = new List<ChatMessage>();

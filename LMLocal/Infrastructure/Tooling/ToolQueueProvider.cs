@@ -26,7 +26,7 @@ namespace LMLocal.Infrastructure.Tooling
         private ToolQueue _cachedMainQueue;
 
         private const string TaskParam = "task";
-        private const string TaskDescription = "The task to delegate to the agent, including what information to retrieve and how to return it.";
+        private const string TaskDescription = "The task to delegate to the agent. Provide all relevant context, such as file paths or symbol names, since the agent has no access to the conversation history.";
         public ToolQueueProvider(
             ISettingsManager settingsManager,
             IBuiltInVsToolProvider builtInTools,

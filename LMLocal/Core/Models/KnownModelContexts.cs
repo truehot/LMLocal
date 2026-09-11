@@ -14,6 +14,7 @@ namespace LMLocal.Core.Models
             ["deepseek-v4"] = 1_048_576,
             ["deepseek-v4-pro"] = 1_048_576,
             ["deepseek-v4-flash"] = 1_048_576,
+            ["deepseek-flash"] = 1_048_576,
             ["deepseek-ai/DeepSeek-V4-Flash"] = 1_048_576,
             ["deepseek-ai/DeepSeek-V4-Pro"] = 1_048_576,
 

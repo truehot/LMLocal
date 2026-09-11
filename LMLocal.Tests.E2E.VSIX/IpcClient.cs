@@ -56,7 +56,12 @@ internal sealed class IpcClient : IDisposable
         throw new TimeoutException($"Failed to connect to pipe '{pipeName}' within {timeout}.", lastError);
     }
 
-    public async Task<string> SendCommandAsync(string command, CancellationToken cancellationToken)
+    public Task<string> SendCommandAsync(string command, CancellationToken cancellationToken)
+    {
+        return SendCommandAsync(command, TimeSpan.FromSeconds(20), cancellationToken);
+    }
+
+    public async Task<string> SendCommandAsync(string command, TimeSpan readTimeout, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try
@@ -76,8 +81,12 @@ internal sealed class IpcClient : IDisposable
 
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                // Increase read timeout to allow longer-running operations on the server (search/file IO).
-                cts.CancelAfter(TimeSpan.FromSeconds(20));
+                // Allow long-running operations on the server (e.g. a SubAgent run).
+                if (readTimeout > TimeSpan.Zero)
+                {
+                    cts.CancelAfter(readTimeout);
+                }
+
                 string line = await ReadLineWithCancellationAsync(cts.Token);
                 if (line == null)
                 {

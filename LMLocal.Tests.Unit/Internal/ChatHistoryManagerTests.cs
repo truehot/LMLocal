@@ -8,6 +8,7 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Tooling;
+using Newtonsoft.Json.Linq;
 using Moq;
 using NUnit.Framework;
 
@@ -1114,7 +1115,7 @@ namespace LMLocal.Tests.Unit
             manager.AddToolExecutionResultMessages(new[]
             {
                 new ChatMessage("tool",
-                    "{\"file_path\":\"src/Program.cs\",\"text\":\"using System;\\nclass Program {}\",\"success\":true}",
+                    "{\"file_path\":\"src/Program.cs\",\"content\":\"using System;\\nclass Program {}\",\"success\":true}",
                     "c1")
             });
             manager.AddAssistantMessage("Here is the file content.");
@@ -1178,7 +1179,7 @@ namespace LMLocal.Tests.Unit
                     "{\"solution_name\":\"MyApp\",\"total_projects\":2,\"total_files\":100,\"projects\":[{\"name\":\"MyApp\",\"language\":\"C#\",\"file_count\":80}],\"success\":true}",
                     "c1"),
                 new ChatMessage("tool",
-                    "{\"file_path\":\"src/Program.cs\",\"text\":\"using System;\",\"success\":true}",
+                    "{\"file_path\":\"src/Program.cs\",\"content\":\"using System;\",\"success\":true}",
                     "c2")
             });
             manager.AddAssistantMessage("Here is the analysis.");
@@ -1302,6 +1303,140 @@ namespace LMLocal.Tests.Unit
             Assert.That(userContent, Does.Not.Contain("class Program"));
             Assert.That(userContent, Does.Not.Contain("## Tool Results"));
             Assert.That(userContent, Is.EqualTo("find references"));
+        }
+
+        // ================ Gemini extra_content (thought_signature echo-back) ================
+
+        private static ChatHistoryManager CreateManager()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+            return new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+        }
+
+        private static JToken Sig(string name) => JToken.Parse("{\"google\":{\"thought_signature\":\"" + name + "\"}}");
+
+        [Test]
+        public void AddAssistantMessage_WithExtraContentJson_SetsToolCallExtraContent()
+        {
+            var manager = CreateManager();
+
+            var toolCalls = new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{\"flight\":\"AA100\"}", ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}" }
+            };
+
+            manager.AddAssistantMessage("using tool", toolCalls);
+
+            var history = manager.GetHistoryCopy();
+            var stored = (List<ToolCall>)history[0].ToolCalls;
+
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(stored.Count, Is.EqualTo(1));
+            Assert.That(stored[0].ExtraContent, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+        }
+
+        [Test]
+        public void AddAssistantMessage_WithoutExtraContent_ExtraContentNull()
+        {
+            var manager = CreateManager();
+
+            var toolCalls = new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{}" }
+            };
+
+            manager.AddAssistantMessage("using tool", toolCalls);
+
+            var stored = (List<ToolCall>)manager.GetHistoryCopy()[0].ToolCalls;
+            Assert.That(stored[0].ExtraContent, Is.Null);
+        }
+
+        [Test]
+        public void AddAssistantMessage_BrokenExtraContentJson_FallsBackToNullWithoutThrowing()
+        {
+            var manager = CreateManager();
+
+            var toolCalls = new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{}", ExtraContentJson = "{not valid json" }
+            };
+
+            Assert.DoesNotThrow(() => manager.AddAssistantMessage("using tool", toolCalls));
+
+            var stored = (List<ToolCall>)manager.GetHistoryCopy()[0].ToolCalls;
+            Assert.That(stored[0].ExtraContent, Is.Null);
+        }
+
+        [Test]
+        public void SetPendingAssistant_FlushOnToolResults_ExtraContentFlowsToHistory()
+        {
+            var manager = CreateManager();
+
+            var toolCalls = new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{\"flight\":\"AA100\"}", ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}" }
+            };
+
+            manager.SetPendingAssistant(null, toolCalls);
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "{\"status\":\"delayed\"}", "c1")
+            });
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("assistant"));
+
+            var stored = (List<ToolCall>)history[0].ToolCalls;
+            Assert.That(stored[0].ExtraContent, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+        }
+
+        [Test]
+        public async Task MoveLastExchangeToNewSession_ExtraContentSurvives_ByReference()
+        {
+            var manager = CreateManager();
+            manager.AddUserMessage("check flight");
+            manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{\"flight\":\"AA100\"}", ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}" }
+            });
+
+            var before = (List<ToolCall>)manager.GetHistoryCopy()[1].ToolCalls;
+
+            await manager.MoveLastExchangeToNewSessionAsync();
+
+            var after = manager.GetHistoryCopy();
+            Assert.That(after.Count, Is.EqualTo(2));
+            var stored = (List<ToolCall>)after[1].ToolCalls;
+
+            // Same message object moved by reference => same ToolCall instance with its JToken.
+            Assert.That(stored[0], Is.SameAs(before[0]));
+            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+        }
+
+        [Test]
+        public async Task ConsolidateLastExchange_OrphanedToolCallAssistant_KeepsExtraContent()
+        {
+            // Interrupted chain (6.11): user → assistant(tool_calls) without tool results.
+            // Consolidate keeps the final assistant by reference => ExtraContent survives.
+            var manager = CreateManager();
+            manager.AddUserMessage("check flight");
+            manager.AddAssistantMessage(null, new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{\"flight\":\"AA100\"}", ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}" }
+            });
+
+            await manager.ConsolidateLastExchangeAsync();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            var stored = (List<ToolCall>)history[1].ToolCalls;
+            Assert.That(stored, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
         }
 
     }

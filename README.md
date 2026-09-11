@@ -218,7 +218,7 @@ How to configure a custom remote endpoint and activate it inside the extension.
    * **Provider type:** Select **OpenAI compatible** from the dropdown.
    * **API base URL:** `https://ollama.com/`
    * **API key:** Enter your cloud provider API key.
-   * > 💡 **Note:** The extension allows any profile names, but if you create multiple profiles with completely identical fields, the system will always use the first one.*
+   * > 💡 **Note:** The extension allows any profile names, but if you create multiple profiles with completely identical fields, the system will always use the first one.
 3. Click **Apply**, then click **Save Changes** to close the window.
 
 #### Step 2: Switch to the New Provider
@@ -363,11 +363,9 @@ Use subagents to:
 
 To quickly test subagents without manually editing JSON:
 
-1. **Load a Fast Local Model:** Open LM Studio (or Ollama), download a lightweight model like `gemma-4-e2b`, and start the local server.
+1. **Load a Fast Local Model:** Open LM Studio (or Ollama), download a lightweight model like `gemma-4-e4b`, and start the local server.
 2. **Sync Settings:** In LMLocal, switch your active chat model to that local model, open **Sub Agents** from the main menu, and click **Use Active Model**. This sets up the root provider defaults and creates the predefined subagent configs automatically.
 3. **Switch Back & Run:** Switch your main chat back to your primary model (e.g., Claude, GPT-5, or a large local LLM), ensure subagents are enabled via the **'s'** toolbar icon, and send a task (e.g., *"Find my class in the solution"*).
-
-*(Alternative: You can manually create and edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` directly if you prefer custom fine-tuning.)*
 
 ---
 
@@ -375,9 +373,8 @@ To quickly test subagents without manually editing JSON:
 
 Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents as needed.
 
-Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`) serve as defaults. Agents inherit them unless they explicitly override a field.
+Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`) serve as defaults for all agents. Agents inherit these values unless they explicitly override them, so changing a root-level value automatically updates every agent that uses the default.
 
-**Defaults are not baked in** – they stay at the root. Change a root value later, and all agents that don’t override it will automatically use the new one.
 
 **Example:**
 
@@ -406,7 +403,7 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
   ],
   "providerType": "lmstudio",
   "customBaseUrl": "http://localhost:1234",
-  "model": "google/gemma-4-e2b",
+  "model": "google/gemma-4-e4b",
   "temperature": 1.0,
   "reasoningEffort": "high"
 }
@@ -520,7 +517,7 @@ Images are sent to the model in the OpenAI multimodal format (`image_url` with a
 
 
 ### 🧠 Which model series are worth trying right now?
-If you are new to local LLMs and don't know where to start, trying these model families:
+If you are new to local LLMs and don't know where to start, try these model families:
 
 * **Qwen 3.x series**
 * **Gemma 4.x series**
@@ -574,6 +571,7 @@ Context window accumulation can lead to high API costs or local performance drop
 ### ⚡ How do I maximize model speed (even with a quality drop)?
 When you just need to generate straightforward boilerplate, repetitive CRUD methods, or standard unit tests at maximum speed:
 * **Hardware VRAM Optimization:** Choose quantized weights (e.g., `Q4_K_M` GGUF formats) that **fully fit into your GPU VRAM**. As soon as layers spill over into system RAM (CPU fallback), streaming speed drops significantly.
+* **Enable Speculative Decoding:** If your local inference engine (such as vLLM, LM Studio, or llama.cpp) supports it, turn on Speculative Decoding. This technique pairs your main LLM with a tiny, ultra-fast "draft" model. The draft model rapidly guesses the next several tokens, and the target model verifies them in parallel. This drastically increases your tokens-per-second generation rate. For example, you can run the base model `google/gemma-4-e4b` alongside its dedicated drafter `gemma-4-e4b-it-assistant`, which is optimized for fast speculative generation.
 * **Tweak Backend Inference Settings:** Open your server configurations and check the parameters that directly impact processing and generation speed. Pay close attention to:
     * **GPU Offload** & **CPU Thread Pool Size**
     * **Flash Attention** & **Unified KV Cache**
@@ -581,7 +579,6 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
     * **Evaluation / Physical Batch Size**
     * **Keep Model in Memory**
 * **Drop the Temperature:** Lower your active preset temperature closer to `0.0` or `0.1`. This stops the model from creatively wandering around, forcing it to stream short, direct, and deterministic code structures.
-* **Enable Speculative Decoding:** If your local inference engine (such as vLLM, LM Studio, or llama.cpp) supports it, turn on Speculative Decoding. This technique pairs your main LLM with a tiny, ultra-fast "draft" model. The draft model rapidly guesses the next several tokens, and the larger target model verifies them in parallel. This drastically increases your tokens-per-second generation rate. For example, you can run a heavy target model like `gemma-4-e2b-it-assistant` alongside a lightweight drafter like `google/gemma-4-e2b`.
 
 
 <a id="content--auto-completions"></a>
@@ -592,7 +589,7 @@ Provides fast, **single-line ghost completions** (inline grey text code suggesti
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
 
-> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LM Local’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommend enabling only one autocompletion provider at a time** – either the built‑in LM Local one or your external tool, but not both simultaneously.
+> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LM Local’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommended enabling only one autocompletion provider at a time** – either the built‑in LM Local one or your external tool, but not both simultaneously.
 
 ### Supported Providers & Models
 
@@ -806,7 +803,7 @@ The following configuration files are stored there:
 ## 📜 License & Compliance & Third-Party
 
 - **License:** MIT License. See [LICENSE.txt](./LICENSE.txt) for details.
-- **Compliance:** See [COMPLIANCE.md](./COMPLIANCE.md) for EU AI Act and data handling information
+- **Compliance:** See [COMPLIANCE.md](./COMPLIANCE.md) for EU AI Act and data handling information.
 - **Components:**
   - `marked` v15.0.12 (MIT)
   - `highlight.js` v11.9.0 (BSD-3-Clause) 

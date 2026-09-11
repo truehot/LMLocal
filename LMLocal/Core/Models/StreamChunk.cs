@@ -107,13 +107,19 @@ namespace LMLocal.Core.Models
         /// </summary>
         public string InitialArguments { get; }
 
-        public ToolCallMetadataChunk(int index, string callId, string functionName, string initialArguments = null)
+        /// <summary>
+        /// Opaque extra payload (Gemini extra_content) attached to this tool call, as a raw JSON string.
+        /// </summary>
+        public string ExtraContentJson { get; }
+
+        public ToolCallMetadataChunk(int index, string callId, string functionName, string initialArguments = null, string extraContentJson = null)
             : base(ChunkKind.ToolCallArguments)
         {
             Index = index;
             CallId = callId;
             FunctionName = functionName;
             InitialArguments = initialArguments;
+            ExtraContentJson = extraContentJson;
         }
 
         public override bool IsEmpty => string.IsNullOrEmpty(CallId) && string.IsNullOrEmpty(FunctionName);

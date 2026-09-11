@@ -62,10 +62,10 @@ namespace LMLocal.Infrastructure.Tooling
         private static void FormatFileReadResult(System.Text.StringBuilder sb, JObject obj)
         {
             var filePath = obj["file_path"]?.Value<string>() ?? "unknown";
-            var text = obj["text"]?.Value<string>() ?? "";
+            var content = obj["content"]?.Value<string>() ?? "";
             var startLine = obj["start_line"]?.Value<int>() ?? 0;
             var endLine = obj["end_line"]?.Value<int>() ?? 0;
-            var hasMore = obj["has_more"]?.Value<bool>() == true;
+            var hasMore = obj["has_more_results"]?.Value<bool>() == true;
 
             var lang = MarkdownLanguageHelper.GetLanguageFromExtension(filePath);
             var lineInfo = startLine > 0 && endLine > 0
@@ -78,7 +78,7 @@ namespace LMLocal.Infrastructure.Tooling
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine($"````{lang}");
-            sb.AppendLine(text);
+            sb.AppendLine(content);
             sb.AppendLine("````");
             sb.AppendLine();
         }

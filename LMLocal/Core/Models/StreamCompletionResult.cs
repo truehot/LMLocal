@@ -142,5 +142,10 @@ namespace LMLocal.Core.Models
         /// True when the accumulated arguments were not valid JSON and were sanitized to "{}".
         /// </summary>
         public bool IsInvalid { get; set; }
+
+        /// <summary>
+        /// Opaque per-call payload (Gemini extra_content) captured from the stream, as a raw JSON string. 
+        /// </summary>
+        public string ExtraContentJson { get; set; }
     }
 }

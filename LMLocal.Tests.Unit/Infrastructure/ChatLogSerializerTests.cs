@@ -209,5 +209,103 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(obj.Value<string>("content"), Is.EqualTo("[1 image attached - not available in this session]"));
             Assert.That(line, Does.Not.Contain("data:image"));
         }
+
+        // ================ Gemini extra_content round-trip (passthrough) ================
+
+        [Test]
+        public void BuildMessageLine_WithExtraContent_WritesRawObjectNotEscapedString()
+        {
+            // extra_content must serialize as a raw JSON object inside tool_calls[i], NOT as a quoted string.
+            var toolCalls = new List<ToolCall>
+            {
+                new ToolCall
+                {
+                    Id = "call_1",
+                    Type = "function",
+                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{\"flight\":\"AA100\"}" },
+                    ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")
+                }
+            };
+            var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            var extra = obj["tool_calls"][0]["extra_content"];
+            Assert.That(extra, Is.Not.Null);
+            Assert.That(extra.Type, Is.EqualTo(JTokenType.Object));
+            Assert.That(extra["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
+        }
+
+        [Test]
+        public void BuildMessageLine_NoExtraContent_OmitsField()
+        {
+            var toolCalls = new List<ToolCall>
+            {
+                new ToolCall
+                {
+                    Id = "call_1",
+                    Type = "function",
+                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{}" }
+                }
+            };
+            var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj["tool_calls"][0]["extra_content"], Is.Null);
+        }
+
+        [Test]
+        public void ParseChatMessage_WithExtraContent_RestoresJToken()
+        {
+            var obj = JObject.Parse(
+                "{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"check_flight\",\"arguments\":\"{}\"},\"extra_content\":{\"google\":{\"thought_signature\":\"sigA\"}}}]}");
+
+            var result = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(result, Is.Not.Null);
+            var toolCalls = (List<ToolCall>)result.ToolCalls;
+            Assert.That(toolCalls[0].ExtraContent, Is.Not.Null);
+            Assert.That(toolCalls[0].ExtraContent["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
+        }
+
+        [Test]
+        public void ParseChatMessage_OldLogWithoutExtraContent_ExtraContentNull()
+        {
+            // Pre-feature logs have no extra_content key => ExtraContent must parse to null (not throw).
+            var obj = JObject.Parse(
+                "{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"check_flight\",\"arguments\":\"{}\"}}]}");
+
+            var result = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(result, Is.Not.Null);
+            var toolCalls = (List<ToolCall>)result.ToolCalls;
+            Assert.That(toolCalls[0].ExtraContent, Is.Null);
+        }
+
+        [Test]
+        public void SerializeThenParse_RoundTripsExtraContent()
+        {
+            var toolCalls = new List<ToolCall>
+            {
+                new ToolCall
+                {
+                    Id = "call_1",
+                    Type = "function",
+                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{\"flight\":\"AA100\"}" },
+                    ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")
+                }
+            };
+            var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var restored = ChatLogSerializer.ParseChatMessage(JObject.Parse(line.Trim()));
+
+            var restoredCalls = (List<ToolCall>)restored.ToolCalls;
+            Assert.That(restoredCalls[0].ExtraContent, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(restoredCalls[0].ExtraContent, JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")), Is.True);
+        }
     }
 }

@@ -10,6 +10,8 @@ using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Application.Chat
 {
@@ -202,7 +204,8 @@ namespace LMLocal.Application.Chat
                         {
                             Name = toolCall.FunctionName,
                             Arguments = normalizedArguments
-                        }
+                        },
+                        ExtraContent = ParseExtraContent(toolCall.ExtraContentJson)
                     });
                 }
             }
@@ -217,6 +220,16 @@ namespace LMLocal.Application.Chat
                 _history.Add(chatMessage);
             }
             _ = _persistence?.SaveLastMessageAsync(chatMessage, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Raw JSON string → JToken, or null when absent/unparsable.
+        /// </summary>
+        private static JToken ParseExtraContent(string extraContentJson)
+        {
+            if (string.IsNullOrEmpty(extraContentJson)) return null;
+            try { return JToken.Parse(extraContentJson); }
+            catch (JsonException) { return null; }
         }
 
 

@@ -332,6 +332,98 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
+        public async Task ListModelsAsync_AdapterThrows_CustomModelsStillAppear()
+        {
+            var adapter = new Mock<IOpenApiAdapter>();
+            adapter
+                .Setup(a => a.ListModelsRawAsync(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("provider unavailable"));
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 2,
+                ModelId = "my-manual-model",
+                ProviderType = "openai",
+                DisplayName = "Manual Model",
+                ContextLength = 4096,
+                IsCustom = true
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Error, Is.Null, "Error must be cleared when custom models are present");
+            Assert.That(result.Models, Has.Count.EqualTo(1));
+            Assert.That(result.Models[0].Id, Is.EqualTo("my-manual-model"));
+            Assert.That(result.Models[0].Name, Is.EqualTo("Manual Model"));
+            Assert.That(result.Models[0].MaxTokens, Is.EqualTo(4096));
+        }
+
+        [Test]
+        public async Task ListModelsAsync_ProviderError_CustomModelsClearError()
+        {
+            // Provider returns an error response (e.g. "No models returned...") -> EmptyModelListErrorJson
+            var adapter = CreateAdapter(_ => "{ \"error\": \"No models returned from backend\" }");
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 2,
+                ModelId = "my-manual-model",
+                ProviderType = "openai",
+                DisplayName = "Manual Model",
+                IsCustom = true
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Error, Is.Null, "Error must be cleared when custom models are present");
+            Assert.That(result.Models.Any(m => m.Id == "my-manual-model"), Is.True);
+        }
+
+        [Test]
+        public async Task ListModelsAsync_AdapterThrows_NoCustomModels_KeepsError()
+        {
+            var adapter = new Mock<IOpenApiAdapter>();
+            adapter
+                .Setup(a => a.ListModelsRawAsync(
+                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("provider unavailable"));
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 2,
+                ModelId = "some-non-custom",
+                ProviderType = "openai",
+                IsCustom = false
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Error, Is.Not.Null);
+            Assert.That(result.Error, Does.Contain("provider unavailable"));
+            Assert.That(result.Models, Is.Empty);
+        }
+
+        [Test]
+        public async Task ListModelsAsync_ProviderError_NoCustomModels_KeepsError()
+        {
+            var adapter = CreateAdapter(_ => "{ \"error\": \"No models returned from backend\" }");
+            var manager = ConfigManagerWith(new ModelDefinition
+            {
+                Id = 2,
+                ModelId = "some-non-custom",
+                ProviderType = "openai",
+                IsCustom = false
+            });
+            var service = CreateService(adapter, "https://api.openai.com", "openai", null, manager);
+
+            var result = await service.ListModelsAsync(null, CancellationToken.None);
+
+            Assert.That(result.Error, Is.Not.Null);
+            Assert.That(result.Models, Is.Empty);
+        }
+
+        [Test]
         public async Task ListModelsAsync_NonCustomProfile_DoesNotAppendUnknownModel()
         {
             var adapter = CreateAdapter(_ => OpenAiJson); // only gpt-4o

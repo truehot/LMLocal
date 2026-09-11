@@ -28,7 +28,7 @@ namespace LMLocal.Application.ChatSessionStream
         private readonly ITokenSpeedCalculator _tokenSpeedCalculator;
         private readonly ISettingsManager _settingsManager;
 
-        private readonly Dictionary<int, (string CallId, string FunctionName)> _toolCallMetadata = new Dictionary<int, (string CallId, string FunctionName)>();
+        private readonly Dictionary<int, (string CallId, string FunctionName, string ExtraContentJson)> _toolCallMetadata = new Dictionary<int, (string CallId, string FunctionName, string ExtraContentJson)>();
 
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
@@ -172,7 +172,7 @@ namespace LMLocal.Application.ChatSessionStream
                                         }
                                         else if (chunk is ToolCallMetadataChunk metadata)
                                         {
-                                            _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName);
+                                            _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName, metadata.ExtraContentJson);
 
                                             if (!toolCallBuffers.ContainsKey(metadata.Index))
                                                 toolCallBuffers[metadata.Index] = new StringBuilder();
@@ -294,7 +294,8 @@ namespace LMLocal.Application.ChatSessionStream
                             CallId = metadata.CallId,
                             FunctionName = metadata.FunctionName,
                             ArgumentsJson = isValid ? argumentsJson : "{}",
-                            IsInvalid = !isValid
+                            IsInvalid = !isValid,
+                            ExtraContentJson = metadata.ExtraContentJson
                         });
                     }
                     else
