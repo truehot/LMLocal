@@ -1,4 +1,4 @@
-﻿# 🤖 LM Local
+# 🤖 LM Local
 
 **LM Local** is a local AI chat assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow.
 
@@ -206,6 +206,12 @@ The **"Providers..."** dialog allows you to create and save multiple provider pr
 Once configured, you can seamlessly switch between your saved profiles via the main settings.
 
 > 🔒 **Privacy & Data Usage Note:** Unlike local servers which keep 100% of your data offline on your machine, **cloud remote providers** process your requests on external servers. Data retention policies vary significantly by provider - some services may use your prompt history and codebase context for model training by default. Always verify the provider's privacy policy and terms of service before transmitting proprietary or sensitive source code.
+
+> [!NOTE]
+> **Settings vs. Provider Profiles (Runtime Source of Truth):**
+> Global **Settings** act as the single runtime source of truth. Custom providers are stored as reusable profiles — selecting an active provider profile in Settings applies its values (API base URL, API key, etc.) to the runtime configuration.
+> - **Single provider:** You can configure Settings directly without needing a profile.
+> - **Multiple providers:** Set them up as profiles via **Providers...** and keep provider-specific endpoints and keys inside each profile. Switching the active provider in Settings cleanly applies that profile's values.
 
 ### Quick example 
 
