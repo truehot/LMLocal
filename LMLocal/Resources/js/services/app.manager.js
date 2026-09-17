@@ -199,7 +199,7 @@ class AppManager {
             });
 
             if (action !== 'none') {
-                const session = await appDataService.getLastChatSessionAsync();
+                const session = await appDataService.getCurrentChatHistoryAsync();
                 if (session && session.hasSession) {
                     await this.onHistoryLoaded.emit(session.messages);
                 }

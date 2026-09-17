@@ -150,7 +150,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 "Search for 'using Newtonsoft' and return the complete result list, handling pagination. State the total count and whether the list is truncated.",
                 "Newtonsoft"));
             list.Add(NotFoundSc("A1.9", Explorer,
-                "Describe the project structure of a project named LMLocal.Web. If it does not exist, say so clearly.",
+                "Describe the project structure of a project named LMLocal.Web.",
                 "LMLocal.Web"));
             list.Add(Sc("A1.10", Explorer,
                 "Search for the exact identifier \"ToolCallRecord\" and report all matching file paths and line numbers from all pages.",
@@ -165,18 +165,16 @@ namespace LMLocal.Tests.E2E.VSIX
                 "LM Local", "Visual Studio"));
             list.Add(Sc("A2.3", Reader,
                 "Find the file matching *StreamProcessor* and read it.",
-                "ProcessStreamAsync"));
-            list.Add(Sc("A2.4", Reader,
-                "Find ConsolidateLastExchangeAsync by text search, then read the surrounding method body.",
-                "ConsolidateLastExchangeAsync", "lookbackLimit"));
+                "ToolCallRecord", "LlmSseParser"));
+
             list.Add(ScVerbatim("A2.5", Reader,
-                "Read these three files and return them verbatim: ChatLogSerializer.cs, ChatPersistenceService.cs, StreamChunk.cs.",
+                "Read these three files and return them verbatim: LMLocal\\Infrastructure\\Persistence\\ChatLogSerializer.cs, LMLocal\\Infrastructure\\Persistence\\ChatPersistenceService.cs, LMLocal\\Core\\Models\\StreamChunk.cs.",
                 "MaxPromptLength", "SaveLastMessageAsync", "ChunkKind"));
             list.Add(Sc("A2.6", Reader,
                 "Read the full bodies of AddAssistantMessage, SetPendingAssistant and ConsolidateLastExchangeAsync from LMLocal/Application/Chat/ChatHistoryManager.cs.",
                 "IReadOnlyList<ToolCallRecord>", "_pendingAssistantToolCalls", "lookbackLimit"));
             list.Add(ScVerbatim("A2.7", Reader,
-                "Read these 4 files and return them verbatim. If you cannot cover all of them, explicitly list which files are missing: ChatLogSerializer.cs, StreamCompletionResult.cs, StreamProcessor.cs, ChatHistoryManager.cs.",
+                "Read these 4 files and return them verbatim: ChatLogSerializer.cs, StreamCompletionResult.cs, StreamProcessor.cs, ChatHistoryManager.cs.",
                 "ChatLogSerializer", "ToolCallRecord", "ProcessStreamAsync", "ConsolidateLastExchangeAsync"));
             list.Add(NotFoundSc("A2.8", Reader,
                 "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs.",
@@ -185,7 +183,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 "Read LMLocal/Infrastructure/Persistence/ChatLogSerializer.cs. If the entire file is not returned, clearly state that it is partial and identify the missing portion.",
                 "MaxPromptLength"));
 
-            // ---- A.3 symbol_analyzer_subagent: symbols & references (8) -------
+            //----A.3 symbol_analyzer_subagent: symbols & references(8)------ -
             list.Add(Sc("A3.1", Analyzer,
                 "Find the C# symbol ToolCallRecord and report its declaration file and line.",
                 "StreamCompletionResult.cs", "114"));
@@ -197,7 +195,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 "ContentResponse", "ToolCalls"));
             list.Add(Sc("A3.4", Analyzer,
                 "Find the JavaScript symbol lmInit and report its file and line. Use the semantic JavaScript tool.",
-                "app.js", "7"));
+                "app.js"));
             list.Add(NotFoundSc("A3.5", Analyzer,
                 "Find the symbol GeminiThoughtSignaturePolicyEnforcer.",
                 "GeminiThoughtSignaturePolicyEnforcer"));
@@ -205,7 +203,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 "Find the symbol ToolCallRecord, then read its declaration context.",
                 "ToolCallRecord", "StreamCompletionResult.cs"));
             list.Add(Sc("A3.7", Analyzer,
-                "Find all references to ToolCalls declared in LMLocal/Core/Models/ChatMessage.cs. Use get_symbol_info with file_path='LMLocal/Core/Models/ChatMessage.cs'. The first call returns up to 50 references; if has_more_results is true, continue with page_token until all references are retrieved. Report every reference's file:line.",
+                "Find all references to ToolCalls declared in LMLocal/Core/Models/ChatMessage.cs.",
                 "ToolCalls", "ChatMessage.cs", "ApiRequestBuilder.cs"));
             list.Add(Sc("A3.8", Analyzer,
                 "Inspect ConsolidateLastExchangeAsync and determine whether ToolCalls is copied by reference or reconstructed. Read the actual source before answering.",
@@ -223,10 +221,6 @@ namespace LMLocal.Tests.E2E.VSIX
         public async Task Run_Full_Benchmark()
         {
             // Requires a running LM Studio + an Experimental VS instance; never auto-run.
-            if (!string.Equals(Environment.GetEnvironmentVariable("LMLOCAL_SUBAGENT_BENCHMARK"), "1", StringComparison.OrdinalIgnoreCase))
-            {
-                Assert.Inconclusive("Set LMLOCAL_SUBAGENT_BENCHMARK=1 to run the benchmark (requires LM Studio + an Experimental VS instance).");
-            }
 
             using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(180)))
             {

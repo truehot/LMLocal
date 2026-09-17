@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
@@ -26,11 +27,11 @@ namespace LMLocal.Tests.Unit
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             await bridge.ExecutePromptAsync(null).ConfigureAwait(false);
             await bridge.ExecutePromptAsync("").ConfigureAwait(false);
@@ -46,14 +47,14 @@ namespace LMLocal.Tests.Unit
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
+
 
             mockSession.Setup(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             await bridge.ExecutePromptAsync("{\"prompt\":\"describe\",\"images\":[\"data:image/png;base64,AAAA\"]}").ConfigureAwait(false);
 
@@ -69,14 +70,13 @@ namespace LMLocal.Tests.Unit
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
 
-            var requestJson = "{\"prompt\":\"describe\",\"images\":[" +
-                "\"data:image/png;base64,AAAA\",\"data:image/png;base64,BBBB\"," +
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
+
+            var requestJson = "{\"prompt\":\"describe\",\"images\":[\"data:image/png;base64,AAAA\",\"data:image/png;base64,BBBB\"," +
                 "\"data:image/png;base64,CCCC\",\"data:image/png;base64,DDDD\"]}";
             await bridge.ExecutePromptAsync(requestJson).ConfigureAwait(false);
 
@@ -89,11 +89,11 @@ namespace LMLocal.Tests.Unit
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             await bridge.ExecutePromptAsync("{\"prompt\":\"describe\",\"images\":[\"data:text/plain;base64,AAAA\"]}").ConfigureAwait(false);
 
@@ -106,9 +106,9 @@ namespace LMLocal.Tests.Unit
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
+
 
             mockActiveDoc.Setup(a => a.GetActiveDocumentInfoAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new GetActiveDocument.ActiveDocumentResponse
@@ -123,12 +123,14 @@ namespace LMLocal.Tests.Unit
                 .ReturnsAsync(true)
                 .Callback<GenerateStreamContext, Func<WebView2ScriptMessage, Task>, CancellationToken>((ctx, onMsg, ct) => capturedContext = ctx);
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             var req = new LMLocal.Models.ExecutePromptRequest { Prompt = "hello", IncludeContent = true, AdditionalPrompt = "add", ModelId = "m1" };
             var json = req.ToJson();
 
+
             await bridge.ExecutePromptAsync(json).ConfigureAwait(false);
+
 
             mockActiveDoc.Verify(a => a.GetActiveDocumentInfoAsync(It.IsAny<CancellationToken>()), Times.Once);
             mockSession.Verify(s => s.TryStartSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -140,174 +142,71 @@ namespace LMLocal.Tests.Unit
             Assert.That(capturedContext.ModelId, Is.EqualTo("m1"));
         }
 
+
         [Test]
         public async Task ResetAndStop_InvokeSessionManager()
         {
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+            mockHistoryService.Setup(h => h.ResetHistoryAsync("none")).ReturnsAsync(true);
+
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             var reset = await bridge.ResetHistoryWithActionAsync("none").ConfigureAwait(false);
             Assert.That(reset, Is.True);
-            mockHistoryManager.Verify(h => h.Clear(), Times.Once);
+            mockHistoryService.Verify(h => h.ResetHistoryAsync("none"), Times.Once);
 
             await bridge.StopExecutionAsync().ConfigureAwait(false);
             mockSession.Verify(s => s.TryStopSession(), Times.Once);
         }
 
+
         [Test]
-        public async Task ResetHistoryWithAction_WhenSessionRunning_ReturnsFalse()
+        public async Task ResetHistoryWithAction_DelegatesToHistoryService()
         {
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(true);
-
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
-
-            var reset = await bridge.ResetHistoryWithActionAsync("none").ConfigureAwait(false);
-            Assert.That(reset, Is.False);
-            mockHistoryManager.Verify(h => h.Clear(), Times.Never);
-        }
-
-        [Test]
-        public async Task ResetHistoryWithAction_LastPrompt_CallsMoveLastExchange()
-        {
-            var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IGetActiveDocument>();
-            var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
-            var mockSnapshotManager = new Mock<ISnapshotManager>();
 
             mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
+            mockHistoryService.Setup(h => h.ResetHistoryAsync("last-prompt")).ReturnsAsync(true);
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             var reset = await bridge.ResetHistoryWithActionAsync("last-prompt").ConfigureAwait(false);
+
             Assert.That(reset, Is.True);
-            mockHistoryManager.Verify(h => h.MoveLastExchangeToNewSessionAsync(), Times.Once);
-            mockHistoryManager.Verify(h => h.Clear(), Times.Never);
+            mockHistoryService.Verify(h => h.ResetHistoryAsync("last-prompt"), Times.Once);
         }
 
+
         [Test]
-        public async Task ResetHistoryWithAction_LastExchange_CallsConsolidateLastExchange()
+        public async Task SummarizeAndCompact_DelegatesToHistoryService()
         {
             var mockScript = new Mock<IWebViewScriptExecutor>();
             var mockActiveDoc = new Mock<IGetActiveDocument>();
             var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
+            var mockHistoryService = new Mock<IChatHistoryService>();
             var mockSnapshotManager = new Mock<ISnapshotManager>();
 
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
 
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            mockHistoryService.Setup(h => h.SummarizeAndCompactAsync("model1")).ReturnsAsync(true);
 
-            var reset = await bridge.ResetHistoryWithActionAsync("last-exchange").ConfigureAwait(false);
-            Assert.That(reset, Is.True);
-            mockHistoryManager.Verify(h => h.ConsolidateLastExchangeAsync(), Times.Once);
-            mockHistoryManager.Verify(h => h.Clear(), Times.Never);
-        }
-
-        [Test]
-        public async Task SummarizeAndCompactAsync_SessionRunning_ReturnsFalse()
-        {
-            var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IGetActiveDocument>();
-            var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
-            var mockSnapshotManager = new Mock<ISnapshotManager>();
-
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(true);
-
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
+            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryService.Object, mockSnapshotManager.Object);
 
             var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
-            Assert.That(result, Is.False);
-        }
 
-        [Test]
-        public async Task SummarizeAndCompactAsync_NoModel_ReturnsFalse()
-        {
-            var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IGetActiveDocument>();
-            var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
-            var mockSnapshotManager = new Mock<ISnapshotManager>();
-
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
-
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
-
-            var result = await bridge.SummarizeAndCompactAsync(null).ConfigureAwait(false);
-            Assert.That(result, Is.False);
-        }
-
-        [Test]
-        public async Task SummarizeAndCompactAsync_EmptyHistory_ReturnsTrue()
-        {
-            var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IGetActiveDocument>();
-            var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
-            var mockSnapshotManager = new Mock<ISnapshotManager>();
-
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
-            mockHistoryManager.Setup(h => h.GetHistoryCopy()).Returns(new List<ChatMessage>());
-
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
-
-            var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
             Assert.That(result, Is.True);
-            mockHistoryManager.Verify(h => h.Clear(), Times.Once);
-        }
-
-        [Test]
-        public async Task SummarizeAndCompactAsync_Success_AddsPair()
-        {
-            var mockScript = new Mock<IWebViewScriptExecutor>();
-            var mockActiveDoc = new Mock<IGetActiveDocument>();
-            var mockSession = new Mock<ISessionManager>();
-            var mockHistoryManager = new Mock<IChatHistoryManager>();
-            var mockCompactor = new Mock<IHistoryCompactor>();
-            var mockSnapshotManager = new Mock<ISnapshotManager>();
-
-            mockSession.SetupGet(s => s.IsSessionRunning).Returns(false);
-
-            mockHistoryManager.Setup(h => h.GetHistoryCopy()).Returns(new List<ChatMessage>
-            {
-                new ChatMessage("user", "hello"),
-                new ChatMessage("assistant", "hi")
-            });
-
-            mockCompactor.Setup(c => c.SummarizeAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), "model1", It.IsAny<CancellationToken>()))
-                .ReturnsAsync("compacted summary");
-
-            var bridge = new WebViewBridge(mockScript.Object, mockActiveDoc.Object, mockSession.Object, mockHistoryManager.Object, mockCompactor.Object, mockSnapshotManager.Object);
-
-            var result = await bridge.SummarizeAndCompactAsync("model1").ConfigureAwait(false);
-            Assert.That(result, Is.True);
-
-            mockHistoryManager.Verify(h => h.Clear(), Times.Once);
-            mockHistoryManager.Verify(h => h.AddUserMessage(
-                It.Is<string>(s => s.Contains("Provide a brief summary")), null, null), Times.Once);
-            mockHistoryManager.Verify(h => h.AddAssistantMessage(
-                "compacted summary", null), Times.Once);
+            mockHistoryService.Verify(h => h.SummarizeAndCompactAsync("model1"), Times.Once);
         }
     }
 }

@@ -111,7 +111,7 @@ namespace LMLocal.Tests.Unit
 
             manager.AddUserMessage("a");
 
-            var result = manager.ReplaceHistory("summary", new System.Collections.Generic.List<ChatMessage> { new ChatMessage("user", "recent") }, expectedSize: 0);
+            var result = manager.ReplaceHistoryAndPersistAsync("summary", new System.Collections.Generic.List<ChatMessage> { new ChatMessage("user", "recent") }, expectedSize: 0).GetAwaiter().GetResult();
 
             Assert.That(result, Is.False);
             Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(1));
@@ -991,7 +991,7 @@ namespace LMLocal.Tests.Unit
                 new ChatMessage("assistant", "recent assistant")
             };
 
-            var result = manager.ReplaceHistory("compacted summary", recent, expectedSize: 4);
+            var result = manager.ReplaceHistoryAndPersistAsync("compacted summary", recent, expectedSize: 4).GetAwaiter().GetResult();
 
             Assert.That(result, Is.True);
             var history = manager.GetHistoryCopy();
@@ -1025,7 +1025,7 @@ namespace LMLocal.Tests.Unit
                 new ChatMessage("user", "recent")
             };
 
-            var result = manager.ReplaceHistory(null, recent, expectedSize: 2);
+            var result = manager.ReplaceHistoryAndPersistAsync(null, recent, expectedSize: 2).GetAwaiter().GetResult();
 
             Assert.That(result, Is.True);
             var history = manager.GetHistoryCopy();

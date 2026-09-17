@@ -19,21 +19,18 @@ namespace LMLocal.Infrastructure.WebView
     {
         private readonly IGetActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
-        private readonly IChatHistoryManager _chatHistoryManager;
-        private readonly IHistoryCompactor _historyCompactor;
+        private readonly IChatHistoryService _chatHistoryService;
         private readonly ISnapshotManager _snapshotManager;
 
         public WebViewBridgeFactory(
             IGetActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
-            IChatHistoryManager chatHistoryManager,
-            IHistoryCompactor historyCompactor,
+            IChatHistoryService chatHistoryService,
             ISnapshotManager snapshotManager)
         {
             _activeDocumentTool = activeDocumentTool ?? throw new ArgumentNullException(nameof(activeDocumentTool));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
-            _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
-            _historyCompactor = historyCompactor ?? throw new ArgumentNullException(nameof(historyCompactor));
+            _chatHistoryService = chatHistoryService ?? throw new ArgumentNullException(nameof(chatHistoryService));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         }
 
@@ -44,7 +41,7 @@ namespace LMLocal.Infrastructure.WebView
 
             var scriptExecutor = new WebViewScriptExecutor(coreWebView2);
 
-            return new WebViewBridge(scriptExecutor, _activeDocumentTool, _sessionManager, _chatHistoryManager, _historyCompactor, _snapshotManager);
+            return new WebViewBridge(scriptExecutor, _activeDocumentTool, _sessionManager, _chatHistoryService, _snapshotManager);
         }
     }
 }

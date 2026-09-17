@@ -73,6 +73,7 @@
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
+    <Compile Include="Application\Chat\ChatHistoryService.cs" />
     <Compile Include="Application\Chat\ChatSessionSummary.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
     <Compile Include="Application\ModelsList\TestConnectionResult.cs" />
@@ -176,6 +177,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ContentSearchMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\DeclarationMatcher.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\KnowledgeSearchModels.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\QueryClassifier.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchGrouping.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchMatchKind.cs" />
@@ -188,6 +190,8 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsFileFilter.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfo.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectType.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\KnowledgeScorer.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchKnowledge.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SetFileProjectStatus.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContent.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolution.cs" />

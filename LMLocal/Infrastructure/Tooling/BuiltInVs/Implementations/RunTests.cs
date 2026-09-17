@@ -334,7 +334,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ["filter"] = new ToolDetails
                         {
                             Type = "string",
-                            Description = "Optional test name substring. Only tests whose fully qualified name contains it are run (VSTest --filter / --TestCaseFilter)."
+                            Description = "Optional plain substring matched against the test's fully qualified name. Pass only a test class or test name substring, such as 'ClearChat' or 'PersistenceOrderingProbeTests'. Do not include VSTest filter syntax such as FullyQualifiedName~, Name~, Category=, AND, or OR."
                         },
                         ["include_full_output"] = new ToolDetails
                         {

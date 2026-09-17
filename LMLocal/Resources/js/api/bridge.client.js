@@ -87,6 +87,11 @@ class BridgeClient {
         return JSON.parse(res);
     }
 
+    async getCurrentChatHistoryAsync() {
+        const res = await this._callChatSession("GetCurrentChatHistoryAsync");
+        return JSON.parse(res);
+    }
+
     async getChatSessionsAsync() {
         const res = await this._callChatSession("GetChatSessionsAsync");
         return JSON.parse(res);

@@ -67,12 +67,12 @@ namespace LMLocal.Tests.Unit
             };
 
             mockClient.Setup(c => c.SendChatAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
-            mockHistory.Setup(h => h.ReplaceHistory(It.IsAny<string>(), It.IsAny<System.Collections.Generic.IEnumerable<ChatMessage>>(), It.IsAny<int>())).Returns(true).Verifiable();
+            mockHistory.Setup(h => h.ReplaceHistoryAndPersistAsync(It.IsAny<string>(), It.IsAny<System.Collections.Generic.IEnumerable<ChatMessage>>(), It.IsAny<int>())).ReturnsAsync(true).Verifiable();
 
             var compactor = new HistoryCompactor(mockHistory.Object, mockClient.Object, mockSettings.Object, mockActiveModelContext.Object);
             compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
 
-            mockHistory.Verify(h => h.ReplaceHistory(
+            mockHistory.Verify(h => h.ReplaceHistoryAndPersistAsync(
                 It.Is<string>(s => s == "summary content"),
                 It.Is<System.Collections.Generic.IEnumerable<ChatMessage>>(r => r.Count() == 10),
                 It.Is<int>(n => n == snapshot.Count)), Times.Once);

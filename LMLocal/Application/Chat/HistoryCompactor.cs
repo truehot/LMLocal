@@ -32,10 +32,18 @@ namespace LMLocal.Application.Chat
         private const double CompactionTakeRatio = 0.8;
         private const double CompactionThresholdRatio = 0.8;
 
+        /// <summary>
+        /// System prompt used for every history summarization (both automatic compaction and manual summarize).
+        /// </summary>
+        private const string SummarySystemPrompt =
+            "Summarize this conversation briefly, preserving key decisions and full code blocks completely intact so I can continue it later.";
+
+
         private readonly IChatHistoryManager _history;
         private readonly IOpenApiAdapter _openApiAdapter;
         private readonly ISettingsManager _settingsManager;
         private readonly IActiveModelContext _activeModelContext;
+
 
         public HistoryCompactor(IChatHistoryManager history, IOpenApiAdapter openApiAdapter, ISettingsManager settingsManager, IActiveModelContext activeModelContext)
         {
@@ -45,10 +53,12 @@ namespace LMLocal.Application.Chat
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
         }
 
+
         private int GetMaxContext()
         {
             return _activeModelContext.MaxContextLength > 0 ? _activeModelContext.MaxContextLength : 16384;
         }
+
 
         public bool NeedsCompaction()
         {
@@ -60,6 +70,7 @@ namespace LMLocal.Application.Chat
             return chars / 4 >= (int)(GetMaxContext() * CompactionThresholdRatio);
         }
 
+
         public async Task CompactIfNeededAsync(string modelId, CancellationToken cancellationToken)
         {
             if (!NeedsCompaction())
@@ -68,42 +79,32 @@ namespace LMLocal.Application.Chat
             var snapshot = _history.GetHistoryCopy();
             var expectedSize = snapshot.Count;
 
+
             int toTake = (int)(snapshot.Count * CompactionTakeRatio);
             if (toTake <= 0) return;
             var toSummarize = snapshot.Take(toTake).ToList();
 
+
             if (toSummarize.Count == 0)
                 return;
 
+
             try
             {
-                var summaryRequest = new List<ChatMessage>
+                var parsedSummary = await SummarizeCoreAsync(toSummarize, modelId, cancellationToken).ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(parsedSummary))
                 {
-                    new ChatMessage("system", "Summarize this conversation briefly, preserving key decisions and full code blocks completely intact so I can continue it later."),
-                    new ChatMessage("user", FormatForSummary(toSummarize))
-                };
-
-                var modelContext = new ModelContext(modelId: modelId, temperature: 0.3);
-                var messageContext = new MessageContext(summaryRequest);
-
-                SendChatResponse response = await _openApiAdapter.SendChatAsync(messageContext, modelContext, cancellationToken).ConfigureAwait(false);
-                if (response != null)
+                    var recent = snapshot.Skip(toSummarize.Count);
+                    var success = await _history.ReplaceHistoryAndPersistAsync(parsedSummary, recent, expectedSize).ConfigureAwait(false);
+                    if (!success)
+                    {
+                        InternalLogger.Debug("History size changed during compaction, skipping replace.");
+                    }
+                }
+                else
                 {
-                    var parsedSummary = response?.Choices?.FirstOrDefault(x => x != null)?.Message?.Content?.Trim();
-
-                    if (!string.IsNullOrWhiteSpace(parsedSummary))
-                    {
-                        var recent = snapshot.Skip(toSummarize.Count);
-                        var success = _history.ReplaceHistory(parsedSummary, recent, expectedSize);
-                        if (!success)
-                        {
-                            InternalLogger.Debug("History size changed during compaction, skipping replace.");
-                        }
-                    }
-                    else
-                    {
-                        InternalLogger.Warn("Compaction produced empty summary, skipping history replacement.");
-                    }
+                    InternalLogger.Warn("Compaction produced empty summary, skipping history replacement.");
                 }
             }
             catch (OperationCanceledException)
@@ -116,26 +117,15 @@ namespace LMLocal.Application.Chat
             }
         }
 
+
         public async Task<string> SummarizeAsync(IReadOnlyList<ChatMessage> history, string modelId, CancellationToken ct)
         {
             if (history == null || history.Count == 0)
                 return null;
 
-            var toSummarize = history.ToList();
-
             try
             {
-                var summaryRequest = new List<ChatMessage>
-                {
-                    new ChatMessage("system", "Summarize the following conversation briefly, preserving key facts, decisions and code details."),
-                    new ChatMessage("user", FormatForSummary(toSummarize))
-                };
-
-                var modelContext = new ModelContext(modelId: modelId, temperature: 0.3);
-                var messageContext = new MessageContext(summaryRequest);
-
-                SendChatResponse response = await _openApiAdapter.SendChatAsync(messageContext, modelContext, ct).ConfigureAwait(false);
-                var parsedSummary = response?.Choices?.FirstOrDefault(x => x != null)?.Message?.Content?.Trim();
+                var parsedSummary = await SummarizeCoreAsync(history, modelId, ct).ConfigureAwait(false);
 
                 if (!string.IsNullOrWhiteSpace(parsedSummary))
                     return parsedSummary;
@@ -155,7 +145,27 @@ namespace LMLocal.Application.Chat
             }
         }
 
-        private static string FormatForSummary(List<ChatMessage> messages)
+
+        /// <summary>
+        /// Shared LLM summarization core used by both manual summarize and automatic compaction.
+        /// </summary>
+        private async Task<string> SummarizeCoreAsync(IReadOnlyList<ChatMessage> toSummarize, string modelId, CancellationToken ct)
+        {
+            var summaryRequest = new List<ChatMessage>
+            {
+                new ChatMessage("system", SummarySystemPrompt),
+                new ChatMessage("user", FormatForSummary(toSummarize))
+            };
+
+            var modelContext = new ModelContext(modelId: modelId, temperature: 0.3);
+            var messageContext = new MessageContext(summaryRequest);
+
+            SendChatResponse response = await _openApiAdapter.SendChatAsync(messageContext, modelContext, ct).ConfigureAwait(false);
+            return response?.Choices?.FirstOrDefault(x => x != null)?.Message?.Content?.Trim();
+        }
+
+
+        private static string FormatForSummary(IReadOnlyList<ChatMessage> messages)
         {
             var sb = new StringBuilder();
             foreach (var msg in messages)
@@ -164,6 +174,7 @@ namespace LMLocal.Application.Chat
                     continue;
                 if (msg.Role == "assistant" && (msg.ToolCalls != null || msg.Content == null))
                     continue;
+
 
                 sb.AppendLine($"{msg.Role}: {ContentTextExtractor.ExtractTextContent(msg.Content)}");
                 sb.AppendLine();

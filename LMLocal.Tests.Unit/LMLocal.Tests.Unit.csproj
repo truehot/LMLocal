@@ -86,6 +86,7 @@
     <Compile Include="Infrastructure\ApiRequestBuilderTests.cs" />
     <Compile Include="Infrastructure\CertificatePathValidatorTests.cs" />
     <Compile Include="Infrastructure\ChatLogSerializerTests.cs" />
+    <Compile Include="Infrastructure\ChatPersistenceServiceOrderingTests.cs" />
     <Compile Include="Infrastructure\ChatPersistenceServiceTests.cs" />
     <Compile Include="Infrastructure\ChatSessionControllerTests.cs" />
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
@@ -139,6 +140,8 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\KnowledgeScorerTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchKnowledgeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFileTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Js\JsConfigResolverTests.cs" />
@@ -161,8 +164,10 @@
     <Compile Include="InstructionsControllerTests.cs" />
     <Compile Include="Internal\ActivityReportingStreamTests.cs" />
     <Compile Include="Internal\ChatGenerationServiceTests.cs" />
+    <Compile Include="Internal\ChatHistoryManagerClearTests.cs" />
     <Compile Include="Internal\ChatHistoryManagerTests.cs" />
     <Compile Include="Internal\ChatHistoryNormalizerTests.cs" />
+    <Compile Include="Internal\ChatHistoryServiceTests.cs" />
     <Compile Include="Internal\ChatSessionOrchestratorTests.cs" />
     <Compile Include="Internal\ChatSessionOrchestratorToolTests.cs" />
     <Compile Include="Internal\InternalLoggerTests.cs" />

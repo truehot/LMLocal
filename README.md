@@ -203,15 +203,18 @@ To use LM Local, you need:
 
 The **"Providers..."** dialog allows you to create and save multiple provider profiles (servers) so you don't have to re-enter your API keys and base URLs every time. You can store as many profiles as you need, including both **local servers** (like Ollama running on your machine) and **cloud remote services** (like Groq, OpenAI, or Gemini).
 
-Once configured, you can seamlessly switch between your saved profiles via the main settings.
-
 > 🔒 **Privacy & Data Usage Note:** Unlike local servers which keep 100% of your data offline on your machine, **cloud remote providers** process your requests on external servers. Data retention policies vary significantly by provider - some services may use your prompt history and codebase context for model training by default. Always verify the provider's privacy policy and terms of service before transmitting proprietary or sensitive source code.
 
-> [!NOTE]
-> **Settings vs. Provider Profiles (Runtime Source of Truth):**
+Once configured, you can seamlessly switch between your saved profiles via the main settings.
+
+> **⚠️ Note on Settings:**
 > Global **Settings** act as the single runtime source of truth. Custom providers are stored as reusable profiles — selecting an active provider profile in Settings applies its values (API base URL, API key, etc.) to the runtime configuration.
-> - **Single provider:** You can configure Settings directly without needing a profile.
-> - **Multiple providers:** Set them up as profiles via **Providers...** and keep provider-specific endpoints and keys inside each profile. Switching the active provider in Settings cleanly applies that profile's values.
+> * **Single provider:** You can configure Settings directly without needing a profile.
+> * **Multiple providers:** Set them up as profiles via **Providers...** and keep provider-specific endpoints and keys inside each profile.
+> 
+> 
+> *Warning:* Switching active providers re-applies that profile's values and overwrites direct edits in Settings. **Recommendation:** Always keep provider-specific endpoints and keys inside the profile.
+
 
 ### Quick example 
 
@@ -318,6 +321,7 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `set_file_project_status` | Includes a file in a project, or removes it from the project and deletes it from disk. | C#, VB.NET, F#, C++ (.vcxproj) | – |
 | `read_file_lines` | Reads a specific range of lines. | All | – |
 | `search_file_content` | Searches for a text string (case‑insensitive) inside solution files. | All | – |
+| `search_solution_knowledge` | Searches Markdown files in predefined folders of the solution. | Markdown | Folders are configured in Settings → `Knowledge base paths`. |
 | `get_active_document` | Returns the path and full text of the currently open document. | All | – |
 | `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Automatic syntax check applies * |
 | `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Automatic syntax check applies * |
@@ -373,7 +377,16 @@ To quickly test subagents without manually editing JSON:
 2. **Sync Settings:** In LMLocal, switch your active chat model to that local model, open **Sub Agents** from the main menu, and click **Use Active Model**. This sets up the root provider defaults and creates the predefined subagent configs automatically.
 3. **Switch Back & Run:** Switch your main chat back to your primary model (e.g., Claude, GPT-5, or a large local LLM), ensure subagents are enabled via the **'s'** toolbar icon, and send a task (e.g., *"Find my class in the solution"*).
 
----
+
+### Predefined Subagents
+
+Out of the box, LMLocal includes **4 predefined subagents** optimized for different code-exploration and testing tasks:
+
+1. **Code explorer** (`code_explorer_subagent`) — Read-only code explorer for finding files by name or content, listing directories, and general path discovery.
+2. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to find and read specific files or code ranges verbatim.
+3. **Symbol Analyzer** (`symbol_analyzer_subagent`) — Read-only symbol analyzer for C# and JavaScript symbols, declarations, references, and type metadata.
+4. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
+
 
 ### Configuration
 
@@ -390,9 +403,8 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
     {
       "id": "code_explorer_subagent",
       "displayName": "Code explorer",
-      "description": "Read-only code explorer. Searches for files by name, reads file contents, and lists directories. Use this for plain text searches and finding file paths. It cannot modify code. ",
-      "system": "You are a read-only code explorer. Search for files, search file contents, inspect directories, and read file contents. When searching, use the tool that best matches the query. If the first result is insufficient, continue searching. When asked to read/show a file, return its content VERBATIM and COMPLETE. Do not guess paths or contents. If a tool returns empty results, do not repeat the same request; try a different search strategy.",
-      "temperature": 1.0,
+      "description": "Read-only code explorer. Finds files by name or content, lists directories, and explores the open solution to locate relevant files...",
+      "system": "You are a read-only code explorer. Search for files, search file contents, inspect directories, and read file contents.\nWhen searching, use the tool that best matches the query...",
       "timeoutSeconds": 480,
       "maxRounds": 99,
       "maxTokens": 65536,
@@ -410,7 +422,7 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
   "providerType": "lmstudio",
   "customBaseUrl": "http://localhost:1234",
   "model": "google/gemma-4-e4b",
-  "temperature": 1.0,
+  "temperature": 0.0,
   "reasoningEffort": "high"
 }
 ```
@@ -422,10 +434,20 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
 Open the Sub Agents dialog from the main menu.
 
 - **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat’s model, provider, base URL, and API key into the root defaults, and also updates any agent that already has its own `model` set. If no agents exist, it downloads a default configuration first.
+- **Use Active Model** – copies the current main chat’s model, provider, base URL, and API key into the root defaults, and also updates any agent that already has its own `model` set. If no agents exist, it saves the predefined subagents to the configuration file first.
 - **Save** – only `enabled` flags and root-level changes are written; all other fields remain exactly as you typed them in the JSON file (inherited fields are not expanded).
 
 Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable Sub Agents (beta)"** checkbox in Settings.
+
+
+
+### ⚠️ Fine-Tuning & Reliability for Small Models (<8B)
+
+**Models under 8B parameters** are often unreliable for complex multi-step tasks and tend to get stuck in loops or hallucinate tool arguments. If you want to configure and tune subagents yourself using a small model (<8B), keep these key points in mind:
+
+1. **Defensive Prompting is Mandatory:** You **must** use a strict system prompt with explicit planning steps and verification loops, or be prepared to switch to a larger model.
+2. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal tests for the predefined read agents to check basic functionality.
+> ⏱️ **Important for models <8B:** Because `Run_Full_Benchmark` executes against a live `lmlocal` solution in real time, it runs **relatively slowly**. **Run the benchmark multiple times** rather than just once to account for model variance and verify how reliably your custom prompts handle real workloads across multiple attempts.
 
 ---
 
@@ -571,7 +593,6 @@ Context window accumulation can lead to high API costs or local performance drop
 * **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LM Local to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
 * **Use a lightweight project map (no RAG):** Create a context.md file (manually or ask the model to generate it) describing your project structure, main classes, and patterns. Attach it to the first message to give the model a "project map" without attaching the whole codebase. This saves tokens and reduces context size.
 * **Delegate heavy tasks to Subagents:** When performing extensive codebase searches or complex multi-step operations, enable **Subagents**. Instead of letting the main chat accumulate long chains of tool calls and raw file outputs (which quickly drains your context window), a subagent handles the task in its own isolated loop. It does the heavy lifting in the background and returns only a concise summary to your main conversation, keeping your primary session lean and significantly reducing token costs.
-* **Enable History Whitespace Cleaning:** Toggle **"Clean whitespace in history"** in the settings. This compresses redundant spaces, tabs, and excess newlines in background turns—slightly reducing context size and saving tokens without altering your rich-text UI.
 
 
 ### ⚡ How do I maximize model speed (even with a quality drop)?

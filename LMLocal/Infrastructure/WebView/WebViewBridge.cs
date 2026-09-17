@@ -67,23 +67,20 @@ namespace LMLocal.Infrastructure.WebView
         private readonly IWebViewScriptExecutor _scriptExecutor;
         private readonly IGetActiveDocument _activeDocumentTool;
         private readonly ISessionManager _sessionManager;
-        private readonly IChatHistoryManager _chatHistoryManager;
-        private readonly IHistoryCompactor _historyCompactor;
+        private readonly IChatHistoryService _chatHistoryService;
         private readonly ISnapshotManager _snapshotManager;
 
         internal WebViewBridge(
             IWebViewScriptExecutor scriptExecutor,
             IGetActiveDocument activeDocumentTool,
             ISessionManager sessionManager,
-            IChatHistoryManager chatHistoryManager,
-            IHistoryCompactor historyCompactor,
+            IChatHistoryService chatHistoryService,
             ISnapshotManager snapshotManager)
         {
             _scriptExecutor = scriptExecutor ?? throw new ArgumentNullException(nameof(scriptExecutor));
             _activeDocumentTool = activeDocumentTool ?? throw new ArgumentNullException(nameof(activeDocumentTool));
             _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
-            _chatHistoryManager = chatHistoryManager ?? throw new ArgumentNullException(nameof(chatHistoryManager));
-            _historyCompactor = historyCompactor ?? throw new ArgumentNullException(nameof(historyCompactor));
+            _chatHistoryService = chatHistoryService ?? throw new ArgumentNullException(nameof(chatHistoryService));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _snapshotManager.SnapshotChangedAsync += OnSnapshotChangedAsync;
         }
@@ -167,90 +164,17 @@ namespace LMLocal.Infrastructure.WebView
         /// <summary>
         /// Resets the chat history with the specified action.
         /// </summary>
-        public async Task<bool> ResetHistoryWithActionAsync(string action)
+        public Task<bool> ResetHistoryWithActionAsync(string action)
         {
-            try
-            {
-                if (_sessionManager.IsSessionRunning)
-                {
-                    InternalLogger.Info("ResetHistoryWithActionAsync: Cannot reset while session is running");
-                    return false;
-                }
-
-                switch (action)
-                {
-                    case "last-prompt":
-                        await _chatHistoryManager.MoveLastExchangeToNewSessionAsync().ConfigureAwait(false);
-                        InternalLogger.Info("ResetHistoryWithActionAsync: Moved last exchange to new session");
-                        break;
-                    case "last-exchange":
-                        await _chatHistoryManager.ConsolidateLastExchangeAsync().ConfigureAwait(false);
-                        InternalLogger.Info("ResetHistoryWithActionAsync: Consolidated last exchange");
-                        break;
-                    default:
-                        _chatHistoryManager.Clear();
-                        InternalLogger.Info("ResetHistoryWithActionAsync: History cleared successfully");
-                        break;
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error("ResetHistoryWithActionAsync failed", ex);
-                return false;
-            }
+            return _chatHistoryService.ResetHistoryAsync(action);
         }
 
         /// <summary>
         /// Summarizes the current chat history via LLM, then replaces it with a compact user instruction + summary assistant pair. 
         /// </summary>
-        public async Task<bool> SummarizeAndCompactAsync(string modelId)
+        public Task<bool> SummarizeAndCompactAsync(string modelId)
         {
-            try
-            {
-                if (_sessionManager.IsSessionRunning)
-                {
-                    InternalLogger.Info("SummarizeAndCompactAsync: Cannot run while session is active");
-                    return false;
-                }
-
-                if (string.IsNullOrWhiteSpace(modelId))
-                {
-                    InternalLogger.Info("SummarizeAndCompactAsync: No active model");
-                    return false;
-                }
-
-                var snapshot = _chatHistoryManager.GetHistoryCopy();
-                if (snapshot.Count == 0)
-                {
-                    _chatHistoryManager.Clear();
-                    return true;
-                }
-
-                var summary = await _historyCompactor.SummarizeAsync(snapshot, modelId, CancellationToken.None).ConfigureAwait(false);
-
-                _chatHistoryManager.Clear();
-
-                if (!string.IsNullOrWhiteSpace(summary))
-                {
-                    _chatHistoryManager.AddUserMessage("Provide a brief summary of our previous session to continue.");
-                    _chatHistoryManager.AddAssistantMessage(summary, null);
-                    InternalLogger.Info("SummarizeAndCompactAsync: History summarized and compacted");
-                }
-                else
-                {
-                    InternalLogger.Warn("SummarizeAndCompactAsync: Summarization failed, history cleared");
-                }
-
-                return !string.IsNullOrWhiteSpace(summary);
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error("SummarizeAndCompactAsync failed", ex);
-                _chatHistoryManager.Clear();
-                return false;
-            }
+            return _chatHistoryService.SummarizeAndCompactAsync(modelId);
         }
 
         /// <summary>

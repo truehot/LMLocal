@@ -18,6 +18,10 @@ class AppDataService {
         return await bridgeClient.getLastChatSessionAsync();
     }
 
+    async getCurrentChatHistoryAsync() {
+        return await bridgeClient.getCurrentChatHistoryAsync();
+    }
+
     async getChatSessionsAsync() {
         return await bridgeClient.getChatSessionsAsync();
     }

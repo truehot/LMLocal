@@ -7,6 +7,7 @@ class SettingsStoreClass extends BaseStoreClass {
             ProviderId: null,
             LmStudioBaseUrl: "http://localhost:1234",
             TrustedServerCertificatePath: "",
+            KnowledgeBasePaths: "./; ./docs",
             ApiKey: "",
             AutoLoadOnStartup: true,
             EnableHistoryCompression: true,

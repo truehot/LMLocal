@@ -18,10 +18,10 @@ namespace LMLocal.Infrastructure.Persistence
         internal const int MaxPromptLength = 200;
 
         /// <summary>Maximum number of jsonl files scanned when loading or listing sessions.</summary>
-        internal const int MaxJsonlFilesToScan = 50;
+        internal const int MaxJsonlFilesToScan = 100;
 
         /// <summary>Default limit for the session list returned by GetChatSessionsAsync.</summary>
-        internal const int DefaultSessionListLimit = 200;
+        internal const int DefaultSessionListLimit = 300;
 
         /// <summary>
         /// Builds the consistent hourly file name: yyyyMMdd_HH_label.jsonl.

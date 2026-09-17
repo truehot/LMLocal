@@ -461,6 +461,13 @@
                     </div>
                 </div>
                 <div class="settings-group">
+                    <label for="knowledge-base-paths" class="settings-label">Knowledge base paths</label>
+                    <span class="settings-description">
+                        Semicolon-separated relative paths to scan for markdown files (e.g., <code>./; docs/</code>). Leave empty to disable knowledge base search.
+                    </span>
+                    <input id="knowledge-base-paths" type="text" name="KnowledgeBasePaths" data-setting="KnowledgeBasePaths" placeholder="./; docs/">
+                </div>
+                <div class="settings-group">
                     <label for="trusted-server-certifiate-path" class="settings-label">Trusted server certificate</label>
                     <span class="settings-description">
                         Path to a public certificate (.cer/.crt/.pem) for self-signed or private CA servers. Leave empty for default trust.

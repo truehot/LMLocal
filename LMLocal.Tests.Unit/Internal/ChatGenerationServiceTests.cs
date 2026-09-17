@@ -139,7 +139,7 @@ namespace LMLocal.Tests.Unit
             public void AddAssistantMessage(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
             public void Clear() { }
             public IReadOnlyList<ChatMessage> GetHistoryCopy() => new List<ChatMessage>();
-            public bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize) => true;
+            public Task<bool> ReplaceHistoryAndPersistAsync(string summary, IEnumerable<ChatMessage> recent, int expectedSize) => Task.FromResult(true);
             public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null) => new List<ChatMessage>();
             public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages) { }
             public Task<List<ChatMessage>> LoadLastSessionAsync() => Task.FromResult(new List<ChatMessage>());
@@ -149,6 +149,7 @@ namespace LMLocal.Tests.Unit
             public Task ConsolidateLastExchangeAsync() => Task.CompletedTask;
             public Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = 200) => Task.FromResult(new List<ChatSessionSummary>());
             public Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId) => Task.FromResult(new List<ChatMessage>());
+            public Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages) => Task.CompletedTask;
         }
 
         private class DummyCompactor : IHistoryCompactor

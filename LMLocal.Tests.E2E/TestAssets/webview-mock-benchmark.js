@@ -89,6 +89,10 @@ const __mockBridge = {
     UpdateSettingsAsync: async (json) => {
         console.log('[mock] UpdateSettingsAsync called');
         return true;
+    },
+    GetSnapshotAsync: async () => {
+        console.log('[mock] GetSnapshotAsync called');
+        return JSON.stringify({});
     }
 };
 

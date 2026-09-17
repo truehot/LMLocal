@@ -128,6 +128,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, RunTests>();
             services.AddTransient<IBuiltInTool, SearchFileContent>();
             services.AddTransient<IBuiltInTool, SetFileProjectStatus>();
+            services.AddTransient<IBuiltInTool, SearchKnowledge>();
 
             services.AddTransient<IGetActiveDocument, GetActiveDocument>();
 
@@ -148,6 +149,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
             services.AddSingleton<IChatPersistenceService, ChatPersistenceService>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
+            services.AddSingleton<IChatHistoryService, ChatHistoryService>();
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();

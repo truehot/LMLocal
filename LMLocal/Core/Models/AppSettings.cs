@@ -18,6 +18,11 @@ namespace LMLocal.Core.Models
         public string TrustedServerCertificatePath { get; set; } = string.Empty;
 
         /// <summary>
+        /// Semicolon-separated paths (relative to solution root) scanned for knowledge-base .md files. Default = "./; ./docs".
+        /// </summary>
+        public string KnowledgeBasePaths { get; set; } = "./; ./docs";
+
+        /// <summary>
         /// When true, the application will attempt to connect to LM Studio on startup.
         /// </summary>
         public bool AutoLoadOnStartup { get; set; } = true;
@@ -122,7 +127,8 @@ namespace LMLocal.Core.Models
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase)
                 && ProviderId == other.ProviderId
-                && string.Equals(TrustedServerCertificatePath, other.TrustedServerCertificatePath, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(TrustedServerCertificatePath, other.TrustedServerCertificatePath, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(KnowledgeBasePaths, other.KnowledgeBasePaths, StringComparison.OrdinalIgnoreCase);
         }
 
         public override bool Equals(object obj) => Equals(obj as AppSettings);
@@ -150,6 +156,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
                 hash = hash * 23 + ProviderId.GetHashCode();
                 hash = hash * 23 + (TrustedServerCertificatePath != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(TrustedServerCertificatePath) : 0);
+                hash = hash * 23 + (KnowledgeBasePaths != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(KnowledgeBasePaths) : 0);
                 return hash;
             }
         }

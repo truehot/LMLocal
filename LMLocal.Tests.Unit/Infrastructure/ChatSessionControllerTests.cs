@@ -89,6 +89,43 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
+        public async Task GetCurrentChatHistoryAsync_WhenMemoryHasMessages_ReturnsJsonWithHasSessionTrue()
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.GetHistoryCopy())
+                .Returns(new List<ChatMessage>
+                {
+                    new ChatMessage("user", "hello"),
+                    new ChatMessage("assistant", "hi")
+                });
+
+            var json = await _controller.GetCurrentChatHistoryAsync();
+            var result = JObject.Parse(json);
+
+            Assert.That((bool)result["hasSession"], Is.True);
+            Assert.That(result["messages"], Has.Count.EqualTo(2));
+            Assert.That((string)result["messages"][0]["role"], Is.EqualTo("user"));
+            Assert.That((string)result["messages"][0]["content"], Is.EqualTo("hello"));
+
+            // Memory-only path must not touch persistence.
+            _chatHistoryManagerMock.Verify(h => h.LoadLastSessionAsync(), Times.Never);
+        }
+
+        [Test]
+        public async Task GetCurrentChatHistoryAsync_WhenMemoryEmpty_ReturnsHasSessionFalse()
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.GetHistoryCopy())
+                .Returns(new List<ChatMessage>());
+
+            var json = await _controller.GetCurrentChatHistoryAsync();
+            var result = JObject.Parse(json);
+
+            Assert.That((bool)result["hasSession"], Is.False);
+            Assert.That(result["messages"], Has.Count.EqualTo(0));
+        }
+
+        [Test]
         public async Task GetChatSessionsAsync_ReturnsJsonWithSessions()
         {
             _chatHistoryManagerMock

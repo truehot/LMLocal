@@ -50,7 +50,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Retrieves navigation information for a C# symbol: all declaration sites (file path, line, column, full signature including parameters, modifiers, namespace) and optionally usages/references (file path, line, line text, symbol kind). Does NOT return method bodies, fields, properties, base classes, or dependencies. Case‑insensitive, supports overloads/partials. Use optional file_path to limit search to a specific file. References limited to 5000, paginated by page size (default 50).",
+                Description = "Retrieves navigation information for a C# symbol: all declaration sites (file path, line, column, full signature including parameters, modifiers, namespace) and optionally usages/references (file path, line, line text, symbol kind). Does NOT return method bodies, fields, properties, base classes, or dependencies. Case‑insensitive, supports overloads/partials. Use optional file_path to limit search to a specific file. References limited to 5000, paginated by page size (default 50). Lines are 1-indexed.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -98,7 +98,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             References = pagedRefs,
                             TotalReferences = cachedInfo.References?.Count ?? 0,
                             NextPageToken = nextToken,
-                            HasMoreResults = cachedInfo.HasMoreResults
+                            HasMoreResults = nextToken != null || cachedInfo.HasMoreResults
                         };
                     }
                 }
@@ -131,7 +131,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     References = pagedRefsResult,
                     TotalReferences = fullResult.References?.Count ?? 0,
                     NextPageToken = nextTokenResult,
-                    HasMoreResults = fullResult.HasMoreResults
+                    HasMoreResults = nextTokenResult != null || fullResult.HasMoreResults
                 };
             }
             catch (OperationCanceledException)
@@ -205,7 +205,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                 if (!string.IsNullOrEmpty(targetFilePath))
                                 {
                                     bool hasDeclarationInFile = symbol.DeclaringSyntaxReferences
-                                        .Any(r => r.SyntaxTree?.FilePath == targetFilePath);
+                                        .Any(r => r.SyntaxTree?.FilePath != null && string.Equals(r.SyntaxTree.FilePath, targetFilePath, StringComparison.OrdinalIgnoreCase));
                                     if (!hasDeclarationInFile)
                                         continue;
                                 }
@@ -221,7 +221,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                     if (string.IsNullOrEmpty(filePath))
                                         continue;
 
-                                    if (!string.IsNullOrEmpty(targetFilePath) && filePath != targetFilePath)
+                                    if (!string.IsNullOrEmpty(targetFilePath) && !string.Equals(filePath, targetFilePath, StringComparison.OrdinalIgnoreCase))
                                         continue;
 
                                     var lineSpan = location.GetLineSpan();
@@ -276,8 +276,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                         if (includeReferences && foundSymbols.Any())
                         {
-                            ISymbol targetSymbol = foundSymbols.FirstOrDefault(s => string.Equals(s.Name, symbolName, StringComparison.Ordinal))
-                                                  ?? foundSymbols.First();
+                            ISymbol targetSymbol;
+                            if (!string.IsNullOrEmpty(targetFilePath))
+                            {
+                                targetSymbol = foundSymbols.FirstOrDefault(s =>
+                                    s.DeclaringSyntaxReferences.Any(r =>
+                                        r.SyntaxTree?.FilePath != null &&
+                                        string.Equals(r.SyntaxTree.FilePath, targetFilePath, StringComparison.OrdinalIgnoreCase)));
+                            }
+                            else
+                            {
+                                targetSymbol = foundSymbols.FirstOrDefault(s => string.Equals(s.Name, symbolName, StringComparison.Ordinal))
+                                              ?? foundSymbols.First();
+                            }
 
                             var references = await SymbolFinder.FindReferencesAsync(
                                 targetSymbol,
@@ -464,11 +475,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Failed: {resp.ErrorMessage}";
 
                 string msg = $"{resp.Definitions?.Count ?? 0} {Pluralizer.Pluralize(resp.Definitions?.Count ?? 0, "definition", "definitions")} found";
-                if (resp.References?.Count > 0)
-                    msg += $", {resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")}";
-                if (resp.HasMoreResults)
-                    msg += " (more results exist, limit 5000 reached)";
-                return msg;
+                int pageRefs = resp.References?.Count ?? 0;
+                if (pageRefs > 0 || resp.TotalReferences > 0)
+                    msg += $", {pageRefs} {Pluralizer.Pluralize(pageRefs, "reference", "references")}";
+                if (resp.TotalReferences > 0 && pageRefs < resp.TotalReferences)
+                    msg += $" (total: {resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")})";
+                return msg + ".";
             }
             return "Symbol info retrieval completed.";
         }

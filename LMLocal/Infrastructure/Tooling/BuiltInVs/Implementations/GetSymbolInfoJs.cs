@@ -71,7 +71,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Retrieves navigation information for a JavaScript symbol: declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Use when the symbol is known. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50).",
+                Description = "Retrieves navigation information for a JavaScript symbol: declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Use when the symbol is known. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50). Lines are 1-indexed.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -208,7 +208,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Files = BuildFileGroups(fullResult.Definitions ?? new List<JsDefinitionItem>(), pagedRefs, fullResult.Importers ?? new List<JsImporterLink>()),
                 TotalReferences = fullResult.References?.Count ?? 0,
                 NextPageToken = nextToken,
-                HasMoreResults = fullResult.HasMoreResults,
+                HasMoreResults = nextToken != null || fullResult.HasMoreResults,
                 DefinitionChain = fullResult.DefinitionChain ?? new List<JsImportChainLink>(),
                 Importers = fullResult.Importers ?? new List<JsImporterLink>()
             };
@@ -684,17 +684,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Failed: {resp.ErrorMessage}";
 
                 int definitions = resp.Definitions?.Count ?? 0;
+                int pageRefs = resp.References?.Count ?? 0;
                 string msg = definitions > 0
                     ? $"{definitions} {Pluralizer.Pluralize(definitions, "definition", "definitions")} found"
                     : string.Empty;
 
-                if (resp.TotalReferences > 0)
-                    msg += (msg.Length > 0 ? ", " : "") + $"{resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")}";
+                if (pageRefs > 0 || resp.TotalReferences > 0)
+                    msg += (msg.Length > 0 ? ", " : "") + $"{pageRefs} {Pluralizer.Pluralize(pageRefs, "reference", "references")}";
 
-                if (resp.HasMoreResults)
-                    msg += " (more results exist, limit 5000 reached)";
+                if (resp.TotalReferences > 0 && pageRefs < resp.TotalReferences)
+                    msg += $" (total: {resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")})";
 
-                return msg.Length > 0 ? msg : "No results found.";
+                return msg.Length > 0 ? msg + "." : "No results found.";
             }
             return "JS symbol info retrieval completed.";
         }

@@ -41,9 +41,9 @@ namespace LMLocal.Application.Chat
         IReadOnlyList<ChatMessage> GetHistoryCopy();
 
         /// <summary>
-        /// Atomically replaces history with a summary + recent messages, only if current size matches expectedSize.
+        /// Atomically replaces history (summary + recent) only if size matches expectedSize, then persists the new session to disk.
         /// </summary>
-        bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize);
+        Task<bool> ReplaceHistoryAndPersistAsync(string summary, IEnumerable<ChatMessage> recent, int expectedSize);
 
         /// <summary>
         /// Builds a message list for the current provider. 
@@ -89,6 +89,11 @@ namespace LMLocal.Application.Chat
         /// Loads all messages for a specific session by ID and makes it the working session (replaces in-memory history without spawning a new session boundary).
         /// </summary>
         Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId);
+
+        /// <summary>
+        /// Clears history, starts a new session, and persists the provided messages in that new session.
+        /// </summary>
+        Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages);
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -108,7 +113,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Creates a chat history manager backed by the given persistence service.
         /// </summary>
-        public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence = null, IToolResultMarkdownFormatter formatter = null)
+        public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence, IToolResultMarkdownFormatter formatter = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
@@ -159,7 +164,7 @@ namespace LMLocal.Application.Chat
                 _history.Add(userMessage);
             }
 
-            _ = _persistence?.SaveLastMessageAsync(userMessage, CancellationToken.None);
+            _ = _persistence.SaveLastMessageAsync(userMessage, CancellationToken.None);
         }
 
         /// <summary>
@@ -175,7 +180,7 @@ namespace LMLocal.Application.Chat
             {
                 _history.Add(assistantMessage);
             }
-            _ = _persistence?.SaveLastMessageAsync(assistantMessage, CancellationToken.None);
+            _ = _persistence.SaveLastMessageAsync(assistantMessage, CancellationToken.None);
         }
 
         /// <summary>
@@ -219,7 +224,7 @@ namespace LMLocal.Application.Chat
             {
                 _history.Add(chatMessage);
             }
-            _ = _persistence?.SaveLastMessageAsync(chatMessage, CancellationToken.None);
+            _ = _persistence.SaveLastMessageAsync(chatMessage, CancellationToken.None);
         }
 
         /// <summary>
@@ -231,7 +236,6 @@ namespace LMLocal.Application.Chat
             try { return JToken.Parse(extraContentJson); }
             catch (JsonException) { return null; }
         }
-
 
         /// <summary>
         /// Queues an assistant message with tool calls to be committed with the next AddToolExecutionResultMessages call.
@@ -274,14 +278,22 @@ namespace LMLocal.Application.Chat
                 _history.AddRange(validMessages);
             }
 
-            _ = _persistence?.SaveMessagesAsync(validMessages, CancellationToken.None);
+            _ = _persistence.SaveMessagesAsync(validMessages, CancellationToken.None);
         }
-
 
         /// <summary>
         /// Clears all messages from history and marks a new session boundary.
         /// </summary>
         public void Clear()
+        {
+            ClearInMemory();
+            _ = _persistence.MarkNewSessionAsync();
+        }
+
+        /// <summary>
+        /// Clears pending assistant state and the in-memory history without touching persistence.
+        /// </summary>
+        private void ClearInMemory()
         {
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
@@ -291,8 +303,31 @@ namespace LMLocal.Application.Chat
                 _history.Clear();
                 InvalidateCacheLocked();
             }
+        }
 
-            _ = _persistence?.MarkNewSessionAsync();
+        /// <summary>
+        /// Clears history, starts a new session, and persists the provided messages in that new session.
+        /// </summary>
+        public async Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages)
+        {
+            ClearInMemory();
+
+            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
+
+            if (messages == null)
+                return;
+
+            var list = messages.Where(m => m != null).ToList();
+            if (list.Count == 0)
+                return;
+
+            lock (_lock)
+            {
+                _history.AddRange(list);
+                InvalidateCacheLocked();
+            }
+
+            await _persistence.SaveMessagesAsync(list, CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -329,7 +364,9 @@ namespace LMLocal.Application.Chat
                     : null;
             }
 
-            Clear();
+            ClearInMemory();
+
+            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
 
             if (historyFragment != null && historyFragment.Count > 0)
             {
@@ -338,11 +375,9 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(historyFragment);
                     InvalidateCacheLocked();
                 }
-                if (_persistence != null)
-                    await _persistence.SaveMessagesAsync(historyFragment, CancellationToken.None).ConfigureAwait(false);
+                await _persistence.SaveMessagesAsync(historyFragment, CancellationToken.None).ConfigureAwait(false);
             }
         }
-
 
         /// <summary>
         /// Clears history and starts a new session, consolidating the last exchange into a clean user/assistant pair.
@@ -450,7 +485,9 @@ namespace LMLocal.Application.Chat
                 }
             }
 
-            Clear();
+            ClearInMemory();
+
+            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
 
             if (consolidatedFragment != null && consolidatedFragment.Count > 0)
             {
@@ -459,8 +496,7 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(consolidatedFragment);
                     InvalidateCacheLocked();
                 }
-                if (_persistence != null)
-                    await _persistence.SaveMessagesAsync(consolidatedFragment, CancellationToken.None).ConfigureAwait(false);
+                await _persistence.SaveMessagesAsync(consolidatedFragment, CancellationToken.None).ConfigureAwait(false);
             }
         }
 
@@ -476,30 +512,47 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
-        /// Atomically replaces history with a summary + recent messages, only if current size matches expectedSize.
+        /// Atomically replaces history (summary + recent) only if the current size matches expectedSize, then persists it as a new session.
         /// </summary>
-        public bool ReplaceHistory(string summary, IEnumerable<ChatMessage> recent, int expectedSize)
+        public async Task<bool> ReplaceHistoryAndPersistAsync(string summary, IEnumerable<ChatMessage> recent, int expectedSize)
         {
+            List<ChatMessage> newHistory;
             lock (_lock)
             {
-                if (_history.Count != expectedSize)
-                {
+                if (!TryReplaceHistoryLocked(summary, recent, expectedSize, out newHistory))
                     return false;
-                }
-                _history.Clear();
-
-                if (!string.IsNullOrEmpty(summary))
-                {
-                    _history.Add(new ChatMessage("user", "Provide a brief summary of our previous session to continue."));
-                    _history.Add(new ChatMessage("assistant", summary));
-                }
-                if (recent != null)
-                {
-                    _history.AddRange(recent);
-                }
-                InvalidateCacheLocked();
-                return true;
             }
+
+            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
+            await _persistence.SaveMessagesAsync(newHistory, CancellationToken.None).ConfigureAwait(false);
+            return true;
+        }
+
+        /// <summary>
+        /// Builds the replacement message list and swaps it into the in-memory history under the lock.
+        /// </summary>
+        private bool TryReplaceHistoryLocked(string summary, IEnumerable<ChatMessage> recent, int expectedSize, out List<ChatMessage> newHistory)
+        {
+            newHistory = null;
+
+            if (_history.Count != expectedSize)
+                return false;
+
+            newHistory = new List<ChatMessage>();
+            if (!string.IsNullOrEmpty(summary))
+            {
+                newHistory.Add(new ChatMessage("user", "Provide a brief summary of our previous session to continue."));
+                newHistory.Add(new ChatMessage("assistant", summary));
+            }
+            if (recent != null)
+            {
+                newHistory.AddRange(recent);
+            }
+
+            _history.Clear();
+            _history.AddRange(newHistory);
+            InvalidateCacheLocked();
+            return true;
         }
 
         /// <summary>
@@ -507,9 +560,6 @@ namespace LMLocal.Application.Chat
         /// </summary>
         public async Task<List<ChatMessage>> LoadLastSessionAsync()
         {
-            if (_persistence == null)
-                return new List<ChatMessage>();
-
             var messages = await _persistence.LoadLastSessionAsync().ConfigureAwait(false);
 
             if (messages.Count > 0)
@@ -743,9 +793,6 @@ namespace LMLocal.Application.Chat
             if (string.IsNullOrWhiteSpace(sessionId))
                 return new List<ChatMessage>();
 
-            if (_persistence == null)
-                return new List<ChatMessage>();
-
             var messages = await _persistence.LoadSessionByIdAsync(sessionId).ConfigureAwait(false);
 
             if (messages.Count > 0)
@@ -767,4 +814,3 @@ namespace LMLocal.Application.Chat
         }
     }
 }
-

@@ -105,7 +105,6 @@ namespace LMLocal.Infrastructure.Tooling
                 throw new ArgumentException("AgentName is required.", nameof(request));
 
             var settings = _settingsManager.Current;
-            var allowWrite = settings?.EnableAiWriteTools ?? false;
             var allowed = request.AllowedTools;
             var definitions = new List<ToolDefinition>();
 
@@ -115,13 +114,10 @@ namespace LMLocal.Infrastructure.Tooling
                     allowed.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim()),
                     StringComparer.OrdinalIgnoreCase);
 
-                var all = _builtInTools.GetAllToolDefinitions() ?? Array.Empty<ToolDefinition>();
+                var all = GetAvailableBuiltInTools(settings);
                 foreach (var def in all)
                 {
                     if (def == null || string.IsNullOrWhiteSpace(def.Name))
-                        continue;
-
-                    if (!allowWrite && _builtInTools.GetToolAccessLevel(def.Name) != ToolAccessLevel.ReadOnly)
                         continue;
 
                     if (allowedNames.Contains(def.Name))

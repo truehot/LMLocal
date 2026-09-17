@@ -43,6 +43,33 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(manager.Current.LmStudioBaseUrl, Is.EqualTo("HTTP://EXAMPLE.COM"));
             Assert.That(observed, Is.Null);
         }
+        [Test]
+        public void AppSettings_Equals_IsCaseInsensitiveForKnowledgeBasePaths()
+        {
+            var a = new AppSettings { KnowledgeBasePaths = "./; ./DOCS" };
+            var b = new AppSettings { KnowledgeBasePaths = "./; ./docs" };
+            Assert.That(a.Equals(b), Is.True);
+            Assert.That(b.Equals(a), Is.True);
+            Assert.That(a.Equals((object)b), Is.True);
+            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void AppSettings_Equals_IsFalseForDifferentKnowledgeBasePaths()
+        {
+            var a = new AppSettings { KnowledgeBasePaths = "./; ./docs" };
+            var b = new AppSettings { KnowledgeBasePaths = "./custom" };
+            Assert.That(a.Equals(b), Is.False);
+            Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void AppSettings_Equals_EmptyKnowledgeBasePathsDistinctFromSet()
+        {
+            var a = new AppSettings { KnowledgeBasePaths = "" };
+            var b = new AppSettings { KnowledgeBasePaths = "./; ./docs" };
+            Assert.That(a.Equals(b), Is.False);
+        }
 
         [Test]
         public void AppSettings_Equals_IsCaseInsensitiveForTrustedServerCertificatePath()

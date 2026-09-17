@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.WebView.Models;
 
 namespace LMLocal.Infrastructure.WebView.Controllers
@@ -13,6 +15,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
     public interface IChatSessionController
     {
         Task<string> GetLastChatSessionAsync();
+        Task<string> GetCurrentChatHistoryAsync();
         Task<string> GetChatSessionsAsync();
         Task<string> GetChatSessionByIdAsync(string sessionId);
     }
@@ -28,30 +31,36 @@ namespace LMLocal.Infrastructure.WebView.Controllers
         }
 
         /// <summary>
-        /// Returns the last persisted chat session.
+        /// Returns the last session persisted on disk. Used for startup auto-load.
         /// </summary>
         public async Task<string> GetLastChatSessionAsync()
         {
             try
             {
                 var messages = await _chatHistoryManager.LoadLastSessionAsync().ConfigureAwait(false);
-                var response = new GetLastChatSessionResponse
-                {
-                    HasSession = messages.Count > 0,
-                    Messages = messages.Select(m => new ChatMessageResponse
-                    {
-                        Role = m.Role,
-                        Content = m.Content,
-                        ToolCallId = m.ToolCallId,
-                        ToolCalls = m.ToolCalls
-                    }).ToList()
-                };
-                return response.ToJson();
+                return BuildSessionResponse(messages);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error("GetLastChatSessionAsync failed", ex);
                 return new GetLastChatSessionResponse().ToJson();
+            }
+        }
+
+        /// <summary>
+        /// Returns the current in-memory chat history — the source of truth for the active session.
+        /// </summary>
+        public Task<string> GetCurrentChatHistoryAsync()
+        {
+            try
+            {
+                var messages = _chatHistoryManager.GetHistoryCopy();
+                return Task.FromResult(BuildSessionResponse(messages));
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("GetCurrentChatHistoryAsync failed", ex);
+                return Task.FromResult(new GetLastChatSessionResponse().ToJson());
             }
         }
 
@@ -93,24 +102,33 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                     return new GetLastChatSessionResponse().ToJson();
 
                 var messages = await _chatHistoryManager.LoadSessionByIdAsync(sessionId).ConfigureAwait(false);
-                var response = new GetLastChatSessionResponse
-                {
-                    HasSession = messages.Count > 0,
-                    Messages = messages.Select(m => new ChatMessageResponse
-                    {
-                        Role = m.Role,
-                        Content = m.Content,
-                        ToolCallId = m.ToolCallId,
-                        ToolCalls = m.ToolCalls
-                    }).ToList()
-                };
-                return response.ToJson();
+                return BuildSessionResponse(messages);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error("GetChatSessionByIdAsync failed", ex);
                 return new GetLastChatSessionResponse().ToJson();
             }
+        }
+
+        /// <summary>
+        /// Maps chat messages into the shared session JSON view-model used by the frontend.
+        /// </summary>
+        private static string BuildSessionResponse(IReadOnlyList<ChatMessage> messages)
+        {
+            var list = messages ?? (IReadOnlyList<ChatMessage>)Array.Empty<ChatMessage>();
+            var response = new GetLastChatSessionResponse
+            {
+                HasSession = list.Count > 0,
+                Messages = list.Select(m => new ChatMessageResponse
+                {
+                    Role = m.Role,
+                    Content = m.Content,
+                    ToolCallId = m.ToolCallId,
+                    ToolCalls = m.ToolCalls
+                }).ToList()
+            };
+            return response.ToJson();
         }
     }
 }
