@@ -258,7 +258,6 @@ How to configure a custom remote endpoint and activate it inside the extension.
 | **Requesty** | OpenAI compatible | `https://router.requesty.ai/` |
 | **Novita** | OpenAI compatible | `https://api.novita.ai/openai/` |
 | **Bitdeer** | OpenAI compatible | `https://api-inference.bitdeer.ai/` |
-| **Unsloth** | OpenAI compatible | `https://unsloth.ai/` |
 
 Limited availability
 
