@@ -60,5 +60,11 @@ namespace LMLocal.Infrastructure.LlmApi.Provider
         /// </summary>
         [ProviderDisplay("Together AI (cloud)")]
         TogetherAi,
+
+        /// <summary>
+        /// Unsloth backend
+        /// </summary>
+        [ProviderDisplay("Unsloth (local)")]
+        Unsloth
     }
 }

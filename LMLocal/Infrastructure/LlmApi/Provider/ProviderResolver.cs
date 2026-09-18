@@ -39,6 +39,8 @@ namespace LMLocal.Infrastructure.Api
                     return ModelProvider.GithubModelsAzure;
                 case "llamacpp":
                     return ModelProvider.LlamaCpp;
+                case "unsloth":
+                    return ModelProvider.Unsloth;
                 default:
                     return ModelProvider.LmStudio;
             }
@@ -92,6 +94,8 @@ namespace LMLocal.Infrastructure.Api
                 return ApiEndpoints.GeminiListModels;
             else if (provider == ModelProvider.GithubModelsAzure)
                 return ApiEndpoints.GithubModelsAzureListModels;
+            else if (provider == ModelProvider.Unsloth)
+                return ApiEndpoints.ListModels;
             else
                 return ApiEndpoints.ListModels;
         }

@@ -39,6 +39,7 @@ namespace LMLocal.Infrastructure.Providers
             (2, ModelProvider.Jan,      "http://localhost:1337"),
             (4, ModelProvider.LlamaCpp, "http://localhost:8080"),
             (3, ModelProvider.OpenAi,   string.Empty),
+            (5, ModelProvider.Unsloth, "http://localhost:8888/"),
         };
 
         public ProvidersConfigManager(IFileSystem fileSystem, ISettingsManager settingsManager)
