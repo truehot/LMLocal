@@ -75,6 +75,7 @@ To use LM Local, you need:
     * **Ollama** (local server at `http://127.0.0.1:11434`)
     * **Jan** (local server at `http://127.0.0.1:1337`)
     * **Llama.cpp** (local server at `http://127.0.0.1:8080`)
+    * **Unsloth** (local server at `http://127.0.0.1:8888`)
 
 
 
@@ -109,6 +110,7 @@ To use LM Local, you need:
      * **Ollama (local)** – Automatically targets `http://127.0.0.1:11434`
      * **Jan (local)** – Automatically targets `http://127.0.0.1:1337`
      * **Llama.cpp (local)** – Automatically targets `http://127.0.0.1:8080`
+     * **Unsloth (local)** – Automatically targets `http://127.0.0.1:8888`
      * **OpenAI compatible (custom)** – Allows you to supply a custom base URL and authorization keys for remote endpoints or custom gateways.
    * *Note: Choosing a local provider automatically configures the correct default port and endpoint structure. For local Microsoft Foundry, select `OpenAI compatible` and use `http://127.0.0.1:<port>` (where `<port>` is your active service port).*
    * *Tip: If you have multiple providers, it is recommended to set them up first via the "Providers..." menu option.*
