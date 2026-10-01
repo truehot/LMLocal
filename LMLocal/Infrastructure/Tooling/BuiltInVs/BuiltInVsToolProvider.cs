@@ -67,11 +67,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
         private readonly Dictionary<string, IBuiltInTool> _toolsByName;
         private readonly IToolsConfigManager _toolsConfigManager;
         private readonly ISearchResultCache _searchCache;
+        private readonly IToolFileOpener _toolFileOpener;
 
         public BuiltInVsToolProvider(
             IEnumerable<IBuiltInTool> tools,
             IToolsConfigManager toolsConfigManager,
-            ISearchResultCache searchCache)
+            ISearchResultCache searchCache,
+            IToolFileOpener toolFileOpener)
         {
             var toolsList = tools?.ToList() ?? throw new ArgumentNullException(nameof(tools));
             if (toolsList.Count == 0)
@@ -79,6 +81,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
 
             _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _toolFileOpener = toolFileOpener ?? throw new ArgumentNullException(nameof(toolFileOpener));
             _toolsByName = new Dictionary<string, IBuiltInTool>(StringComparer.OrdinalIgnoreCase);
             var definitions = new List<ToolDefinition>();
 
@@ -172,7 +175,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             var result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken).ConfigureAwait(false);
 
             if (tool.AccessLevel == ToolAccessLevel.FullAccess)
+            {
                 _searchCache.Clear();
+                await _toolFileOpener.TryOpenEditedFileAsync(toolName, result).ConfigureAwait(false);
+            }
 
             return result;
         }

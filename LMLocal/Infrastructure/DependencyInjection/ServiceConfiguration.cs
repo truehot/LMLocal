@@ -99,6 +99,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
             services.AddSingleton<ISearchResultCache, SearchResultCache>();
+            services.AddSingleton<IToolFileOpener, ToolFileOpener>();
             services.AddSingleton<IAutocompletionsConfigManager, AutocompletionsConfigManager>();
 
             services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();

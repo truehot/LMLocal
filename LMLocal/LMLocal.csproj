@@ -201,6 +201,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\DotnetProcessRunner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilder.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParser.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsFileFilter.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfo.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectType.cs" />

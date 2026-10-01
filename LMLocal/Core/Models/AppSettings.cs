@@ -86,6 +86,11 @@ namespace LMLocal.Core.Models
         public bool EnableCodeCollapse { get; set; } = false;
 
         /// <summary>
+        /// When true, files created or modified by AI tools are opened directly in the Visual Studio editor.
+        /// </summary>
+        public bool OpenToolFilesInEditor { get; set; } = false;
+
+        /// <summary>
         /// When true, sequential model tool executions are grouped into a single compact UI block to reduce chat clutter.
         /// </summary>
         public bool CollapseToolCalls { get; set; } = false;
@@ -122,6 +127,7 @@ namespace LMLocal.Core.Models
                 && EnableAiWriteTools == other.EnableAiWriteTools
                 && EnableSubAgents == other.EnableSubAgents
                 && EnableCodeCollapse == other.EnableCodeCollapse
+                && OpenToolFilesInEditor == other.OpenToolFilesInEditor
                 && CollapseToolCalls == other.CollapseToolCalls
                 && ShowTokenStats == other.ShowTokenStats
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
@@ -150,6 +156,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + EnableAiWriteTools.GetHashCode();
                 hash = hash * 23 + EnableSubAgents.GetHashCode();
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
+                hash = hash * 23 + OpenToolFilesInEditor.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
                 hash = hash * 23 + ShowTokenStats.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);

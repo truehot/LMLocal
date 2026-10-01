@@ -21,6 +21,7 @@ class SettingsStoreClass extends BaseStoreClass {
             EnableSubAgents: false,
             CollapseToolCalls: false,
             EnableCodeCollapse: false,
+            OpenToolFilesInEditor: false,
             ShowTokenStats: false
         });
     }
