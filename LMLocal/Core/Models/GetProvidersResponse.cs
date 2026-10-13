@@ -23,7 +23,7 @@ namespace LMLocal.Core.Models
 
         /// <summary>
         /// All known provider type keys with human-readable display names for the UI dropdown.
-        /// Derived from <see cref="LMLocal.Infrastructure.LlmApi.Provider.ModelProvider"/> enum.
+        /// Derived from the set of built-in providers; display names come from provider metadata.
         /// </summary>
         [JsonProperty("providerTypes")]
         public List<ProviderTypeInfo> ProviderTypes { get; set; } = new List<ProviderTypeInfo>();

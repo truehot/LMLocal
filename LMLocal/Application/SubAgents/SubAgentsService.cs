@@ -276,16 +276,16 @@ namespace LMLocal.Application.SubAgents
             catch (ApiException ex)
             {
                 InternalLogger.Warn($"SubAgentsService: provider API error: {ex.Message}");
-                return Fail(response, "Provider API error: " + ex.Message);
+                return Fail(response, "Provider API error: " + ExceptionFormatter.Format(ex));
             }
             catch (InvalidOperationException ex)
             {
-                return Fail(response, ex.Message);
+                return Fail(response, ExceptionFormatter.Format(ex));
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"SubAgentsService: unexpected error during run '{runId}'", ex);
-                return Fail(response, ex.Message);
+                return Fail(response, ExceptionFormatter.Format(ex));
             }
             finally
             {

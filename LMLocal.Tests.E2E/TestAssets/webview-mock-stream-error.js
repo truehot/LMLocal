@@ -106,6 +106,15 @@ function __startMock() {
                 data: { servers: [], hasErrors: false, hasSuccesses: false }
             }),
         };
+        if (typeof __mockBridge.GetSnapshotAsync !== 'function') {
+            __mockBridge.GetSnapshotAsync = async () => '{}';
+        }
+        if (!window.__modelsConfigOverride) {
+            window.__modelsConfigOverride = {
+                GetModelsConfigAsync: async () => JSON.stringify({ models: [] }),
+                UpdateModelsConfigAsync: async () => true
+            };
+        }
         window.lmInit(__mockBridge);
     } else {
         setTimeout(__startMock, 10);

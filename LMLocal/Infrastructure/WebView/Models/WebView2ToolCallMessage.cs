@@ -11,7 +11,7 @@ namespace LMLocal.Infrastructure.WebView
         public string FunctionName { get; set; }
 
         /// <summary>
-        /// Unique identifier for this tool call invocation (e.g., "call_abc123").
+        /// UI-scoped unique identifier of this tool call invocation, used by the WebView to key the tool-status card across the start/step/end messages.
         /// </summary>
         public string CallId { get; set; }
 

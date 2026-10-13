@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -61,6 +62,7 @@ namespace LMLocal.Infrastructure.SubAgents
     internal class SubAgentsConfigManager : ISubAgentsConfigManager, ISubAgentsCatalog
     {
         private readonly string _filePath;
+        private readonly string _defaultConfigPath;
         private readonly IFileSystem _fileSystem;
         private readonly IBuiltInVsToolProvider _builtInTools;
         private readonly SemaphoreSlim _fileLock = new SemaphoreSlim(1, 1);
@@ -77,7 +79,8 @@ namespace LMLocal.Infrastructure.SubAgents
         public SubAgentsConfigManager(
             IFileSystem fileSystem,
             ISettingsManager settingsManager,
-            IBuiltInVsToolProvider builtInTools)
+            IBuiltInVsToolProvider builtInTools,
+            string defaultConfigPath = null)
         {
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             if (settingsManager == null)
@@ -92,6 +95,14 @@ namespace LMLocal.Infrastructure.SubAgents
             _fileSystem.ValidateFilePath(filePath);
             _fileSystem.EnsureDirectoryExistsForFile(filePath);
             _filePath = filePath;
+
+            _defaultConfigPath = string.IsNullOrWhiteSpace(defaultConfigPath)
+                ? Path.Combine(
+                    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty,
+                    "Resources",
+                    "json",
+                    "subagents.json")
+                : defaultConfigPath;
         }
 
         public IReadOnlyList<string> LastErrors
@@ -129,12 +140,58 @@ namespace LMLocal.Infrastructure.SubAgents
 
         public async Task RefreshAsync(CancellationToken cancellationToken = default)
         {
-            var config = await ReadConfigCoreAsync(cancellationToken).ConfigureAwait(false);
+            var config = await ReadEffectiveConfigAsync(cancellationToken).ConfigureAwait(false);
 
             lock (_snapshotLock)
             {
                 _snapshot = config;
                 _lastErrors = config.Errors ?? new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Builds the effective runtime configuration used by <see cref="RefreshAsync"/>.
+        /// </summary>
+        private async Task<SubAgentsConfig> ReadEffectiveConfigAsync(CancellationToken cancellationToken)
+        {
+            if (_fileSystem.FileExists(_filePath))
+            {
+                return await ReadConfigCoreAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return await ReadDefaultConfigAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Reads, parses and validates the built-in default configuration shipped with the extension.
+        /// </summary>
+        private async Task<SubAgentsConfig> ReadDefaultConfigAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_defaultConfigPath) || !_fileSystem.FileExists(_defaultConfigPath))
+                {
+                    InternalLogger.Warn("SubAgentsConfigManager: no custom subagents.json and no built-in default available; runtime SubAgents list is empty.");
+                    return new SubAgentsConfig();
+                }
+
+                string fileContent = await _fileSystem.ReadAllTextAsync(_defaultConfigPath, cancellationToken).ConfigureAwait(false);
+                var parsed = ParseConfig(fileContent);
+                parsed.ApplyDefaults();
+
+                var errors = parsed.Validate();
+                if (errors.Count > 0)
+                {
+                    InternalLogger.Warn($"SubAgentsConfigManager: invalid default subagents.json ({_defaultConfigPath}): {string.Join("; ", errors)}.");
+                    parsed.Errors = errors;
+                }
+
+                return parsed;
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException))
+            {
+                InternalLogger.Error($"SubAgentsConfigManager: failed to read default subagents config: {ex.Message}", ex);
+                return new SubAgentsConfig();
             }
         }
 

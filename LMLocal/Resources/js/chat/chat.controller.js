@@ -21,6 +21,7 @@ class ChatController {
         this.highlightParser = null;
         this._activeTimeouts = [];
         this.onCopyCode = createCallback();
+        this.onOpenFile = createCallback();
         this.collapseToolCalls = false;
         this.showTokenStats = false;
         this._sessionStartedAt = 0;
@@ -42,6 +43,20 @@ class ChatController {
     }
 
     _onContainerClick = (e) => {
+        const fileLink = e.target.closest('.file-link');
+        if (fileLink) {
+            e.preventDefault();
+            const raw = (fileLink.textContent || '').trim();
+            const path = raw.replace(/:\d+(?:[-–]\d+)?$/, '');
+            if (path) {
+                this.onOpenFile.emit(path)
+                    .catch(err => console.error(`Failed to open file link "${path}":`, err));
+            } else {
+                console.warn('file-link click without a resolvable path:', raw);
+            }
+            return;
+        }
+
         const copyBtn = e.target.closest('.header-copy-btn');
         if (copyBtn) {
             const wrapper = copyBtn.closest('.code-block-container');
@@ -142,6 +157,8 @@ class ChatController {
             state.accumulatedText !== prev.accumulatedText ||
             state.accumulatedThoughtText !== prev.accumulatedThoughtText ||
             state.roundNumber !== prev.roundNumber ||
+            state.toolCallId !== prev.toolCallId ||
+            state.toolWithError !== prev.toolWithError ||
             state.toolMessage !== prev.toolMessage ||
             state.toolStep !== prev.toolStep;
 

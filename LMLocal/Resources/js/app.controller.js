@@ -175,6 +175,14 @@ class AppController {
             return await appManager.performCopyCode(text);
         });
 
+        chatController.onOpenFile.on(async (path) => {
+            try {
+                await appDataService.openFileAsync(path);
+            } catch (err) {
+                console.error(`Failed to open file link "${path}":`, err);
+            }
+        });
+
         menuComponent.onClick.on(async (action) => {
             switch (action) {
                 case 'open-settings':
@@ -434,6 +442,7 @@ class AppController {
         inputComponent.onEnter.off();
         inputComponent.onTabChanged.off();
         chatController.onCopyCode.off();
+        chatController.onOpenFile.off();
         menuComponent.onClick.off();
         toolbarComponent.onModelNameClick.off();
         statusComponent.onRetry.off();

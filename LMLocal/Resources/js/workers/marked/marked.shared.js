@@ -28,7 +28,7 @@ function escapeHtml(str) {
 }
 
 function countLines(str) {
-    let count = 1; 
+    let count = 1;
     for (let i = 0; i < str.length; i++) {
         if (str[i] === '\n') count++;
     }
@@ -64,4 +64,33 @@ function renderCodeBlock(block) {
             </button>
         </div>
     `;
+}
+
+const EXT_SET = new Set([
+    'md', 'txt', 'json', 'yaml', 'yml', 'js', 'ts', 'tsx', 'jsx', 'cs', 'csproj', 'sln',
+    'py', 'go', 'rs', 'java', 'kt', 'cpp', 'c', 'h', 'hpp', 'css', 'scss', 'html', 'xml',
+    'sh', 'ps1', 'bat', 'sql', 'log', 'env'
+]);
+
+const LINE_SUFFIX = /:\d+(?:[-–]\d+)?$/;
+const GLOB_CHARS = /[*?[\]{}]/;
+
+function isFilePath(text) {
+    if (!text || !text.includes('/') || /\s/.test(text)) return false;
+    if (text.includes('://')) return false;
+    if (GLOB_CHARS.test(text)) return false;
+
+    const path = text.replace(LINE_SUFFIX, '');
+    const dot = path.lastIndexOf('.');
+    if (dot < 0) return false;
+
+    const ext = path.slice(dot + 1).toLowerCase();
+    return EXT_SET.has(ext);
+}
+
+function renderCodeSpan(data) {
+    if (isFilePath(data.text)) {
+        return `<code class="file-link">${escapeHtml(data.text)}</code >`;
+    }
+    return `<code>${escapeHtml(data.text)}</code >`;
 }

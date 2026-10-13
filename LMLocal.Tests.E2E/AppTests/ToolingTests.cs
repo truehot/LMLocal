@@ -170,4 +170,27 @@ public class ToolingTests : AppTestBase
         await Expect(stepLine).ToHaveCountAsync(1, new() { Timeout = 3000 });
         await Expect(stepLine).ToContainTextAsync("searching files...", new() { Timeout = 3000 });
     }
+
+    [Test]
+    [Category("Tools")]
+    public async Task ParallelIdenticalTools_AllCardsDisplayed()
+    {
+        await GotoWithMockAsync("webview-mock-tooling-parallel.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Run three readers");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        // Parallel SubAgent fan-out renders a group header ("N/M done").
+        await Expect(Page.Locator(".tool-group-status"))
+            .ToBeVisibleAsync(new() { Timeout = 4000 });
+        await Expect(Page.Locator(".tool-group-status"))
+            .ToContainTextAsync("3/3", new() { Timeout = 4000 });
+
+        // Regression: identical parallel calls (same agent, identical processing
+        // message, back-to-back EXECUTING status) must each render their own card.
+        var cards = Page.Locator(".tool-status, .tool-status-completed, .tool-status-error");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 4000 });
+    }
 }

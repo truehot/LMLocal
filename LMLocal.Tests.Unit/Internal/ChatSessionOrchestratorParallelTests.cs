@@ -161,7 +161,8 @@ namespace LMLocal.Tests.Unit.Internal
                 .Where(m => m.Type == WebView2MessageType.StreamToolCall)
                 .ToList();
             Assert.That(toolCalls.Count, Is.EqualTo(2));
-            Assert.That(toolCalls.Select(m => m.CallId).OrderBy(c => c), Is.EquivalentTo(new[] { "c1", "c2" }));
+            Assert.That(toolCalls.Select(m => m.CallId).Where(id => !string.IsNullOrEmpty(id)).Distinct().Count(), Is.EqualTo(2),
+                "Each tool card must receive its own non-empty UI call id (provider ids may repeat).");
 
             var toolEnds = messages.OfType<WebView2ToolCallMessage>()
                 .Where(m => m.Type == WebView2MessageType.StreamToolEnd)
@@ -263,6 +264,94 @@ namespace LMLocal.Tests.Unit.Internal
 
             Assert.That(progress.Select(p => p.Completed).OrderBy(c => c), Is.EqualTo(new[] { 1, 2 }),
                 "Progress counts run 1..N regardless of completion order.");
+        }
+
+        /// <summary>
+        /// Regression: a parallel group of identical agents whose provider tool-call ids are equal
+        /// (or empty) must still produce one distinct UI call id per card, so the WebView renders all
+        /// of them; the provider id is preserved for the tool result handed back to the model.
+        /// </summary>
+        [Test]
+        public async Task ParallelGroup_IdenticalProviderCallIds_ProduceDistinctUiCallIds()
+        {
+            var messages = new List<WebView2ScriptMessage>();
+
+            _parallelPolicyMock.Setup(p => p.IsParallelEnabled(It.IsAny<string>())).Returns(true);
+
+            int callCount = 0;
+            _chatServiceMock.Setup(s => s.GenerateStreamAsync(
+                    It.IsAny<GenerateStreamContext>(),
+                    It.IsAny<List<ToolResultMessage>>(),
+                    It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
+                    It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                    {
+                        callCount++;
+                        if (callCount == 1)
+                        {
+                            await onComplete(new StreamCompletionResult
+                            {
+                                FinishReason = "tool_calls",
+                                ToolCalls = new[]
+                                {
+                                    new ToolCallRecord { CallId = "dup", FunctionName = "code_explorer", ArgumentsJson = "{}" },
+                                    new ToolCallRecord { CallId = "dup", FunctionName = "code_explorer", ArgumentsJson = "{}" }
+                                }
+                            }).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            if (toolResults != null)
+                                _secondRoundResults = toolResults.ToList();
+
+                            await onComplete(new StreamCompletionResult
+                            {
+                                FinishReason = "stop",
+                                ToolCalls = Array.Empty<ToolCallRecord>()
+                            }).ConfigureAwait(false);
+                        }
+                    });
+
+            _toolManagerMock
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>>((call, ct, progress) =>
+                    Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Result = "ok", CompletionMessage = "done" }));
+
+            var orchestrator = CreateOrchestrator();
+
+            Task OnMessage(WebView2ScriptMessage msg)
+            {
+                messages.Add(msg);
+                return Task.CompletedTask;
+            }
+
+            await orchestrator.RunSessionAsync(
+                new GenerateStreamContext { Prompt = "p", ModelId = "m" },
+                OnMessage,
+                CancellationToken.None).ConfigureAwait(false);
+
+            var callMsgs = messages.OfType<WebView2ToolCallMessage>()
+                .Where(m => m.Type == WebView2MessageType.StreamToolCall)
+                .ToList();
+            var endMsgs = messages.OfType<WebView2ToolCallMessage>()
+                .Where(m => m.Type == WebView2MessageType.StreamToolEnd)
+                .ToList();
+
+            Assert.That(callMsgs.Count, Is.EqualTo(2));
+            Assert.That(callMsgs.All(m => !string.IsNullOrEmpty(m.CallId)), Is.True);
+            Assert.That(callMsgs.Select(m => m.CallId).Distinct().Count(), Is.EqualTo(2),
+                "Two identical provider CallIds must still map to two distinct UI call ids.");
+
+            Assert.That(endMsgs.Count, Is.EqualTo(2));
+            Assert.That(endMsgs.Select(m => m.CallId).OrderBy(c => c),
+                Is.EquivalentTo(callMsgs.Select(m => m.CallId).OrderBy(c => c)),
+                "StreamToolEnd must reuse the same UI call id as the matching StreamToolCall.");
+
+            Assert.That(_secondRoundResults, Is.Not.Null);
+            Assert.That(_secondRoundResults.Select(r => r.ToolCallId), Is.All.EqualTo("dup"),
+                "Provider call ids must be preserved unchanged for model correlation.");
         }
     }
 }

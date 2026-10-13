@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Responses;
-using LMLocal.Models;
-using Moq;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -561,6 +559,214 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             // None of the aliases are positive -> falls back to the known context for deepseek-v4.
             Assert.That(result.Models[0].MaxTokens, Is.EqualTo(1_048_576));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_TieredPricingArray_DoesNotFailAndParsesPrices()
+        {
+            // Real response from an OpenAI-compatible (ProviderType="openai") provider whose per-model
+            // "pricing" is an ARRAY of tiers with flat numeric prices. Previously this threw and failed the WHOLE list.
+            const string json = @"{""object"":""list"",""data"":[{""api"":""chat"",""id"":""azure/decision-1"",""object"":""model"",""created"":1791504000,""updated"":1791708608,""owned_by"":""system"",""input_price"":4.2e-8,""cached_price"":0,""output_price"":0,""pricing"":[{""prompt_tokens_threshold"":0,""input_price"":4.2e-8,""cached_price"":0,""output_price"":0}],""max_output_tokens"":1024,""context_window"":32768,""supports_caching"":false,""supports_vision"":false,""supports_computer_use"":false,""supports_reasoning"":false,""supports_image_generation"":false,""supports_tool_calling"":false,""supports_role_developer"":false,""supports_web_search"":false,""supports_output_json_object"":false,""supports_output_json_schema"":false,""supports_system_mid_conversation"":true,""description"":""Microsoft-Decision-1 is a small decision model post trained from Qwen3.5-9B."",""data_retention"":false,""data_retention_days"":0,""data_used_for_training"":false,""privacy_comments"":""N/A"",""geolocation"":""us"",""open_weights"":false,""model_lab"":""microsoft"",""model_canonical_name"":""microsoft-decision-1""}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            // The pricing array must NOT fail the list anymore.
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+
+            var m = result.Models[0];
+            Assert.That(m.Id, Is.EqualTo("azure/decision-1"));
+            // context_window already maps today (no change needed).
+            Assert.That(m.MaxTokens, Is.EqualTo(32768));
+            Assert.That(m.SupportsMaxTokens, Is.True);
+            // Prices parsed from the tier: 4.2e-8 per token -> 0.042 per 1M.
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.042m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0m));
+            Assert.That(m.CacheReadPricePerMillion, Is.EqualTo(0m));
+            // The provider reports no input_cache_write, so cache-write stays unknown (null).
+            Assert.That(m.CacheWritePricePerMillion, Is.Null);
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_ObjectPricing_OpenRouterShape_StillMapsExactly()
+        {
+            // Regression: the OpenRouter object-pricing shape must keep working unchanged.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""openrouter/model"",""pricing"":{""prompt"":""0.00000022"",""completion"":""0.00000066"",""input_cache_read"":""0.000000007"",""input_cache_write"":""0.00000002""}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.22m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0.66m));
+            Assert.That(m.CacheReadPricePerMillion, Is.EqualTo(0.007m));
+            Assert.That(m.CacheWritePricePerMillion, Is.EqualTo(0.02m));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_CanonicalPriceField_PrecedesFlatField()
+        {
+            // Precedence: the canonical "prompt"/"completion" fields win over the flat LiteLLM fields.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""precedence"",""pricing"":{""prompt"":""0.000001"",""input_price"":""0.000009""}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Models[0].InputPricePerMillion, Is.EqualTo(1m));
+        }
+
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""missing-pricing""}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""empty-pricing"",""pricing"":[]}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""null-pricing"",""pricing"":null}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""weird-pricing"",""pricing"":""unexpected""}]}")]
+        public void ConvertOpenAiResponseToUnified_MissingOrUnusualPricing_DoesNotFailAndLeavesPricesNull(string json)
+        {
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.Null);
+            Assert.That(m.OutputPricePerMillion, Is.Null);
+            Assert.That(m.CacheReadPricePerMillion, Is.Null);
+            Assert.That(m.CacheWritePricePerMillion, Is.Null);
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_NovitaObjectValuedPricing_MapsPricesPerMillion()
+        {
+            // Real response from a Novita-style OpenAI-compatible provider: each "pricing" entry is an
+            // OBJECT reporting USD per 1M tokens. Previously Newtonsoft threw on "pricing.prompt" and the
+            // WHOLE list broke. Now the nested prices must map to the provider's own values ($0.15 / $0.5 / $0.03).
+            const string json = @"{""object"":""list"",""data"":[{""id"":""zai-org/glm-5.3-flash"",""object"":""model"",""owned_by"":""novita"",""context_size"":1048576,""display_name"":""GLM-5.3-Flash"",""input_token_price_per_m"":1500,""output_token_price_per_m"":5000,""max_output_tokens"":65536,""pricing"":{""prompt"":{""origin_price_per_m"":1500,""price_per_m"":1500,""origin_price_per_m_decimal"":""0.15"",""price_per_m_decimal"":""0.15""},""completion"":{""origin_price_per_m"":5000,""price_per_m"":5000,""origin_price_per_m_decimal"":""0.5"",""price_per_m_decimal"":""0.5""},""input_cache_read"":{""origin_price_per_m"":300,""price_per_m"":300,""origin_price_per_m_decimal"":""0.03"",""price_per_m_decimal"":""0.03""}}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.Id, Is.EqualTo("zai-org/glm-5.3-flash"));
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.15m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0.5m));
+            Assert.That(m.CacheReadPricePerMillion, Is.EqualTo(0.03m));
+            // The provider reports no cache-write price, so it stays unknown.
+            Assert.That(m.CacheWritePricePerMillion, Is.Null);
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_ObjectValuedPricing_DecimalField_MapsDirectly()
+        {
+            // "price_per_m_decimal" is already USD per 1M tokens.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""novita"",""pricing"":{""prompt"":{""price_per_m_decimal"":""0.15""},""completion"":{""price_per_m_decimal"":""0.5""},""input_cache_read"":{""price_per_m_decimal"":""0.03""}}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.15m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0.5m));
+            Assert.That(m.CacheReadPricePerMillion, Is.EqualTo(0.03m));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_ObjectValuedPricing_FixedPointField_DividedByTenThousand()
+        {
+            // "price_per_m" is USD per 1M tokens in 4-decimal fixed point (1500 -> 0.15).
+            const string json = @"{""object"":""list"",""data"":[{""id"":""novita-fixed"",""pricing"":{""prompt"":{""price_per_m"":1500},""completion"":{""price_per_m"":5000}}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.15m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0.5m));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_ObjectValuedPricing_WithoutPriceKey_LeavesPricesNull()
+        {
+            // A nested object that carries no recognizable price (only "origin_price_per_m") yields nothing.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""novita-bare"",""pricing"":{""prompt"":{""origin_price_per_m"":1500}}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.Null);
+            Assert.That(m.OutputPricePerMillion, Is.Null);
+            Assert.That(m.CacheReadPricePerMillion, Is.Null);
+            Assert.That(m.CacheWritePricePerMillion, Is.Null);
+        }
+
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""bool-price"",""pricing"":{""prompt"":{""price_per_m"":true}}}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""text-decimal"",""pricing"":{""prompt"":{""price_per_m_decimal"":""not-a-number""}}}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""string-fixed"",""pricing"":{""prompt"":{""price_per_m"":""1500""}}}]}")]
+        [TestCase(@"{""object"":""list"",""data"":[{""id"":""huge"",""pricing"":{""prompt"":{""price_per_m"":1e308}}}]}")]
+        public void ConvertOpenAiResponseToUnified_ObjectValuedPricing_NonNumericValue_DoesNotFailAndLeavesPricesNull(string json)
+        {
+            // A non-numeric (or out-of-range) value for a known price key must not throw and must not fail the list.
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.Null);
+            Assert.That(m.OutputPricePerMillion, Is.Null);
+            Assert.That(m.CacheReadPricePerMillion, Is.Null);
+            Assert.That(m.CacheWritePricePerMillion, Is.Null);
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_NumericPricingValue_IsAccepted()
+        {
+            // Some providers report prices as JSON numbers rather than strings.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""numeric"",""pricing"":{""prompt"":0.00000022,""completion"":0.00000066}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(1));
+            var m = result.Models[0];
+            Assert.That(m.InputPricePerMillion, Is.EqualTo(0.22m));
+            Assert.That(m.OutputPricePerMillion, Is.EqualTo(0.66m));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_ObjectValuedPricing_DoesNotBreakFollowingModels()
+        {
+            // Reader-balance guard: an object-valued "pricing" on the FIRST model must not corrupt the
+            // reader for the SECOND model (previously it cascaded and the whole list was lost).
+            const string json = @"{""object"":""list"",""data"":[{""id"":""novita/first"",""pricing"":{""prompt"":{""price_per_m_decimal"":""0.15""},""completion"":{""price_per_m_decimal"":""0.5""}}},{""id"":""openrouter/second"",""pricing"":{""prompt"":""0.00000022"",""completion"":""0.00000066""}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(2));
+            Assert.That(result.Models[0].InputPricePerMillion, Is.EqualTo(0.15m));
+            Assert.That(result.Models[1].InputPricePerMillion, Is.EqualTo(0.22m));
+            Assert.That(result.Models[1].OutputPricePerMillion, Is.EqualTo(0.66m));
+        }
+
+        [Test]
+        public void ConvertOpenAiResponseToUnified_UnknownPricingKeyWithObjectValue_DoesNotBreakFollowingFields()
+        {
+            // An unknown key whose value is an object must be consumed balanced, so later known keys in the
+            // SAME pricing object, and any following model, still parse.
+            const string json = @"{""object"":""list"",""data"":[{""id"":""mixed"",""pricing"":{""weird"":{""nested"":{""deep"":1}},""prompt"":""0.000001""}},{""id"":""after"",""pricing"":{""prompt"":""0.000002""}}]}";
+
+            var result = ModelResponseConverter.ConvertOpenAiResponseToUnified(json);
+
+            Assert.That(result.Error, Is.Null);
+            Assert.That(result.Models.Count, Is.EqualTo(2));
+            Assert.That(result.Models[0].InputPricePerMillion, Is.EqualTo(1m));
+            Assert.That(result.Models[1].InputPricePerMillion, Is.EqualTo(2m));
         }
 
     }

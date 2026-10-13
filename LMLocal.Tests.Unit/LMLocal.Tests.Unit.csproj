@@ -90,8 +90,10 @@
     <Compile Include="Application\SubAgents\ReadResultRecorderTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsActiveModelDefaultsTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsConfigTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsDefaultFallbackTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsRawPersistenceTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsReasoningEffortTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentsServiceTests.cs" />
     <Compile Include="Core\Common\ExceptionFormatterTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />

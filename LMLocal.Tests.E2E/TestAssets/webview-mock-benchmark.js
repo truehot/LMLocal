@@ -160,6 +160,15 @@ function __startMock() {
             CopyToClipboardAsync: async (text) => true,
             FocusAsync: async () => {},
         };
+        if (typeof __mockBridge.GetSnapshotAsync !== 'function') {
+            __mockBridge.GetSnapshotAsync = async () => '{}';
+        }
+        if (!window.__modelsConfigOverride) {
+            window.__modelsConfigOverride = {
+                GetModelsConfigAsync: async () => JSON.stringify({ models: [] }),
+                UpdateModelsConfigAsync: async () => true
+            };
+        }
         window.lmInit(__mockBridge);
     } else {
         setTimeout(__startMock, 10);

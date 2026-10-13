@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="3.0.0" Language="en-US" Publisher="Aleksandrs Kornevs" />
+        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="3.0.5" Language="en-US" Publisher="Aleksandrs Kornevs" />
         <DisplayName>LM Local</DisplayName>
-        <Description xml:space="preserve">Lightweight, secure AI chat assistant for Visual Studio with agentic capabilities. Works with local (Ollama, LM Studio, Jan, Llama.cpp) and cloud LLMs. You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow. Full code context, reasoning steps, custom roles, MCP toolkits.</Description>
+        <Description xml:space="preserve">LM Local is an AI coding assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp, Unsloth) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes in a multi-turn conversational flow, with specialized subagents extending its capabilities for complex tasks.</Description>
         <MoreInfo>https://github.com/truehot/LMLocal</MoreInfo>
         <License>LICENSE.txt</License>
         <GettingStartedGuide>GettingStarted.txt</GettingStartedGuide>

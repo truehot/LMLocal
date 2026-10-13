@@ -1,6 +1,7 @@
 # 🤖 LM Local
 
-**LM Local** is a local AI chat assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes – all in a single, step-by-step conversational flow.
+**LM Local** is an AI coding assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp, Unsloth) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes in a multi-turn conversational flow, with specialized subagents extending its capabilities for complex tasks.
+
 
 ![Visual Studio](https://img.shields.io/badge/Visual%20Studio-2022%20%2F%202026-purple?style=flat&logo=visual-studio)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -175,7 +176,7 @@ To use LM Local, you need:
 
 ### Context & Solution Awareness
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
-- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked three times with identical arguments, preventing infinite loops and token waste.
+- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked two times with identical arguments, preventing infinite loops and token waste.
 - 📝 **Automated Code Editing** – Enabled tools can automatically create, delete, or modify code files directly inside Visual Studio.
 - 🛡️ **Changes & Rollback Manager** – Shows all file modifications in a dedicated real-time panel above the chat, allowing you to review diffs, accept changes, or roll them back in one click.
 - ➕ **Active Window Context** – Dedicated "+" button to include active editor content in the request.
@@ -379,28 +380,44 @@ Use subagents to:
 
 ---
 
-### Quick Start (3-Minute Setup)
+### Quick Start (Out of the Box)
 
-To quickly test subagents without manually editing JSON:
+To start using subagents immediately:
+
+1. **Load a Fast Local Model:** Open LM Studio (or Ollama), load `google_gemma-4-e4b-it` with MTP, and set the context length to **40,000** (if you plan to run subagents in parallel, e.g., parallelism = 2, scale the context size to **80,000**, and so on).
+2. **Switch & Enable:** Switch your main chat back to your primary model (e.g., GPT-5, Deepseek or a large local LLM), ensure subagents are enabled via the **'s'** toolbar icon (or in settings), and send a task (e.g., *"Find my class in the solution"*). Everything is ready to go!
+
+---
+
+### Customization & Advanced Setup (Optional)
+
+If you want to **customize** your config or override the built-in defaults:
 
 1. **Load a Fast Local Model:** Open LM Studio (or Ollama), download a lightweight model like `google_gemma-4-e4b-it` or `gemma-4-e4b`, and start the local server.
-2. **Sync Settings:** In LMLocal, switch your active chat model to that local model, open **Sub Agents** from the main menu, and click **Use Active Model**. This sets up the root provider defaults and creates the predefined subagent configs automatically.
-3. **Switch Back & Run:** Switch your main chat back to your primary model (e.g., Claude, GPT-5, or a large local LLM), ensure subagents are enabled via the **'s'** toolbar icon, and send a task (e.g., *"Find my class in the solution"*).
+2. **Sync Settings:** In LMLocal, switch your active chat model to that local model, open **Sub Agents** from the main menu, and click **Use Active Model**. This loads the predefined subagents (first time) and sets the root provider/model defaults.
+3. **Switch Back & Run:** Switch your main chat back to your primary model (large local LLM), ensure subagents are enabled via the **'s'** toolbar icon, and send a task (e.g., *"Find my class in the solution"*).
 
 ### Predefined Subagents
 
-Out of the box, LMLocal includes **6 predefined subagents** optimized for different code-exploration and testing tasks:
+Out of the box, LMLocal includes **7 predefined subagents** optimized for different code-exploration and testing tasks:
 
-1. **Code explorer** (`code_explorer_subagent`) — Read-only code explorer for finding files by name or content, listing directories, and general path discovery.
-2. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to read specific files or code ranges verbatim.
-3. **Symbol Analyzer** (`symbol_analyzer_subagent`) — Read-only symbol analyzer for C# and JavaScript symbols, declarations, references, and type metadata.
-4. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
-5. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that performs adversarial and checklist audits to validate proposed plans and implementations before delivery.
-6. **Context Retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
+1. **Task planner** (`task_planner_subagent`) — Specialized planning agent that drafts structured implementation plans, estimates task scope, and manages step-by-step workflows for complex changes.
+2. **Code explorer** (`code_explorer_subagent`) — Read-only code explorer for finding files by name or content, listing directories, and general path discovery.
+3. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to read specific files or code ranges verbatim.
+4. **Symbol analyzer** (`symbol_analyzer_subagent`) — Read-only symbol analyzer for C# and JavaScript symbols, declarations, references, and type metadata.
+5. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
+6. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that performs adversarial and checklist audits to validate proposed plans and implementations before delivery.
+7. **Context retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
 
-> **Troubleshooting & Updates:**
-> * **Schema Changes:** `subagents.json` is preserved across app updates and will not be overwritten automatically. If a new release introduces breaking schema changes, delete `subagents.json` from your config directory to let LMLocal recreate it with up-to-date defaults.
-> * **Note:** The default subagent prompts are specifically are optimized the `google_gemma-4-e4b-it` model.
+> * **Note:** The default subagent prompts are specifically optimized for the `google_gemma-4-e4b-it` model.
+
+### Note / Troubleshooting
+
+- `subagents.json` is preserved across app updates and is **never** overwritten automatically.
+- To fall back to the built-in defaults: close any Sub Agents dialog, **delete `subagents.json`** from your config directory, then start a new session (the runtime reads the current build's defaults automatically). **The file is NOT recreated automatically.**
+- To create an editable copy again: open **Sub Agents** → click **Use Active Model** (loads the built-in defaults and applies your active model) → **Save**.
+- By design, the dialog edits only the custom file: with no `subagents.json` it shows *"No SubAgents configured"* until you use **Use Active Model**.
+
 
 ### Configuration
 
@@ -409,7 +426,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`) serve as defaults for all agents. Agents inherit these values unless they explicitly override them, so changing a root-level value automatically updates every agent that uses the default.
 
 
-**Example:**
+## Example (illustrative)
 
 ```json
 {
@@ -417,29 +434,60 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
     {
       "id": "code_explorer_subagent",
       "displayName": "Code explorer",
-      "description": "Read-only code explorer. Finds files by name or content, lists directories, and explores the open solution to locate relevant files...",
-      "system": "You are a read-only code explorer. Search for files, search file contents, inspect directories, and read file contents.\nWhen searching, use the tool that best matches the query...",
-      "timeoutSeconds": 480,
-      "maxRounds": 99,
-      "maxTokens": 65536,
+      "description": "Read-only code search agent for the open solution.",
+      "system": "You are a read-only code search agent...",
+      "temperature": 0.0,
+      "timeoutSeconds": 360,
+      "maxRounds": 50,
+      "maxTokens": 24000,
+      "reasoningEffort": "medium",
       "enabled": true,
       "allowedTools": [
-        "get_solution_overview",
         "list_directory",
         "find_files",
         "search_file_content",
-        "read_file_lines",
-        "get_active_document"
+        "get_solution_overview"
       ]
     }
   ],
   "providerType": "lmstudio",
   "customBaseUrl": "http://localhost:1234",
+  "customApiKey": "",
   "model": "google_gemma-4-e4b-it",
-  "temperature": 0.0,
-  "reasoningEffort": "high"
+  "temperature": 0.1,
+  "reasoningEffort": "medium"
 }
 ```
+
+### Configuration
+
+Until `%LOCALAPPDATA%\LMLocalChat\subagents.json` exists, the runtime uses the built-in defaults (read-only) and the **Sub Agents dialog is empty by design** (it edits only the custom file; click **Use Active Model** to load the built-ins).
+
+**Root-level defaults** (`providerType`, `customBaseUrl`, `customApiKey`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`, `parallel`, `maxParallel`) are applied to any agent that doesn't set its own value. Changing a root value updates every agent that currently *inherits* it; explicit per-agent values stay exactly as typed.
+
+#### `agents[]` schema
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | string | ✅ | — | unique, tool-name: `[A-Za-z0-9_-]{1,64}` |
+| `displayName` | string | | `id` | shown in UI |
+| `description` | string | ✅ | — | shown to the model/user |
+| `system` | string | | — | overrides default system prompt |
+| `providerType` | string | | root default | e.g. `lmstudio` |
+| `customBaseUrl` | string | ✅ | root default | absolute URL; `http://localhost:1234` for LM Studio |
+| `customApiKey` | string | | root default | |
+| `model` | string | ✅ | root default | required unless root `model` set |
+| `temperature` | number [0..2] | | root default | |
+| `timeoutSeconds` | int `>=0` | | root default | `0` disables watchdog |
+| `maxRounds` | int `>=1` | | root default | tool-call loop cap |
+| `maxTokens` | int `>=1` | | root default | output cap |
+| `reasoningEffort` | string | | root default | `none`/`low`/`medium`/`high` |
+| `parallel` | bool | | `false` | enable parallel grouping |
+| `maxParallel` | int `>=1` | | root default | parallel width |
+| `enabled` | bool | | `true` | runtime gate |
+| `allowedTools[]` | string[] | | `[]` | built-in tool names; unknown → save rejected |
+
+**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_active_document`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`.
 
 ---
 
@@ -448,10 +496,12 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
 Open the Sub Agents dialog from the main menu.
 
 - **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat’s model, provider, base URL, and API key into the root defaults, and also updates any agent that already has its own `model` set. If no agents exist, it saves the predefined subagents to the configuration file first.
-- **Save** – only `enabled` flags and root-level changes are written; all other fields remain exactly as you typed them in the JSON file (inherited fields are not expanded).
+- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 7 built-in defaults into the dialog**.
+- **Save** behaves in two modes:
+  - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the whole agent set is written, creating or replacing `subagents.json`.
+  - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags and root-level changes are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
 
-Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable Sub Agents (beta)"** checkbox in Settings.
+Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable Sub Agents"** checkbox in Settings.
 
 
 
@@ -474,7 +524,7 @@ Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable S
 <a id="content--ai-instructions--modes"></a>
 ## 🎭 AI Instructions & Modes
 
-The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, **Tests**, , and allows you to create up to **50 custom modes**
+The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, **Tests** and allows you to create up to **50 custom modes**
 
 > [!TIP]
 > **Prompt Caching Optimization:** Select your desired mode (e.g., Bugfix, Review, Explain) before sending your message. Changing the mode mid-conversation modifies the system prompt, which invalidates the server's prompt cache, increasing token costs and latency.
@@ -508,7 +558,7 @@ The **Chat History** dialog (accessible from the top‑right menu **`…`** → 
 
 | Detail | Description |
 |---|---|
-| **Chat logging must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Enable Chat Logging** is turned off in Settings, no sessions will appear. |
+| **Save chat history must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Save chat history** is turned off in Settings, no sessions will appear. |
 | **Loading a session forks it** | When you load a past session, the extension **creates a brand‑new session** initialized with that session's message history. Your continuation is saved under a new session ID — the original session remains untouched. |
 
 

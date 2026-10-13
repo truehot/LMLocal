@@ -509,11 +509,13 @@ namespace LMLocal.Application.ChatSession
         {
             var processingMessage = _toolManager.GetProcessingMessage(toolCall);
 
+            var uiCallId = "ui_" + Guid.NewGuid().ToString("N");
+
             await onMessage(new WebView2ToolCallMessage
             {
                 Type = WebView2MessageType.StreamToolCall,
                 FunctionName = toolCall.FunctionName,
-                CallId = toolCall.CallId,
+                CallId = uiCallId,
                 ArgumentsJson = toolCall.ArgumentsJson,
                 Message = processingMessage
             }).ConfigureAwait(false);
@@ -524,7 +526,7 @@ namespace LMLocal.Application.ChatSession
                 toolCts.CancelAfter(_toolManager.GetToolTimeout(toolCall.FunctionName) ??
                                     TimeSpan.FromMilliseconds(TOOL_EXECUTION_TIMEOUT_MS));
 
-                var stepProgress = new ToolActivityForwarder(toolCall.CallId, onMessage);
+                var stepProgress = new ToolActivityForwarder(uiCallId, onMessage);
                 toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress).ConfigureAwait(false);
             }
 
@@ -534,7 +536,7 @@ namespace LMLocal.Application.ChatSession
             {
                 Type = WebView2MessageType.StreamToolEnd,
                 FunctionName = toolCall.FunctionName,
-                CallId = toolCall.CallId,
+                CallId = uiCallId,
                 Message = string.IsNullOrEmpty(toolResult.Error) ? toolResult.CompletionMessage : toolResult.UserMessage,
                 IsError = !string.IsNullOrEmpty(toolResult.Error)
             }).ConfigureAwait(false);

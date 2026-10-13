@@ -342,6 +342,14 @@ body {
             color: var(--link-visited);
         }
 
+    .ai-message .file-link {
+        cursor: pointer;
+    }
+
+        .ai-message .file-link:hover {
+            text-decoration: underline;
+        }
+
     .ai-message table {
         display: table;
         table-layout: auto;
@@ -436,21 +444,21 @@ body {
     white-space: nowrap;
 }
 
-    #live-token-count::before {
-        content: "";
-        display: inline-block;
-        width: 1px;
-        height: 9px;
-        background-color: var(--border-color);
-        line-height: 0;
-        font-size: 0;
-        vertical-align: middle;
-        margin-right: 10px;
-        position: relative;
-        top: -1px;
-        animation: none;
-        opacity: 1;
-    }
+#live-token-count::before {
+    content: "";
+    display: inline-block;
+    width: 1px;
+    height: 9px;
+    background-color: var(--border-color);
+    line-height: 0;
+    font-size: 0;
+    vertical-align: middle;
+    margin-right: 10px;
+    position: relative;
+    top: -1px;
+    animation: none;
+    opacity: 1;
+}
 
 /* ====== Send button styles ====== */
 #mainBtn {
@@ -1063,21 +1071,21 @@ body {
         transform: rotate(90deg);
     }
 
-    #subAgentsToggleBtn.active .icon {
-        transform: none;
-    }
+#subAgentsToggleBtn.active .icon {
+    transform: none;
+}
 
-    .input-container .btn-secondary:hover {
-        filter: brightness(1.1);
-        background: var(--hover-bg-alpha);
-        color: var(--text-color);
-    }
+.input-container .btn-secondary:hover {
+    filter: brightness(1.1);
+    background: var(--hover-bg-alpha);
+    color: var(--text-color);
+}
 
-    .input-container .btn-secondary.active {
-        opacity: 1;
-        background: var(--hover-bg-alpha);
-        color: var(--text-color);
-    }
+.input-container .btn-secondary.active {
+    opacity: 1;
+    background: var(--hover-bg-alpha);
+    color: var(--text-color);
+}
 
 
 .input-container .btn-main {

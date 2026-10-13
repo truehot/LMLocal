@@ -1,12 +1,12 @@
+using LMLocal.Core.Common;
+using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
+using LMLocal.Infrastructure.LlmApi.Responses;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using LMLocal.Core.Models;
-using LMLocal.Core.Common;
-using LMLocal.Infrastructure.LlmApi.Provider;
-using LMLocal.Infrastructure.LlmApi.Responses;
-using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.LlmApi.Converter
 {
@@ -167,16 +167,15 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
                     var unifiedModel = new UnifiedModelInfo
                     {
                         Id = model.Id,
-                        // "name" (OpenRouter) wins, falls back to Gemini "displayName"/"display_name".
                         Name = model.Name ?? model.DisplayName ?? model.DisplayNameSnakeCase,
                         MaxTokens = maxTokens,
                         SupportsMaxTokens = maxTokens.HasValue,
                         IsLoaded = false,
                         SupportsVision = HasVision(model.Architecture),
                         SupportsToolUse = HasToolUse(model.SupportedParameters),
-                        InputPricePerMillion = ToPricePerMillion(model.Pricing?.Prompt),
-                        OutputPricePerMillion = ToPricePerMillion(model.Pricing?.Completion),
-                        CacheReadPricePerMillion = ToPricePerMillion(model.Pricing?.InputCacheRead),
+                        InputPricePerMillion = ToPricePerMillion(model.Pricing?.Prompt ?? model.Pricing?.InputPrice),
+                        OutputPricePerMillion = ToPricePerMillion(model.Pricing?.Completion ?? model.Pricing?.OutputPrice),
+                        CacheReadPricePerMillion = ToPricePerMillion(model.Pricing?.InputCacheRead ?? model.Pricing?.CachedPrice),
                         CacheWritePricePerMillion = ToPricePerMillion(model.Pricing?.InputCacheWrite)
                     };
 

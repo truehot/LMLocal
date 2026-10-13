@@ -21,6 +21,9 @@ export class MarkedWorkerClient {
             renderer.code = function(data) {
                 return renderCodeBlock(data);
             };
+            renderer.codespan = (data) => {
+              return renderCodeSpan(data);
+            };
 
             marked.setOptions({
                 gfm: true,
