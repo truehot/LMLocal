@@ -52,19 +52,17 @@ namespace LMLocal.Application.ChatSessionStream
             var contentBuffer = new StringBuilder();
             var reasoningBuffer = new StringBuilder();
             var toolCallBuffers = new Dictionary<int, StringBuilder>();
+            var tokenEstimator = new StreamedTokenEstimator();
+            var parser = new LlmSseParser();
+            var syncLock = new object();
 
             var result = new StreamCompletionResult
             {
                 TokenUsage = new TokenUsageMetadata()
             };
 
-            int currentTokens = 0;
-
-            var syncLock = new object();
+            int deltaCount = 0;
             bool isReading = true;
-
-            // Create a new parser instance for this stream processing session
-            var parser = new LlmSseParser();
 
             try
             {
@@ -93,7 +91,7 @@ namespace LMLocal.Application.ChatSessionStream
                                     chunkToSend = new TextStreamChunk(t, ChunkKind.Content);
                                 }
 
-                                statsToSend = new TokenGenerationStats(currentTokens, _tokenSpeedCalculator.GetTokensPerSecond());
+                                statsToSend = new TokenGenerationStats(tokenEstimator.EstimatedTokens, _tokenSpeedCalculator.GetTokensPerSecond());
                                 done = !isReading && reasoningBuffer.Length == 0 && contentBuffer.Length == 0;
                             }
 
@@ -166,8 +164,10 @@ namespace LMLocal.Application.ChatSessionStream
                                                     break;
                                             }
 
-                                            currentTokens++;
-                                            _tokenSpeedCalculator.Update(currentTokens);
+                                            tokenEstimator.Add(textChunk.Text);
+
+                                            deltaCount++;
+                                            _tokenSpeedCalculator.Update(deltaCount);
 
                                         }
                                         else if (chunk is ToolCallMetadataChunk metadata)
@@ -180,6 +180,8 @@ namespace LMLocal.Application.ChatSessionStream
                                             if (!string.IsNullOrEmpty(metadata.InitialArguments))
                                             {
                                                 toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
+
+                                                tokenEstimator.Add(metadata.InitialArguments);
                                             }
                                         }
                                         else if (chunk is ErrorStreamChunk errChunk)

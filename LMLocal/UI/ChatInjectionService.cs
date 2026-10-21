@@ -28,13 +28,9 @@ namespace LMLocal
         {
             get
             {
-                var instance = _instance;
-                if (instance == null)
-                {
-                    throw new InvalidOperationException(
+                var instance = _instance ?? throw new InvalidOperationException(
                         "ChatInjectionService is not initialized. " +
                         "Call ChatInjectionService.Initialize(package) during package initialization.");
-                }
                 return instance;
             }
         }

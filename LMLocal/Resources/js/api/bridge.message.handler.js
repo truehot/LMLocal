@@ -1,7 +1,7 @@
 import { Config } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
-import modelStore from '@app/store/model.store.js'
+import sessionStore from '@app/store/session.store.js';
 import changesStore from '@app/store/changes.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
 import { createCallback } from '@app/lib/callback.js';
@@ -38,7 +38,7 @@ class BridgeMessageHandler {
             appStore.setState(prevState => ({
                 status: AppStatus.THINKING,
                 accumulatedThoughtText: prevState.accumulatedThoughtText + flushed,
-                tokenUsed: count,
+                roundTokens: count,
                 tokenSpeed: speed
             }));
         }
@@ -58,7 +58,7 @@ class BridgeMessageHandler {
             appStore.setState(prevState => ({
                 status: AppStatus.STREAMING,
                 accumulatedText: prevState.accumulatedText + flushed,
-                tokenUsed: count,
+                roundTokens: count,
                 tokenSpeed: speed
             }));
         }
@@ -111,15 +111,22 @@ class BridgeMessageHandler {
     handleChatSessionComplete(metadata) {
         const totalTokens = metadata.TotalTokens || 0;
         const reasoningTokens = metadata.ReasoningTokens || 0;
+        const contextTokens = totalTokens - reasoningTokens;
 
-        modelStore.setState({
-            tokenUsed: totalTokens - reasoningTokens
-        });
+        const requestPromptTokens = metadata.RequestPromptTokens ?? metadata.PromptTokens ?? 0;
+        const requestCompletionTokens = metadata.RequestCompletionTokens ?? metadata.CompletionTokens ?? 0;
+        const requestCachedTokens = metadata.RequestCachedTokens ?? metadata.CachedTokens ?? 0;
+
+        sessionStore.setState(prevState => ({
+            contextTokens: contextTokens,
+            sessionPromptTokens: (prevState?.sessionPromptTokens || 0) + requestPromptTokens,
+            sessionCompletionTokens: (prevState?.sessionCompletionTokens || 0) + requestCompletionTokens,
+            sessionCachedTokens: (prevState?.sessionCachedTokens || 0) + requestCachedTokens
+        }));
 
         appStore.setState({
             status: AppStatus.IDLE,
-            tokenUsed: totalTokens - reasoningTokens,
-            totalTokens: totalTokens,
+            lastAnswerTokens: contextTokens,
             cachedTokens: metadata.CachedTokens || 0,
             tokenSpeed: metadata.TokensPerSecond || 0
         });

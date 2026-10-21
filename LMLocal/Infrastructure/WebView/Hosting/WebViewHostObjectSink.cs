@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.Web.WebView2.Core;
 
 namespace LMLocal.Infrastructure.WebView.Hosting
@@ -18,7 +18,6 @@ namespace LMLocal.Infrastructure.WebView.Hosting
 
         public CoreWebView2 Core => _core;
 
-        public void AddHostObject(string name, object obj)
-            => _core.AddHostObjectToScript(name, obj);
+        public void AddHostObject(string name, object obj) => _core.AddHostObjectToScript(name, obj);
     }
 }

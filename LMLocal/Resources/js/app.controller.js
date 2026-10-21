@@ -13,6 +13,7 @@ import { bridgeMessageHandler } from '@app/api/bridge.message.handler.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
+import sessionStore from '@app/store/session.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import settingsStore from '@app/store/settings.store.js';
 import providersStore from '@app/store/providers.store.js';
@@ -44,6 +45,7 @@ class AppController {
         this._initialized = false;
         this._appStoreListener = null;
         this._modelStoreListener = null;
+        this._sessionStoreListener = null;
         this._instructionsStoreListener = null;
         this._settingsStoreListener = null;
         this._changesStoreListener = null;
@@ -101,6 +103,11 @@ class AppController {
             toolbarComponent.updateModelState(state, prev);
         };
         modelStore.subscribe(this._modelStoreListener);
+
+        this._sessionStoreListener = (state, prev) => {
+            toolbarComponent.updateSessionState(state, prev);
+        };
+        sessionStore.subscribe(this._sessionStoreListener);
 
         this._instructionsStoreListener = (state, prev) => {
             inputComponent.updateInstructionsState(state, prev);
@@ -411,6 +418,11 @@ class AppController {
         if (this._modelStoreListener) {
             modelStore.unsubscribe(this._modelStoreListener);
             this._modelStoreListener = null;
+        }
+
+        if (this._sessionStoreListener) {
+            sessionStore.unsubscribe(this._sessionStoreListener);
+            this._sessionStoreListener = null;
         }
 
         if (this._instructionsStoreListener) {

@@ -2,6 +2,7 @@ import { UIText } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
+import sessionStore from '@app/store/session.store.js';
 import { createModelSelectorDialog } from '@app/lib/model-selector.factory.js';
 import appDataService from '@app/services/app.data.service.js';
 
@@ -88,17 +89,21 @@ class StartupManager {
     }
 
     _setLocalModelState(model) {
+        if (modelStore.getState().modelId !== model.id) {
+            sessionStore.resetTraffic();
+        }
+
         modelStore.setState({
             modelId: model.id,
             modelName: model.name || model.id,
             tokenMax: model.maxTokens || 0,
-            tokenUsed: 0,
             supportsMaxTokens: model.supportsMaxTokens
         });
 
         appStore.setState({
             status: AppStatus.IDLE,
-            tokenUsed: 0,
+            roundTokens: 0,
+            lastAnswerTokens: 0,
             tokenSpeed: 0,
             error: null
         });

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -24,8 +25,9 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
         private readonly string _authToken;
         private readonly IHttpClientWrapper _httpClientWrapper;
         private readonly TimeSpan _requestTimeout;
+        private readonly SemaphoreSlim _recoveryLock = new SemaphoreSlim(1, 1);
         private string _sessionId;
-        private bool _closed = false;
+        private volatile bool _closed = false;
         private readonly object _sessionLock = new object();
 
         public HttpMcpClient(
@@ -49,18 +51,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
         {
             try
             {
-                var initRequest = new JsonRpcRequest
-                {
-                    Id = GetNextRequestId(),
-                    Method = "initialize",
-                    Params = new InitializeRequest()
-                };
-
-                var response = await SendRequestAndWaitResponseAsync(initRequest, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (response?.IsSuccess != true)
-                    throw new InvalidOperationException("Failed to initialize MCP server");
+                await InitializeSessionAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -73,87 +64,216 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             if (_closed)
                 return;
 
-            try
-            {
-                string sessionIdToDelete;
-                lock (_sessionLock)
-                {
-                    sessionIdToDelete = _sessionId;
-                    _sessionId = null;
-                }
+            _closed = true;
 
-                if (!string.IsNullOrEmpty(sessionIdToDelete))
-                {
-                    try
-                    {
-                        await DeleteSessionAsync(sessionIdToDelete, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        InternalLogger.Warn($"Error deleting session: {ex.Message}");
-                    }
-                }
-            }
-            finally
+            string sessionIdToDelete;
+            lock (_sessionLock)
             {
-                _closed = true;
+                sessionIdToDelete = _sessionId;
+                _sessionId = null;
+            }
+
+            if (!string.IsNullOrEmpty(sessionIdToDelete))
+            {
+                try
+                {
+                    await DeleteSessionAsync(sessionIdToDelete, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"Error deleting session: {ex.Message}");
+                }
             }
         }
 
         protected override async Task<string> SendJsonAndWaitResponseAsync(string json, CancellationToken cancellationToken)
         {
-            if (_httpClientWrapper == null)
-                throw new InvalidOperationException("HTTP client wrapper not initialized");
+            ThrowIfClosed();
 
-            using (var request = CreateRequest(json))
-            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            var result = await PostAsync(json, includeSessionId: true, readResponseBody: true, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (result.IsSuccess)
+                return result.Body;
+
+            if (IsSessionExpired(result))
             {
-                cts.CancelAfter(_requestTimeout);
+                InternalLogger.Warn("MCP session expired (404), re-initializing");
+                await RecoverSessionAsync(result.SessionIdUsed, cancellationToken).ConfigureAwait(false);
 
-                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false))
-                {
-                    ExtractSessionIdFromResponse(response);
+                var retryResult = await PostAsync(json, includeSessionId: true, readResponseBody: true, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var errorMessage = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
-                        throw new InvalidOperationException(
-                            $"HTTP request failed ({(int)response.StatusCode} {response.StatusCode}): {errorMessage}");
-                    }
+                if (retryResult.IsSuccess)
+                    return retryResult.Body;
 
-                    var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-                    if (contentType.Equals("text/event-stream", StringComparison.OrdinalIgnoreCase))
-                        return await ReadSseResponseAsync(response, cts.Token).ConfigureAwait(false);
-                    else
-                        return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                }
+                throw CreateHttpError(retryResult);
             }
+
+            throw CreateHttpError(result);
         }
 
         protected override async Task SendJsonAsync(string json, CancellationToken cancellationToken)
         {
+            ThrowIfClosed();
+
+            var result = await PostAsync(json, includeSessionId: true, readResponseBody: false, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+                throw CreateHttpError(result);
+        }
+
+        /// <summary>
+        /// Performs the MCP initialization handshake: <c>initialize</c> followed by <c>notifications/initialized</c>.
+        /// </summary>
+        private async Task InitializeSessionAsync(CancellationToken cancellationToken)
+        {
+            var initRequest = new JsonRpcRequest
+            {
+                Id = GetNextRequestId(),
+                Method = "initialize",
+                Params = new InitializeRequest()
+            };
+
+            var result = await PostAsync(initRequest.ToJson(), includeSessionId: false, readResponseBody: true, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+                throw CreateHttpError(result);
+
+            if (string.IsNullOrEmpty(result.Body))
+                throw new InvalidOperationException("Empty response from MCP server");
+
+            var response = result.Body.FromJson<JsonRpcResponse>() ?? throw new InvalidOperationException("Failed to initialize MCP server");
+            if (!response.IsSuccess)
+                throw new InvalidOperationException($"MCP error: {response.Error?.Message ?? "Unknown error"}");
+
+            await SendInitializedNotificationAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends the <c>notifications/initialized</c> notification required by the MCP lifecycle.
+        /// </summary>
+        private async Task SendInitializedNotificationAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var notification = new JsonRpcNotification { Method = "notifications/initialized" };
+
+                var result = await PostAsync(notification.ToJson(), includeSessionId: true, readResponseBody: false, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!result.IsSuccess)
+                {
+                    InternalLogger.Warn(
+                        $"notifications/initialized returned {result.StatusCode} {result.StatusDescription}: {result.ErrorDetails}");
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"Failed to send notifications/initialized: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restores an expired MCP session by starting a new one.
+        /// </summary>
+        private async Task RecoverSessionAsync(string expiredSessionId, CancellationToken cancellationToken)
+        {
+            await _recoveryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                ThrowIfClosed();
+
+                var currentSessionId = GetCurrentSessionId();
+                if (!string.IsNullOrEmpty(currentSessionId)
+                    && !string.Equals(currentSessionId, expiredSessionId, StringComparison.Ordinal))
+                {
+                    InternalLogger.Debug("MCP session already re-initialized by another request");
+                    return;
+                }
+
+                lock (_sessionLock)
+                {
+                    _sessionId = null;
+                }
+
+                await InitializeSessionAsync(cancellationToken).ConfigureAwait(false);
+                InternalLogger.Info("MCP session re-initialized after 404");
+            }
+            finally
+            {
+                _recoveryLock.Release();
+            }
+        }
+
+        private static bool IsSessionExpired(McpHttpResult result)
+        {
+            return result.StatusCode == (int)HttpStatusCode.NotFound
+                && !string.IsNullOrEmpty(result.SessionIdUsed);
+        }
+
+        private static InvalidOperationException CreateHttpError(McpHttpResult result)
+        {
+            return new InvalidOperationException(
+                $"HTTP request failed ({result.StatusCode} {result.StatusDescription}): {result.ErrorDetails}");
+        }
+
+        private async Task<McpHttpResult> PostAsync(
+            string json,
+            bool includeSessionId,
+            bool readResponseBody,
+            CancellationToken cancellationToken)
+        {
             if (_httpClientWrapper == null)
                 throw new InvalidOperationException("HTTP client wrapper not initialized");
 
-            using (var request = CreateRequest(json))
+            using (var request = CreateRequest(json, includeSessionId, out string sessionIdUsed))
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
                 cts.CancelAfter(_requestTimeout);
 
-                using (var response = await _httpClientWrapper.SendAsync(request, HttpCompletionOption.ResponseContentRead, cts.Token).ConfigureAwait(false))
+                var completionOption = readResponseBody
+                    ? HttpCompletionOption.ResponseHeadersRead
+                    : HttpCompletionOption.ResponseContentRead;
+
+                using (var response = await _httpClientWrapper.SendAsync(request, completionOption, cts.Token).ConfigureAwait(false))
                 {
                     ExtractSessionIdFromResponse(response);
-                    if (!response.IsSuccessStatusCode)
+
+                    var result = new McpHttpResult
                     {
-                        var errorMessage = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
-                        throw new InvalidOperationException(
-                            $"HTTP request failed ({(int)response.StatusCode} {response.StatusCode}): {errorMessage}");
+                        StatusCode = (int)response.StatusCode,
+                        StatusDescription = response.StatusCode.ToString(),
+                        IsSuccess = response.IsSuccessStatusCode,
+                        SessionIdUsed = sessionIdUsed
+                    };
+
+                    if (!result.IsSuccess)
+                    {
+                        result.ErrorDetails = await ExtractErrorDetailsAsync(response).ConfigureAwait(false);
+                        return result;
                     }
+
+                    if (!readResponseBody)
+                        return result;
+
+                    var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+                    if (contentType.Equals("text/event-stream", StringComparison.OrdinalIgnoreCase))
+                        result.Body = await ReadSseResponseAsync(response, cts.Token).ConfigureAwait(false);
+                    else
+                        result.Body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+                    return result;
                 }
             }
         }
 
-        private HttpRequestMessage CreateRequest(string json)
+        private HttpRequestMessage CreateRequest(string json, bool includeSessionId, out string sessionIdUsed)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, _baseUrl)
             {
@@ -162,10 +282,9 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
 
             request.Headers.TryAddWithoutValidation("Accept", "application/json, text/event-stream");
 
-            string sessionId;
-            lock (_sessionLock) { sessionId = _sessionId; }
-            if (!string.IsNullOrEmpty(sessionId))
-                request.Headers.Add("Mcp-Session-Id", sessionId);
+            sessionIdUsed = includeSessionId ? GetCurrentSessionId() : null;
+            if (!string.IsNullOrEmpty(sessionIdUsed))
+                request.Headers.Add("Mcp-Session-Id", sessionIdUsed);
 
             if (!string.IsNullOrEmpty(_authToken))
                 request.Headers.Add("Authorization", $"Bearer {_authToken}");
@@ -174,6 +293,17 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 request.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
             return request;
+        }
+
+        private string GetCurrentSessionId()
+        {
+            lock (_sessionLock) { return _sessionId; }
+        }
+
+        private void ThrowIfClosed()
+        {
+            if (_closed)
+                throw new InvalidOperationException("Client is closed");
         }
 
         private async Task<string> ExtractErrorDetailsAsync(HttpResponseMessage response)
@@ -216,6 +346,12 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 {
                     lock (_sessionLock)
                     {
+                        if (_closed)
+                        {
+                            InternalLogger.Debug("MCP session ID ignored: client is closed");
+                            return;
+                        }
+
                         if (sessionId != _sessionId)
                         {
                             _sessionId = sessionId;
@@ -331,6 +467,27 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             if (string.IsNullOrWhiteSpace(json)) return false;
             try { JObject.Parse(json); return true; }
             catch (JsonException) { return false; }
+        }
+
+        /// <summary>
+        /// Outcome of a single HTTP POST to the MCP endpoint.
+        /// </summary>
+        private sealed class McpHttpResult
+        {
+            public int StatusCode { get; set; }
+
+            public string StatusDescription { get; set; }
+
+            public bool IsSuccess { get; set; }
+
+            public string Body { get; set; }
+
+            public string ErrorDetails { get; set; }
+
+            /// <summary>
+            /// Session id that was actually sent with the request (null when none was sent).
+            /// </summary>
+            public string SessionIdUsed { get; set; }
         }
     }
 }

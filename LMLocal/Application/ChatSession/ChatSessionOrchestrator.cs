@@ -569,6 +569,8 @@ namespace LMLocal.Application.ChatSession
 
                 if (!finalResult.WasCancelled && string.IsNullOrEmpty(finalResult.ErrorMessage))
                 {
+                    var (Prompt, Completion, Cached) = SumRequestTokens(context.AllResults);
+
                     var completeMsg = new WebView2SessionCompleteMessage
                     {
                         Type = WebView2MessageType.ChatSessionComplete,
@@ -576,6 +578,9 @@ namespace LMLocal.Application.ChatSession
                         TotalTokens = finalResult.TokenUsage?.TotalTokens,
                         PromptTokens = finalResult.TokenUsage?.PromptTokens,
                         CompletionTokens = finalResult.TokenUsage?.CompletionTokens,
+                        RequestPromptTokens = Prompt,
+                        RequestCompletionTokens = Completion,
+                        RequestCachedTokens = Cached,
                         ReasoningTokens = finalResult.TokenUsage?.ReasoningTokens,
                         CachedTokens = finalResult.TokenUsage?.CachedTokens,
                         TokensPerSecond = finalResult.TokensPerSecond
@@ -586,6 +591,50 @@ namespace LMLocal.Application.ChatSession
             }
 
             return ChatSessionState.CompactingHistory;
+        }
+
+        /// <summary>
+        /// Sums prompt, completion and cached prompt tokens across every generation round of the request.
+        /// </summary>
+        private static (int? Prompt, int? Completion, int? Cached) SumRequestTokens(
+            IReadOnlyList<StreamCompletionResult> results)
+        {
+            if (results == null || results.Count == 0)
+            {
+                return (null, null, null);
+            }
+
+            int prompt = 0;
+            int completion = 0;
+            int cached = 0;
+            bool hasPrompt = false;
+            bool hasCompletion = false;
+            bool hasCached = false;
+
+            foreach (var result in results)
+            {
+                if (result?.TokenUsage?.PromptTokens is int promptTokens)
+                {
+                    prompt += promptTokens;
+                    hasPrompt = true;
+                }
+
+                if (result?.TokenUsage?.CompletionTokens is int completionTokens)
+                {
+                    completion += completionTokens;
+                    hasCompletion = true;
+                }
+
+                if (result?.TokenUsage?.CachedTokens is int cachedTokens)
+                {
+                    cached += cachedTokens;
+                    hasCached = true;
+                }
+            }
+
+            return (hasPrompt ? prompt : (int?)null,
+                    hasCompletion ? completion : (int?)null,
+                    hasCached ? cached : (int?)null);
         }
 
         /// <summary>

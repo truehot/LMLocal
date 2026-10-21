@@ -74,23 +74,29 @@ const EXT_SET = new Set([
 
 const LINE_SUFFIX = /:\d+(?:[-–]\d+)?$/;
 const GLOB_CHARS = /[*?[\]{}]/;
-
+const PATH_SEP = /[\\/]/;
 function isFilePath(text) {
-    if (!text || !text.includes('/') || /\s/.test(text)) return false;
+    if (!text || /\s/.test(text)) return false;
     if (text.includes('://')) return false;
     if (GLOB_CHARS.test(text)) return false;
+    if (!PATH_SEP.test(text)) return false;
 
     const path = text.replace(LINE_SUFFIX, '');
-    const dot = path.lastIndexOf('.');
+    const segs = path.split(PATH_SEP);
+
+    if (segs.some(s => s === '...' || s === '…')) return false;
+
+    const base = segs.pop();
+    const dot = base.lastIndexOf('.');
     if (dot < 0) return false;
 
-    const ext = path.slice(dot + 1).toLowerCase();
+    const ext = base.slice(dot + 1).toLowerCase();
     return EXT_SET.has(ext);
 }
 
 function renderCodeSpan(data) {
     if (isFilePath(data.text)) {
-        return `<code class="file-link">${escapeHtml(data.text)}</code >`;
+        return `<code class="file-link">${escapeHtml(data.text)}</code>`;
     }
-    return `<code>${escapeHtml(data.text)}</code >`;
+    return `<code>${escapeHtml(data.text)}</code>`;
 }

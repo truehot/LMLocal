@@ -103,11 +103,15 @@
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
     <Compile Include="Core\Common\ChatLogConstants.cs" />
+    <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
     <Compile Include="Core\Models\ChatSessionSummary.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
+    <Compile Include="Infrastructure\SubAgents\ISubAgentFailureLogger.cs" />
+    <Compile Include="Infrastructure\SubAgents\SubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
+    <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
     <Compile Include="UI\ChatInjectionService.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
     <Compile Include="Commands\AddUnitTestsCommand.cs" />
@@ -596,6 +600,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\store\providers.store.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\store\session.store.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

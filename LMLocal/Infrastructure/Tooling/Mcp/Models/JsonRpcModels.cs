@@ -21,6 +21,21 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Models
     }
 
     /// <summary>
+    /// MCP JSON-RPC 2.0 notification envelope (a request without an "id").
+    /// </summary>
+    public class JsonRpcNotification
+    {
+        [JsonProperty("jsonrpc")]
+        public string JsonRpc { get; set; } = "2.0";
+
+        [JsonProperty("method")]
+        public string Method { get; set; }
+
+        [JsonProperty("params", NullValueHandling = NullValueHandling.Ignore)]
+        public object Params { get; set; }
+    }
+
+    /// <summary>
     /// MCP JSON-RPC 2.0 response envelope.
     /// </summary>
     public class JsonRpcResponse

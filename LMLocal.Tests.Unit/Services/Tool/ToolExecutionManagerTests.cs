@@ -6,7 +6,7 @@ using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Tooling;
+using LMLocal.Tests.Unit.Internal.TestHelpers;
 using Moq;
 using NUnit.Framework;
 
@@ -30,7 +30,10 @@ namespace LMLocal.Tests.Unit.Services.Tool
 
         private ToolExecutionManager CreateManager()
         {
-            return new ToolExecutionManager(_toolRouterMock.Object, _toolQueueProviderMock.Object);
+            return new ToolExecutionManager(
+                _toolRouterMock.Object,
+                _toolQueueProviderMock.Object,
+                NullSubAgentFailureLogger.Instance);
         }
 
         private void AllowToolsInMainQueue(params string[] names)

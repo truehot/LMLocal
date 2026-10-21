@@ -82,21 +82,29 @@ public partial class ToolbarTests : AppTestBase
         await Expect(Page.Locator("#conn-status"))
             .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
 
-        // Simulate model state update with token usage
+        // Occupied context is conversation state (sessionStore), the window size is model
+        // state (modelStore): the toolbar needs both to draw the bar.
         await Page.EvaluateAsync("() => { " +
-            "import('/js/components/toolbar.component.js').then(m => { " +
-            "  const comp = m.toolbarComponent; " +
+            "Promise.all([ " +
+            "  import('/js/components/toolbar.component.js'), " +
+            "  import('/js/store/session.store.js') " +
+            "]).then(([t, s]) => { " +
+            "  const comp = t.toolbarComponent; " +
             "  comp.updateModelState(" +
-            "    { modelName: 'Test Model', tokenUsed: 4000, tokenMax: 16384, supportsMaxTokens: true }," +
-            "    { modelName: 'Test Model', tokenUsed: 0, tokenMax: 16384, supportsMaxTokens: true }" +
+            "    { modelName: 'Test Model', tokenMax: 16384, supportsMaxTokens: true }," +
+            "    { modelName: 'Test Model', tokenMax: 16384, supportsMaxTokens: true }" +
             "  ); " +
+            "  s.default.setState({ contextTokens: 4000 }); " +
             "}); }");
         await Task.Delay(200);
 
-        // The token bar fill should have updated its transform
+        // The bar must be filled (a scaleY(0) bar has zero height and counts as invisible).
         var tokenBarFill = Page.Locator("#token-bar-fill");
         await Expect(tokenBarFill).ToHaveCountAsync(1);
         await Expect(tokenBarFill).ToBeVisibleAsync();
+
+        var style = await tokenBarFill.GetAttributeAsync("style");
+        Assert.That(style, Does.Contain("scaleY(0.2"), "4000 / 16384 must fill about 24% of the bar");
 
         // Info tooltip should have context usage info
         var tooltip = Page.Locator("#info-tooltip");
@@ -117,8 +125,8 @@ public partial class ToolbarTests : AppTestBase
             "import('/js/components/toolbar.component.js').then(m => { " +
             "  const comp = m.toolbarComponent; " +
             "  comp.updateModelState(" +
-            "    { modelName: 'Test Model', tokenUsed: 100, tokenMax: 0, supportsMaxTokens: false }," +
-            "    { modelName: 'Test Model', tokenUsed: 0, tokenMax: 0, supportsMaxTokens: false }" +
+            "    { modelName: 'Test Model', tokenMax: 0, supportsMaxTokens: false }," +
+            "    { modelName: 'Test Model', tokenMax: 0, supportsMaxTokens: false }" +
             "  ); " +
             "}); }");
         await Task.Delay(200);

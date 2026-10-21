@@ -10,6 +10,7 @@ using LMLocal.Application.Tool;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Tests.Unit.Internal.TestHelpers;
 using Moq;
 using NUnit.Framework;
 
@@ -72,7 +73,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 () => _toolExecutionManagerMock.Object,
                 _queueProviderMock.Object,
                 _loopDetectorMock.Object,
-                _persistenceFactoryMock.Object);
+                _persistenceFactoryMock.Object,
+                NullSubAgentFailureLogger.Instance);
         }
 
         private static SubAgentRunRequest BuildRequest()

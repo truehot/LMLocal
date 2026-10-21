@@ -14,6 +14,7 @@ using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.SubAgents;
 
 namespace LMLocal.Application.SubAgents
 {
@@ -34,6 +35,7 @@ namespace LMLocal.Application.SubAgents
         private readonly IToolQueueProvider _queueProvider;
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly IChatPersistenceFactory _chatPersistenceFactory;
+        private readonly ISubAgentFailureLogger _failureLogger;
         private readonly string _logsFolder;
 
         public SubAgentsService(
@@ -43,7 +45,8 @@ namespace LMLocal.Application.SubAgents
             Func<IToolExecutionManager> toolExecutionManagerResolver,
             IToolQueueProvider queueProvider,
             IToolCallLoopDetector loopDetector,
-            IChatPersistenceFactory chatPersistenceFactory)
+            IChatPersistenceFactory chatPersistenceFactory,
+            ISubAgentFailureLogger failureLogger)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -52,6 +55,7 @@ namespace LMLocal.Application.SubAgents
             _queueProvider = queueProvider ?? throw new ArgumentNullException(nameof(queueProvider));
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _chatPersistenceFactory = chatPersistenceFactory ?? throw new ArgumentNullException(nameof(chatPersistenceFactory));
+            _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
 
             string appDataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -77,22 +81,32 @@ namespace LMLocal.Application.SubAgents
             var stopwatch = Stopwatch.StartNew();
 
             var response = new SubAgentsRunResponse { RunId = runId };
+
+            int? lastRound = null;
+            Guid? chatSessionId = null;
+
             try
             {
                 if (request == null)
                 {
-                    return Fail(response, "SubAgent run request is required.");
+                    return await FailLoggedAsync(
+                        response, null, "SubAgent run request is required.",
+                        null, null).ConfigureAwait(false);
                 }
 
                 if (string.IsNullOrWhiteSpace(request.Prompt))
                 {
-                    return Fail(response, "Prompt is required.");
+                    return await FailLoggedAsync(
+                        response, request, "Prompt is required.",
+                        null, null).ConfigureAwait(false);
                 }
 
                 var modelId = request.Model?.Trim();
                 if (string.IsNullOrWhiteSpace(modelId))
                 {
-                    return Fail(response, "Model is required.");
+                    return await FailLoggedAsync(
+                        response, request, "Model is required.",
+                        null, null).ConfigureAwait(false);
                 }
 
                 response.Model = modelId;
@@ -115,6 +129,7 @@ namespace LMLocal.Application.SubAgents
                 var persistence = _chatPersistenceFactory.Create(_logsFolder);
                 var history = new ChatHistoryManager(_settingsManager, persistence);
                 await persistence.MarkNewSessionAsync(cancellationToken).ConfigureAwait(false);
+                chatSessionId = persistence.CurrentSessionId;
 
                 var usedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 IReadOnlyList<ToolCallRecord> previousToolCalls = null;
@@ -123,7 +138,6 @@ namespace LMLocal.Application.SubAgents
                 bool isFirstRound = true;
                 int stepCounter = 0;
 
-                // Ref-marker state, scoped to this run (variant B: only the fact of a read is kept, never content).
                 var ledger = new ReadLedger();
 
                 using (var overallCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -135,6 +149,7 @@ namespace LMLocal.Application.SubAgents
 
                     for (int round = 0; round < maxRounds; round++)
                     {
+                        lastRound = round;
                         overallCts.Token.ThrowIfCancellationRequested();
 
                         var roundRequest = new StreamRoundRequest
@@ -164,19 +179,25 @@ namespace LMLocal.Application.SubAgents
 
                         if (overallCts.Token.IsCancellationRequested)
                         {
-                            return Fail(response, "SubAgent timed out (no response within the configured window).");
+                            return await FailLoggedAsync(
+                                response, request, "SubAgent timed out (no response within the configured window).",
+                                round, chatSessionId).ConfigureAwait(false);
                         }
 
                         switch (roundResult.Outcome)
                         {
                             case StreamRoundOutcome.Error:
-                                return Fail(response, "Provider stream error: " + streamResult.ErrorMessage);
+                                return await FailLoggedAsync(
+                                    response, request, "Provider stream error: " + streamResult.ErrorMessage,
+                                    round, chatSessionId).ConfigureAwait(false);
 
                             case StreamRoundOutcome.Cancelled:
                                 return Fail(response, "SubAgent execution was cancelled.");
 
                             case StreamRoundOutcome.Incomplete:
-                                return Fail(response, streamResult.ErrorMessage);
+                                return await FailLoggedAsync(
+                                    response, request, streamResult.ErrorMessage,
+                                    round, chatSessionId).ConfigureAwait(false);
 
                             case StreamRoundOutcome.ToolCalls:
                                 if (previousToolCalls != null && _loopDetector.AreSameToolCalls(streamResult.ToolCalls, previousToolCalls))
@@ -184,7 +205,9 @@ namespace LMLocal.Application.SubAgents
                                     consecutiveDuplicateRounds++;
                                     if (consecutiveDuplicateRounds >= MaxDuplicateToolRounds)
                                     {
-                                        return Fail(response, "SubAgent detected a repeated tool call loop and stopped.");
+                                        return await FailLoggedAsync(
+                                            response, request, "SubAgent detected a repeated tool call loop and stopped.",
+                                            round, chatSessionId).ConfigureAwait(false);
                                     }
                                 }
                                 else
@@ -223,7 +246,6 @@ namespace LMLocal.Application.SubAgents
 
                                     object resultValue = string.IsNullOrEmpty(execResult.Error) ? execResult.Result : execResult.Error;
 
-                                    // Record the fact of a read (path + actually returned range) for ref expansion.
                                     if (string.IsNullOrEmpty(execResult.Error)
                                         && string.Equals(toolCall.FunctionName, ReadResultRecorder.ReadFileLinesToolName, StringComparison.OrdinalIgnoreCase))
                                     {
@@ -250,7 +272,6 @@ namespace LMLocal.Application.SubAgents
                                 CopyUsage(streamResult, response);
                                 response.TokensPerSecond = streamResult.TokensPerSecond;
 
-                                // No-op unless the model emitted ref markers; runs for every agent (ref emission is harmless when nothing is marked, so no per-agent gate is needed).
                                 if (ledger.Count > 0 && !string.IsNullOrEmpty(response.Content))
                                 {
                                     var expander = new ReadRefExpander(ledger, _fileSystem);
@@ -264,28 +285,41 @@ namespace LMLocal.Application.SubAgents
                         }
                     }
 
-                    return Fail(response, $"SubAgent exceeded maximum rounds ({maxRounds}).");
+                    return await FailLoggedAsync(
+                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}).",
+                        lastRound, chatSessionId).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
             {
-                return Fail(response, cancellationToken.IsCancellationRequested
-                    ? "SubAgent execution was cancelled."
-                    : "SubAgent timed out (no response within the configured window).");
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return Fail(response, "SubAgent execution was cancelled.");
+                }
+
+                return await FailLoggedAsync(
+                    response, request, "SubAgent timed out (no response within the configured window).",
+                    lastRound, chatSessionId).ConfigureAwait(false);
             }
             catch (ApiException ex)
             {
                 InternalLogger.Warn($"SubAgentsService: provider API error: {ex.Message}");
-                return Fail(response, "Provider API error: " + ExceptionFormatter.Format(ex));
+                return await FailLoggedAsync(
+                    response, request, "Provider API error: " + ExceptionFormatter.Format(ex),
+                    lastRound, chatSessionId, ex).ConfigureAwait(false);
             }
             catch (InvalidOperationException ex)
             {
-                return Fail(response, ExceptionFormatter.Format(ex));
+                return await FailLoggedAsync(
+                    response, request, ExceptionFormatter.Format(ex),
+                    lastRound, chatSessionId, ex).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"SubAgentsService: unexpected error during run '{runId}'", ex);
-                return Fail(response, ExceptionFormatter.Format(ex));
+                return await FailLoggedAsync(
+                    response, request, ExceptionFormatter.Format(ex),
+                    lastRound, chatSessionId, ex).ConfigureAwait(false);
             }
             finally
             {
@@ -308,6 +342,34 @@ namespace LMLocal.Application.SubAgents
         {
             response.Success = false;
             response.Error = error;
+            return response;
+        }
+
+        /// <summary>
+        /// Marks the run as failed AND writes a replayable record.
+        /// </summary>
+        private async Task<SubAgentsRunResponse> FailLoggedAsync(
+            SubAgentsRunResponse response,
+            SubAgentRunRequest request,
+            string error,
+            int? round,
+            Guid? chatSessionId,
+            Exception exception = null)
+        {
+            Fail(response, error);
+
+            await _failureLogger
+                .LogFromRequestAsync(
+                    request,
+                    "Final",
+                    error,
+                    response.RunId,
+                    round,
+                    chatSessionId,
+                    exception,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
             return response;
         }
     }

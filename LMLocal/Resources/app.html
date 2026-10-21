@@ -165,7 +165,7 @@
 
     <div class="scroll-spacer"></div>
 
-    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto; opacity: 0.7;"></span></div>
+    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
 
     <div class="input-container">
         <div class="input-wrapper">
@@ -359,12 +359,9 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableSubAgents">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable Sub Agents (beta)</span>
+                            <span class="checkbox-title">Enable Sub Agents (advanced users)<</span>
                             <span class="checkbox-description">
-                                Allows the main model to execute sequential sub-agents as a replacement for standard tools.
-                                <span style="display: block; margin-top: 6px; opacity: 0.6; font-size: 0.9em; font-style: italic;">
-                                    Uses built-in default Sub Agents until %LOCALAPPDATA%\LMLocalChat\subagents.json is created
-                                </span>
+                                Allows the main chat model to invoke specialized worker subagents as tools for complex multi-step tasks.
                             </span>
                         </span>
                     </label>

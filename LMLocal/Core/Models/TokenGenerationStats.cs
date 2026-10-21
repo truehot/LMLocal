@@ -6,7 +6,8 @@ namespace LMLocal.Core.Models
     internal readonly struct TokenGenerationStats
     {
         /// <summary>
-        /// Total tokens generated so far.
+        /// Estimated number of tokens generated so far. This is a character-based estimate:
+        /// exact usage arrives only with the stream completion, so the live value cannot be authoritative.
         /// </summary>
         public int TotalTokens { get; }
 

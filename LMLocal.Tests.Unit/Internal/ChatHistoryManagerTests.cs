@@ -1480,9 +1480,9 @@ namespace LMLocal.Tests.Unit
         private static List<ToolCallRecord> ToolCalls(params (string CallId, string Name)[] calls)
         {
             var list = new List<ToolCallRecord>();
-            foreach (var call in calls)
+            foreach (var (CallId, Name) in calls)
             {
-                list.Add(new ToolCallRecord { CallId = call.CallId, FunctionName = call.Name, ArgumentsJson = "{}" });
+                list.Add(new ToolCallRecord { CallId = CallId, FunctionName = Name, ArgumentsJson = "{}" });
             }
             return list;
         }

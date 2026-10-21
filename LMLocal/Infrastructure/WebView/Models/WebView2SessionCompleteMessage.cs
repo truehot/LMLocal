@@ -14,31 +14,41 @@ namespace LMLocal.Infrastructure.WebView
 
         /// <summary>
         /// Total tokens used: prompt + completion.
-        /// Null if not provided by server.
         /// </summary>
         public int? TotalTokens { get; set; }
 
         /// <summary>
         /// Number of tokens in the input prompt.
-        /// Null if not provided by server.
         /// </summary>
         public int? PromptTokens { get; set; }
 
         /// <summary>
         /// Number of tokens generated in completion.
-        /// Null if not provided by server.
         /// </summary>
         public int? CompletionTokens { get; set; }
 
         /// <summary>
+        /// Sum of prompt tokens across ALL rounds of this request.
+        /// </summary>
+        public int? RequestPromptTokens { get; set; }
+
+        /// <summary>
+        /// Sum of completion tokens across ALL rounds of this request.
+        /// </summary>
+        public int? RequestCompletionTokens { get; set; }
+
+        /// <summary>
+        /// Sum of cached prompt tokens across ALL rounds of this request.
+        /// </summary>
+        public int? RequestCachedTokens { get; set; }
+
+        /// <summary>
         /// Number of tokens spent on reasoning (for reasoning-capable models).
-        /// Null if model doesn't support reasoning or none was used.
         /// </summary>
         public int? ReasoningTokens { get; set; }
 
         /// <summary>
         /// Number of prompt tokens served from the provider's cache (cache hit).
-        /// Null if not provided by the server.
         /// </summary>
         public int? CachedTokens { get; set; }
 

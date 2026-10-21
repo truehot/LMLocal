@@ -2,6 +2,7 @@ import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import appStore from '@app/store/app.store.js';
 import modelStore from '@app/store/model.store.js';
+import sessionStore from '@app/store/session.store.js';
 import instructionsStore from '@app/store/instructions.store.js';
 import appDataService from '@app/services/app.data.service.js';
 import { startupManager } from '@app/services/startup.manager.js';
@@ -162,7 +163,7 @@ class AppManager {
             if (!ok) {
                 appStore.setState({
                     status: AppStatus.IDLE,
-                    tokenUsed: 0, tokenSpeed: 0,
+                    roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0,
                     accumulatedText: "", accumulatedThoughtText: "",
                     error: null
                 });
@@ -171,7 +172,7 @@ class AppManager {
         } catch (error) {
             appStore.setState({
                 status: AppStatus.IDLE,
-                tokenUsed: 0, tokenSpeed: 0,
+                roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
                 error: null
             });
@@ -180,6 +181,18 @@ class AppManager {
 
         appStore.setState({ status: AppStatus.IDLE });
         return await this.performClearChat('last-prompt');
+    }
+
+    /**
+     * Drops every conversation metric after the conversation was replaced (clear-chat with any carry-over action, or loading another session).
+     */
+    _resetContextMetrics() {
+        sessionStore.setState({
+            contextTokens: 0,
+            sessionPromptTokens: 0,
+            sessionCompletionTokens: 0,
+            sessionCachedTokens: 0
+        });
     }
 
     async performClearChat(action = 'none') {
@@ -193,9 +206,11 @@ class AppManager {
         try {
             await bridgeClient.resetHistoryWithActionAsync(action);
 
+            this._resetContextMetrics();
+
             appStore.setState({
                 status: AppStatus.IDLE,
-                tokenUsed: 0, tokenSpeed: 0,
+                roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
                 error: null
             });
@@ -211,7 +226,7 @@ class AppManager {
                 status: AppStatus.ERROR,
                 error: "Failed to clear chat history",
                 accumulatedText: "", accumulatedThoughtText: "",
-                tokenUsed: 0, tokenSpeed: 0
+                roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0
             });
         }
     }
@@ -232,9 +247,11 @@ class AppManager {
         try {
             const session = await appDataService.getChatSessionByIdAsync(sessionId);
 
+            this._resetContextMetrics();
+
             appStore.setState({
                 status: AppStatus.IDLE,
-                tokenUsed: 0, tokenSpeed: 0,
+                roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0,
                 accumulatedText: "", accumulatedThoughtText: "",
                 error: null
             });
@@ -251,7 +268,7 @@ class AppManager {
                 status: AppStatus.ERROR,
                 error: "Failed to load chat session",
                 accumulatedText: "", accumulatedThoughtText: "",
-                tokenUsed: 0, tokenSpeed: 0
+                roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0
             });
             return { success: false, error };
         }

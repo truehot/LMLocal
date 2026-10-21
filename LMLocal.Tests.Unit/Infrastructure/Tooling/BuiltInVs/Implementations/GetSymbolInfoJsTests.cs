@@ -89,19 +89,19 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void ExtractAndValidateParameters_TrimsSymbolName()
         {
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (symbolName, _, _, _, _, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "  validate  "
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.symbolName, Is.EqualTo("validate"));
+            Assert.That(error, Is.Null);
+            Assert.That(symbolName, Is.EqualTo("validate"));
         }
 
         [Test]
         public void ExtractAndValidateParameters_AllParameters_Parsed()
         {
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (symbolName, filePath, includeReferences, pageSize, pageToken, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "validate",
                 ["file_path"] = "src/utils/validation.js",
@@ -110,51 +110,51 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 ["page_token"] = "2"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.symbolName, Is.EqualTo("validate"));
-            Assert.That(result.filePath, Is.EqualTo("src/utils/validation.js"));
-            Assert.That(result.includeReferences, Is.False);
-            Assert.That(result.pageSize, Is.EqualTo(10));
-            Assert.That(result.pageToken, Is.EqualTo("2"));
+            Assert.That(error, Is.Null);
+            Assert.That(symbolName, Is.EqualTo("validate"));
+            Assert.That(filePath, Is.EqualTo("src/utils/validation.js"));
+            Assert.That(includeReferences, Is.False);
+            Assert.That(pageSize, Is.EqualTo(10));
+            Assert.That(pageToken, Is.EqualTo("2"));
         }
 
         [Test]
         public void ExtractAndValidateParameters_MaxReferences_Clamped()
         {
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, _, pageSize, _, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "validate",
                 ["max_references"] = 5000
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.pageSize, Is.EqualTo(200));
+            Assert.That(error, Is.Null);
+            Assert.That(pageSize, Is.EqualTo(200));
         }
 
         [Test]
         public void ExtractAndValidateParameters_NonBoolIncludeReferences_Ignored()
         {
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, includeReferences, _, _, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "validate",
                 ["include_references"] = "yes"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.includeReferences, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(includeReferences, Is.True);
         }
 
         [Test]
         public void ExtractAndValidateParameters_NonIntMaxReferences_Ignored()
         {
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, _, pageSize, _, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "validate",
                 ["max_references"] = "many"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.pageSize, Is.EqualTo(50));
+            Assert.That(error, Is.Null);
+            Assert.That(pageSize, Is.EqualTo(50));
         }
 
         [Test]
@@ -162,7 +162,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             // max_depth / include_import_chain / extension_filter were removed from the tool contract.
             // They must not affect parsing (backward-compatible: silently ignored).
-            var result = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (symbolName, _, includeReferences, pageSize, _, error) = GetSymbolInfoJs.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["symbol_name"] = "validate",
                 ["max_depth"] = 5,
@@ -170,10 +170,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 ["extension_filter"] = ".ts"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.symbolName, Is.EqualTo("validate"));
-            Assert.That(result.includeReferences, Is.True);
-            Assert.That(result.pageSize, Is.EqualTo(50));
+            Assert.That(error, Is.Null);
+            Assert.That(symbolName, Is.EqualTo("validate"));
+            Assert.That(includeReferences, Is.True);
+            Assert.That(pageSize, Is.EqualTo(50));
         }
 
         #endregion

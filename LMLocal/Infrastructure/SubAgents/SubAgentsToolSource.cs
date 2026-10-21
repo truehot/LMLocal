@@ -49,7 +49,10 @@ namespace LMLocal.Infrastructure.SubAgents
         private readonly ISettingsManager _settingsManager;
         private readonly Func<ISubAgentsService> _subAgentsServiceResolver;
 
-        private const string TaskParam = "task";
+        /// <summary>
+        /// Name of the single tool argument that carries the SubAgent prompt.
+        /// </summary>
+        internal const string TaskParam = "task";
 
         public SubAgentsToolSource(
             ISubAgentsCatalog catalog,

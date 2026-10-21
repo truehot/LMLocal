@@ -25,8 +25,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
         private StreamReader _stdoutReader;
         private StreamReader _stderrReader;
 
-        private readonly Dictionary<long, TaskCompletionSource<JsonRpcResponse>> _pendingRequests =
-            new Dictionary<long, TaskCompletionSource<JsonRpcResponse>>();
+        private readonly Dictionary<long, TaskCompletionSource<JsonRpcResponse>> _pendingRequests = new Dictionary<long, TaskCompletionSource<JsonRpcResponse>>();
 
         private readonly object _pendingRequestsLock = new object();
         private readonly SemaphoreSlim _writeLock = new SemaphoreSlim(1, 1);
@@ -69,12 +68,35 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 if (response?.IsSuccess != true)
                     throw new InvalidOperationException("Failed to initialize MCP server");
 
+                await SendInitializedNotificationAsync(cancellationToken).ConfigureAwait(false);
+
                 InternalLogger.Debug($"[StdioMcpClient] Initialized successfully with process {_process?.Id}");
             }
             catch (Exception ex)
             {
                 StopProcess();
                 throw new InvalidOperationException($"Failed to initialize stdio MCP client: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Sends the <c>notifications/initialized</c> notification required by the MCP lifecycle.
+        /// </summary>
+        private async Task SendInitializedNotificationAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                var notification = new JsonRpcNotification { Method = "notifications/initialized" };
+                await SendJsonAsync(notification.ToJson(), cancellationToken).ConfigureAwait(false);
+                InternalLogger.Debug("[StdioMcpClient] notifications/initialized sent");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"[StdioMcpClient] Failed to send notifications/initialized: {ex.Message}");
             }
         }
 

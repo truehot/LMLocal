@@ -35,6 +35,31 @@ export function formatTokens(n) {
     return (num / 1_000_000).toFixed(1) + 'm';
 }
 
+/**
+ * Rounds a value expressed in percent to whole percent.
+ */
+export function roundPercent(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.round(num);
+}
+
+/**
+ * Formats a value expressed in percent, e.g. `73%`.
+ */
+export function formatPercent(value) {
+    return `${roundPercent(value)}%`;
+}
+
+/**
+ * Formats a token rate (tokens per second) with one decimal place, e.g. `42.0`.
+ */
+export function formatSpeed(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return "";
+    return num.toFixed(1);
+}
+
 export function formatPrice(value, curr = '$') {
     const num = Number(value);
     if (!Number.isFinite(num)) return "";

@@ -96,6 +96,7 @@
     <Compile Include="Application\SubAgents\SubAgentsServiceTests.cs" />
     <Compile Include="Core\Common\ExceptionFormatterTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
+    <Compile Include="Core\Common\StreamedTokenEstimatorTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
     <Compile Include="Core\Models\ModelDefinitionTests.cs" />
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
@@ -137,6 +138,7 @@
     <Compile Include="Infrastructure\SettingsManagerTests.cs" />
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />
     <Compile Include="Infrastructure\SubAgentsControllerTests.cs" />
+    <Compile Include="Infrastructure\SubAgents\SubAgentFailureLoggerTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsParallelPolicyTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsParallelRunnerTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsToolSourceTests.cs" />
@@ -206,6 +208,7 @@
     <Compile Include="Internal\StreamProcessorTests.cs" />
     <Compile Include="Internal\StreamProcessorToolCallsTests.cs" />
     <Compile Include="Internal\StreamProcessorUsageTests.cs" />
+    <Compile Include="Internal\TestHelpers\NullSubAgentFailureLogger.cs" />
     <Compile Include="Internal\TestHelpers\TestFileSystems.cs" />
     <Compile Include="Internal\ToolCallLoopDetectorTests.cs" />
     <Compile Include="Internal\WebViewBridgeTests.cs" />

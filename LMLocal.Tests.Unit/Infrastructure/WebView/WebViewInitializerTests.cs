@@ -22,6 +22,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
         private static Mock<IWebViewEnvironmentProvider> Environment() => new Mock<IWebViewEnvironmentProvider>();
         private static Mock<IWebViewHostObjectRegistrar> Registrar() => new Mock<IWebViewHostObjectRegistrar>();
         private static Mock<IWebViewNavigator> Navigator() => new Mock<IWebViewNavigator>();
+        private static Mock<IExternalUriLauncher> Launcher() => new Mock<IExternalUriLauncher>();
 
         private static WebViewInitializer Create(
             ISettingsManager settings,
@@ -31,7 +32,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             IWebViewEnvironmentProvider environment,
             IWebViewHostObjectRegistrar registrar,
             IWebViewNavigator navigator)
-            => new WebViewInitializer(settings, tools, mcpTool, mcpConfig, environment, registrar, navigator);
+            => new WebViewInitializer(settings, tools, mcpTool, mcpConfig, environment, registrar, navigator, Launcher().Object);
 
         [Test]
         public void Ctor_NullSettingsManager_Throws()

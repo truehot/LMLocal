@@ -30,6 +30,9 @@ namespace LMLocal.Infrastructure.WebView.Initialization
         private readonly IWebViewEnvironmentProvider _environmentProvider;
         private readonly IWebViewHostObjectRegistrar _hostObjectRegistrar;
         private readonly IWebViewNavigator _navigator;
+        private readonly IExternalUriLauncher _externalUriLauncher;
+
+        private WebView2Page _page;
 
         public WebViewInitializer(
             ISettingsManager settingsManager,
@@ -38,7 +41,8 @@ namespace LMLocal.Infrastructure.WebView.Initialization
             IMcpConfigManager mcpConfigManager,
             IWebViewEnvironmentProvider environmentProvider,
             IWebViewHostObjectRegistrar hostObjectRegistrar,
-            IWebViewNavigator navigator)
+            IWebViewNavigator navigator,
+            IExternalUriLauncher externalUriLauncher)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _toolsConfigManager = toolsConfigManager ?? throw new ArgumentNullException(nameof(toolsConfigManager));
@@ -47,6 +51,7 @@ namespace LMLocal.Infrastructure.WebView.Initialization
             _environmentProvider = environmentProvider ?? throw new ArgumentNullException(nameof(environmentProvider));
             _hostObjectRegistrar = hostObjectRegistrar ?? throw new ArgumentNullException(nameof(hostObjectRegistrar));
             _navigator = navigator ?? throw new ArgumentNullException(nameof(navigator));
+            _externalUriLauncher = externalUriLauncher ?? throw new ArgumentNullException(nameof(externalUriLauncher));
         }
 
         public async Task<CoreWebView2> InitializeAsync(WebView2 chatBrowser, CancellationToken ct)
@@ -117,10 +122,13 @@ namespace LMLocal.Infrastructure.WebView.Initialization
                 });
 
             // --- Navigate, wait for load and fire lmInit ---------------------
-            await _navigator.LoadAsync(
-                new WebView2Page(chatBrowser.CoreWebView2),
-                $"https://{_settingsManager.VirtualHostName}/app.html",
-                ct);
+            string appUri = $"https://{_settingsManager.VirtualHostName}/app.html";
+
+            // Re-initialization must not stack event handlers.
+            _page?.Dispose();
+            _page = new WebView2Page(chatBrowser.CoreWebView2, appUri, _externalUriLauncher);
+
+            await _navigator.LoadAsync(_page, appUri, ct);
 
             return chatBrowser.CoreWebView2;
         }

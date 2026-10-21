@@ -12,62 +12,62 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void ExtractAndValidateParameters_NullParameters_ReturnsError()
         {
-            var result = InspectType.ExtractAndValidateParameters(null);
+            var (typeName, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(null);
 
-            Assert.That(result.error, Is.Not.Null.And.Contains("type_name"));
-            Assert.That(result.typeName, Is.Null);
+            Assert.That(error, Is.Not.Null.And.Contains("type_name"));
+            Assert.That(typeName, Is.Null);
         }
 
         [Test]
         public void ExtractAndValidateParameters_MissingTypeName_ReturnsError()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>());
+            var (_, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>());
 
-            Assert.That(result.error, Is.Not.Null.And.Contains("type_name"));
+            Assert.That(error, Is.Not.Null.And.Contains("type_name"));
         }
 
         [Test]
         public void ExtractAndValidateParameters_NonStringTypeName_ReturnsError()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = 42
             });
 
-            Assert.That(result.error, Is.Not.Null);
+            Assert.That(error, Is.Not.Null);
         }
 
         [Test]
         public void ExtractAndValidateParameters_WhitespaceTypeName_ReturnsError()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = "   "
             });
 
-            Assert.That(result.error, Is.Not.Null);
+            Assert.That(error, Is.Not.Null);
         }
 
         [Test]
         public void ExtractAndValidateParameters_OnlyTypeName_ReturnsDefaults()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (typeName, projectName, nsFilter, assemblyFilter, searchMode, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = "Proposal"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.typeName, Is.EqualTo("Proposal"));
-            Assert.That(result.projectName, Is.Null);
-            Assert.That(result.nsFilter, Is.Null);
-            Assert.That(result.assemblyFilter, Is.Null);
-            Assert.That(result.searchMode, Is.False);
+            Assert.That(error, Is.Null);
+            Assert.That(typeName, Is.EqualTo("Proposal"));
+            Assert.That(projectName, Is.Null);
+            Assert.That(nsFilter, Is.Null);
+            Assert.That(assemblyFilter, Is.Null);
+            Assert.That(searchMode, Is.False);
         }
 
         [Test]
         public void ExtractAndValidateParameters_AllParameters_Parsed()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (typeName, projectName, nsFilter, assemblyFilter, searchMode, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = "Proposal",
                 ["project_name"] = "LMLocal",
@@ -76,18 +76,18 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 ["search_mode"] = true
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.typeName, Is.EqualTo("Proposal"));
-            Assert.That(result.projectName, Is.EqualTo("LMLocal"));
-            Assert.That(result.nsFilter, Is.EqualTo("Microsoft.VisualStudio.Language.Proposals"));
-            Assert.That(result.assemblyFilter, Is.EqualTo("Microsoft.VisualStudio.Language"));
-            Assert.That(result.searchMode, Is.True);
+            Assert.That(error, Is.Null);
+            Assert.That(typeName, Is.EqualTo("Proposal"));
+            Assert.That(projectName, Is.EqualTo("LMLocal"));
+            Assert.That(nsFilter, Is.EqualTo("Microsoft.VisualStudio.Language.Proposals"));
+            Assert.That(assemblyFilter, Is.EqualTo("Microsoft.VisualStudio.Language"));
+            Assert.That(searchMode, Is.True);
         }
 
         [Test]
         public void ExtractAndValidateParameters_WhitespaceFilters_TreatedAsNull()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, projectName, nsFilter, assemblyFilter, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = "Proposal",
                 ["project_name"] = "  ",
@@ -95,23 +95,23 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 ["assembly_name"] = "   "
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.projectName, Is.Null);
-            Assert.That(result.nsFilter, Is.Null);
-            Assert.That(result.assemblyFilter, Is.Null);
+            Assert.That(error, Is.Null);
+            Assert.That(projectName, Is.Null);
+            Assert.That(nsFilter, Is.Null);
+            Assert.That(assemblyFilter, Is.Null);
         }
 
         [Test]
         public void ExtractAndValidateParameters_NonBoolSearchMode_Ignored()
         {
-            var result = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            var (_, _, _, _, searchMode, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
             {
                 ["type_name"] = "Proposal",
                 ["search_mode"] = "yes"
             });
 
-            Assert.That(result.error, Is.Null);
-            Assert.That(result.searchMode, Is.False);
+            Assert.That(error, Is.Null);
+            Assert.That(searchMode, Is.False);
         }
 
         #endregion

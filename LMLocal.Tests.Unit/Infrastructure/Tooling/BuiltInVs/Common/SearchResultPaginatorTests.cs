@@ -132,7 +132,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             var pages = SearchResultPaginator.PaginateByMatches(results, 0);
 
             Assert.That(pages, Has.Count.EqualTo(4));
-            Assert.That(pages.Sum(p => p.Results.Sum(r => r.MatchCount)), Is.EqualTo(4));
+            Assert.That(pages.SelectMany(p => p.Results).Sum(r => r.MatchCount), Is.EqualTo(4));
         }
 
         [Test]

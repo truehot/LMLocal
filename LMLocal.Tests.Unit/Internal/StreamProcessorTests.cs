@@ -132,7 +132,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task ProcessStreamAsync_ReportsTokens_ViaOnChunk_FromUsage()
+        public async Task ProcessStreamAsync_ReportsEstimate_ViaOnChunk_NotUsage()
         {
             int reportedTokens = 0;
             var processor = new StreamProcessor(
@@ -147,7 +147,7 @@ namespace LMLocal.Tests.Unit
             {
                 var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { reportedTokens = stats.TotalTokens; await Task.CompletedTask; }, 0);
                 Assert.That(result.ContentResponse, Is.EqualTo("hi"));
-                // onChunk reports tokens per content chunks; usage stored separately
+                // onChunk reports the character-based estimate, never the usage chunk
                 Assert.That(reportedTokens, Is.EqualTo(1));
             }
         }
@@ -204,6 +204,79 @@ namespace LMLocal.Tests.Unit
                 Assert.That(reportedTokens, Is.EqualTo(1));
             }
         }
+
+        [Test]
+        public async Task ProcessStreamAsync_EstimatesByChars_NotByDeltas()
+        {
+            int reportedTokens = 0;
+            var processor = new StreamProcessor(
+                new MockTokenSpeedCalculator(),
+                new MockSettingsManager()
+            );
+
+            // Two SSE deltas of 400 ASCII characters each = 800 characters.
+            // A delta counter would report 2; the estimate must report ~200.
+            var payload = new string('a', 400);
+            var json = new StringBuilder();
+            json.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"" + payload + "\"}}]}");
+            json.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"" + payload + "\"}}]}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { reportedTokens = stats.TotalTokens; await Task.CompletedTask; }, 1);
+                Assert.That(result.ContentResponse.Length, Is.EqualTo(800));
+                Assert.That(reportedTokens, Is.EqualTo(200));
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_CountsInitialToolArguments()
+        {
+            int reportedTokens = 0;
+            var processor = new StreamProcessor(
+                new MockTokenSpeedCalculator(),
+                new MockSettingsManager()
+            );
+
+            // 398 ASCII characters of arguments arriving as tool-call metadata
+            // (never a TextStreamChunk) + 2 characters of content = 400 chars -> 100 tokens.
+            var arguments = "{\"a\":\"" + new string('x', 390) + "\"}";
+            var escapedArguments = arguments.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var json = new StringBuilder();
+            json.AppendLine("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"" + escapedArguments + "\"}}]}}]}");
+            json.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { reportedTokens = stats.TotalTokens; await Task.CompletedTask; }, 1);
+                Assert.That(result.ToolCalls.Count, Is.EqualTo(1));
+                // Without the metadata arguments the estimate would be 1 (just "hi").
+                Assert.That(reportedTokens, Is.EqualTo(100));
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_CountsNonAsciiDenser()
+        {
+            int reportedTokens = 0;
+            var processor = new StreamProcessor(
+                new MockTokenSpeedCalculator(),
+                new MockSettingsManager()
+            );
+
+            // 400 Cyrillic characters: ~2 chars per token -> ~200 tokens (ASCII would give ~100).
+            var payload = new string('\u0436', 400);
+            var json = new StringBuilder();
+            json.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"" + payload + "\"}}]}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json.ToString())))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, async (chunk, stats) => { reportedTokens = stats.TotalTokens; await Task.CompletedTask; }, 1);
+                Assert.That(result.ContentResponse.Length, Is.EqualTo(400));
+                Assert.That(reportedTokens, Is.EqualTo(200));
+            }
+        }
+
         [Test]
         [Timeout(10000)] // 10s safety for CI
         public async Task ProcessStreamAsync_ReturnsTimeoutError_WhenNetworkStreamHangs()

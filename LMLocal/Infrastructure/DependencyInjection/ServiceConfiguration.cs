@@ -172,6 +172,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
             services.AddSingleton<ISubAgentsConfigManager, SubAgentsConfigManager>();
+            services.AddSingleton<ISubAgentFailureLogger, SubAgentFailureLogger>();
             services.AddSingleton<ISubAgentsService>(sp => new SubAgentsService(
                 sp.GetRequiredService<ISettingsManager>(),
                 sp.GetRequiredService<IFileSystem>(),
@@ -179,7 +180,8 @@ namespace LMLocal.Infrastructure.DependencyInjection
                 () => sp.GetRequiredService<IToolExecutionManager>(),
                 sp.GetRequiredService<IToolQueueProvider>(),
                 sp.GetRequiredService<IToolCallLoopDetector>(),
-                sp.GetRequiredService<IChatPersistenceFactory>()));
+                sp.GetRequiredService<IChatPersistenceFactory>(),
+                sp.GetRequiredService<ISubAgentFailureLogger>()));
             services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
@@ -189,6 +191,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IWebViewEnvironmentProvider, WebViewEnvironmentProvider>();
             services.AddSingleton<IWebViewHostObjectRegistrar, WebViewHostObjectRegistrar>();
             services.AddSingleton<IWebViewNavigator, WebViewNavigator>();
+            services.AddSingleton<IExternalUriLauncher, ShellExternalUriLauncher>();
             services.AddSingleton<IWebViewInitializer, WebViewInitializer>();
             services.AddSingleton<IChatSessionOrchestratorFactory, ChatSessionOrchestratorFactory>();
             services.AddSingleton<IActiveModelContext, ActiveModelContext>();

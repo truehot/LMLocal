@@ -2,6 +2,7 @@ import { UIText } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
+import { formatSpeed } from '@app/lib/formatting.js';
 
 /**
  * UI component that displays application connection and token usage status. The component wires DOM elements, updates visual state from the application store, and exposes an `onRetry` callback for retrying connections.
@@ -101,7 +102,7 @@ class StatusComponent {
 
     _updateTokenCounter(appState, prevAppState) {
         if (prevAppState &&
-            appState.tokenUsed === prevAppState.tokenUsed &&
+            appState.roundTokens === prevAppState.roundTokens &&
             appState.tokenSpeed === prevAppState.tokenSpeed) return;
 
         if (this.elements.liveTokenCount) {
@@ -109,15 +110,15 @@ class StatusComponent {
             this.elements.liveTokenCount.style.display = isWorking ? "inline" : "none";
         }
 
-        if (this.elements.tokenCountText && appState.tokenUsed !== prevAppState?.tokenUsed) {
-            this.elements.tokenCountText.textContent = appState.tokenUsed > 0
-                ? `${appState.tokenUsed} ${UIText.TEXT_TOKENS}`
+        if (this.elements.tokenCountText && appState.roundTokens !== prevAppState?.roundTokens) {
+            this.elements.tokenCountText.textContent = appState.roundTokens > 0
+                ? `${appState.roundTokens} ${UIText.TEXT_TOKENS}`
                 : "";
         }
 
         if (this.elements.tokensSpeed && appState.tokenSpeed !== prevAppState?.tokenSpeed) {
             this.elements.tokensSpeed.textContent = appState.tokenSpeed > 0
-                ? `(${appState.tokenSpeed.toFixed(1)} ${UIText.TEXT_TOKENS_PER_SECOND})`
+                ? `(${formatSpeed(appState.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND})`
                 : "";
         }
     }
@@ -327,8 +328,25 @@ class StatusComponent {
         if (signature === this._lastSignature) return;
         this._lastSignature = signature;
 
-        this.elements.toolsModeStatus.textContent = parts.join(UIText.STATUS_SEGMENT_SEPARATOR);
-        this.elements.toolsModeStatus.title = this._composeTooltip();
+        const container = this.elements.toolsModeStatus;
+        container.textContent = '';
+
+        parts.forEach((segment, index) => {
+            if (index > 0) {
+                const separator = document.createElement('span');
+                separator.className = 'status-segment-separator';
+                separator.setAttribute('aria-hidden', 'true');
+                separator.textContent = UIText.STATUS_SEGMENT_SEPARATOR;
+                container.appendChild(separator);
+            }
+
+            const segmentElement = document.createElement('span');
+            segmentElement.className = 'status-segment';
+            segmentElement.textContent = segment;
+            container.appendChild(segmentElement);
+        });
+
+        container.title = this._composeTooltip();
     }
 
     updateSettingsState(settingsState, prevSettingsState) {

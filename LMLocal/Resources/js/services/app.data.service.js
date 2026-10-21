@@ -5,12 +5,12 @@ import instructionsStore from '@app/store/instructions.store.js';
 import providersStore from '@app/store/providers.store.js';
 import modelsConfigStore from '@app/store/models.config.store.js';
 import appStore from '@app/store/app.store.js';
+import sessionStore from '@app/store/session.store.js';
 
 import { AppStatus } from '@app/store/app.status.js';
 
 /**
  * Normalizes the raw instructions document returned by the host into a stable shape.
- * A missing/empty document is treated as "not configured" (no tabs).
  */
 function normalizeInstructionsDoc(raw) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -23,6 +23,23 @@ function normalizeInstructionsDoc(raw) {
         : null;
 
     return { selectedTabId, tabs };
+}
+
+/**
+ * Identity of the endpoint that serves the active model.
+ */
+function endpointIdentity(settings) {
+    if (!settings) return null;
+
+    const providerId = settings.ProviderId === undefined || settings.ProviderId === null
+        ? null
+        : String(settings.ProviderId);
+
+    return JSON.stringify([
+        settings.Provider ?? null,
+        providerId,
+        settings.LmStudioBaseUrl ?? ''
+    ]);
 }
 
 class AppDataService {
@@ -50,18 +67,23 @@ class AppDataService {
         const result = await bridgeClient.setActiveModelAsync(modelId, tokenMax || 0);
 
         if (result) {
+            const previousModelId = modelStore.getState().modelId;
+            if (previousModelId !== modelId) {
+                sessionStore.resetTraffic();
+            }
+
             modelStore.setState({
                 modelId: modelId,
                 modelName: modelName || modelId,
                 tokenMax: tokenMax || 0,
-                tokenUsed: 0,
                 supportsMaxTokens: supportsMaxTokens
             });
             const appState = appStore.getState();
             if (appState.status == AppStatus.OFFLINE || appState.status == AppStatus.CONNECTING || appState.status == AppStatus.ERROR) {
                 appStore.setState({
                     status: AppStatus.IDLE,
-                    tokenUsed: 0,
+                    roundTokens: 0,
+                    lastAnswerTokens: 0,
                     tokenSpeed: 0,
                     error: null
                 });
@@ -107,14 +129,19 @@ class AppDataService {
         const result = await bridgeClient.updateSettingsAsync(newSettings);
 
         if (result) {
+            const previousEndpoint = endpointIdentity(settingsState);
+            const nextEndpoint = endpointIdentity(newSettings);
+            const endpointChanged = previousEndpoint !== nextEndpoint;
+
             settingsStore.setState(newSettings);
 
-            if (settingsState?.Provider !== newSettings.Provider) {
+            if (endpointChanged) {
+                sessionStore.resetTraffic();
+
                 modelStore.setState({
                     modelId: null,
                     modelName: null,
                     tokenMax: 0,
-                    tokenUsed: 0,
                     supportsMaxTokens: false
                 });
             }

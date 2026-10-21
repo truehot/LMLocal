@@ -12,6 +12,8 @@ import { PipelineBuilder } from '@app/chat/chat.pipeline.builder.js';
 /**
  * ChatController — manages chat UI and message lifecycle.
  */
+const LOCATION_SUFFIX = /(?:::\s*[A-Za-z_$][\w$.]*|:\d+(?:[-–]\d+)?)+$/;
+
 class ChatController {
     constructor() {
         this.container = null;
@@ -47,7 +49,7 @@ class ChatController {
         if (fileLink) {
             e.preventDefault();
             const raw = (fileLink.textContent || '').trim();
-            const path = raw.replace(/:\d+(?:[-–]\d+)?$/, '');
+            const path = raw.replace(LOCATION_SUFFIX, '');
             if (path) {
                 this.onOpenFile.emit(path)
                     .catch(err => console.error(`Failed to open file link "${path}":`, err));
@@ -374,14 +376,14 @@ class ChatController {
 
     _showTokenStats(state) {
         if (!this.currentAi || !this.showTokenStats) return;
-        if (!state?.tokenUsed) return;
+        if (!state?.lastAnswerTokens) return;
 
         const elapsedMs = this._sessionStartedAt
             ? Math.max(0, Date.now() - this._sessionStartedAt)
             : 0;
 
         this.currentAi.showTokenStats({
-            tokenUsed: state.tokenUsed,
+            answerTokens: state.lastAnswerTokens,
             cachedTokens: state.cachedTokens,
             tokenSpeed: state.tokenSpeed,
             elapsedMs

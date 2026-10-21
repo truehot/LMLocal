@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 
@@ -41,13 +42,16 @@ namespace LMLocal.Application.Tool
     {
         private readonly IToolRouter _toolRouter;
         private readonly IToolQueueProvider _toolQueueProvider;
+        private readonly ISubAgentFailureLogger _failureLogger;
 
         public ToolExecutionManager(
             IToolRouter toolRouter,
-            IToolQueueProvider toolQueueProvider)
+            IToolQueueProvider toolQueueProvider,
+            ISubAgentFailureLogger failureLogger)
         {
             _toolRouter = toolRouter ?? throw new ArgumentNullException(nameof(toolRouter));
             _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
+            _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
         }
 
         public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue)
@@ -82,6 +86,12 @@ namespace LMLocal.Application.Tool
                 var userMsg = $"Tool '{toolCall.FunctionName}' call '{toolCall.CallId}': arguments are not valid JSON, tool was not executed.";
                 var errorMsg = userMsg + " Do not repeat the same full request; split large changes into smaller patches/chunks.";
                 InternalLogger.Warn($"[ToolExecutionManager] Skipping {toolCall.FunctionName} (id: {toolCall.CallId}): invalid tool arguments.");
+
+                // Debug-only: keep the raw (broken) arguments so a malformed SubAgent prompt can be inspected.
+                await _failureLogger
+                    .LogFromToolCallAsync(toolCall, "Tool", errorMsg, null, CancellationToken.None)
+                    .ConfigureAwait(false);
+
                 return new ToolExecutionResult
                 {
                     ToolId = toolCall.CallId,
@@ -172,6 +182,12 @@ namespace LMLocal.Application.Tool
             catch (Exception ex)
             {
                 InternalLogger.Error($"ToolExecutionManager: Error executing {toolCall.FunctionName}", ex);
+
+                // Debug-only: persist the prompt + parameters so the failing call can be replayed.
+                await _failureLogger
+                    .LogFromToolCallAsync(toolCall, "Tool", $"Execution error: {ex.Message}", ex, CancellationToken.None)
+                    .ConfigureAwait(false);
+
                 return new ToolExecutionResult
                 {
                     ToolId = toolCall.CallId,

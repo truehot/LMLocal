@@ -366,7 +366,7 @@ The panel lets you:
 
 
 <a id="content--subagents"></a>
-## 🤖 Subagents (Beta, Advanced Users)
+## 🤖 Subagents (Advanced Users)
 
 **Subagents** are specialised AI "workers" that the main chat can invoke as tools. Each agent runs in an isolated loop with its own provider, model, system prompt, and toolset, returning a summary to the main conversation.
 

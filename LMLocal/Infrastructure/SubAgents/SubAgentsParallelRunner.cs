@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,12 +10,17 @@ using LMLocal.Core.Models;
 namespace LMLocal.Infrastructure.SubAgents
 {
     /// <summary>
-    /// Runs a SubAgent fan-out group bounded by <c>maxParallel</c>: at most that many calls run at once,
-    /// the rest wait for a free slot (e.g. five calls with <c>maxParallel = 2</c> run 2 → 2 → 1).
-    /// Outcomes are returned in the original call order.
+    /// Runs a SubAgent fan-out group bounded by <c>maxParallel</c>.
     /// </summary>
     internal sealed class SubAgentsParallelRunner : ISubAgentsParallelRunner
     {
+        private readonly ISubAgentFailureLogger _failureLogger;
+
+        public SubAgentsParallelRunner(ISubAgentFailureLogger failureLogger)
+        {
+            _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
+        }
+
         public async Task<SubAgentsParallelRunResult> RunAsync(
             IReadOnlyList<ToolCallRecord> calls,
             SubAgentsParallelWork work,
@@ -35,7 +40,6 @@ namespace LMLocal.Infrastructure.SubAgents
             var results = new ToolExecutionResult[calls.Count];
             var tasks = new Task[calls.Count];
 
-            // One shared gate bounds the whole group; it lives for the duration of the fan-out.
             using (var gate = new SemaphoreSlim(maxParallel, maxParallel))
             {
                 for (int i = 0; i < calls.Count; i++)
@@ -49,7 +53,7 @@ namespace LMLocal.Infrastructure.SubAgents
             return new SubAgentsParallelRunResult(results);
         }
 
-        private static async Task RunOneAsync(
+        private async Task RunOneAsync(
             ToolCallRecord call,
             SubAgentsParallelWork work,
             SemaphoreSlim gate,
@@ -77,6 +81,11 @@ namespace LMLocal.Infrastructure.SubAgents
             {
                 // A single failing call must not fault the whole group.
                 InternalLogger.Error($"SubAgentsParallelRunner: call '{call?.FunctionName}' failed", ex);
+
+                await _failureLogger
+                    .LogFromToolCallAsync(call, "Parallel", ex.Message, ex, CancellationToken.None)
+                    .ConfigureAwait(false);
+
                 results[index] = new ToolExecutionResult
                 {
                     ToolId = call?.CallId,

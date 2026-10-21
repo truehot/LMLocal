@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Text;
 using LMLocal.Application.SubAgents.ReadRefs;
 using NUnit.Framework;
@@ -15,8 +15,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         private static List<NumberedLine> Lines(params (int Number, string Text)[] items)
         {
             var list = new List<NumberedLine>(items.Length);
-            foreach (var item in items)
-                list.Add(new NumberedLine(item.Number, item.Text));
+            foreach (var (Number, Text) in items)
+                list.Add(new NumberedLine(Number, Text));
             return list;
         }
 

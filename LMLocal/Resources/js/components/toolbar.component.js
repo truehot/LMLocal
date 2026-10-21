@@ -1,4 +1,5 @@
 import { createCallback } from '@app/lib/callback.js';
+import { formatTokens, formatPercent, roundPercent } from '@app/lib/formatting.js';
 import { AppStatus } from '@app/store/app.status.js';
 
 /**
@@ -11,6 +12,12 @@ class ToolbarComponent {
         this.isConnecting = true;
         this.timeoutId = null;
         this._hasShownModelInfo = false;
+        this._modelState = null;
+        this._appState = null;
+        this._sessionState = null;
+        this._sessionStreamed = 0;
+        this._roundTokens = 0;
+        this._lastRenderedTitle = null;
     }
 
     _getElements() {
@@ -33,30 +40,75 @@ class ToolbarComponent {
         }
     }
 
-    _updateTokenBar(modelState, prevModelState) {
-        if (modelState.tokenMax === prevModelState?.tokenMax &&
-            modelState.tokenUsed === prevModelState?.tokenUsed &&
-            modelState.supportsMaxTokens === prevModelState?.supportsMaxTokens) return;
+    /**
+     * True while the model is actively producing tokens for the current round.
+     */
+    _isStreamingStatus(status) {
+        return status === AppStatus.STREAMING || status === AppStatus.THINKING;
+    }
 
-        if (!modelState.supportsMaxTokens) {
-            this.elements.tokenBarFill.style.display = 'none';
+    _resetStreamCounters() {
+        this._sessionStreamed = 0;
+        this._roundTokens = 0;
+    }
 
-            const text = `Context usage: ${modelState.tokenUsed.toLocaleString('en-US')}`;
-            this.elements.barInfoTooltip.title = text;
-            this.elements.modelName.title = text;
+    /**
+     * Renders the context usage bar and its tooltip.
+     */
+    _renderTokenBar() {
+        const modelState = this._modelState;
+        if (!modelState || !this.elements.tokenBarFill) return;
 
-            return;
+        const baseTokens = this._sessionState?.contextTokens || 0;
+        const occupiedTokens = baseTokens + this._sessionStreamed + this._roundTokens;
+        const tokenMax = modelState.tokenMax || 0;
+        const supportsMax = !!modelState.supportsMaxTokens;
+        const percent = supportsMax && tokenMax > 0
+            ? Math.min((occupiedTokens / tokenMax) * 100, 100)
+            : 0;
+
+        const percentRounded = roundPercent(percent);
+
+        const title = this._composeTooltipTitle(occupiedTokens, tokenMax, supportsMax, percentRounded);
+
+        if (title === this._lastRenderedTitle) return;
+        this._lastRenderedTitle = title;
+
+        this.elements.tokenBarFill.style.display = supportsMax ? 'block' : 'none';
+        if (supportsMax) {
+            this.elements.tokenBarFill.style.transform = `scaleY(${percentRounded / 100})`;
         }
 
-        this.elements.tokenBarFill.style.display = 'block';
-        const percent = modelState.tokenMax > 0
-            ? Math.min((modelState.tokenUsed / modelState.tokenMax) * 100, 100)
-            : 0;
-        this.elements.tokenBarFill.style.transform = `scaleY(${percent / 100})`;
+        if (this.elements.barInfoTooltip) this.elements.barInfoTooltip.title = title;
+        if (this.elements.modelName) this.elements.modelName.title = title;
+    }
 
-        const text = `Context usage: ${Math.round(percent)}% \n${modelState.tokenUsed.toLocaleString('en-US')} / ${modelState.tokenMax.toLocaleString('en-US')} tokens`;
-        this.elements.barInfoTooltip.title = text;
-        this.elements.modelName.title = text;
+    /**
+     * Builds the tooltip text.
+     */
+    _composeTooltipTitle(occupiedTokens, tokenMax, supportsMax, percentRounded) {
+        let text = supportsMax
+            ? `Context usage: ${formatPercent(percentRounded)} \n${occupiedTokens.toLocaleString('en-US')} / ${tokenMax.toLocaleString('en-US')} tokens`
+            : `Context usage: ${occupiedTokens.toLocaleString('en-US')}`;
+
+        const promptTokens = this._sessionState?.sessionPromptTokens || 0;
+        const completionTokens = this._sessionState?.sessionCompletionTokens || 0;
+        const cachedTokens = this._sessionState?.sessionCachedTokens || 0;
+
+        if (promptTokens > 0 || completionTokens > 0) {
+            text += `\nSession: ${formatTokens(promptTokens)} in${this._cachedShare(promptTokens, cachedTokens)} · ${formatTokens(completionTokens)} out`;
+        }
+
+        return text;
+    }
+
+    /**
+     * Cached input tokens are a SUBSET of the prompt, so they are rendered inside the `in` term
+     * and never as an extra one.
+     */
+    _cachedShare(promptTokens, cachedTokens) {
+        if (cachedTokens <= 0 || promptTokens <= 0) return '';
+        return ` (${formatTokens(Math.min(cachedTokens, promptTokens))} cached)`;
     }
 
     _onModelNameClick = async (e) => {
@@ -103,20 +155,68 @@ class ToolbarComponent {
         this.isConnecting = true;
         clearTimeout(this.timeoutId);
         this._hasShownModelInfo = false;
+        this._modelState = null;
+        this._appState = null;
+        this._sessionState = null;
+        this._resetStreamCounters();
+        this._lastRenderedTitle = null;
     }
 
     updateAppState(state, prevState) {
         this.isConnecting = state.status == AppStatus.CONNECTING;
+        this._appState = state;
 
         if (prevState?.status == AppStatus.CONNECTING && state.status != AppStatus.CONNECTING && !this._hasShownModelInfo) {
             this._showModelInfo();
             this._hasShownModelInfo = true;
         }
+
+        if (state.status === AppStatus.PROCESSING && (prevState?.status === AppStatus.IDLE || prevState?.status === AppStatus.ERROR)) {
+            this._resetStreamCounters();
+        }
+
+        if (state.status === AppStatus.IDLE &&
+            prevState &&
+            prevState.status !== AppStatus.IDLE &&
+            prevState.status !== AppStatus.ERROR) {
+            this._resetStreamCounters();
+        }
+
+        if (state.status === AppStatus.CLEARING ||
+            (state.status === AppStatus.ERROR && prevState?.status === AppStatus.CLEARING)) {
+            this._resetStreamCounters();
+        }
+
+        if (this._isStreamingStatus(state.status)) {
+            const currentRoundTokens = state.roundTokens || 0;
+
+            if (currentRoundTokens < this._roundTokens) {
+                this._sessionStreamed += this._roundTokens;
+            }
+
+            this._roundTokens = currentRoundTokens;
+        }
+
+        this._renderTokenBar();
     }
 
     updateModelState(modelState, prevModelState) {
+        this._modelState = modelState;
         this._updateModelName(modelState, prevModelState);
-        this._updateTokenBar(modelState, prevModelState);
+        this._renderTokenBar();
+    }
+
+    /**
+     * Conversation metrics (context base + cumulative traffic) live in sessionStore.
+     */
+    updateSessionState(sessionState, prevSessionState) {
+        this._sessionState = sessionState;
+
+        if (sessionState.contextTokens !== prevSessionState?.contextTokens) {
+            this._resetStreamCounters();
+        }
+
+        this._renderTokenBar();
     }
 }
 
