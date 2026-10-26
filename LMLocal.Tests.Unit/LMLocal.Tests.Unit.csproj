@@ -83,6 +83,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Application\Changes\UnifiedDiffBuilderTests.cs" />
     <Compile Include="Application\SubAgents\FileContentRendererTests.cs" />
     <Compile Include="Application\SubAgents\FileRefMarkerTests.cs" />
     <Compile Include="Application\SubAgents\ReadLedgerTests.cs" />
@@ -94,7 +95,9 @@
     <Compile Include="Application\SubAgents\SubAgentsRawPersistenceTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsReasoningEffortTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsServiceTests.cs" />
+    <Compile Include="Commands\CodeCommandHelperTests.cs" />
     <Compile Include="Core\Common\ExceptionFormatterTests.cs" />
+    <Compile Include="Core\Common\OpenDocumentsPromptBuilderTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimatorTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
@@ -164,11 +167,13 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParserTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ChatHistoryScorerTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiffTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\KnowledgeScorerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchChatHistoryTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchKnowledgeTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesServiceTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManagerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\CreateFileTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Js\JsConfigResolverTests.cs" />

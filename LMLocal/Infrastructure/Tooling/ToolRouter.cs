@@ -157,14 +157,18 @@ namespace LMLocal.Infrastructure.Tooling
             {
                 if (response.Success)
                 {
-                    var steps = response.Rounds;
-                    var message = $"Done ({steps} steps) • {ReadableFormatter.FormatTokens(response.TotalTokens)} tokens";
+                    var metrics = new List<string>();
+
+                    if (response.CompletionTokens.HasValue)
+                        metrics.Add($"{ReadableFormatter.FormatTokens(response.CompletionTokens.Value)} out");
 
                     var speed = ReadableFormatter.FormatTokensPerSecond(response.TokensPerSecond);
                     if (speed != null)
-                        message += $" · {speed} t/s";
+                        metrics.Add($"{speed} t/s");
 
-                    return $"{message} · {ReadableFormatter.FormatDuration(response.DurationMs)}";
+                    metrics.Add(ReadableFormatter.FormatDuration(response.DurationMs));
+
+                    return $"Done ({response.Rounds} steps) • {string.Join(" · ", metrics)}";
                 }
 
                 return !string.IsNullOrWhiteSpace(response.Error)

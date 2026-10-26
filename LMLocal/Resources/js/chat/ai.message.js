@@ -1,5 +1,6 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
 import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus } from '@app/chat/tool.status.js';
+import { createGenerationStopped } from '@app/chat/generation.stopped.js';
 
 /**
  * Factory that creates a message DOM element, caches its internal blocks and returns an API to manipulate the message.
@@ -145,7 +146,7 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
             updateToolGroupStatus(elements.toolContainer, groupId, completed, total);
         },
 
-        stopStreaming: (message) => {
+        stopStreaming: (message, options = {}) => {
             if (isStreaming) {
                 currentPipeline.abort();
                 isStreaming = false;
@@ -155,11 +156,7 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
             if (elements.responseContainer) {
                 elements.responseContainer.classList.remove('is-generating');
                 elements.responseContainer.style.display = 'block';
-
-                const stopDiv = document.createElement('div');
-                stopDiv.className = 'generation-stopped';
-                stopDiv.textContent = message || 'Generation stopped';
-                elements.responseContainer.appendChild(stopDiv);
+                elements.responseContainer.appendChild(createGenerationStopped(message, options));
             }
             element.classList.add('stopped');
         },

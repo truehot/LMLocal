@@ -28,6 +28,11 @@ namespace LMLocal.Application.SubAgents
         private const int DefaultTimeoutSeconds = 120;
         private const int MaxDuplicateToolRounds = 2;
 
+        /// <summary>
+        /// How many tool-call attempts are carried into a failure record (see <see cref="SubAgentRecentCall"/>).
+        /// </summary>
+        private const int MaxRecentCalls = 3;
+
         private readonly ISettingsManager _settingsManager;
         private readonly IFileSystem _fileSystem;
         private readonly IStreamingRoundService _roundService;
@@ -85,20 +90,42 @@ namespace LMLocal.Application.SubAgents
             int? lastRound = null;
             Guid? chatSessionId = null;
 
+            // Must stay a local: this service is a singleton and ExecutePromptAsync runs concurrently for a fan-out.
+            var recentCalls = new List<SubAgentRecentCall>(MaxRecentCalls);
+
+            // Tracks the attempt (not the result), so a call that is rejected or throws is still in the record.
+            SubAgentRecentCall TrackCall(ToolCallRecord call, int round, int? step)
+            {
+                var entry = new SubAgentRecentCall
+                {
+                    ToolName = call.FunctionName,
+                    CallId = call.CallId,
+                    Round = round,
+                    Step = step,
+                    ArgumentsJson = call.ArgumentsJson
+                };
+
+                recentCalls.Add(entry);
+                if (recentCalls.Count > MaxRecentCalls)
+                    recentCalls.RemoveAt(0);
+
+                return entry;
+            }
+
             try
             {
                 if (request == null)
                 {
                     return await FailLoggedAsync(
                         response, null, "SubAgent run request is required.",
-                        null, null).ConfigureAwait(false);
+                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
                 }
 
                 if (string.IsNullOrWhiteSpace(request.Prompt))
                 {
                     return await FailLoggedAsync(
                         response, request, "Prompt is required.",
-                        null, null).ConfigureAwait(false);
+                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
                 }
 
                 var modelId = request.Model?.Trim();
@@ -106,7 +133,7 @@ namespace LMLocal.Application.SubAgents
                 {
                     return await FailLoggedAsync(
                         response, request, "Model is required.",
-                        null, null).ConfigureAwait(false);
+                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
                 }
 
                 response.Model = modelId;
@@ -181,7 +208,7 @@ namespace LMLocal.Application.SubAgents
                         {
                             return await FailLoggedAsync(
                                 response, request, "SubAgent timed out (no response within the configured window).",
-                                round, chatSessionId).ConfigureAwait(false);
+                                round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                         }
 
                         switch (roundResult.Outcome)
@@ -189,7 +216,7 @@ namespace LMLocal.Application.SubAgents
                             case StreamRoundOutcome.Error:
                                 return await FailLoggedAsync(
                                     response, request, "Provider stream error: " + streamResult.ErrorMessage,
-                                    round, chatSessionId).ConfigureAwait(false);
+                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
 
                             case StreamRoundOutcome.Cancelled:
                                 return Fail(response, "SubAgent execution was cancelled.");
@@ -197,7 +224,7 @@ namespace LMLocal.Application.SubAgents
                             case StreamRoundOutcome.Incomplete:
                                 return await FailLoggedAsync(
                                     response, request, streamResult.ErrorMessage,
-                                    round, chatSessionId).ConfigureAwait(false);
+                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
 
                             case StreamRoundOutcome.ToolCalls:
                                 if (previousToolCalls != null && _loopDetector.AreSameToolCalls(streamResult.ToolCalls, previousToolCalls))
@@ -207,7 +234,7 @@ namespace LMLocal.Application.SubAgents
                                     {
                                         return await FailLoggedAsync(
                                             response, request, "SubAgent detected a repeated tool call loop and stopped.",
-                                            round, chatSessionId).ConfigureAwait(false);
+                                            round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                                     }
                                 }
                                 else
@@ -223,6 +250,9 @@ namespace LMLocal.Application.SubAgents
 
                                     if (!toolQueue.Allows(toolCall.FunctionName))
                                     {
+                                        TrackCall(toolCall, round, null).Error =
+                                            $"Tool '{toolCall.FunctionName}' is not allowed in SubAgent context.";
+
                                         toolResults.Add(new ToolResultMessage
                                         {
                                             ToolCallId = toolCall.CallId,
@@ -240,11 +270,19 @@ namespace LMLocal.Application.SubAgents
                                         Step = ++stepCounter
                                     });
 
+                                    var trackedCall = TrackCall(toolCall, round, stepCounter);
+
                                     var execResult = await _toolExecutionManagerResolver()
                                         .ExecuteToolAsync(toolCall, overallCts.Token, toolQueue)
                                         .ConfigureAwait(false);
 
                                     object resultValue = string.IsNullOrEmpty(execResult.Error) ? execResult.Result : execResult.Error;
+
+                                    // The attempt is tracked before execution, so a throwing tool still leaves its arguments in the log.
+                                    trackedCall.ResultText = SubAgentFailureLogger.StringifyResult(execResult.Result);
+                                    trackedCall.Error = toolCall.IsInvalid && string.IsNullOrEmpty(execResult.Error)
+                                        ? "Tool-call arguments were not valid JSON and were sanitized to '{}'."
+                                        : execResult.Error;
 
                                     if (string.IsNullOrEmpty(execResult.Error)
                                         && string.Equals(toolCall.FunctionName, ReadResultRecorder.ReadFileLinesToolName, StringComparison.OrdinalIgnoreCase))
@@ -287,7 +325,7 @@ namespace LMLocal.Application.SubAgents
 
                     return await FailLoggedAsync(
                         response, request, $"SubAgent exceeded maximum rounds ({maxRounds}).",
-                        lastRound, chatSessionId).ConfigureAwait(false);
+                        lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException)
@@ -299,27 +337,27 @@ namespace LMLocal.Application.SubAgents
 
                 return await FailLoggedAsync(
                     response, request, "SubAgent timed out (no response within the configured window).",
-                    lastRound, chatSessionId).ConfigureAwait(false);
+                    lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
             }
             catch (ApiException ex)
             {
                 InternalLogger.Warn($"SubAgentsService: provider API error: {ex.Message}");
                 return await FailLoggedAsync(
                     response, request, "Provider API error: " + ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex).ConfigureAwait(false);
+                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
             }
             catch (InvalidOperationException ex)
             {
                 return await FailLoggedAsync(
                     response, request, ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex).ConfigureAwait(false);
+                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"SubAgentsService: unexpected error during run '{runId}'", ex);
                 return await FailLoggedAsync(
                     response, request, ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex).ConfigureAwait(false);
+                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
             }
             finally
             {
@@ -346,7 +384,7 @@ namespace LMLocal.Application.SubAgents
         }
 
         /// <summary>
-        /// Marks the run as failed AND writes a replayable record.
+        /// Marks the run as failed AND writes a replayable record, including the last tool-call attempts made before the failure (<paramref name="recentCalls"/>).
         /// </summary>
         private async Task<SubAgentsRunResponse> FailLoggedAsync(
             SubAgentsRunResponse response,
@@ -354,7 +392,8 @@ namespace LMLocal.Application.SubAgents
             string error,
             int? round,
             Guid? chatSessionId,
-            Exception exception = null)
+            Exception exception = null,
+            IReadOnlyList<SubAgentRecentCall> recentCalls = null)
         {
             Fail(response, error);
 
@@ -367,6 +406,7 @@ namespace LMLocal.Application.SubAgents
                     round,
                     chatSessionId,
                     exception,
+                    recentCalls,
                     CancellationToken.None)
                 .ConfigureAwait(false);
 

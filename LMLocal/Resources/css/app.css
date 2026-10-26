@@ -886,6 +886,8 @@ body {
 .generation-stopped {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
+    max-width: 100%;
     gap: 8px;
     margin-top: 16px;
     padding: 4px 10px;
@@ -896,10 +898,53 @@ body {
     border-radius: 4px;
 }
 
-    .generation-stopped::before {
-        content: "■";
-        font-size: 10px;
+    .generation-stopped .generation-stopped-text {
+        min-width: 0;
+        overflow-wrap: break-word;
     }
+
+        .generation-stopped .generation-stopped-text::before {
+            content: "■";
+            font-size: 10px;
+            margin-right: 6px;
+        }
+
+    .generation-stopped .continue-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 1px 0px 0px 0px;
+        font-family: inherit;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--stop-text);
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        cursor: pointer;
+    }
+
+        .generation-stopped .continue-btn::before {
+            content: "";
+            flex: 0 0 auto;
+            width: 1px;
+            height: 9px;
+            background-color: var(--border-color);
+        }
+
+        .generation-stopped .continue-btn:hover:not(:disabled) {
+            text-decoration: underline;
+        }
+
+        .generation-stopped .continue-btn:focus-visible {
+            outline: 1px solid var(--stop-border);
+            outline-offset: 1px;
+        }
+
+        .generation-stopped .continue-btn:disabled {
+            opacity: .55;
+            cursor: default;
+        }
 
 /* ====== Token stats badge ====== */
 .token-stats {

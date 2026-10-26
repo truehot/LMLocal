@@ -190,6 +190,10 @@ class AppController {
             }
         });
 
+        chatController.onContinue.on(async () => {
+            return await appManager.performContinue();
+        });
+
         menuComponent.onClick.on(async (action) => {
             switch (action) {
                 case 'open-settings':
@@ -455,6 +459,7 @@ class AppController {
         inputComponent.onTabChanged.off();
         chatController.onCopyCode.off();
         chatController.onOpenFile.off();
+        chatController.onContinue.off();
         menuComponent.onClick.off();
         toolbarComponent.onModelNameClick.off();
         statusComponent.onRetry.off();

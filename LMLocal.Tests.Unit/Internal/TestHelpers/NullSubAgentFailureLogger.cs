@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.SubAgents;
@@ -24,6 +25,7 @@ namespace LMLocal.Tests.Unit.Internal.TestHelpers
             int? round = null,
             Guid? chatSessionId = null,
             Exception exception = null,
+            IReadOnlyList<SubAgentRecentCall> recentCalls = null,
             CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 

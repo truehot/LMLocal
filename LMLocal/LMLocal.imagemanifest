@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ImageManifest xmlns="http://schemas.microsoft.com/VisualStudio/ImageManifestSchema/2014">
+  <Symbols>
+    <Guid Name="LMLocalImages" Value="{2c0b0238-d41a-467b-ac92-d8e0f7af00b7}" />
+    <ID Name="ToolWindowIcon" Value="1" />
+  </Symbols>
+  <Images>
+    <Image Guid="$(LMLocalImages)" ID="$(ToolWindowIcon)">
+      <Source Uri="/LMLocal;component/Resources/images/icon16.png">
+        <Size Value="16" />
+      </Source>
+    </Image>
+  </Images>
+  <ImageLists />
+</ImageManifest>

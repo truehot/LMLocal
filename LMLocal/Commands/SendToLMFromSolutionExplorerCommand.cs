@@ -25,8 +25,9 @@ namespace LMLocal.Commands
         public const int CommandIdSolution = 0x020B;
         public static readonly Guid CommandSet = new Guid("c29700c4-7786-468f-bf99-0ecb9d69343f");
 
-        private const int MaxFilesWithContent = 10;
-        private const int MaxTotalContentBytes = 200 * 1024; // 200 KB
+        // Shared with every other "send many files" entry point; see PromptContentLimits.
+        private const int MaxFilesWithContent = PromptContentLimits.MaxFilesWithContent;
+        private const int MaxTotalContentBytes = PromptContentLimits.MaxTotalContentBytes;
         private const int MaxFolderFlatFiles = 20;
 
         private static readonly string SolutionFolderKind = "{66A26720-8FB5-11D2-AA7E-00C04F688DDE}";

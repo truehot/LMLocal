@@ -239,16 +239,16 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
                     Success = true,
                     Content = "ok",
                     Rounds = 3,
-                    TotalTokens = 1400,
+                    CompletionTokens = 1400,
                     DurationMs = 2100,
                     TokensPerSecond = 45.0
                 });
 
-            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k tokens · 45.0 t/s · 2.1s"));
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k out · 45.0 t/s · 2.1s"));
         }
 
         [Test]
-        public void GetCompletionMessage_SubAgent_WithoutTokens_OmitsSpeed()
+        public void GetCompletionMessage_SubAgent_WithoutCompletionTokens_OmitsNumber()
         {
             _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
             _subAgentsToolSourceMock.Setup(s => s.GetDisplayName("researcher")).Returns("Researcher");
@@ -260,11 +260,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
                     Success = true,
                     Content = "ok",
                     Rounds = 3,
-                    TotalTokens = null,
+                    CompletionTokens = null,
                     DurationMs = 2100
                 });
 
-            Assert.That(message, Is.EqualTo("Done (3 steps) • 0 tokens · 2.1s"));
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 2.1s"));
         }
 
         [Test]
@@ -280,12 +280,54 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
                     Success = true,
                     Content = "ok",
                     Rounds = 3,
-                    TotalTokens = 1400,
+                    CompletionTokens = 1400,
                     DurationMs = 2100,
                     TokensPerSecond = 0
                 });
 
-            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k tokens · 2.1s"));
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 1.4k out · 2.1s"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_SubAgent_ZeroCompletionTokens_ShowsZero()
+        {
+            _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
+            _subAgentsToolSourceMock.Setup(s => s.GetDisplayName("researcher")).Returns("Researcher");
+
+            var message = _router.GetCompletionMessage(
+                "researcher",
+                new SubAgentsRunResponse
+                {
+                    Success = true,
+                    Content = "ok",
+                    Rounds = 3,
+                    CompletionTokens = 0,
+                    DurationMs = 2100,
+                    TokensPerSecond = 0
+                });
+
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 0 out · 2.1s"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_SubAgent_WithoutCompletionTokens_KeepsSpeed()
+        {
+            _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
+            _subAgentsToolSourceMock.Setup(s => s.GetDisplayName("researcher")).Returns("Researcher");
+
+            var message = _router.GetCompletionMessage(
+                "researcher",
+                new SubAgentsRunResponse
+                {
+                    Success = true,
+                    Content = "ok",
+                    Rounds = 3,
+                    CompletionTokens = null,
+                    DurationMs = 2100,
+                    TokensPerSecond = 45.0
+                });
+
+            Assert.That(message, Is.EqualTo("Done (3 steps) • 45.0 t/s · 2.1s"));
         }
 
         [Test]

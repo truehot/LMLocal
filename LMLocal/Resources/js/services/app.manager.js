@@ -73,25 +73,40 @@ class AppManager {
 
         await this.onUserMessagePending.emit(cleanText, hasImages ? images.slice() : null);
 
-        appStore.setState({
-            status: AppStatus.PROCESSING,
-            accumulatedText: "",
-            accumulatedThoughtText: "",
-            error: null,
-            roundNumber: 0,
-            toolCount: 0
-        });
+        this._startPromptRound(this._buildPromptRequest(cleanText, hasContent, hasImages ? images : null));
+        return true;
+    }
+
+    /**
+     * Resumes generation after a failed round without adding a new user message.
+     */
+    async performContinue() {
+        if (!appSelectors.canSend(appStore.getState().status)) return false;
+
+        try {
+            this._startPromptRound(this._buildPromptRequest('', false, null));
+            return true;
+        } catch (error) {
+            console.error("Continue failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Builds the bridge request payload shared by a new prompt and a continuation.
+     */
+    _buildPromptRequest(cleanText, includeContent, images) {
+        const request = {
+            prompt: cleanText,
+            includeContent: includeContent,
+            modelId: modelStore.getState().modelId || ""
+        };
+
+        if (images && images.length > 0) request.images = images;
 
         const instructionsState = instructionsStore.getState();
         const selectedTabId = instructionsState.selectedTabId;
         const instructions = instructionsState.instructions || [];
-
-        const request = {
-            prompt: cleanText,
-            includeContent: hasContent,
-            modelId: modelStore.getState().modelId || ""
-        };
-        if (hasImages) request.images = images;
 
         if (Array.isArray(instructions) && selectedTabId) {
             const selectedTab = instructions.find(tab => tab.id == selectedTabId);
@@ -105,12 +120,26 @@ class AppManager {
             }
         }
 
+        return request;
+    }
+
+    /**
+     * Switches the app to a fresh generation round and hands the request to the bridge.
+     */
+    _startPromptRound(request) {
+        appStore.setState({
+            status: AppStatus.PROCESSING,
+            accumulatedText: "",
+            accumulatedThoughtText: "",
+            error: null,
+            roundNumber: 0,
+            toolCount: 0
+        });
+
         bridgeClient.executePromptAsync(request).catch(e => {
             console.error("Async Bridge Error:", e);
             this.onFatalError("Critical bridge communication failure.");
         });
-
-        return true;
     }
 
     /**

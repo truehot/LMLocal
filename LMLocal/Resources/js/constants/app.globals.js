@@ -5,6 +5,7 @@
  */
 
 export const UIText = Object.freeze({
+    BUTTON_CONTINUE: 'Continue',
     BUTTON_SEND: 'Send',
     BUTTON_STOP: 'Stop',
     BUTTON_WAIT: '...',
@@ -114,7 +115,6 @@ export const V1_TIP =
 
 /**
  * Shared inline SVG icons for UI buttons.
- * Use these instead of inlining SVG markup in dialogs/components.
  */
 export const Icons = Object.freeze({
     LINK: `<svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">

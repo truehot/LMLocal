@@ -55,6 +55,10 @@
       <Group guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0100">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_CODEWIN"/>
       </Group>
+      <!-- Context menu group inside the document tab context menu (IDM_VS_CTXT_EZDOCWINTAB) -->
+      <Group guid="guidLMLocalPackageCmdSet" id="EditorTabContextGroup" priority="0x0100">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_EZDOCWINTAB"/>
+      </Group>
       <!-- Group inside the "LM Local Commands" submenu to hold all code commands -->
       <Group guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" priority="0x0010">
         <Parent guid="guidLMLocalPackageCmdSet" id="LMLocalSubMenu" />
@@ -108,6 +112,16 @@
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
           <ButtonText>Send to LM Local</ButtonText>
+        </Strings>
+      </Button>
+
+      <!-- Document tab context menu button: sends every open document in a single prompt -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendAllOpenFiles" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="EditorTabContextGroup" />
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Send All Open Files to LM Local</ButtonText>
         </Strings>
       </Button>
 
@@ -193,9 +207,16 @@
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
     <Bitmaps>
-      <Bitmap guid="guidMyIconSet" href="Resources\\icon.ico" usedList="iconLMLocal"/>
+      <Bitmap guid="guidMyIconSet" href="Resources\\images\\icon.ico" usedList="iconLMLocal"/>
     </Bitmaps>
   </Commands>
+
+  <!-- Show the editor group in the HTML editor context menu -->
+  <CommandPlacements>
+    <CommandPlacement guid="guidLMLocalPackageCmdSet" id="EditorContextGroup" priority="0x0100">
+      <Parent guid="HtmlEditorContext" id="HtmlContextMenu" />
+    </CommandPlacement>
+  </CommandPlacements>
 
 
   <KeyBindings>
@@ -204,6 +225,13 @@
                 editor="guidVSStd97"
                 key1="L"
                 mod1="ALT" />
+    <KeyBinding guid="guidLMLocalPackageCmdSet"
+                id="cmdidSendAllOpenFiles"
+                editor="guidVSStd97"
+                key1="K"
+                mod1="ALT"
+                key2="L"
+                mod2="ALT" />
   </KeyBindings>
 
 
@@ -212,6 +240,10 @@
       <IDSymbol name="iconLMLocal" value="1" />
     </GuidSymbol>
 
+
+    <GuidSymbol name="HtmlEditorContext" value="{78F03954-2FB8-4087-8CE7-59D71710B3BB}">
+      <IDSymbol name="HtmlContextMenu" value="0x0001" />
+    </GuidSymbol>
 
     <!-- This is the package guid. -->
     <GuidSymbol name="guidLMLocalPackage" value="{d2b7ae34-5422-4af0-bfc3-6129fd2641d0}" />
@@ -222,6 +254,7 @@
       <IDSymbol name="ShowMainWindowId" value="0x0100" />
       <IDSymbol value="4129" name="cmdidMainWindowCommand" />
       <IDSymbol name="EditorContextGroup" value="0x1030" />
+      <IDSymbol name="EditorTabContextGroup" value="0x1031" />
       <IDSymbol name="LMLocalSubMenu" value="0x2000" />
       <IDSymbol name="LMLocalCommandsGroup" value="0x1040" />
       <IDSymbol name="cmdidAskLMLocal" value="0x0200" />
@@ -231,6 +264,9 @@
       <IDSymbol name="cmdidAddSummary" value="0x0204" />
       <IDSymbol name="cmdidImproveCode" value="0x0206" />
       <IDSymbol name="cmdidExplainCode" value="0x0207" />
+
+      <!-- Document tab context menu command ID -->
+      <IDSymbol name="cmdidSendAllOpenFiles" value="0x020C" />
 
       <!-- Solution Explorer group IDs -->
       <IDSymbol name="SolutionExplorerItemGroup" value="0x1050" />

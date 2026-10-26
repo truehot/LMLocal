@@ -7,6 +7,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.VisualStudio;
 using LMLocal.Ipc;
+using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Task = System.Threading.Tasks.Task;
 
@@ -35,7 +36,9 @@ namespace LMLocal
 #pragma warning disable VSSDK003 // tool window is created on-demand synchronously; async construction not required
     [ProvideToolWindow(typeof(MainWindow))]
 #pragma warning restore VSSDK003
-
+    [ProvideBindingPath()]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.NoSolution_string, PackageAutoLoadFlags.BackgroundLoad)]
+    [ProvideAutoLoad(VSConstants.UICONTEXT.SolutionExists_string, PackageAutoLoadFlags.BackgroundLoad)]
     public sealed class LMLocalPackage : AsyncPackage
     {
         /// <summary>
@@ -57,10 +60,21 @@ namespace LMLocal
             // When initialized asynchronously, the current thread may be a background thread at this point.
             // Do any initialization that requires the UI thread after switching to the UI thread.
             await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-            // Enable IPC in Debug builds or when explicitly requested by environment variable
+
+#if DEBUG
+            // Start IPC first so it does not depend on the rest of initialization succeeding.
+            if (Environment.GetEnvironmentVariable("LMLocal_IPC") == "1")
+            {
+                var startupListener = new VsStartupListener(this, DisposalToken);
+                DisposalToken.Register(() => startupListener?.Dispose());
+                DisposalToken.Register(() => _ = VsIpcServer.StopAsync());
+                await startupListener.InitializeAsync();
+            }
+#endif
 
             // Initialize dependency injection container early so other components can resolve services.
             await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
+            await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             // Package-owned UI service (static singleton, mirrors ShowMainWindow.Instance).
             ChatInjectionService.Initialize(this);
@@ -79,6 +93,7 @@ namespace LMLocal
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
             await SendToLMFromEditorCommand.InitializeAsync(this);
+            await SendAllOpenFilesCommand.InitializeAsync(this);
             await SendToLMFromSolutionExplorerCommand.InitializeAsync(this);
             await BaseCodeCommand.InitializeAsync<ReviewCommand>(this);
             await BaseCodeCommand.InitializeAsync<BugFixCommand>(this);
@@ -86,21 +101,6 @@ namespace LMLocal
             await BaseCodeCommand.InitializeAsync<AddSummaryCommand>(this);
             await BaseCodeCommand.InitializeAsync<ImproveCommand>(this);
             await BaseCodeCommand.InitializeAsync<ExplainCommand>(this);
-
-
-#if DEBUG
-            //Should enable IPC in debug builds to allow testing without needing to set environment variable
-
-            var enableIpc = Environment.GetEnvironmentVariable("LMLocal_IPC") == "1";
-            if (enableIpc)
-            {
-                var startupListener = new VsStartupListener(this, DisposalToken);
-                await startupListener.InitializeAsync();
-
-                DisposalToken.Register(() => startupListener?.Dispose());
-                DisposalToken.Register(() => _ = VsIpcServer.StopAsync());
-            }
-#endif
         }
 
         protected override void Dispose(bool disposing)

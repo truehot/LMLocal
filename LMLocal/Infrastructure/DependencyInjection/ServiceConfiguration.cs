@@ -113,6 +113,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISnapshotPathsFactory, SnapshotPathsFactory>();
             services.AddSingleton<ISnapshotSolutionEvents, SnapshotSolutionEvents>();
             services.AddSingleton<ISnapshotManager, SnapshotManager>();
+            services.AddTransient<IChangesReader, ChangesService>();
 
             services.AddTransient<IBuiltInTool, BuildSolution>();
             services.AddTransient<IBuiltInTool, CreateFile>();
@@ -123,6 +124,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, InspectType>();
             services.AddTransient<IBuiltInTool, FormatDocument>();
             services.AddTransient<IBuiltInTool, GetActiveDocument>();
+            services.AddTransient<IBuiltInTool, GetChangesDiff>();
             services.AddTransient<IBuiltInTool, GetSolutionOverview>();
             services.AddTransient<IBuiltInTool, InsertFileLines>();
             services.AddTransient<IBuiltInTool, ListDirectory>();

@@ -570,10 +570,10 @@ class AppDataService {
             result = await this.getProvidersAsync();
         }
 
-        const allowedTypes = ['lmstudio', 'ollama', 'llamacpp', 'jan'];
-        return (result.defaultProviders || []).filter(
-            p => p && p.providerType && allowedTypes.includes(p.providerType.toLowerCase())
-        );
+        return [
+            ...(result.defaultProviders || []),
+            ...(result.providers || [])
+        ].filter(p => p && (p.customBaseUrl || '').trim() !== '');
     }
 
     async acceptFileAsync(filePath) {

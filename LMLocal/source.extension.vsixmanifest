@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
     <Metadata>
-        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="3.1.0" Language="en-US" Publisher="Aleksandrs Kornevs" />
+        <Identity Id="LMLocal.aa226645-3f53-489b-befb-2d37a76e7590" Version="3.1.5" Language="en-US" Publisher="Aleksandrs Kornevs" />
         <DisplayName>LM Local -  AI assistant</DisplayName>
         <Description xml:space="preserve">LM Local is an AI coding assistant for Visual Studio 2022/2026 with agentic capabilities. It works with local engines (LM Studio, Ollama, Jan, Llama.cpp, Unsloth) and cloud providers (OpenAI-compatible APIs). You can ask it to edit code, run builds/tests, and apply changes in a multi-turn conversational flow, with specialized subagents extending its capabilities for complex tasks.</Description>
         <MoreInfo>https://github.com/truehot/LMLocal</MoreInfo>
         <License>LICENSE.txt</License>
         <GettingStartedGuide>GettingStarted.txt</GettingStartedGuide>
-        <Icon>Resources\logo.png</Icon>
+        <Icon>Resources\images\logo.png</Icon>
         <Tags>LMLocal, AI Agent, Local AI, Ollama, LM Studio, LLM, Code Generation, Refactoring, MCP, Chat, OpenAI</Tags>
     </Metadata>
     <Installation>
@@ -23,6 +23,7 @@
     </Prerequisites>
     <Assets>
         <Asset Type="Microsoft.VisualStudio.VsPackage" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%;PkgdefProjectOutputGroup|" />
+        <Asset Type="Microsoft.VisualStudio.ImageManifest" d:Source="File" Path="LMLocal.imagemanifest" />
         <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="%CurrentProject%" Path="|%CurrentProject%|" />
     </Assets>
 </PackageManifest>

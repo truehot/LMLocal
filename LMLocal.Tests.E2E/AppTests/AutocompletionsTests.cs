@@ -58,7 +58,7 @@ public class AutocompletionsTests : AppTestBase
             window.__providersOverride = {
                 GetProvidersAsync: async () => JSON.stringify({
                     defaultProviders: [
-                        { id: 0, providerType: 'lmstudio', name: 'LM Studio', customBaseUrl: '', customApiKey: '' }
+                        { id: 0, providerType: 'lmstudio', name: 'LM Studio', customBaseUrl: 'http://localhost:1234', customApiKey: '' }
                     ],
                     providers: [],
                     providerTypes: [
@@ -621,5 +621,59 @@ public class AutocompletionsTests : AppTestBase
         // Final list must reflect provider B, not the stale provider A response
         await Expect(dialog.Locator("#autocompletions-models-container .model-card[data-model-id='model-b']"))
             .ToHaveCountAsync(1, new() { Timeout = 8000 });
+    }
+
+    [Test]
+    [Category("Autocompletions")]
+    public async Task ProviderSelect_HidesProvidersWithoutBaseUrl()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await SetupAutocompletionsMockAsync();
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // Providers with a base URL must be listed; providers without one (built-in
+        // "OpenAI compatible" placeholder, URL-less custom profiles) must be hidden,
+        // because the FIM/list-models calls would silently fall back to a default endpoint.
+        await Page.EvaluateAsync(@"() => {
+            window.__providersOverride = {
+                GetProvidersAsync: async () => JSON.stringify({
+                    defaultProviders: [
+                        { id: 0, providerType: 'lmstudio', name: 'LM Studio', customBaseUrl: 'http://localhost:1234', customApiKey: '' },
+                        { id: 3, providerType: 'openai', name: 'OpenAI compatible', customBaseUrl: '', customApiKey: '' }
+                    ],
+                    providers: [
+                        { id: 10, providerType: 'openai', name: 'No Url Custom', customBaseUrl: '   ', customApiKey: '' },
+                        { id: 11, providerType: 'openai', name: 'Work Proxy', customBaseUrl: 'http://proxy.local', customApiKey: '' }
+                    ],
+                    providerTypes: [
+                        { key: 'lmstudio', displayName: 'LM Studio' },
+                        { key: 'openai', displayName: 'OpenAI' }
+                    ]
+                }),
+                UpdateProvidersAsync: async (json) => true,
+            };
+        }");
+
+        await OpenDialogViaMenuAsync();
+
+        var dialog = Page.Locator(DialogId);
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // Enter the selection view to populate the provider select.
+        await dialog.Locator(ChangeBtnId).ClickAsync();
+        await Expect(dialog.Locator(SelectionViewId)).ToBeVisibleAsync();
+
+        // Only the two providers with a usable base URL remain.
+        await Page.WaitForFunctionAsync(
+            "() => document.getElementById('autocompletions-provider-select')?.options.length === 2");
+
+        var optionTexts = await Page.EvaluateAsync<string>(
+            "() => Array.from(document.getElementById('autocompletions-provider-select').options).map(o => o.textContent).join('|')");
+
+        Assert.That(optionTexts, Does.Contain("LM Studio"));
+        Assert.That(optionTexts, Does.Contain("Work Proxy"));
+        Assert.That(optionTexts, Does.Not.Contain("OpenAI compatible"), "Provider without customBaseUrl must be hidden");
+        Assert.That(optionTexts, Does.Not.Contain("No Url Custom"), "Custom provider with blank customBaseUrl must be hidden");
     }
 }

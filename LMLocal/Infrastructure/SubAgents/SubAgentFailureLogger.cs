@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -15,15 +16,8 @@ using Newtonsoft.Json.Serialization;
 namespace LMLocal.Infrastructure.SubAgents
 {
     /// <summary>
-    /// Writes SubAgent failures as single JSON Lines appended to
-    /// <c>%LOCALAPPDATA%\{LocalAppDataFolder}\SubAgentsLogs\SubAgentsFailures.jsonl</c>.
-    /// The prompt is stored in full (never truncated) so a failing run can be replayed.
+    /// Writes SubAgent failures as single JSON Lines.
     /// </summary>
-    /// <remarks>
-    /// Debug-only: in Release every public method returns a completed task and no file I/O happens.
-    /// Writes are serialized process-wide because <see cref="IFileSystem.AppendAllBytesAsync"/> opens
-    /// the file with <c>FileShare.None</c>. Logging never throws and never changes a run's outcome.
-    /// </remarks>
     internal sealed class SubAgentFailureLogger : ISubAgentFailureLogger
     {
         internal const string LogsFolderName = "SubAgentsLogs";
@@ -40,8 +34,27 @@ namespace LMLocal.Infrastructure.SubAgents
         private const string FallbackAppDataFolder = "LMLocalChat";
 
         /// <summary>
-        /// Serializes all writers of the process: <see cref="IFileSystem.AppendAllBytesAsync"/>
-        /// uses <c>FileMode.Append</c> + <c>FileShare.None</c>, so parallel writes would collide.
+        /// How many tool-call attempts are kept in a failure record.
+        /// </summary>
+        internal const int MaxRecentCalls = 3;
+
+        /// <summary>
+        /// Result budget per attempt; longer results are cut and flagged by <c>resultTruncated</c>.
+        /// </summary>
+        internal const int MaxRecentCallResultChars = 2048;
+
+        /// <summary>
+        /// Arguments budget per attempt. The last attempt (the failing call) always keeps its arguments in full.
+        /// </summary>
+        internal const int MaxRecentCallArgumentsChars = 2048;
+
+        /// <summary>
+        /// Error budget per attempt. Errors are short and are the most valuable part, so the budget is wider.
+        /// </summary>
+        internal const int MaxRecentCallErrorChars = 8 * 1024;
+
+        /// <summary>
+        /// Serializes all writers of the process.
         /// </summary>
         private static readonly SemaphoreSlim WriteGate = new SemaphoreSlim(1, 1);
 
@@ -92,8 +105,9 @@ namespace LMLocal.Infrastructure.SubAgents
             int? round = null,
             Guid? chatSessionId = null,
             Exception exception = null,
+            IReadOnlyList<SubAgentRecentCall> recentCalls = null,
             CancellationToken cancellationToken = default)
-            => SafeLogAsync(() => BuildFromRequest(request, stage, error, runId, round, chatSessionId, exception));
+            => SafeLogAsync(() => BuildFromRequest(request, stage, error, runId, round, chatSessionId, exception, recentCalls));
 
         public Task LogFromToolCallAsync(
             ToolCallRecord call,
@@ -231,7 +245,8 @@ namespace LMLocal.Infrastructure.SubAgents
             string runId,
             int? round,
             Guid? chatSessionId,
-            Exception exception)
+            Exception exception,
+            IReadOnlyList<SubAgentRecentCall> recentCalls)
         {
             var record = new SubAgentFailureRecord
             {
@@ -240,6 +255,7 @@ namespace LMLocal.Infrastructure.SubAgents
                 RunId = runId,
                 Round = round,
                 ChatSessionId = chatSessionId,
+                RecentCalls = BuildRecentCalls(recentCalls),
                 ExceptionInfo = SubAgentFailureExceptionInfo.From(exception)
             };
 
@@ -307,6 +323,87 @@ namespace LMLocal.Infrastructure.SubAgents
             {
                 // Invalid JSON: the raw arguments are still recorded as-is.
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Applies the record budgets.
+        /// </summary>
+        private static IReadOnlyList<SubAgentRecentCall> BuildRecentCalls(IReadOnlyList<SubAgentRecentCall> calls)
+        {
+            if (calls == null || calls.Count == 0)
+                return null;
+
+            int first = Math.Max(0, calls.Count - MaxRecentCalls);
+            var kept = new List<SubAgentRecentCall>(calls.Count - first);
+
+            for (int index = first; index < calls.Count; index++)
+            {
+                var source = calls[index];
+                if (source == null)
+                    continue;
+
+                bool isFailingCall = index == calls.Count - 1;
+
+                string arguments = TruncateText(
+                    source.ArgumentsJson,
+                    isFailingCall ? 0 : MaxRecentCallArgumentsChars,
+                    out bool argumentsTruncated);
+
+                string resultText = TruncateText(source.ResultText, MaxRecentCallResultChars, out bool resultTruncated);
+
+                kept.Add(new SubAgentRecentCall
+                {
+                    ToolName = source.ToolName,
+                    CallId = source.CallId,
+                    Round = source.Round,
+                    Step = source.Step,
+                    ArgumentsJson = arguments,
+                    ArgumentsChars = source.ArgumentsJson?.Length,
+                    ArgumentsTruncated = source.ArgumentsJson == null ? (bool?)null : argumentsTruncated,
+                    ResultText = resultText,
+                    ResultChars = source.ResultText?.Length,
+                    ResultTruncated = source.ResultText == null ? (bool?)null : resultTruncated,
+                    Error = TruncateText(source.Error, MaxRecentCallErrorChars, out _)
+                });
+            }
+
+            return kept.Count > 0 ? kept : null;
+        }
+
+        /// <summary>
+        /// Cuts <paramref name="text"/> to <paramref name="maxChars"/>; a non-positive budget means "no limit".
+        /// </summary>
+        private static string TruncateText(string text, int maxChars, out bool truncated)
+        {
+            truncated = false;
+
+            if (text == null || maxChars <= 0 || text.Length <= maxChars)
+                return text;
+
+            truncated = true;
+            return text.Substring(0, maxChars);
+        }
+
+        /// <summary>
+        /// Renders a tool result as text.
+        /// </summary>
+        internal static string StringifyResult(object result)
+        {
+            if (result == null)
+                return null;
+
+            if (result is string text)
+                return text;
+
+            try
+            {
+                return JsonConvert.SerializeObject(result, JsonSettings);
+            }
+            catch (Exception)
+            {
+                // Best effort: a hostile result must never break the failure path.
+                return result.ToString();
             }
         }
 

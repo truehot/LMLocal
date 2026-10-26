@@ -28,10 +28,10 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void BuildFence_EmptyLanguage_UsesEmptyTag()
+        public void BuildFence_EmptyLanguage_FallsBackToTextTag()
         {
             string result = MarkdownCodeBlockFormatter.BuildFence("plain text", "");
-            Assert.That(result, Is.EqualTo("````\nplain text\n````"));
+            Assert.That(result, Is.EqualTo("````text\nplain text\n````"));
         }
 
         [Test]
@@ -80,7 +80,8 @@ namespace LMLocal.Tests.Unit
         public void FormatFileAsMarkdown_NoPath_OmitsComment()
         {
             string result = MarkdownCodeBlockFormatter.FormatFileAsMarkdown("plain", null);
-            Assert.That(result, Is.EqualTo("````\nplain\n````"));
+            // No file path means no recognised language, so the fence falls back to the "text" tag.
+            Assert.That(result, Is.EqualTo("````text\nplain\n````"));
         }
 
         [Test]
@@ -132,6 +133,13 @@ namespace LMLocal.Tests.Unit
         {
             string result = MarkdownCodeBlockFormatter.BuildTruncatedFileFence("page.html");
             Assert.That(result, Is.EqualTo("````html\n<!-- file: page.html (content truncated, file too large) -->\n````"));
+        }
+
+        [Test]
+        public void BuildTruncatedFileFence_UnknownExtension_FallsBackToTextTag()
+        {
+            string result = MarkdownCodeBlockFormatter.BuildTruncatedFileFence("notes.txt");
+            Assert.That(result, Is.EqualTo("````text\n# file: notes.txt (content truncated, file too large)\n````"));
         }
     }
 }

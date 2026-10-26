@@ -12,7 +12,7 @@ namespace LMLocal.Core.Common
         {
             if (string.IsNullOrWhiteSpace(code)) return null;
 
-            string langTag = !string.IsNullOrEmpty(language) ? language : "";
+            string langTag = ResolveFenceLanguage(language);
             string result = $"````{langTag}\n";
 
             if (!string.IsNullOrEmpty(fileComment))
@@ -39,7 +39,7 @@ namespace LMLocal.Core.Common
         public static string BuildTruncatedFileFence(string filePath, string displayPath = null)
         {
             string lang = MarkdownLanguageHelper.GetLanguageFromExtension(filePath);
-            string langTag = !string.IsNullOrEmpty(lang) ? lang : "";
+            string langTag = ResolveFenceLanguage(lang);
             string path = !string.IsNullOrEmpty(displayPath) ? displayPath : filePath;
 
             if (string.IsNullOrWhiteSpace(path))
@@ -47,6 +47,14 @@ namespace LMLocal.Core.Common
 
             string comment = WrapInComment($"file: {path} (content truncated, file too large)", lang);
             return $"````{langTag}\n{comment}\n````";
+        }
+
+        /// <summary>
+        /// Resolves the Markdown fence language tag. Unknown languages fall back to "text" so a fence is never emitted with an empty info string.
+        /// </summary>
+        private static string ResolveFenceLanguage(string language)
+        {
+            return !string.IsNullOrEmpty(language) ? language : "text";
         }
 
         private static string BuildFileComment(string filePath, string displayPath)

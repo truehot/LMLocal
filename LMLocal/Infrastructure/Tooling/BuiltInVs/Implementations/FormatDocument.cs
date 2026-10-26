@@ -1,4 +1,3 @@
-using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -83,7 +83,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 if (!wasOpen)
                 {
-                    openedWindow = dte.ItemOperations.OpenFile(absolutePath, EnvDTE.Constants.vsViewKindAny);
+                    openedWindow = dte.ItemOperations.OpenFile(absolutePath, EnvDTE.Constants.vsViewKindTextView);
                     targetDocument = openedWindow.Document;
                 }
 

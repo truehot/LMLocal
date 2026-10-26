@@ -24,6 +24,7 @@ class ChatController {
         this._activeTimeouts = [];
         this.onCopyCode = createCallback();
         this.onOpenFile = createCallback();
+        this.onContinue = createCallback();
         this.collapseToolCalls = false;
         this.showTokenStats = false;
         this._sessionStartedAt = 0;
@@ -45,6 +46,19 @@ class ChatController {
     }
 
     _onContainerClick = (e) => {
+        const continueBtn = e.target.closest('.generation-stopped .continue-btn');
+        if (continueBtn) {
+            if (continueBtn.disabled) return;
+            continueBtn.disabled = true;
+            this.onContinue.emit().then(accepted => {
+                if (!accepted) continueBtn.disabled = false;
+            }).catch(err => {
+                console.error('Continue failed:', err);
+                continueBtn.disabled = false;
+            });
+            return;
+        }
+
         const fileLink = e.target.closest('.file-link');
         if (fileLink) {
             e.preventDefault();
@@ -263,7 +277,7 @@ class ChatController {
             case AppStatus.ERROR:
                 if (this.currentAi) {
                     const errorMsg = `${state.error || 'Unknown error'}`;
-                    this.currentAi.stopStreaming(errorMsg);
+                    this.currentAi.stopStreaming(errorMsg, { canContinue: true });
                     this.currentAi.finalize();
                     this.currentAi = null;
                 }

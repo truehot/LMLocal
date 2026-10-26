@@ -1,5 +1,6 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
 import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus } from '@app/chat/tool.status.js';
+import { createGenerationStopped } from '@app/chat/generation.stopped.js';
 
 /**
  * Factory that creates a collapsible AI message DOM element with multi-step support.
@@ -206,7 +207,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             updateToolGroupStatus(elements.toolContainer, groupId, completed, total);
         },
 
-        stopStreaming: (message) => {
+        stopStreaming: (message, options = {}) => {
             if (isStreaming) {
                 currentPipeline.abort();
                 isStreaming = false;
@@ -216,11 +217,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
 
             if (finalResponseEl) {
                 finalResponseEl.style.display = 'block';
-
-                const stopDiv = document.createElement('div');
-                stopDiv.className = 'generation-stopped';
-                stopDiv.textContent = message || 'Generation stopped';
-                finalResponseEl.appendChild(stopDiv);
+                finalResponseEl.appendChild(createGenerationStopped(message, options));
             }
             element.classList.add('stopped');
         },

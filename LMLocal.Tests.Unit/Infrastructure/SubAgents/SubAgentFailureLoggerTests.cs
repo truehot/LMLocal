@@ -1,4 +1,4 @@
-﻿#if DEBUG
+#if DEBUG
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -190,6 +190,199 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
             Assert.That(line.Value<string>("stage"), Is.EqualTo("Parallel"));
             Assert.That(line.Value<string>("callId"), Is.EqualTo("call_1"));
             Assert.That(line.Value<string>("rawArgumentsJson"), Does.Contain("task"));
+        }
+
+        private static SubAgentRecentCall BuildCall(
+            string toolName,
+            string callId,
+            int? round = null,
+            int? step = null,
+            string argumentsJson = null,
+            string resultText = null,
+            string error = null) => new SubAgentRecentCall
+            {
+                ToolName = toolName,
+                CallId = callId,
+                Round = round,
+                Step = step,
+                ArgumentsJson = argumentsJson,
+                ResultText = resultText,
+                Error = error
+            };
+
+        private static JToken RecentCallsOf(JObject line) => line["recentCalls"];
+
+        [Test]
+        public async Task RecentCalls_AppearInSerializedLine_WithRoundAndStep()
+        {
+            var calls = new List<SubAgentRecentCall>
+            {
+                BuildCall("read_file_lines", "call_1", 1, 4, "{\"path\":\"src/a.cs\"}", "using System;"),
+                BuildCall("search_file_content", "call_2", 2, 5, "{\"pattern\":\"FailureLogger\"}", "src/b.cs:12: x")
+            };
+
+            await _logger.LogFromRequestAsync(BuildRequest("prompt"), "Final", "boom", recentCalls: calls);
+
+            Assert.That(ReadLines(), Has.Count.EqualTo(1), "The attempt list must not break the one-line-per-failure rule.");
+
+            var recent = (JArray)RecentCallsOf(JObject.Parse(ReadLines()[0]));
+            Assert.That(recent, Is.Not.Null);
+            Assert.That(recent, Has.Count.EqualTo(2));
+
+            Assert.That(recent[0].Value<string>("toolName"), Is.EqualTo("read_file_lines"));
+            Assert.That(recent[0].Value<string>("callId"), Is.EqualTo("call_1"));
+            Assert.That(recent[0].Value<int>("round"), Is.EqualTo(1));
+            Assert.That(recent[0].Value<int>("step"), Is.EqualTo(4));
+            Assert.That(recent[0].Value<string>("resultText"), Is.EqualTo("using System;"));
+
+            Assert.That(recent[1].Value<string>("toolName"), Is.EqualTo("search_file_content"));
+            Assert.That(recent[1].Value<int>("round"), Is.EqualTo(2));
+            Assert.That(recent[1].Value<int>("step"), Is.EqualTo(5));
+        }
+
+        [Test]
+        public async Task RecentCalls_OnlyLastThreeAreKept()
+        {
+            var calls = Enumerable.Range(1, 5)
+                .Select(i => BuildCall("tool_" + i, "call_" + i, i, i, "{\"i\":" + i + "}"))
+                .ToList();
+
+            await _logger.LogFromRequestAsync(BuildRequest("prompt"), "Final", "boom", recentCalls: calls);
+
+            var recent = (JArray)RecentCallsOf(JObject.Parse(ReadLines()[0]));
+
+            Assert.That(recent, Has.Count.EqualTo(SubAgentFailureLogger.MaxRecentCalls));
+            Assert.That(
+                recent.Select(c => c.Value<string>("callId")),
+                Is.EqualTo(new[] { "call_3", "call_4", "call_5" }),
+                "Only the tail of the call chain matters for diagnosing the failure.");
+        }
+
+        [Test]
+        public async Task FailingCall_ArgumentsNotTruncated()
+        {
+            var arguments = "{\"path\":\"" + new string('a', 5000) + "\"}";
+
+            await _logger.LogFromRequestAsync(
+                BuildRequest("prompt"),
+                "Final",
+                "boom",
+                recentCalls: new List<SubAgentRecentCall> { BuildCall("read_file_lines", "call_1", 1, 1, arguments) });
+
+            var call = ((JArray)RecentCallsOf(JObject.Parse(ReadLines()[0])))[0];
+
+            Assert.That(call.Value<string>("argumentsJson"), Is.EqualTo(arguments),
+                "The failing call keeps its arguments in full: they are needed for a replay.");
+            Assert.That(call.Value<int>("argumentsChars"), Is.EqualTo(arguments.Length));
+            Assert.That(call.Value<bool?>("argumentsTruncated"), Is.False);
+        }
+
+        [Test]
+        public async Task PreviousCall_ArgumentsTruncated_WithOriginalChars()
+        {
+            var arguments = "{\"path\":\"" + new string('a', 5000) + "\"}";
+
+            var calls = new List<SubAgentRecentCall>
+            {
+                BuildCall("read_file_lines", "call_1", 1, 1, arguments),
+                BuildCall("read_file_lines", "call_2", 1, 2, "{\"path\":\"b.cs\"}")
+            };
+
+            await _logger.LogFromRequestAsync(BuildRequest("prompt"), "Final", "boom", recentCalls: calls);
+
+            var recent = (JArray)RecentCallsOf(JObject.Parse(ReadLines()[0]));
+
+            Assert.That(recent[0].Value<string>("argumentsJson").Length,
+                Is.EqualTo(SubAgentFailureLogger.MaxRecentCallArgumentsChars));
+            Assert.That(recent[0].Value<bool>("argumentsTruncated"), Is.True);
+            Assert.That(recent[0].Value<int>("argumentsChars"), Is.EqualTo(arguments.Length),
+                "Chars must carry the original length, not the truncated one.");
+        }
+
+        [Test]
+        public async Task Result_TruncatedAtThreshold_KeepsOriginalChars()
+        {
+            var result = new string('r', 9000);
+
+            await _logger.LogFromRequestAsync(
+                BuildRequest("prompt"),
+                "Final",
+                "boom",
+                recentCalls: new List<SubAgentRecentCall> { BuildCall("read_file_lines", "call_1", 1, 1, null, result) });
+
+            var call = ((JArray)RecentCallsOf(JObject.Parse(ReadLines()[0])))[0];
+
+            Assert.That(call.Value<string>("resultText").Length,
+                Is.EqualTo(SubAgentFailureLogger.MaxRecentCallResultChars));
+            Assert.That(call.Value<bool>("resultTruncated"), Is.True);
+            Assert.That(call.Value<int>("resultChars"), Is.EqualTo(result.Length));
+        }
+
+        [Test]
+        public async Task RejectedToolCall_IsRecorded_WithoutResult_WithError()
+        {
+            await _logger.LogFromRequestAsync(
+                BuildRequest("prompt"),
+                "Final",
+                "boom",
+                recentCalls: new List<SubAgentRecentCall>
+                {
+                    BuildCall(
+                        "write_file",
+                        "call_1",
+                        1,
+                        null,
+                        "{\"path\":\"a.cs\"}",
+                        error: "Tool 'write_file' is not allowed in SubAgent context.")
+                });
+
+            var call = ((JArray)RecentCallsOf(JObject.Parse(ReadLines()[0])))[0];
+
+            Assert.That(call.Value<string>("error"), Does.Contain("not allowed"));
+            Assert.That(call["resultText"], Is.Null, "A rejected call has no result.");
+            Assert.That(call["resultChars"], Is.Null);
+        }
+
+        [Test]
+        public async Task NoRecentCalls_FieldOmittedFromLine()
+        {
+            await _logger.LogFromRequestAsync(BuildRequest("prompt"), "Final", "boom");
+
+            Assert.That(RecentCallsOf(JObject.Parse(ReadLines()[0])), Is.Null,
+                "An empty attempt list must not add a field to the line.");
+
+            var call = new ToolCallRecord
+            {
+                CallId = "call_1",
+                FunctionName = "code_explorer",
+                ArgumentsJson = "{\"task\":\"t\"}"
+            };
+
+            await _logger.LogFromToolCallAsync(call, "Parallel", "boom");
+
+            Assert.That(RecentCallsOf(JObject.Parse(ReadLines()[1])), Is.Null,
+                "stage=Parallel only has the current call, so it never reports recentCalls.");
+        }
+
+        [Test]
+        public async Task SerializedLine_WithRecentCalls_StillRoundTripsIntoRunRequest()
+        {
+            await _logger.LogFromRequestAsync(
+                BuildRequest("Посмотри как работают сабагенты"),
+                "Final",
+                "boom",
+                recentCalls: new List<SubAgentRecentCall>
+                {
+                    BuildCall("read_file_lines", "call_1", 1, 1, "{\"path\":\"a.cs\"}", "text")
+                });
+
+            var restored = JsonConvert.DeserializeObject<SubAgentRunRequest>(ReadLines()[0]);
+
+            Assert.That(restored, Is.Not.Null);
+            Assert.That(restored.Prompt, Is.EqualTo("Посмотри как работают сабагенты"),
+                "Extra fields must not break the replay path.");
+            Assert.That(restored.Model, Is.EqualTo("qwen2.5-coder-32b"));
+            Assert.That(restored.ApiKey, Is.Null);
         }
     }
 }

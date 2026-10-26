@@ -16,4 +16,4 @@ window.lmInit = async () => {
     } catch (error) {
         console.error('Error during app initialization:', error);
     }
-};
+};  

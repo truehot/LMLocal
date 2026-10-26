@@ -56,24 +56,73 @@ namespace LMLocal.Commands
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
+            var dte = Package.GetGlobalService(typeof(DTE)) as DTE;
+            return ReadDocumentContent(dte?.ActiveDocument);
+        }
+
+        /// <summary>
+        /// Reads the full content of the given document from the editor buffer.
+        /// </summary>
+        public static string ReadDocumentContent(Document document)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            if (document == null)
+                return null;
+
+            string filePath = null;
             try
             {
-                var dte = Package.GetGlobalService(typeof(DTE)) as DTE;
-                if (dte?.ActiveDocument != null)
+                filePath = document.FullName;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"CodeCommandHelper.ReadDocumentContent: cannot read FullName: {ex.Message}");
+            }
+
+            try
+            {
+                var textDoc = (TextDocument)document.Object("TextDocument");
+                if (textDoc != null)
                 {
-                    var textDoc = (TextDocument)dte.ActiveDocument.Object("TextDocument");
-                    if (textDoc != null)
-                    {
-                        var editPoint = textDoc.StartPoint.CreateEditPoint();
-                        return editPoint.GetText(textDoc.EndPoint);
-                    }
+                    var editPoint = textDoc.StartPoint.CreateEditPoint();
+                    string bufferText = editPoint.GetText(textDoc.EndPoint);
+                    if (!string.IsNullOrWhiteSpace(bufferText))
+                        return bufferText;
                 }
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CodeCommandHelper.ReadFullDocumentContent failed: {ex.Message}");
+                InternalLogger.Warn(
+                    $"CodeCommandHelper.ReadDocumentContent: buffer unavailable for '{filePath}': {ex.Message}");
             }
-            return null;
+
+            return ReadFromDisk(filePath);
+        }
+
+        /// <summary>
+        /// Reads a file from disk as a last-resort fallback. Unsaved editor changes are NOT included.
+        /// </summary>
+        internal static string ReadFromDisk(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return null;
+
+            try
+            {
+                if (!System.IO.File.Exists(filePath))
+                    return null;
+
+                InternalLogger.Warn(
+                    $"CodeCommandHelper: editor buffer unavailable for '{filePath}' — sending the on-disk version; unsaved changes are not included.");
+
+                return System.IO.File.ReadAllText(filePath);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"CodeCommandHelper.ReadFromDisk failed for '{filePath}': {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>

@@ -29,6 +29,7 @@ namespace LMLocal.Infrastructure.SubAgents
             int? round = null,
             Guid? chatSessionId = null,
             Exception exception = null,
+            IReadOnlyList<SubAgentRecentCall> recentCalls = null,
             CancellationToken cancellationToken = default);
 
         /// <summary>
@@ -73,6 +74,11 @@ namespace LMLocal.Infrastructure.SubAgents
         public bool PromptTruncated { get; set; }
 
         /// <summary>
+        /// Last tool-call attempts before the failure (name, arguments, truncated result).
+        /// </summary>
+        public IReadOnlyList<SubAgentRecentCall> RecentCalls { get; set; }
+
+        /// <summary>
         /// Present only when the failure came from an exception; never populated in Release.
         /// </summary>
         [JsonProperty("exception")]
@@ -98,5 +104,24 @@ namespace LMLocal.Infrastructure.SubAgents
                 StackTrace = exception.ToString()
             };
         }
+    }
+
+    /// <summary>
+    /// One tool-call attempt made by a SubAgent before it failed (name, arguments, truncated result).
+    /// Only the last few attempts are kept: the line answers "what was the agent doing right before it died".
+    /// </summary>
+    internal sealed class SubAgentRecentCall
+    {
+        public string ToolName { get; set; }
+        public string CallId { get; set; }
+        public int? Round { get; set; }
+        public int? Step { get; set; }
+        public string ArgumentsJson { get; set; }
+        public int? ArgumentsChars { get; set; }
+        public bool? ArgumentsTruncated { get; set; }
+        public string ResultText { get; set; }
+        public int? ResultChars { get; set; }
+        public bool? ResultTruncated { get; set; }
+        public string Error { get; set; }
     }
 }

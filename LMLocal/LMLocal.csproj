@@ -69,6 +69,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Application\Abstractions\Ports\IChangesReader.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatInjectionService.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatPersistenceFactory.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatPersistenceService.cs" />
@@ -78,6 +79,9 @@
     <Compile Include="Application\Abstractions\Ports\IToolRouter.cs" />
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
+    <Compile Include="Application\Changes\DiffModels.cs" />
+    <Compile Include="Application\Changes\Models\ChangesResult.cs" />
+    <Compile Include="Application\Changes\UnifiedDiffBuilder.cs" />
     <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
     <Compile Include="Application\Chat\ChatHistoryService.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
@@ -102,7 +106,10 @@
     <Compile Include="Application\Tool\ToolActivityEvent.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
+    <Compile Include="Commands\SendAllOpenFilesCommand.cs" />
     <Compile Include="Core\Common\ChatLogConstants.cs" />
+    <Compile Include="Core\Common\OpenDocumentsPromptBuilder.cs" />
+    <Compile Include="Core\Common\PromptContentLimits.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
     <Compile Include="Core\Models\ChatSessionSummary.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
@@ -111,6 +118,8 @@
     <Compile Include="Infrastructure\SubAgents\ISubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
     <Compile Include="UI\ChatInjectionService.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
@@ -299,7 +308,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\icon.ico">
+    <Resource Include="Resources\images\icon16.png" />
+    <Content Include="LMLocal.imagemanifest">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\images\icon.ico">
       <IncludeInVSIX>true</IncludeInVSIX>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -308,6 +321,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\chat\chat.pipeline.builder.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\chat\generation.stopped.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -718,8 +735,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
-    <Content Include="Resources\logo.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    <Content Include="Resources\images\logo.png">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
   </ItemGroup>

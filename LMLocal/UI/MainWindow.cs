@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.WebView.Initialization;
+using Microsoft.VisualStudio.Imaging.Interop;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal
@@ -16,12 +17,15 @@ namespace LMLocal
     {
         private readonly MainWindowControl _control;
 
+        public static readonly Guid ImagesGuid = new Guid("2c0b0238-d41a-467b-ac92-d8e0f7af00b7");
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MainWindow"/> class.
         /// </summary>
         public MainWindow() : base(null)
         {
             this.Caption = "LM Local - AI Assistant";
+            this.BitmapImageMoniker = new ImageMoniker { Guid = ImagesGuid, Id = 1 };
 
             var initializer = ServiceConfiguration.GetService<IWebViewInitializer>();
             _control = new MainWindowControl(initializer);
