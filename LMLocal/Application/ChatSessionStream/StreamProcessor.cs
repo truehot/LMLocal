@@ -236,12 +236,12 @@ namespace LMLocal.Application.ChatSessionStream
                     result.TokensPerSecond = _tokenSpeedCalculator.GetAverageTokensPerSecond();
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
             {
                 InternalLogger.Info($"Stream canceled by user: {ex.Message}");
                 result.WasCancelled = true;
             }
-            catch (ObjectDisposedException ex)
+            catch (ObjectDisposedException ex) when (cancellationToken.IsCancellationRequested)
             {
                 InternalLogger.Info($"Stream closed by user cancellation: {ex.Message}");
                 result.WasCancelled = true;
@@ -263,11 +263,11 @@ namespace LMLocal.Application.ChatSessionStream
             catch (Exception ex)
             {
                 InternalLogger.Error($"Error in StreamProcessor: {ex.Message}", ex);
-                result.ErrorMessage = ExceptionFormatter.Format(ex);
-                result.WasCancelled = true;
-            }
-            finally
-            {
+                            result.ErrorMessage = ExceptionFormatter.Format(ex);
+                            result.WasCancelled = cancellationToken.IsCancellationRequested;
+                        }
+                        finally
+                        {
                 stream?.Close();
             }
 

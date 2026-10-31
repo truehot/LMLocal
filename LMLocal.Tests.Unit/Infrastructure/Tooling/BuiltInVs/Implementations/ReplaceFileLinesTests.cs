@@ -102,7 +102,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             var result = await _tool.ExecuteAsync(new Dictionary<string, object>
             {
-                ["start_line"] = 1, ["old_lines"] = "o", ["new_lines"] = "n"
+                ["start_line"] = 1,
+                ["old_lines"] = "o",
+                ["new_lines"] = "n"
             });
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
@@ -114,7 +116,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             var result = await _tool.ExecuteAsync(new Dictionary<string, object>
             {
-                ["file_path"] = FilePath, ["old_lines"] = "o", ["new_lines"] = "n"
+                ["file_path"] = FilePath,
+                ["old_lines"] = "o",
+                ["new_lines"] = "n"
             });
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
@@ -125,7 +129,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             var result = await _tool.ExecuteAsync(new Dictionary<string, object>
             {
-                ["file_path"] = FilePath, ["start_line"] = 1, ["new_lines"] = "n"
+                ["file_path"] = FilePath,
+                ["start_line"] = 1,
+                ["new_lines"] = "n"
             });
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
@@ -136,7 +142,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             var result = await _tool.ExecuteAsync(new Dictionary<string, object>
             {
-                ["file_path"] = FilePath, ["start_line"] = 1, ["old_lines"] = "o"
+                ["file_path"] = FilePath,
+                ["start_line"] = 1,
+                ["old_lines"] = "o"
             });
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
@@ -253,6 +261,45 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);
             Assert.That(resp.ErrorMessage, Does.Contain("Old content not found in file"));
+        }
+
+        [Test]
+        public async Task Replace_StartLineFarPastEof_IsRejectedWithRealLineCount()
+        {
+            // start_line is untrusted model input: padding to a hallucinated line number used to allocate that many
+            // empty cells before the tool could report anything (CWE-400), and the int sum had no guard against
+            // overflow either. The error carries the real length of the file so the model corrects itself at once.
+            SetupFileContent("a\nb");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1_000_000, oldLines: "b", newLines: "x"));
+
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("needs 999998 empty line(s)"));
+            Assert.That(resp.ErrorMessage, Does.Contain("a file that has 2 line(s)"));
+            Assert.That(resp.ErrorMessage, Does.Contain("at most 50"));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Replace_OldLinesBeyondEofOverCap_IsRejected()
+        {
+            // The padding also grows with the size of old_lines while start_line stays inside the file: 53 lines of
+            // old_lines against a two-line file need 51 padding lines even though start_line is 1. A cap written
+            // only against start_line would miss this vector.
+            SetupFileContent("a\nb");
+            // 54 empty elements joined by "\n" are 53 lines: the last element has no break behind it.
+            string oldLines = string.Join("\n", new string[54]);
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: oldLines, newLines: "x"));
+
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("needs 51 empty line(s)"));
         }
 
         // ── Mismatch — first line found, block doesn't match ──────────────────
@@ -584,7 +631,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.Candidates[0].Text, Does.Contain("dup"));
             Assert.That(resp.Candidates[0].Text, Does.Contain("after"));
         }
-// ── JSON-escape asymmetry (investigation, escaped output vs raw input) ──
+        // ── JSON-escape asymmetry (investigation, escaped output vs raw input) ──
         // read_file_lines returns each line JSON-serialized, so in the *tool output*
         // the model sees \" and \\ inside "text". But old_lines/new_lines are passed
         // to this tool as RAW characters (argument deserialization is one level only).
@@ -640,6 +687,594 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
                 AbsolutePath, "var s = \"changed\";\nvar t = '\\t';",
                 Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        // ── P1: canonical matching and restore ────────────────────────────────
+
+        [Test]
+        public async Task Replace_CanonicalMatch_OldLinesWithNormalizedChars_KeepsFileBytes()
+        {
+            // The file holds a real no-break space and typographic quotes; the model can only send space + ASCII quotes.
+            SetupFileContent("int x = 1;\u00A0// \u201Cmetka\u201D");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "int x = 1; // \"metka\"",
+                newLines: "int x = 1; // \"metka\""));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Not.True);
+            // Restore turns the block back into the file's own lines, so the range already holds the requested
+            // text: the call is a no-op and the invisible characters survive because nothing is written (P2-2).
+            Assert.That(resp.IsNoOp, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Replace_StrictMatch_ReportsNoNormalizationFlag()
+        {
+            SetupFileContent("a\nb\nc");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 2, oldLines: "b", newLines: "x"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.Null);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.Null);
+        }
+
+        [Test]
+        public async Task Replace_StrictBlockAmbiguity_FailsBeforeNormalizationPasses()
+        {
+            SetupFileContent("a\ndup\nc\nd\ndup\nf");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "dup", newLines: "x"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("matches 2 locations"));
+            Assert.That(resp.ErrorMessage, Does.Not.Contain("after character normalization"));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalBlockMatch_IsFoundBeforeFirstLineBranch()
+        {
+            // The first line matches strictly, the block only after normalization: pass 4 must win over the
+            // "first line found, block didn't match" diagnostics, otherwise this edit is refused needlessly.
+            SetupFileContent("p-q\nc\u2014d");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "p-q\nc-d", newLines: "p-q\nC-D"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.ErrorMessage, Is.Null);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "p-q\nC-D", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatchAtTwoLocations_ReturnsCandidates()
+        {
+            SetupFileContent("a\u2014b\na-b");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "a\u2013b", newLines: "X"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("after character normalization"));
+            Assert.That(resp.Candidates, Is.Not.Null);
+            Assert.That(resp.Candidates.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_PartialEdit_RestoresUnchangedLines()
+        {
+            SetupFileContent("class C\n{\n// A \u2192 B\nint x = 1;\nvar y = 1;");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "class C\n{\n// A -> B\nint x = 1;\nvar y = 1;",
+                newLines: "class C\n{\n// A -> B\nint x = 1;\nvar y = 2;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "class C\n{\n// A \u2192 B\nint x = 1;\nvar y = 2;",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_StrictMatch_WritesNewLinesVerbatim_NoRestore()
+        {
+            // The model reproduced the no-break space exactly, so its plain space is an intentional edit.
+            SetupFileContent("X\u00A0Y");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "X\u00A0Y", newLines: "X Y"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.Null);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "X Y", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_TrailingWhitespaceEdit_IsNotReverted()
+        {
+            // Restore compares exactly (no TrimEnd), so an intentional trailing-whitespace edit survives.
+            SetupFileContent("// A \u2192 B\nint a = 1;   ");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "// A -> B\nint a = 1;   ",
+                newLines: "// A -> B\nint a = 1;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "// A \u2192 B\nint a = 1;",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_InsertLine_RestoresPrefixAndSuffix()
+        {
+            SetupFileContent("a\nb\n// A \u2192 B\nd\ne");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "a\nb\n// A -> B\nd\ne",
+                newLines: "a\nb\n// A -> B\nNEW\nd\ne"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nb\n// A \u2192 B\nNEW\nd\ne",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalRelaxed_LeadingZwsp_DoesNotDoubleIndent()
+        {
+            // Pass 5: the model dropped the zero-width space AND the indentation. The leading run is taken from
+            // the file exactly once, so the written line keeps a single run even though the edit is applied.
+            SetupFileContent("\u200B    /// <summary>");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "/// <summary>", newLines: "/// <summary> changed"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.IsNoOp, Is.False);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "\u200B    /// <summary> changed",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalRelaxed_ReportsBothNotesInFixedOrder()
+        {
+            SetupFileContent("\u200B    /// <summary>");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "/// <summary>", newLines: "/// <summary> changed"));
+            var message = _tool.GetCompletionMessage(result);
+            Assert.That(message, Is.EqualTo(
+                "1 line replaced (matched ignoring first-line indentation, matched after character normalization)."));
+        }
+
+        [Test]
+        public async Task Replace_SpaceInsteadOfLineSeparator_MatchesCanonically()
+        {
+            // The file holds U+2028 where the model sent a plain space; the edit inside the line is written as sent.
+            SetupFileContent("word1\u2028word2");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "word1 word2", newLines: "word1 word3"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "word1 word3", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_EditInsideLineWithSpecialChars_LosesThem_DocumentsBoundary()
+        {
+            // Boundary, not a protection: an edit inside the line is written as the model sent it (no per-fragment restore).
+            SetupFileContent("int x = 1;\u00A0// \u2192 vazhno");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "int x = 1; // -> vazhno",
+                newLines: "int x = 2; // -> vazhno"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "int x = 2; // -> vazhno",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_DeletedLineDoesNotOverwriteRestoredPrefix()
+        {
+            // The no-break space sits inside the line, so only the canonical pass matches; the suffix must not walk
+            // back into the line the prefix already restored.
+            SetupFileContent("int x\u00A0= 1;\nint x = 1;\nz");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "int x = 1;\nint x = 1;\nz",
+                newLines: "int x = 1;\nz"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "int x\u00A0= 1;\nz",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_UniformlyTrimmedTrailingSpaces_AreKept()
+        {
+            // The model strips trailing spaces on every context line; matching tolerates it and restore turns every
+            // line back into the file's own one, so the range already holds the requested text: a no-op, and the
+            // trailing spaces are kept because nothing is written (P2-2).
+            SetupFileContent("// A \u2192 B\nint a = 1;   ");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "// A -> B\nint a = 1;",
+                newLines: "// A -> B\nint a = 1;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_BlockPastEndOfFile_DoesNotThrow()
+        {
+            // The second old_lines line only matches the padding: restore indexes must stay inside the real file.
+            SetupFileContent("a\nb\u2192c");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b->c\n\n", newLines: "B"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nB", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_DeleteLastLine_DoesNotRestoreKeptLine()
+        {
+            // "b" is ordinally equal to old middle and NOT to old last: the kept line must not be replaced by "c".
+            SetupFileContent("a\u00A0x\nb\nc");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "a x\nb\nc", newLines: "X\nb"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "X\nb", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_DeleteLastLine_DoesNotMoveDeletedContent()
+        {
+            // E20 guard: the second disjunct is limited to oldIdx == newIdx, so the NBSP of the deleted third line
+            // cannot migrate onto the kept second line.
+            SetupFileContent("a\u00A0x\nx = 1\nx\u00A0= 1");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "a x\nx = 1\nx\u00A0= 1",
+                newLines: "X\nx = 1"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "X\nx = 1", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_RewrittenContextLine_IsRestoredFromFile()
+        {
+            // Same length: the model rewrote a context line, but its canonical form still equals the file, so the
+            // second disjunct applies (the E20 guard must not disable it where it is legitimate).
+            SetupFileContent("a\u2014b\nvar y = 1;");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "a-b\nvar y = 1;", newLines: "a\u2013b\nvar y = 2;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\u2014b\nvar y = 2;", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        // ── P1: boundary conditions of the restore indexes ────────────────────
+
+        [Test]
+        public async Task Replace_CanonicalMatch_EmptyNewLines_DeletesRangeWithoutRestore()
+        {
+            // Empty new_lines on the canonical path: the block still has to be found after normalization, there is
+            // nothing to restore, and the range is deleted.
+            SetupFileContent("a\u2192b\nc");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "a->b\nc", newLines: ""));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_EmptyFile_ReturnsNotFoundWithoutThrowing()
+        {
+            SetupFileContent("");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "x", newLines: "X"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("Old content not found in file"));
+        }
+
+        [Test]
+        public async Task Replace_DeleteLastLineOfFile_Succeeds()
+        {
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 2, oldLines: "b", newLines: ""));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_LastLineWithSingleBreak_KeepsOneBlankLine()
+        {
+            // Check 44в: "\n" is the documented way to replace a range with one empty line. The file had no
+            // trailing break, so only the blank last line asked for one — without it the file was written as ""
+            // and lost its only line, while the response reported one line replaced.
+            SetupFileContent("a");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "a", newLines: "\n"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(1));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_NewLinesEndingWithBlankLine_NoTrailingNewline_KeepsTheBlankLine()
+        {
+            // Check 44в: the file has no trailing break, so nothing but the blank last line of new_lines can ask
+            // for the break that keeps it: "a\nX\n" would read back as two lines instead of three.
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b", newLines: "X\n\n"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(2));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nX\n\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_DeleteLineAfterBlankLine_KeepsTheBlankLine()
+        {
+            // Check 44в: the blank line that becomes the last one must survive the write, otherwise deleting the
+            // last line silently deletes two.
+            SetupFileContent("a\n\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 3, oldLines: "b", newLines: ""));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\n\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_CanonicalMatch_BlockOfPadding_RestoreIsNoOp()
+        {
+            // The whole block matches only padding: both old_lines are "invisible" and canonicalize to nothing.
+            // realCount is then 0 while restore is still entered with new_lines present, so it must return early
+            // instead of indexing the padding. A single invisible line cannot be used here: every padded empty
+            // line would match it and the pass would report an ambiguity instead of a match.
+            SetupFileContent("a");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "\u200B\n\u200B", newLines: "X"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nX", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_StrictMatch_OnFileWithSpecialChars_DoesNotNormalize()
+        {
+            // Strict match on a file that does contain the arrow: the model sent it verbatim, so nothing is
+            // normalized, no restore runs and no window cache is needed.
+            SetupFileContent("// A\u2192B\nvar y = 1;");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "// A\u2192B\nvar y = 1;", newLines: "// A\u2192B\nvar y = 2;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.MatchedWithNormalization, Is.Null);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.Null);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "// A\u2192B\nvar y = 2;", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        // ── Line counts in the response and in the completion message (E18, P2-8) ──
+
+        [Test]
+        public async Task Replace_CompletionMessage_ReportsLineCount()
+        {
+            // Check 34: the message must carry the number of written lines, symmetric with
+            // "6 lines inserted" of insert_file_lines — the model reads the transcript, not the JSON.
+            string[] lines = { "a", "b", "c", "d", "e", "f", "g", "h" };
+            SetupFileContent(string.Join("\n", lines));
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: string.Join("\n", lines),
+                newLines: string.Join("\n", new[] { "A", "B", "C", "D", "E", "F", "G", "H" })));
+            Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("8 lines replaced."));
+        }
+
+        [Test]
+        public async Task Replace_SingleLineEdit_CompletionMessageUsesSingular()
+        {
+            SetupFileContent("line1");
+            var result = await _tool.ExecuteAsync(CreateParams());
+            Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("1 line replaced."));
+        }
+
+        [Test]
+        public async Task Replace_Deletion_CompletionMessageSaysRemoved()
+        {
+            // A deletion reported as "0 lines replaced" would describe the opposite of what happened,
+            // so the verb changes and the count moves to lines_removed.
+            string[] lines = { "a", "b", "c", "d", "e", "f", "g", "h" };
+            SetupFileContent(string.Join("\n", lines));
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: string.Join("\n", lines), newLines: ""));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(0));
+            Assert.That(resp.LinesRemoved, Is.EqualTo(8));
+            Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("8 lines removed."));
+        }
+
+        [Test]
+        public async Task Replace_Response_LinesReplacedMatchesAppliedRange()
+        {
+            // lines_replaced counts written lines (new_lines), not matched ones: here one old line
+            // becomes three, and only the written side describes the applied change.
+            SetupFileContent("a\nb\nc");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b", newLines: "B1\nB2\nB3"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(3));
+            Assert.That(resp.LinesRemoved, Is.Null);
+        }
+
+        [Test]
+        public async Task Replace_NotFound_ResponseReportsZeroLinesReplaced()
+        {
+            SetupFileContent("a");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "zzz_not_present", newLines: "X"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(0));
+            Assert.That(resp.LinesRemoved, Is.Null);
+        }
+
+        // ── No-op at the write point and the phantom trailing line (P2-2, checks 2, 34, 44, 44б) ──
+
+        [Test]
+        public async Task Replace_NoOp_DoesNotSnapshotAndDoesNotWrite()
+        {
+            // The request asks for exactly what the file already holds. "Not written" is proven with the mocks:
+            // mtime on a fast file system can coincide with the read, so it is only the third witness.
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b", newLines: "b"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(0));
+            Assert.That(resp.LinesRemoved, Is.Null);
+
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+            _snapshotMock.Verify(s => s.SnapshotFileAsync(
+                AbsolutePath, SnapshotChangeStatus.BeforeModify, It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Replace_NoOp_CompletionMessageSaysNoChangesNeeded()
+        {
+            // "0 lines replaced" would describe the opposite of what happened, and lines_replaced: 0 is also the
+            // value of a deletion, so the signal has to be the message (E21).
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b", newLines: "b"));
+
+            Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("No changes needed."));
+        }
+
+        [Test]
+        public async Task Replace_NoOp_OldLinesBeyondEof_IsNotNoOp()
+        {
+            // Check 44: the second old_lines line exists only as padding. The written range is one line while
+            // new_lines has two, so this is an edit that adds a line — not a no-op.
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b\n\n", newLines: "b\nc"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.False);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nb\nc", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_NoOp_OldLinesBeyondEof_SameLength_IsNoOp()
+        {
+            // Control for check 44: one written line against one real line is a genuine no-op.
+            SetupFileContent("a\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b\n\n", newLines: "b"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.True);
+        }
+
+        [Test]
+        public async Task Replace_PhantomTrailingEmpty_IsNotNoOp()
+        {
+            // Check 44б: the file ends with a line break. A phantom trailing element used to inflate realCount to
+            // 2 and made ["b",""] look identical to the requested block, silently dropping the edit.
+            SetupFileContent("a\nb\n");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b\n\n", newLines: "b\n\n"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.False);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(2));
+            // The blank line is added and the trailing line break survives.
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nb\n\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_LastLineEdit_KeepsTrailingNewline()
+        {
+            // Check 44б, second vector: RemoveRange used to eat the phantom instead of the real line and
+            // InsertRange did not recreate it, so "a\nB\n" became "a\nB".
+            SetupFileContent("a\nb\n");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2, oldLines: "b", newLines: "B"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nB\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Replace_OldLinesWithCrOnlySeparators_MatchesByLines()
+        {
+            // E6/P2-3: old_lines glued by the model with lone CR must match line by line, and a lone CR is a
+            // separator, not part of a line. Same text as the file, therefore a no-op.
+            SetupFileContent("a\nb\nc\n");
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1, oldLines: "a\rb\rc", newLines: "a\rb\rc"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.True);
+            Assert.That(resp.LinesReplaced, Is.EqualTo(0));
         }
     }
 }

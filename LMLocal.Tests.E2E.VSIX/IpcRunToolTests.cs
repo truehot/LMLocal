@@ -215,6 +215,113 @@ namespace LMLocal.Tests.E2E.VSIX
             }
         }
 
+        /// <summary>
+        /// read → replace → read must be symmetric (1:1): a verbatim no-op replace rewrites the file
+        /// without changing a single byte, and a second read returns exactly the same lines.
+        /// Scope: raw file I/O through the real tool pipeline. The Scratch file is not opened as a
+        /// VS document, so editor-side effects (format_document, get_changes_diff, document buffer)
+        /// are deliberately out of scope; the encoding/EOL matrix lives in the unit fixture
+        /// FileToolsReadReplaceRoundTripTests.
+        /// </summary>
+        [TestMethod]
+        public async Task RunTool_ReadReplaceRead_RoundTripsOneToOneAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                EnsureScratchExists();
+                var path = ScratchPath("e2e_roundtrip.txt");
+                CleanupFiles(path);
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var solutionPath = GetSolutionPath();
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{solutionPath}", cts.Token));
+                        var rel = "LMLocal.Tests.E2E.VSIX\\Scratch\\e2e_roundtrip.txt";
+
+                        // Cyrillic and typographic characters are intentional test payload (the real
+                        // incident involved a README with Russian text and '->' / em-dash characters);
+                        // it is data, not prose, so the English-only convention does not apply here.
+                        var original = "первая строка\r\narrow → and dash — здесь\r\nvar s = \"q\"; path = C:\\tmp\r\n";
+                        var created = await SendAsync(client, $"RunTool|create_file|{UriEnc(rel)}|{UriEnc(original)}", cts.Token);
+                        Assert.IsTrue((bool)JObject.Parse(created)["success"], "create_file should succeed: " + created);
+
+                        // read #1 — exactly what the model receives
+                        var read1 = await ReadAllTextsAsync(client, rel, cts.Token);
+                        Assert.HasCount(3, read1, "expected 3 lines, got: " + string.Join(" | ", read1));
+                        Assert.AreEqual("arrow → and dash — здесь", read1[1], "non-ASCII line must survive read");
+
+                        var bytesBefore = File.ReadAllBytes(path);
+
+                        // replace #1 — no-op: the content copied verbatim from the read is passed back
+                        var oldText = string.Join("\n", read1);
+                        var resp = await SendAsync(client,
+                            $"RunTool|replace_file_lines|{UriEnc(rel)}|1|{UriEnc(oldText)}|{UriEnc(oldText)}", cts.Token);
+                        var obj = JObject.Parse(resp);
+                        Assert.IsTrue((bool)obj["success"], "no-op replace must succeed: " + resp);
+                        Assert.IsNull(obj["auto_corrected"], "verbatim old_lines must not need auto-correction: " + resp);
+                        Assert.IsNull(obj["matched_ignoring_first_line_indent"], "first-line indentation must match: " + resp);
+                        CollectionAssert.AreEqual(bytesBefore, File.ReadAllBytes(path),
+                            "a no-op replace must not change a single byte (encoding, BOM and EOL preserved)");
+
+                        // read #2 — must be identical to read #1
+                        var read2 = await ReadAllTextsAsync(client, rel, cts.Token);
+                        CollectionAssert.AreEqual(read1.ToArray(), read2.ToArray(),
+                            "read → replace → read must be symmetric (1:1)");
+
+                        // replace #2 — a real edit: only the targeted line changes
+                        resp = await SendAsync(client,
+                            $"RunTool|replace_file_lines|{UriEnc(rel)}|2|{UriEnc(read2[1])}|{UriEnc("правка → строка")}", cts.Token);
+                        obj = JObject.Parse(resp);
+                        Assert.IsTrue((bool)obj["success"], "targeted replace must succeed: " + resp);
+
+                        var read3 = await ReadAllTextsAsync(client, rel, cts.Token);
+                        Assert.AreEqual("правка → строка", read3[1], "the edited line must be the new one");
+                        Assert.AreEqual(read1[0], read3[0], "line 1 must be untouched");
+                        Assert.AreEqual(read1[2], read3[2], "line 3 must be untouched");
+
+                        await SendAsync(client, $"RunTool|delete_file|{UriEnc(rel)}", cts.Token);
+                    }
+                }
+                finally
+                {
+                    CleanupFiles(path);
+                    TryKill(vs);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calls read_file_lines over IPC with pagination until has_more_results is false and returns the raw line
+        /// texts (no line numbers) — i.e. exactly the strings the model is expected to copy into old_lines.
+        /// </summary>
+        private async Task<System.Collections.Generic.IList<string>> ReadAllTextsAsync(
+            IpcClient client, string relPath, CancellationToken ct)
+        {
+            var texts = new System.Collections.Generic.List<string>();
+            var start = 1;
+
+            while (true)
+            {
+                var resp = await SendAsync(client, $"RunTool|read_file_lines|{UriEnc(relPath)}|{start}|9999", ct);
+                var obj = JObject.Parse(resp);
+                Assert.IsTrue((bool)obj["success"], "read_file_lines should succeed: " + resp);
+
+                var entries = (obj["content"] as JArray)?.OfType<JObject>().ToList()
+                              ?? new System.Collections.Generic.List<JObject>();
+
+                foreach (var entry in entries)
+                    texts.Add(entry["text"].Value<string>());
+
+                if (!(obj["has_more_results"]?.Value<bool>() ?? false) || entries.Count == 0)
+                    return texts;
+
+                start = entries[entries.Count - 1]["line_number"].Value<int>() + 1;
+            }
+        }
+
         [TestMethod]
         public async Task RunTool_FormatDocument_FormatsCSharpAsync()
         {

@@ -17,7 +17,12 @@ class ToolbarComponent {
         this._sessionState = null;
         this._sessionStreamed = 0;
         this._roundTokens = 0;
-        this._lastRenderedTitle = null;
+        this._lastTooltipText = null;
+        this._lastRenderedPercent = null;
+        this._lastRenderedSupportsMax = null;
+        this._tipEl = null;
+        this._tipAnchor = null;
+        this._tipAnchors = null;
     }
 
     _getElements() {
@@ -60,7 +65,8 @@ class ToolbarComponent {
         if (!modelState || !this.elements.tokenBarFill) return;
 
         const baseTokens = this._sessionState?.contextTokens || 0;
-        const occupiedTokens = baseTokens + this._sessionStreamed + this._roundTokens;
+        const toolResultTokens = this._sessionState?.toolResultTokens || 0;
+        const occupiedTokens = baseTokens + this._sessionStreamed + this._roundTokens + toolResultTokens;
         const tokenMax = modelState.tokenMax || 0;
         const supportsMax = !!modelState.supportsMaxTokens;
         const percent = supportsMax && tokenMax > 0
@@ -69,18 +75,26 @@ class ToolbarComponent {
 
         const percentRounded = roundPercent(percent);
 
-        const title = this._composeTooltipTitle(occupiedTokens, tokenMax, supportsMax, percentRounded);
+        if (percentRounded !== this._lastRenderedPercent ||
+            supportsMax !== this._lastRenderedSupportsMax) {
+            this._lastRenderedPercent = percentRounded;
+            this._lastRenderedSupportsMax = supportsMax;
 
-        if (title === this._lastRenderedTitle) return;
-        this._lastRenderedTitle = title;
-
-        this.elements.tokenBarFill.style.display = supportsMax ? 'block' : 'none';
-        if (supportsMax) {
-            this.elements.tokenBarFill.style.transform = `scaleY(${percentRounded / 100})`;
+            this.elements.tokenBarFill.style.display = supportsMax ? 'block' : 'none';
+            if (supportsMax) {
+                this.elements.tokenBarFill.style.transform = `scaleY(${percentRounded / 100})`;
+            }
         }
 
-        if (this.elements.barInfoTooltip) this.elements.barInfoTooltip.title = title;
-        if (this.elements.modelName) this.elements.modelName.title = title;
+        const text = this._composeTooltipTitle(occupiedTokens, tokenMax, supportsMax, percentRounded);
+
+        if (text === this._lastTooltipText) return;
+        this._lastTooltipText = text;
+
+        if (this.elements.barInfoTooltip) this.elements.barInfoTooltip.dataset.tooltip = text;
+        if (this.elements.modelName) this.elements.modelName.dataset.tooltip = text;
+
+        this._paintTip(text);
     }
 
     /**
@@ -103,13 +117,99 @@ class ToolbarComponent {
     }
 
     /**
-     * Cached input tokens are a SUBSET of the prompt, so they are rendered inside the `in` term
-     * and never as an extra one.
+     * Cached input tokens are a SUBSET of the prompt, so they are rendered inside the `in` term and never as an extra one.
      */
     _cachedShare(promptTokens, cachedTokens) {
         if (cachedTokens <= 0 || promptTokens <= 0) return '';
         return ` (${formatTokens(Math.min(cachedTokens, promptTokens))} cached)`;
     }
+
+    // ====== Context usage popover ======
+    //
+    // A native `title` is unusable here: Chromium hides an already-visible native tooltip as soon as the attribute changes.
+
+    _ensureTip() {
+        if (this._tipEl) return this._tipEl;
+
+        const el = document.createElement('div');
+        el.id = 'context-tooltip';
+        el.className = 'context-tooltip';
+        el.setAttribute('role', 'tooltip');
+        el.setAttribute('popover', 'manual');
+        document.body.appendChild(el);
+
+        this._tipEl = el;
+        return el;
+    }
+
+    /**
+     * Opens the tooltip above (or below) the hovered anchor. Trigger: hover only.
+     */
+    _showTip(anchor) {
+        if (!anchor) return;
+
+        const text = anchor.dataset?.tooltip;
+        if (text == null) return;
+
+        const el = this._ensureTip();
+        el.textContent = text;
+        this._tipAnchor = anchor;
+
+        if (typeof el.showPopover === 'function' && !el.matches(':popover-open')) {
+            el.showPopover();
+        }
+
+        this._placeTip(el, anchor);
+        el.classList.add('is-open');
+    }
+
+    _hideTip() {
+        this._tipAnchor = null;
+
+        const el = this._tipEl;
+        if (!el) return;
+
+        el.classList.remove('is-open');
+        if (typeof el.hidePopover === 'function' && el.matches(':popover-open')) {
+            el.hidePopover();
+        }
+    }
+
+    /**
+     * Keeps an open tooltip in sync with the live value without closing and reopening it.
+     */
+    _paintTip(text) {
+        if (this._tipEl && this._tipAnchor) {
+            this._tipEl.textContent = text;
+        }
+    }
+
+    _placeTip(el, anchor) {
+        const gap = 8;
+        const anchorRect = anchor.getBoundingClientRect();
+        const tipRect = el.getBoundingClientRect();
+
+        let top = anchorRect.bottom + gap;
+        if (top + tipRect.height > window.innerHeight - gap) {
+            top = anchorRect.top - tipRect.height - gap;
+        }
+
+        let left = anchorRect.left;
+        if (left + tipRect.width > window.innerWidth - gap) {
+            left = window.innerWidth - tipRect.width - gap;
+        }
+
+        el.style.setProperty('top', `${Math.max(gap, top)}px`, 'important');
+        el.style.setProperty('left', `${Math.max(gap, left)}px`, 'important');
+    }
+
+    _onTipEnter = (e) => {
+        this._showTip(e.currentTarget);
+    };
+
+    _onTipLeave = () => {
+        this._hideTip();
+    };
 
     _onModelNameClick = async (e) => {
         e.stopPropagation();
@@ -127,12 +227,28 @@ class ToolbarComponent {
             this.elements.modelName.addEventListener('click', this._onModelNameClick);
             this.elements.modelName.style.cursor = 'pointer';
         }
+
+        this._tipAnchors = [this.elements.barInfoTooltip, this.elements.modelName].filter(Boolean);
+        for (const anchor of this._tipAnchors) {
+            anchor.addEventListener('mouseenter', this._onTipEnter);
+            anchor.addEventListener('mouseleave', this._onTipLeave);
+        }
     }
 
     _detachEvents() {
         if (this.elements.modelName) {
             this.elements.modelName.removeEventListener('click', this._onModelNameClick);
         }
+
+        if (this._tipAnchors) {
+            for (const anchor of this._tipAnchors) {
+                anchor.removeEventListener('mouseenter', this._onTipEnter);
+                anchor.removeEventListener('mouseleave', this._onTipLeave);
+            }
+            this._tipAnchors = null;
+        }
+
+        this._hideTip();
         clearTimeout(this.timeoutId);
     }
 
@@ -159,7 +275,12 @@ class ToolbarComponent {
         this._appState = null;
         this._sessionState = null;
         this._resetStreamCounters();
-        this._lastRenderedTitle = null;
+        this._lastTooltipText = null;
+        this._lastRenderedPercent = null;
+        this._lastRenderedSupportsMax = null;
+        this._tipEl?.remove();
+        this._tipEl = null;
+        this._tipAnchor = null;
     }
 
     updateAppState(state, prevState) {

@@ -1,6 +1,7 @@
 using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,7 +49,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Before this call, obtain a fresh read_file_lines result for the same file and use the raw source text from it for old_lines. read_file_lines returns each line as an object with 'line_number' and 'text'; old_lines must contain the raw source text, with no line-number prefix and no trailing newline. The tool verifies old_lines before changing the file. Leading whitespace and character casing are significant; trailing whitespace and line-ending differences are ignored. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. After a replacement, line numbers may shift; re-read before making further edits, or apply multiple edits bottom-up (largest line numbers first). If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1, then new_lines are inserted. If start_line is valid but the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. Set new_lines to an empty string to delete the range. If syntax_errors is non-empty, the file is still saved, but the change is not complete; re-read the affected range and fix the errors before considering the task complete. If old_lines does not match at start_line, the tool searches nearby lines (±50). If exactly one exact match is found, it auto-corrects and applies the change (auto_corrected=true); re-read before making another edit. If multiple exact matches are found, candidates are returned; re-read a wider range and expand old_lines to disambiguate. If no exact match is found, the tool retries once with the first line's leading indentation ignored. If exactly one relaxed match is found, it applies the change, sets matched_ignoring_first_line_indent=true, and re-indents the first line of new_lines to match the file. Re-read before continuing. If multiple relaxed matches are found, candidates are returned. If no match is found, check leading whitespace and re-read the file.",
+                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Before this call, obtain a fresh read_file_lines result for the same file and use the raw source text from it for old_lines. read_file_lines returns each line as an object with 'line_number' and 'text'; old_lines must contain the raw source text, with no line-number prefix and no trailing newline. The tool verifies old_lines before changing the file. Leading whitespace and character casing are significant; trailing whitespace and line-ending differences are ignored. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. After a replacement, line numbers may shift; re-read before making further edits, or apply multiple edits bottom-up (largest line numbers first). If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1, then new_lines are inserted; at most 50 empty lines are padded, and a start_line or an old_lines block that would need more is rejected with the real line count of the file. If start_line is valid but the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. Set new_lines to an empty string to delete the range. If syntax_errors is non-empty, the file is still saved, but the change is not complete; re-read the affected range and fix the errors before considering the task complete. If old_lines does not match at start_line, the tool searches nearby lines (±50). If exactly one exact match is found, it auto-corrects and applies the change (auto_corrected=true); re-read before making another edit. If multiple exact matches are found, candidates are returned; re-read a wider range and expand old_lines to disambiguate. If no exact match is found, the tool retries once with the first line's leading indentation ignored. If exactly one relaxed match is found, it applies the change, sets matched_ignoring_first_line_indent=true, and re-indents the first line of new_lines to match the file. Re-read before continuing. If multiple relaxed matches are found, candidates are returned. If still no match is found, the tool compares lines again after character normalization (no-break and other typographic spaces treated as a space, typographic quotes and dashes as ASCII, zero-width characters ignored, Unicode composed form). If exactly one match is found that way it applies the change and sets matched_with_normalization=true; unchanged lines of the block are written from the file, so characters the model cannot see are preserved. Re-read the file before the next edit. If multiple normalized matches are found, candidates are returned. If no match is found, check leading whitespace and re-read the file.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -63,7 +64,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "start_line", new ToolDetails
                             {
                                 Type = "integer",
-                                Description = "Starting line number (1-indexed, inclusive, positive integer (>= 1))."
+                                Description = "Starting line number (1-indexed, inclusive, positive integer (>= 1)). A start_line more than 50 lines past the end of the file is rejected with the real line count."
                             }
                         },
                         { "old_lines", new ToolDetails
@@ -114,18 +115,31 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
 
-                string[] fileLines = originalContent.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
+                _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
+
+                string[] fileLines = LineSplitter.Split(originalContent);
+                bool hadTrailingNewline = LineSplitter.HasTrailingEol(originalContent);
                 var linesList = new List<string>(fileLines);
 
-                string[] oldLinesArray = SplitLines(oldLinesText);
+                string[] oldLinesArray = LineSplitter.Split(oldLinesText);
                 int oldLinesCount = oldLinesArray.Length;
                 int originalStartLine = startLine;
 
-                int requiredTotalLines = startLine - 1 + oldLinesCount;
+                long requiredTotalLines = (long)(startLine - 1) + oldLinesCount;
+                long padding = requiredTotalLines - fileLines.Length;
+
+                if (padding > LineMatcher.MaxPaddingLines)
+                {
+                    return Error(
+                        $"start_line {startLine} with {oldLinesCount} line(s) of old_lines needs {padding} empty line(s) " +
+                        $"past the end of a file that has {fileLines.Length} line(s); at most {LineMatcher.MaxPaddingLines} " +
+                        $"are allowed. Re-read the file with read_file_lines to get its real line numbers.");
+                }
+
                 while (linesList.Count < requiredTotalLines)
                     linesList.Add("");
 
-                var (resolvedStartLine, matchedIgnoringIndent, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, filePath);
+                var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, filePath);
                 if (errorResponse != null)
                     return errorResponse;
 
@@ -133,30 +147,56 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 startLine = resolvedStartLine;
 
                 string matchedFirstLineIndent = matchedIgnoringIndent
-                    ? GetLeadingWhitespace(linesList[startLine - 1])
+                    ? GetLeadingRun(linesList[startLine - 1])
                     : null;
 
-
                 string[] newLinesArray = null;
+                string[] newLinesAsReceived = null;
                 bool hasNewLines = !string.IsNullOrEmpty(newLinesText);
                 if (hasNewLines)
-                    newLinesArray = SplitLines(newLinesText);
+                {
+                    newLinesArray = LineSplitter.Split(newLinesText);
+
+                    if (matchedWithNormalization)
+                        newLinesAsReceived = (string[])newLinesArray.Clone();
+                }
 
                 if (matchedIgnoringIndent && hasNewLines && newLinesArray.Length > 0)
                 {
-                    string firstLineContent = newLinesArray[0].TrimStart();
+                    string firstLineContent = StripLeading(newLinesArray[0]);
                     if (firstLineContent.Length > 0)
                         newLinesArray[0] = matchedFirstLineIndent + firstLineContent;
                 }
 
-
                 int removeStart = startLine - 1;
+
+                int realCount = Math.Min(oldLinesCount, Math.Max(0, fileLines.Length - removeStart));
+
+                if (matchedWithNormalization && hasNewLines)
+                {
+                    RestoreUnchangedLines(
+                        linesList, newLinesAsReceived, newLinesArray, oldLinesArray,
+                        removeStart, realCount, matchedIgnoringIndent, canonicalCache);
+                }
+
+                if (hasNewLines
+                    && newLinesArray.Length == realCount
+                    && RangeEquals(fileLines, removeStart, newLinesArray))
+                {
+                    InternalLogger.Debug(
+                        $"replace_file_lines: no-op on {absolutePath}, lines {startLine}-{startLine + realCount - 1} already hold the requested text; nothing written.");
+
+                    return NoOp(
+                        relativePath, absolutePath, autoCorrected, originalStartLine, startLine,
+                        matchedIgnoringIndent, matchedWithNormalization);
+                }
+
                 linesList.RemoveRange(removeStart, oldLinesCount);
 
                 if (hasNewLines)
                     linesList.InsertRange(removeStart, newLinesArray);
 
-                string newContent = string.Join(separator, linesList);
+                string newContent = LineSplitter.Join(separator, linesList, hadTrailingNewline);
 
                 await _snapshotManager
                     .SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken)
@@ -174,12 +214,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     InternalLogger.Info($"Syntax errors detected after replacement in {absolutePath}:\n" + string.Join("\n", syntaxErrors));
                 }
 
-                _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
-
                 var response = new ReplaceLinesResponse
                 {
                     Success = true,
                     FilePath = relativePath ?? absolutePath,
+                    LinesReplaced = hasNewLines ? newLinesArray.Length : 0,
+                    LinesRemoved = hasNewLines ? (int?)null : realCount,
                     SyntaxErrors = syntaxErrors
                 };
 
@@ -192,6 +232,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 if (matchedIgnoringIndent)
                     response.MatchedIgnoringFirstLineIndent = true;
+
+                if (matchedWithNormalization)
+                    response.MatchedWithNormalization = true;
 
                 return response;
             }
@@ -206,7 +249,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private (int resolvedStartLine, bool matchedIgnoringIndent, ReplaceLinesResponse errorResponse) ResolveStartLine(List<string> linesList, string[] oldLinesArray, int startLine, string filePath)
+        /// <summary>
+        /// Resolves where the block really starts.
+        /// </summary>
+        private (int resolvedStartLine, bool matchedIgnoringIndent, bool matchedWithNormalization, CanonicalWindowCache canonicalCache, ReplaceLinesResponse errorResponse)
+            ResolveStartLine(List<string> linesList, string[] oldLinesArray, int startLine, string filePath)
         {
             int oldLinesCount = oldLinesArray.Length;
 
@@ -222,16 +269,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
 
             if (exactMatch)
-                return (startLine, false, null);
+                return (startLine, false, false, null, null);
 
             var blockMatches = FindBlock(linesList, oldLinesArray, startLine);
 
             if (blockMatches.Count == 1)
-                return (blockMatches[0], false, null);
+                return (blockMatches[0], false, false, null, null);
 
             if (blockMatches.Count > 1)
             {
-                return (0, false, Error(new ReplaceLinesResponse
+                return (0, false, false, null, Error(new ReplaceLinesResponse
                 {
                     Success = false,
                     FilePath = filePath,
@@ -240,15 +287,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }));
             }
 
-            // Retry with the first line compared ignoring leading whitespace; the remaining lines must still match exactly.
-            var relaxedMatches = FindBlock(linesList, oldLinesArray, startLine, ignoreLeadingWhitespaceFirstLine: true);
+            var relaxedMatches = FindBlock(linesList, oldLinesArray, startLine, LineComparison.StrictIgnoreLeadingIndent);
 
             if (relaxedMatches.Count == 1)
-                return (relaxedMatches[0], true, null);
+                return (relaxedMatches[0], true, false, null, null);
 
             if (relaxedMatches.Count > 1)
             {
-                return (0, false, Error(new ReplaceLinesResponse
+                return (0, false, false, null, Error(new ReplaceLinesResponse
                 {
                     Success = false,
                     FilePath = filePath,
@@ -257,11 +303,48 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }));
             }
 
+            var cache = new CanonicalWindowCache(linesList, startLine, oldLinesCount);
+            string[] canonicalOldTrimmed = Array.ConvertAll(oldLinesArray, s => CharacterMap.Canonicalize(s).TrimEnd());
+
+            var canonicalMatches = FindBlock(
+                linesList, oldLinesArray, startLine, LineComparison.Canonical, cache, canonicalOldTrimmed);
+
+            if (canonicalMatches.Count == 1)
+                return (canonicalMatches[0], false, true, cache, null);
+
+            if (canonicalMatches.Count > 1)
+            {
+                return (0, false, false, null, Error(new ReplaceLinesResponse
+                {
+                    Success = false,
+                    FilePath = filePath,
+                    ErrorMessage = $"old_lines matches {canonicalMatches.Count} locations after character normalization. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    Candidates = ToCandidates(linesList, canonicalMatches, oldLinesCount)
+                }));
+            }
+
+            var canonicalRelaxed = FindBlock(
+                linesList, oldLinesArray, startLine, LineComparison.CanonicalIgnoreLeadingIndent, cache, canonicalOldTrimmed);
+
+            if (canonicalRelaxed.Count == 1)
+                return (canonicalRelaxed[0], true, true, cache, null);
+
+            if (canonicalRelaxed.Count > 1)
+            {
+                return (0, false, false, null, Error(new ReplaceLinesResponse
+                {
+                    Success = false,
+                    FilePath = filePath,
+                    ErrorMessage = $"old_lines matches {canonicalRelaxed.Count} locations after character normalization when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    Candidates = ToCandidates(linesList, canonicalRelaxed, oldLinesCount)
+                }));
+            }
+
             var firstLineMatches = LineMatcher.FindMatches(linesList, oldLinesArray[0], startLine);
 
             if (firstLineMatches.Count > 0)
             {
-                return (0, false, Error(new ReplaceLinesResponse
+                return (0, false, false, null, Error(new ReplaceLinesResponse
                 {
                     Success = false,
                     FilePath = filePath,
@@ -270,17 +353,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }));
             }
 
-            return (0, false, Error("Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file."));
+            return (0, false, false, null, Error("Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file."));
+        }
+
+        /// <summary>
+        /// Comparison mode of <see cref="FindBlock"/>.
+        /// </summary>
+        private enum LineComparison
+        {
+            Strict,
+            StrictIgnoreLeadingIndent,
+            Canonical,
+            CanonicalIgnoreLeadingIndent
         }
 
         /// <summary>
         /// Searches for a full block match within ±SearchWindow of aroundLine.
-        /// When ignoreLeadingWhitespaceFirstLine is true, the first line of the block is
-        /// compared with leading whitespace ignored; all other lines are compared exactly.
         /// </summary>
         private static List<int> FindBlock(
-            List<string> lines, string[] block, int aroundLine, bool ignoreLeadingWhitespaceFirstLine = false)
+            List<string> lines, string[] block, int aroundLine,
+            LineComparison mode = LineComparison.Strict,
+            CanonicalWindowCache cache = null,
+            string[] canonicalBlockTrimmed = null)
         {
+            Debug.Assert(
+                mode == LineComparison.Strict
+                || mode == LineComparison.StrictIgnoreLeadingIndent
+                || (cache != null && canonicalBlockTrimmed != null),
+                "Canonical comparison requires a window cache and the precomputed canonical forms of the block.");
+
             int windowLines = LineMatcher.MaxSearchWindowLines;
             int lower = Math.Max(0, aroundLine - 1 - windowLines);
             int upper = Math.Min(lines.Count - block.Length, aroundLine - 1 + windowLines);
@@ -290,9 +391,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 bool match = true;
                 for (int j = 0; j < block.Length; j++)
                 {
-                    bool lineMatches = j == 0 && ignoreLeadingWhitespaceFirstLine
-                        ? LineMatcher.LinesEqualIgnoringLeadingWhitespace(lines[i + j], block[j])
-                        : LineMatcher.LinesEqual(lines[i + j], block[j]);
+                    bool lineMatches;
+                    if (mode == LineComparison.Canonical)
+                    {
+                        lineMatches = CanonicalTrimmed(lines, cache, i + j) == canonicalBlockTrimmed[j];
+                    }
+                    else if (mode == LineComparison.CanonicalIgnoreLeadingIndent)
+                    {
+                        lineMatches = j == 0
+                            ? CanonicalTrimmed(lines, cache, i + j).TrimStart() == canonicalBlockTrimmed[j].TrimStart()
+                            : CanonicalTrimmed(lines, cache, i + j) == canonicalBlockTrimmed[j];
+                    }
+                    else if (mode == LineComparison.StrictIgnoreLeadingIndent && j == 0)
+                    {
+                        lineMatches = LineMatcher.LinesEqualIgnoringLeadingWhitespace(lines[i + j], block[j]);
+                    }
+                    else
+                    {
+                        lineMatches = LineMatcher.LinesEqual(lines[i + j], block[j]);
+                    }
 
                     if (!lineMatches)
                     {
@@ -302,6 +419,96 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (match) result.Add(i + 1);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Canonical form of a file line with trailing whitespace removed — the canonical analogue of the TrimEnd that <see cref="LineMatcher.LinesEqual"/> performs, so the canonical pass cannot be stricter than strict.
+        /// </summary>
+        private static string CanonicalTrimmed(List<string> lines, CanonicalWindowCache cache, int lineIndex)
+        {
+            string exact = cache != null
+                ? cache.GetExact(lineIndex)
+                : CharacterMap.Canonicalize(lines[lineIndex]);
+
+            return exact?.TrimEnd();
+        }
+
+        /// <summary>
+        /// Restore policy of a canonical match.
+        /// </summary>
+        private static void RestoreUnchangedLines(
+            List<string> linesList, string[] newLinesAsReceived, string[] newLinesArray, string[] oldLinesArray,
+            int removeStart, int realCount, bool matchedIgnoringIndent, CanonicalWindowCache cache)
+        {
+            int newCount = newLinesArray.Length;
+            if (realCount <= 0 || newCount == 0)
+                return;
+
+            Debug.Assert(cache != null, "Restore requires the canonical window cache built by the canonical pass.");
+
+            int paired = Math.Min(realCount, newCount);
+            var canonicalNew = new string[newCount];
+
+            int prefix = 0;
+            while (prefix < paired)
+            {
+                if (!ShouldRestore(newLinesAsReceived, newLinesArray, canonicalNew, oldLinesArray,
+                        removeStart, prefix, prefix, matchedIgnoringIndent, cache))
+                    break;
+
+                newLinesArray[prefix] = linesList[removeStart + prefix];
+                prefix++;
+            }
+
+            int maxSuffix = paired - prefix;
+            int suffix = 0;
+            while (suffix < maxSuffix)
+            {
+                int oldIdx = realCount - 1 - suffix;
+                int newIdx = newCount - 1 - suffix;
+
+                if (!ShouldRestore(newLinesAsReceived, newLinesArray, canonicalNew, oldLinesArray,
+                        removeStart, oldIdx, newIdx, matchedIgnoringIndent, cache))
+                    break;
+
+                newLinesArray[newIdx] = linesList[removeStart + oldIdx];
+                suffix++;
+            }
+        }
+
+        private static bool ShouldRestore(
+            string[] newLinesAsReceived, string[] newLinesArray, string[] canonicalNew, string[] oldLinesArray,
+            int removeStart, int oldIdx, int newIdx, bool matchedIgnoringIndent, CanonicalWindowCache cache)
+        {
+            if (ModelDidNotChange(newLinesAsReceived, oldLinesArray, oldIdx, newIdx, matchedIgnoringIndent))
+                return true;
+
+            if (oldIdx != newIdx)
+                return false;
+
+            string fileCanonical = cache.GetExact(removeStart + oldIdx);
+            if (fileCanonical == null)
+                return false;
+
+            if (canonicalNew[newIdx] == null)
+                canonicalNew[newIdx] = CharacterMap.Canonicalize(newLinesArray[newIdx]);
+
+            return string.Equals(fileCanonical, canonicalNew[newIdx], StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// First disjunct: the model did not change this line in its own output (<c>new[newIdx]</c> is ordinally equal to <c>old[oldIdx]</c>).
+        /// </summary>
+        private static bool ModelDidNotChange(
+            string[] newLinesAsReceived, string[] oldLinesArray, int oldIdx, int newIdx, bool matchedIgnoringIndent)
+        {
+            string received = newLinesAsReceived[newIdx];
+            string old = oldLinesArray[oldIdx];
+
+            if (oldIdx == 0 && newIdx == 0 && matchedIgnoringIndent)
+                return string.Equals(StripLeading(received), StripLeading(old), StringComparison.Ordinal);
+
+            return string.Equals(received, old, StringComparison.Ordinal);
         }
 
         private static List<LineCandidate> ToCandidates(
@@ -340,33 +547,76 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
 
         /// <summary>
-        /// Splits text into lines. If the text ends with \n or \r\n, the trailing empty element is not included as a separate line.
+        /// Ordinal comparison of the file range the call would rewrite with the lines the model sent.
         /// </summary>
-        private static string[] SplitLines(string text)
+        private static bool RangeEquals(string[] fileLines, int removeStart, string[] newLinesArray)
         {
-            string[] parts = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            if (removeStart < 0 || removeStart + newLinesArray.Length > fileLines.Length)
+                return false;
 
-            if (parts.Length > 0
-                && parts[parts.Length - 1] == ""
-                && (text.EndsWith("\r\n") || text.EndsWith("\n")))
+            for (int i = 0; i < newLinesArray.Length; i++)
             {
-                var trimmed = new string[parts.Length - 1];
-                Array.Copy(parts, trimmed, trimmed.Length);
-                return trimmed;
+                if (!string.Equals(fileLines[removeStart + i], newLinesArray[i], StringComparison.Ordinal))
+                    return false;
             }
 
-            return parts;
+            return true;
         }
 
         /// <summary>
-        /// Returns the leading whitespace (spaces and tabs) of a line.
+        /// Response of a call whose range already holds exactly the requested text: success with <c>lines_replaced: 0</c>, no snapshot, no write and no syntax check.
         /// </summary>
-        private static string GetLeadingWhitespace(string line)
+        private static ReplaceLinesResponse NoOp(
+            string relativePath, string absolutePath, bool autoCorrected,
+            int originalStartLine, int appliedStartLine,
+            bool matchedIgnoringIndent, bool matchedWithNormalization)
+        {
+            var response = new ReplaceLinesResponse
+            {
+                Success = true,
+                FilePath = relativePath ?? absolutePath,
+                LinesReplaced = 0,
+                IsNoOp = true
+            };
+
+            if (autoCorrected)
+            {
+                response.AutoCorrected = true;
+                response.OriginalStartLine = originalStartLine;
+                response.AppliedStartLine = appliedStartLine;
+            }
+
+            if (matchedIgnoringIndent)
+                response.MatchedIgnoringFirstLineIndent = true;
+
+            if (matchedWithNormalization)
+                response.MatchedWithNormalization = true;
+
+            return response;
+        }
+
+        /// <summary>
+        /// Returns the leading run of a line: whitespace AND characters that will vanish during canonicalization (ZWSP, U+FEFF).
+        /// </summary>
+        private static string GetLeadingRun(string line)
+        {
+            return line.Substring(0, LeadingRunLength(line));
+        }
+
+        /// <summary>
+        /// Removes the leading run (whitespace and ZWSP/U+FEFF) of a line.
+        /// </summary>
+        private static string StripLeading(string line)
+        {
+            return line.Substring(LeadingRunLength(line));
+        }
+
+        private static int LeadingRunLength(string line)
         {
             int i = 0;
-            while (i < line.Length && (line[i] == ' ' || line[i] == '\t'))
+            while (i < line.Length && (char.IsWhiteSpace(line[i]) || CharacterMap.IsDeleted(line[i])))
                 i++;
-            return line.Substring(0, i);
+            return i;
         }
 
 
@@ -384,12 +634,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!response.Success)
                     return "Replacing lines failed.";
 
-                string msg = "Lines replaced";
+                if (response.IsNoOp)
+                    return "No changes needed.";
+
+                string msg = DescribeLineCount(response);
                 var notes = new List<string>();
+
                 if (response.AutoCorrected == true)
                     notes.Add($"auto-corrected from line {response.OriginalStartLine} to {response.AppliedStartLine}");
                 if (response.MatchedIgnoringFirstLineIndent == true)
                     notes.Add("matched ignoring first-line indentation");
+                if (response.MatchedWithNormalization == true)
+                    notes.Add("matched after character normalization");
                 if (notes.Count > 0)
                     msg += " (" + string.Join(", ", notes) + ")";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
@@ -398,6 +654,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return msg;
             }
             return "Replacing lines finished.";
+        }
+
+        /// <summary>
+        /// Builds the leading part of the completion message.
+        /// </summary>
+        private static string DescribeLineCount(ReplaceLinesResponse response)
+        {
+            if (response.LinesRemoved.HasValue)
+            {
+                int removed = response.LinesRemoved.Value;
+                return $"{removed} {Pluralizer.Pluralize(removed, "line", "lines")} removed";
+            }
+
+            int replaced = response.LinesReplaced;
+            return $"{replaced} {Pluralizer.Pluralize(replaced, "line", "lines")} replaced";
         }
 
         private static ReplaceLinesResponse Error(string message)
@@ -422,6 +693,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
+        /// <summary>
+        /// Number of lines written by the call (<c>new_lines</c> length).
+        /// </summary>
+        [JsonProperty("lines_replaced")]
+        public int LinesReplaced { get; set; }
+
+        /// <summary>
+        /// Number of lines removed by a range deletion (<c>new_lines</c> empty).
+        /// </summary>
+        [JsonProperty("lines_removed", NullValueHandling = NullValueHandling.Ignore)]
+        public int? LinesRemoved { get; set; }
+
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
         public string[] SyntaxErrors { get; set; }
 
@@ -436,6 +719,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("matched_ignoring_first_line_indent", NullValueHandling = NullValueHandling.Ignore)]
         public bool? MatchedIgnoringFirstLineIndent { get; set; }
+
+        [JsonProperty("matched_with_normalization", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? MatchedWithNormalization { get; set; }
+
+        /// <summary>
+        /// Set when the call would have written exactly the text the file already holds.
+        /// </summary>
+        [JsonIgnore]
+        internal bool IsNoOp { get; set; }
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }

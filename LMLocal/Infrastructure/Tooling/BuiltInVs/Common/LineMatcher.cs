@@ -15,6 +15,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         public const int MaxSearchWindowLines = 50;
 
         /// <summary>
+        /// Maximum number of empty lines a file tool may append to reach a position past the end of the file.
+        /// </summary>
+        public const int MaxPaddingLines = 50;
+
+        /// <summary>
         /// Number of surrounding lines included in each candidate's Text for context.
         /// </summary>
         public const int CandidateContextLines = 2;
@@ -30,6 +35,23 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         public static bool LinesEqualIgnoringLeadingWhitespace(string a, string b) => a.TrimStart().TrimEnd() == b.TrimStart().TrimEnd();
 
         /// <summary>
+        /// Canonical comparison for MATCHING.
+        /// </summary>
+        public static bool LinesEqualCanonical(string a, string b) => CharacterMap.Canonicalize(a).TrimEnd() == CharacterMap.Canonicalize(b).TrimEnd();
+
+        /// <summary>
+        /// Canonical comparison of the first block line with leading indentation ignored — the canonical analogue of <see cref="LinesEqualIgnoringLeadingWhitespace"/> (both sides trimmed, i.e. <c>Trim()</c>).
+        /// </summary>
+        public static bool LinesEqualCanonicalIgnoringLeadingWhitespace(string a, string b)
+            => CharacterMap.Canonicalize(a).Trim() == CharacterMap.Canonicalize(b).Trim();
+
+        /// <summary>
+        /// EXACT canonical equality (no <c>TrimEnd</c>), used by restore only.
+        /// </summary>
+        public static bool LinesEqualCanonicalExact(string a, string b)
+            => CharacterMap.Canonicalize(a) == CharacterMap.Canonicalize(b);
+
+        /// <summary>
         /// Searches for a single line in the file lines within ±SearchWindow of aroundLine. Returns 1-indexed line numbers of all matches.
         /// </summary>
         public static List<int> FindMatches(List<string> lines, string line, int aroundLine)
@@ -40,6 +62,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             for (int i = lower; i <= upper; i++)
             {
                 if (LinesEqual(lines[i], line)) result.Add(i + 1); // 1-indexed
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Canonical variant of <see cref="FindMatches"/>, used by insert_file_lines as the last resort before giving up on <c>expected_line</c>.
+        /// </summary>
+        public static List<int> FindMatchesCanonical(List<string> lines, string line, int aroundLine)
+        {
+            int lower = Math.Max(0, aroundLine - 1 - MaxSearchWindowLines);
+            int upper = Math.Min(lines.Count - 1, aroundLine - 1 + MaxSearchWindowLines);
+            var result = new List<int>();
+            for (int i = lower; i <= upper; i++)
+            {
+                if (LinesEqualCanonical(lines[i], line)) result.Add(i + 1); // 1-indexed
             }
             return result;
         }

@@ -1,0 +1,25 @@
+﻿L01: ordinary space
+L02: no-break space between words
+L03: thin space and hair space
+L04: em space and ideographic space
+L05: lower eighth block ▁ here
+L06: zero width space inside
+L07: softhyphen inside
+L08: em dash — and arrow → here
+L09: quotes "double" and 'single' and `backtick`
+L10: backslashes C:\temp\folder and \n literal
+L11: tab	inside	the	line
+L12: leading and trailing spaces   
+L13: leading no-break space
+L14: trailing no-break space
+L15: [ ] and [ ] brackets
+L16: Cyrillic текст для проверки многобайтовых символов
+L17: control ▁ and ZWSP together
+
+L19: emoji 🐛 and 🚀 are surrogate pairs
+L20: family 👨‍👩‍👧‍👦 uses zero width joiner
+L21: joiner ‍ and non-joiner ‌ and BOM  here
+L22: precomposed café and decomposed é here
+L23: line separator [ ] inside the line
+L24: next line NEL [ ] inside the line
+L25: last line without trailing newline

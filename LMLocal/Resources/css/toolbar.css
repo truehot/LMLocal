@@ -154,3 +154,28 @@
         transform: rotate(360deg);
     }
 }
+
+/* ====== Context usage tooltip ====== */
+.context-tooltip {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    z-index: 10000;
+    background: var(--toast-bg);
+    color: var(--toast-text);
+    border: 1px solid var(--toast-border);
+    box-shadow: 0 4px 14px var(--toast-shadow);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.35;
+    font-variant-numeric: tabular-nums;
+    white-space: pre-line;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+    .context-tooltip.is-open {
+        opacity: 1;
+    }

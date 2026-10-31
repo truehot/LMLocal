@@ -70,6 +70,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
             {
                 _builtInMock.Setup(b => b.GetToolAccessLevel(t.Name))
                     .Returns(ToolAccessLevel.ReadOnly);
+                // Agent visibility resolves allowed names against the built-in registry (mode-independent),
+                // so every registered tool must answer ToolExists=true even when mode filtering drops it.
+                _builtInMock.Setup(b => b.ToolExists(t.Name)).Returns(true);
             }
         }
 
@@ -132,10 +135,65 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
         [Test]
         public void GetMainQueue_NonEmptyAllowlistAllUnavailable_ExcludesAgent()
         {
-            SetBuiltIn();
-            SetSnapshot(Config(Agent("research", new List<string> { "read_file_lines" })));
+            // Registered in the built-in registry but gated by the current mode: the agent would have
+            // nothing to run with, so it must not be offered to the model.
+            SetBuiltIn(new ToolDefinition { Name = "build_solution" });
+            _builtInMock.Setup(b => b.GetToolAccessLevel("build_solution"))
+                .Returns(ToolAccessLevel.Execution);
+            SetSnapshot(Config(Agent("research", new List<string> { "build_solution" })));
 
             Assert.That(_provider.GetMainQueue().Definitions, Is.Empty);
+        }
+
+        [Test]
+        public void GetMainQueue_PartiallyAvailableAllowlist_ExcludesAgentAndReleasesTools()
+        {
+            // build_subagent shape in read-only mode: read-only tools are available, execution tools are gated.
+            SetBuiltIn(
+                new ToolDefinition { Name = "read_file_lines" },
+                new ToolDefinition { Name = "build_solution" });
+            _builtInMock.Setup(b => b.GetToolAccessLevel("build_solution"))
+                .Returns(ToolAccessLevel.Execution);
+            SetSnapshot(Config(Agent("builder", new List<string> { "read_file_lines", "build_solution" })));
+
+            var names = _provider.GetMainQueue().Definitions.Select(d => d.Name).ToList();
+
+            // The agent cannot run (build_solution is gated), so it must not be offered to the model...
+            Assert.That(names, Does.Not.Contain("builder"));
+            // ...and because it is hidden it no longer owns its available tool.
+            Assert.That(names, Does.Contain("read_file_lines"));
+        }
+
+        [Test]
+        public void GetMainQueue_PartiallyAvailableAllowlist_ShowsAgentInWriteMode()
+        {
+            _settingsManagerMock.SetupGet(s => s.Current)
+                .Returns(new AppSettings { EnableAiTools = true, EnableSubAgents = true, EnableAiWriteTools = true });
+
+            SetBuiltIn(
+                new ToolDefinition { Name = "read_file_lines" },
+                new ToolDefinition { Name = "build_solution" });
+            _builtInMock.Setup(b => b.GetToolAccessLevel("build_solution"))
+                .Returns(ToolAccessLevel.Execution);
+            SetSnapshot(Config(Agent("builder", new List<string> { "read_file_lines", "build_solution" })));
+
+            var names = _provider.GetMainQueue().Definitions.Select(d => d.Name).ToList();
+
+            // Every allowed tool is available now, so the agent is visible and owns both tools.
+            Assert.That(names, Is.EquivalentTo(new[] { "builder" }));
+        }
+
+        [Test]
+        public void GetMainQueue_UnknownToolInAllowlist_DoesNotHideAgent()
+        {
+            SetBuiltIn(new ToolDefinition { Name = "read_file_lines" });
+            SetSnapshot(Config(Agent("researcher", new List<string> { "read_file_lines", "ghost_tool" })));
+
+            var names = _provider.GetMainQueue().Definitions.Select(d => d.Name).ToList();
+
+            // Unknown names never execute inside a SubAgent, so they must not affect visibility.
+            Assert.That(names, Does.Contain("researcher"));
+            Assert.That(names, Does.Not.Contain("read_file_lines"));
         }
 
         [Test]

@@ -13,21 +13,18 @@ namespace LMLocal.Application.Tool
         /// </summary>
         public static ChatMessage CreateFromToolResult(ToolResultMessage toolResult)
         {
-            string toolContent;
-            if (toolResult.Result == null)
-            {
-                toolContent = "";
-            }
-            else if (toolResult.Result is string str)
-            {
-                toolContent = str;
-            }
-            else
-            {
-                toolContent = toolResult.Result.ToJson();
-            }
+            return new ChatMessage("tool", ToContent(toolResult.Result), toolResult.ToolCallId.ToString());
+        }
 
-            return new ChatMessage("tool", toolContent, toolResult.ToolCallId.ToString());
+        /// <summary>
+        /// The single source of truth for the text a tool result contributes to the prompt: a string as is, anything else as JSON, null as an empty string.
+        /// </summary>
+        public static string ToContent(object result)
+        {
+            if (result == null)
+                return string.Empty;
+
+            return result is string text ? text : result.ToJson();
         }
     }
 }

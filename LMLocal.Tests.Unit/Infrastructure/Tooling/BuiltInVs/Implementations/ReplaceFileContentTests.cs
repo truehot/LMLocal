@@ -200,5 +200,98 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                     It.IsAny<CancellationToken>()));
         }
 
+        // ── No-op at the write point (P2-6, checks 11, 30, 38а/38б/38в) ──
+
+        [Test]
+        public async Task ReplaceFileContent_IdenticalContent_DoesNotWrite()
+        {
+            // Check 11: the snapshot was taken before the read and the file was rewritten even when the text was
+            // identical. Now nothing happens: no snapshot, no write, no syntax check.
+            const string content = "public class OldClass {}\r\n";
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((content, Encoding.UTF8, false));
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: content));
+
+            var resp = result as ApplyCodeEditResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.True);
+
+            _snapshotMock.Verify(s => s.SnapshotFileAsync(
+                AbsolutePath, SnapshotChangeStatus.BeforeModify, It.IsAny<CancellationToken>()), Times.Never);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ReplaceFileContent_NoOp_CompletionMessageSaysNoChangesNeeded()
+        {
+            // Check 30: the only no-op signal of this tool is the message — the response schema is not extended.
+            const string content = "public class OldClass {}\r\n";
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((content, Encoding.UTF8, false));
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: content));
+
+            Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("No changes needed."));
+        }
+
+        [Test]
+        public async Task ReplaceFileContent_CrlfFile_LfFromModel_IsNoOp()
+        {
+            // Check 38а: the model almost always sends "\n", so comparing with the raw content would never
+            // recognise this call and the file would be rewritten on every no-op.
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(("a\r\nb", Encoding.UTF8, false));
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: "a\nb"));
+
+            var resp = result as ApplyCodeEditResponse;
+            Assert.That(resp.IsNoOp, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ReplaceFileContent_MixedEol_UnchangedText_KeepsBytes()
+        {
+            // Check 38б: the EOL normalization does change a mixed file, so only a line comparison can tell that
+            // the text did not change. Writing here would "unify" the untouched lines (E5) on a no-op call.
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(("a\r\nb\nc\r\n", Encoding.UTF8, false));
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: "a\nb\nc\n"));
+
+            var resp = result as ApplyCodeEditResponse;
+            Assert.That(resp.IsNoOp, Is.True);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ReplaceFileContent_TrailingNewlineAdded_IsWritten()
+        {
+            // Check 38в: same lines, different trailing-EOL parity — adding the final break is a real edit and
+            // must not be swallowed by the line comparison.
+            _fileSystemMock
+                .Setup(f => f.ReadAllTextWithDetectedEncodingAsync(AbsolutePath, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(("a", Encoding.UTF8, false));
+
+            var result = await _tool.ExecuteAsync(CreateParams(content: "a\n"));
+
+            var resp = result as ApplyCodeEditResponse;
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.IsNoOp, Is.False);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\n", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
     }
 }

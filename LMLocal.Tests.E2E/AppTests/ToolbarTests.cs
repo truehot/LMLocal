@@ -106,10 +106,12 @@ public partial class ToolbarTests : AppTestBase
         var style = await tokenBarFill.GetAttributeAsync("style");
         Assert.That(style, Does.Contain("scaleY(0.2"), "4000 / 16384 must fill about 24% of the bar");
 
-        // Info tooltip should have context usage info
+        // The tooltip text is published through data-tooltip. A native title is unusable here:
+        // the toolbar re-renders on every chunk flush and Chromium dismisses a visible native
+        // tooltip as soon as the attribute changes.
         var tooltip = Page.Locator("#info-tooltip");
-        var title = await tooltip.GetAttributeAsync("title");
-        Assert.That(title, Does.Contain("Context usage"));
+        var tooltipText = await tooltip.GetAttributeAsync("data-tooltip");
+        Assert.That(tooltipText, Does.Contain("Context usage"));
     }
 
     [Test]

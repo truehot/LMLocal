@@ -219,7 +219,9 @@ namespace LMLocal.Application.SubAgents
                                     round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
 
                             case StreamRoundOutcome.Cancelled:
-                                return Fail(response, "SubAgent execution was cancelled.");
+                                return await FailLoggedAsync(
+                                    response, request, "SubAgent stream was cancelled unexpectedly.",
+                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
 
                             case StreamRoundOutcome.Incomplete:
                                 return await FailLoggedAsync(

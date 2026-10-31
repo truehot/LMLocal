@@ -22,67 +22,7 @@ namespace LMLocal.Application.Changes
         /// </summary>
         public static string[] SplitLines(string content)
         {
-            if (string.IsNullOrEmpty(content))
-                return Array.Empty<string>();
-
-            int lineCount = CountLines(content);
-            if (lineCount == 0)
-                return Array.Empty<string>();
-
-            var lines = new string[lineCount];
-            int index = 0;
-            int start = 0;
-
-            for (int i = 0; i < content.Length; i++)
-            {
-                char current = content[i];
-                if (current != '\n' && current != '\r')
-                    continue;
-
-                lines[index++] = content.Substring(start, i - start);
-
-                if (current == '\r' && i + 1 < content.Length && content[i + 1] == '\n')
-                    i++;
-
-                start = i + 1;
-            }
-
-            if (start < content.Length)
-                lines[index] = content.Substring(start);
-
-            return lines;
-        }
-
-        /// <summary>
-        /// Counts the lines <see cref="SplitLines"/> will produce: every "\n", every "\r" and every "\r\n" terminates a line, and a line break at the very end of the content does not start a new one.
-        /// </summary>
-        private static int CountLines(string content)
-        {
-            int count = 0;
-            int start = 0;
-
-            for (int i = 0; i < content.Length; i++)
-            {
-                char current = content[i];
-                if (current == '\n')
-                {
-                    count++;
-                    start = i + 1;
-                }
-                else if (current == '\r')
-                {
-                    count++;
-                    if (i + 1 < content.Length && content[i + 1] == '\n')
-                        i++;
-
-                    start = i + 1;
-                }
-            }
-
-            if (start < content.Length)
-                count++;
-
-            return count;
+            return LineSplitter.Split(content);
         }
 
         /// <summary>
@@ -217,7 +157,7 @@ namespace LMLocal.Application.Changes
                 }
                 else
                 {
-                    InternalLogger.Debug(
+                    InternalLogger.Warn(
                         $"UnifiedDiffBuilder: edit distance exceeds {MaxEditDistance} for a {n}x{m} block, using a coarse replacement hunk.");
 
                     for (int i = aStart; i < aEnd; i++)
@@ -234,7 +174,7 @@ namespace LMLocal.Application.Changes
         }
 
         /// <summary>
-        /// Myers O(ND) diff of a[ aStart..aEnd ) against b[ bStart..bEnd ), covering an empty prefix/suffix only.
+        /// Myers O(ND) diff of <c>a[aStart..aEnd)</c> against <c>b[bStart..bEnd)</c>.
         /// </summary>
         private static List<EditOp> BuildMiddleEditScript(string[] a, int aStart, int aEnd, string[] b, int bStart, int bEnd)
         {
@@ -248,7 +188,8 @@ namespace LMLocal.Application.Changes
                 v[i] = -1;
             v[offset + 1] = 0;
 
-            var trace = new List<int[]>(maxD + 1);
+            int[] trace = Array.Empty<int>();
+            int recordedSteps = 0;
             int finalD = -1;
 
             for (int d = 0; d <= maxD; d++)
@@ -281,10 +222,18 @@ namespace LMLocal.Application.Changes
                 if (finalD >= 0)
                     break;
 
-                var snapshot = new int[d + 1];
+                int rowStart = d * (d + 1) / 2;
+                int rowEnd = rowStart + d + 1;
+                if (rowEnd > trace.Length)
+                {
+                    int capacity = Math.Max(rowEnd, trace.Length == 0 ? 16 : trace.Length * 2);
+                    Array.Resize(ref trace, capacity);
+                }
+
                 for (int k = -d; k <= d; k += 2)
-                    snapshot[(k + d) / 2] = v[offset + k];
-                trace.Add(snapshot);
+                    trace[rowStart + ((k + d) / 2)] = v[offset + k];
+
+                recordedSteps = d + 1;
             }
 
             if (finalD < 0)
@@ -298,12 +247,12 @@ namespace LMLocal.Application.Changes
             {
                 int k = cx - cy;
                 int prevK;
-                if (k == -d || (k != d && GetAfter(trace, d - 1, k - 1) < GetAfter(trace, d - 1, k + 1)))
+                if (k == -d || (k != d && GetAfter(trace, recordedSteps, d - 1, k - 1) < GetAfter(trace, recordedSteps, d - 1, k + 1)))
                     prevK = k + 1;
                 else
                     prevK = k - 1;
 
-                int prevX = GetAfter(trace, d - 1, prevK);
+                int prevX = GetAfter(trace, recordedSteps, d - 1, prevK);
                 int prevY = prevX - prevK;
 
                 int snakeX = prevK == k + 1 ? prevX : prevX + 1;
@@ -337,19 +286,14 @@ namespace LMLocal.Application.Changes
         }
 
         /// <summary>
-        /// Reads V after <paramref name="step"/> for the given diagonal <paramref name="k"/>.
+        /// Reads the furthest <c>x</c> recorded for diagonal <paramref name="diagonal"/> after <paramref name="step"/> edits, or -1 when that diagonal was not reachable then.
         /// </summary>
-        private static int GetAfter(List<int[]> trace, int step, int k)
+        private static int GetAfter(int[] trace, int recordedSteps, int step, int diagonal)
         {
-            if (step < 0 || step >= trace.Count || k < -step || k > step)
+            if (step < 0 || step >= recordedSteps || diagonal < -step || diagonal > step)
                 return -1;
 
-            int index = (k + step) / 2;
-            int[] snapshot = trace[step];
-            if (index < 0 || index >= snapshot.Length)
-                return -1;
-
-            return snapshot[index];
+            return trace[step * (step + 1) / 2 + ((diagonal + step) / 2)];
         }
 
         private static List<DiffHunk> BuildHunks(List<EditOp> ops, int contextLines)

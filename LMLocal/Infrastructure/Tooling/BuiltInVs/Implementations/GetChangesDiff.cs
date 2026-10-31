@@ -11,6 +11,7 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Threading;
+using Newtonsoft.Json.Linq;
 using static LMLocal.Core.Common.Pluralizer;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -346,12 +347,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (includeDiff, files, maxFiles, maxLines, null);
         }
 
+        /// <summary>
+        /// Accepts the parsed "files" value as an array of strings.
+        /// </summary>
         private static bool TryParseStringArray(object value, out List<string> result, out string error)
         {
             result = null;
             error = null;
 
-            if (value is string)
+            if (value is string || (value is JValue scalar && scalar.Type == JTokenType.String))
             {
                 error = "Parameter 'files' must be an array of strings, not a single string.";
                 return false;
@@ -366,10 +370,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var items = new List<string>();
             foreach (object item in enumerable)
             {
-                if (item == null)
+                if (item == null || (item is JValue nullToken && nullToken.Type == JTokenType.Null))
                     continue;
 
-                if (!(item is string text))
+                string text;
+                if (item is string plain)
+                {
+                    text = plain;
+                }
+                else if (item is JValue stringToken && stringToken.Type == JTokenType.String)
+                {
+                    text = (string)stringToken;
+                }
+                else
                 {
                     error = "Parameter 'files' must be an array of strings.";
                     return false;

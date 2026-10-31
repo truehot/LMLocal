@@ -38,10 +38,6 @@ namespace LMLocal.Infrastructure.Persistence
         /// </summary>
         Task WriteAllBytesWithEncodingAsync(string path, string content, Encoding encoding, bool hasBom, CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Detects the encoding of a file by reading its BOM/preamble, without reading the full content.
-        /// </summary>
-        (Encoding encoding, bool hasBom) DetectEncoding(string path);
         Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default);
         Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default);
         void ReplaceOrCreate(string sourceFileName, string destinationFileName);
@@ -159,17 +155,13 @@ namespace LMLocal.Infrastructure.Persistence
             {
                 using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true))
                 {
-                    byte[] preamble = new byte[4];
-                    int bytesRead = await fs.ReadAsync(preamble, 0, 4, cancellationToken).ConfigureAwait(false);
-                    fs.Seek(0, SeekOrigin.Begin);
+                    var detection = FileEncodingDetector.Detect(fs);
 
-                    var (encoding, hasBom) = DetectEncodingFromPreamble(preamble, bytesRead);
-
-                    using (var sr = new StreamReader(fs, encoding, detectEncodingFromByteOrderMarks: false))
+                    using (var sr = new StreamReader(fs, detection.Encoding, detectEncodingFromByteOrderMarks: false))
                     {
                         string content = await sr.ReadToEndAsync().ConfigureAwait(false);
                         cancellationToken.ThrowIfCancellationRequested();
-                        return (content, encoding, hasBom);
+                        return (content, detection.Encoding, detection.HasBom);
                     }
                 }
             }
@@ -183,82 +175,6 @@ namespace LMLocal.Infrastructure.Persistence
                 InternalLogger.Error($"Error reading file '{path}': {ex.Message}");
                 return (string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
             }
-        }
-
-        public (Encoding encoding, bool hasBom) DetectEncoding(string path)
-        {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                return (new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
-
-            try
-            {
-                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096))
-                {
-                    byte[] preamble = new byte[4];
-                    int bytesRead = fs.Read(preamble, 0, 4);
-                    return DetectEncodingFromPreamble(preamble, bytesRead);
-                }
-            }
-            catch
-            {
-                return (new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
-            }
-        }
-
-        private static (Encoding encoding, bool hasBom) DetectEncodingFromPreamble(byte[] preamble, int bytesRead)
-        {
-            if (bytesRead >= 3 && preamble[0] == 0xEF && preamble[1] == 0xBB && preamble[2] == 0xBF)
-                return (Encoding.UTF8, true); // UTF-8 with BOM
-
-            if (bytesRead >= 4 && preamble[0] == 0xFF && preamble[1] == 0xFE && preamble[2] == 0x00 && preamble[3] == 0x00)
-                return (Encoding.UTF32, true); // UTF-32 LE
-
-            if (bytesRead >= 4 && preamble[0] == 0x00 && preamble[1] == 0x00 && preamble[2] == 0xFE && preamble[3] == 0xFF)
-                return (new UTF32Encoding(bigEndian: true, byteOrderMark: true), true); // UTF-32 BE
-
-            if (bytesRead >= 2 && preamble[0] == 0xFF && preamble[1] == 0xFE)
-                return (Encoding.Unicode, true); // UTF-16 LE
-
-            if (bytesRead >= 2 && preamble[0] == 0xFE && preamble[1] == 0xFF)
-                return (Encoding.BigEndianUnicode, true); // UTF-16 BE
-
-            // No BOM — check if valid UTF-8
-            if (IsValidUtf8(preamble, bytesRead))
-                return (new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false); // UTF-8 no BOM
-
-            return (Encoding.Default, false); // Fallback to system ANSI encoding
-        }
-
-        private static bool IsValidUtf8(byte[] buffer, int count)
-        {
-            int i = 0;
-            while (i < count)
-            {
-                if ((buffer[i] & 0x80) == 0) // ASCII
-                {
-                    i++;
-                }
-                else if ((buffer[i] & 0xE0) == 0xC0) // 2-byte sequence
-                {
-                    if (i + 1 >= count || (buffer[i + 1] & 0xC0) != 0x80) return false;
-                    i += 2;
-                }
-                else if ((buffer[i] & 0xF0) == 0xE0) // 3-byte sequence
-                {
-                    if (i + 2 >= count || (buffer[i + 1] & 0xC0) != 0x80 || (buffer[i + 2] & 0xC0) != 0x80) return false;
-                    i += 3;
-                }
-                else if ((buffer[i] & 0xF8) == 0xF0) // 4-byte sequence
-                {
-                    if (i + 3 >= count || (buffer[i + 1] & 0xC0) != 0x80 || (buffer[i + 2] & 0xC0) != 0x80 || (buffer[i + 3] & 0xC0) != 0x80) return false;
-                    i += 4;
-                }
-                else
-                {
-                    return false; // Invalid leading byte
-                }
-            }
-            return true;
         }
 
         public async Task WriteAllBytesAsync(string path, byte[] data, CancellationToken cancellationToken = default)
@@ -359,15 +275,19 @@ namespace LMLocal.Infrastructure.Persistence
             if (lineHandler == null) throw new ArgumentNullException(nameof(lineHandler));
 
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true))
-            using (var sr = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
-                int lineNumber = 0;
-                string line;
-                while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
+                var detection = FileEncodingDetector.Detect(fs);
+
+                using (var sr = new StreamReader(fs, detection.Encoding, detectEncodingFromByteOrderMarks: false))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    lineNumber++;
-                    lineHandler(lineNumber, line);
+                    int lineNumber = 0;
+                    string line;
+                    while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        lineNumber++;
+                        lineHandler(lineNumber, line);
+                    }
                 }
             }
         }
@@ -379,20 +299,25 @@ namespace LMLocal.Infrastructure.Persistence
             if (endLine < startLine) throw new ArgumentOutOfRangeException(nameof(endLine), "endLine must be >= startLine");
 
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, useAsync: true))
-            using (var sr = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
             {
-                var result = new List<string>();
-                int currentLine = 0;
-                string line;
-                while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
+                var detection = FileEncodingDetector.Detect(fs);
+
+                using (var sr = new StreamReader(fs, detection.Encoding, detectEncodingFromByteOrderMarks: false))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    currentLine++;
-                    if (currentLine < startLine) continue;
-                    if (currentLine > endLine) break;
-                    result.Add(line);
+                    var result = new List<string>();
+                    int currentLine = 0;
+                    string line;
+                    while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        currentLine++;
+                        if (currentLine < startLine) continue;
+                        if (currentLine > endLine) break;
+                        result.Add(line);
+                    }
+
+                    return result;
                 }
-                return result;
             }
         }
 

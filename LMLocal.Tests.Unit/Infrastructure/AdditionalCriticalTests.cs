@@ -120,10 +120,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
                     .ContinueWith(t => (t.Result, System.Text.Encoding.UTF8, false), cancellationToken);
             }
 
-            public (System.Text.Encoding encoding, bool hasBom) DetectEncoding(string path)
-            {
-                return (new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
-            }
 
 
 
@@ -142,6 +138,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 }
                 return result;
             }
+
 
             public async Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
             {

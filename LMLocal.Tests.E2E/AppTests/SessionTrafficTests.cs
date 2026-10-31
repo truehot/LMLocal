@@ -13,6 +13,10 @@ using System.Globalization;
 ///    stays flat (10k in / 1k out on turn 1, 11k in / 1k out on turn 2 -> 21k / 2k total).
 ///    It is dropped when the model or the endpoint changes (see sessionStore.resetTraffic).
 ///
+/// The text is published through data-tooltip (the native title attribute is unusable: the
+/// toolbar re-renders on every chunk flush and Chromium dismisses a visible native tooltip as
+/// soon as the attribute changes). The popover over it is opened by hover only.
+///
 /// The mock ("webview-mock-context-bar.js") schedules nothing by itself, so every protocol
 /// step is emitted explicitly and the assertions are deterministic.
 /// </summary>
@@ -41,6 +45,15 @@ public class SessionTrafficTests : AppTestBase
     /// </summary>
     private static string SessionTitle(string percent, string used, string inTokens, string outTokens, string cached = "", int tokenMax = TokenMax) =>
         $"{ContextOnlyTitle(percent, used, tokenMax)}\nSession: {inTokens} in{(cached.Length == 0 ? string.Empty : $" ({cached} cached)")} · {outTokens} out";
+
+    /// <summary>
+    /// Asserts the tooltip text published by the toolbar.
+    /// </summary>
+    private async Task ExpectTooltipAsync(string expected)
+    {
+        await Expect(Page.Locator("#info-tooltip"))
+            .ToHaveAttributeAsync("data-tooltip", expected, new() { Timeout = 5000 });
+    }
 
     private async Task StartSessionAsync()
     {
@@ -94,8 +107,7 @@ public class SessionTrafficTests : AppTestBase
 
         // Nothing was completed yet, so the tooltip keeps the short two-line form and does not
         // claim "0 in / 0 out" traffic.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", ContextOnlyTitle("5", "900"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(ContextOnlyTitle("5", "900"));
     }
 
     [Test]
@@ -110,8 +122,7 @@ public class SessionTrafficTests : AppTestBase
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
         // Occupancy: 11000 / 16384 = 67.1% -> 67%. Traffic: 10k in / 1k out.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         // Second request: the whole history (11k) is sent again and another 1k comes back.
         await Page.Locator("#userInput").FillAsync("Again");
@@ -123,8 +134,7 @@ public class SessionTrafficTests : AppTestBase
         await CompleteRequestAsync(totalTokens: 12000, promptTokens: 11000, completionTokens: 1000);
 
         // Occupancy: 12000 / 16384 = 73.2% -> 73%. Traffic accumulated: 21k in / 2k out.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("73", "12,000", "21k", "2k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("73", "12,000", "21k", "2k"));
     }
 
     [Test]
@@ -138,8 +148,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         await Page.Locator("#clear-chat-btn").ClickAsync();
         await Expect(Page.Locator("#confirm-dialog")).ToBeVisibleAsync(new() { Timeout = 3000 });
@@ -148,8 +157,7 @@ public class SessionTrafficTests : AppTestBase
 
         // The conversation is replaced and the host reports no token count for the new one,
         // so the context occupancy and the session traffic both drop to zero.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", ContextOnlyTitle("0", "0"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(ContextOnlyTitle("0", "0"));
     }
 
     [Test]
@@ -163,8 +171,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         // The host rejects the reset, so the conversation is NOT cleared: the metrics must stay.
         await Page.EvaluateAsync(@"() => {
@@ -182,8 +189,7 @@ public class SessionTrafficTests : AppTestBase
         // context and the accumulated traffic survive, because the history still exists on the host.
         await Expect(Page.Locator("#status-text")).ToHaveTextAsync("Error", new() { Timeout = 5000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
     }
 
     [Test]
@@ -197,8 +203,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         // Loading another session replaces the conversation: the host reports no token count
         // for it, so both the context occupancy and the accumulated traffic must drop to zero.
@@ -211,8 +216,7 @@ public class SessionTrafficTests : AppTestBase
         await dialog.Locator(".chat-history-load").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", ContextOnlyTitle("0", "0"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(ContextOnlyTitle("0", "0"));
     }
 
     [Test]
@@ -242,8 +246,7 @@ public class SessionTrafficTests : AppTestBase
 
         // Occupancy stays the last-round snapshot (4400 / 16384 = 26.8% -> 27%),
         // while the traffic shows the sum of every round: 7.2k in / 300 out.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("27", "4,400", "7.2k", "300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("27", "4,400", "7.2k", "300"));
     }
 
     [Test]
@@ -257,8 +260,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         // Swap the provider in the settings dialog. The host does not clear the conversation, so
         // the occupied context must survive — while the traffic is a per-endpoint metric and must
@@ -295,8 +297,7 @@ public class SessionTrafficTests : AppTestBase
 
         // A different endpoint is a new interaction session: the traffic of the previous provider
         // is dropped, while the occupied context survives (the conversation was not cleared).
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", "Context usage: 11,000", new() { Timeout = 5000 });
+        await ExpectTooltipAsync("Context usage: 11,000");
     }
 
     [Test]
@@ -311,8 +312,7 @@ public class SessionTrafficTests : AppTestBase
         await CompleteRequestAsync(totalTokens: 5000, promptTokens: 10000, completionTokens: 1000);
 
         // Occupancy: 5000 / 16384 = 30.5% -> 31%. Traffic: 10k in / 1k out.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
 
         // Switch to the model with the smaller window (8192).
         await Page.Locator("#model-name").ClickAsync();
@@ -324,8 +324,7 @@ public class SessionTrafficTests : AppTestBase
         // The very same 5000 tokens now fill the smaller window (5000 / 8192 = 61.03% -> 61%),
         // because the next request sends the whole history again. The traffic, however, belongs
         // to the previous model and is gone: the tooltip drops back to the two-line form.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", ContextOnlyTitle("61", "5,000", tokenMax: 8192), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(ContextOnlyTitle("61", "5,000", tokenMax: 8192));
     }
 
     [Test]
@@ -339,8 +338,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 5000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
 
         // The card of the model that is already active can be clicked again; that is not a switch,
         // so the traffic accumulated for it must survive. Guards the identity check in
@@ -351,8 +349,7 @@ public class SessionTrafficTests : AppTestBase
         await Page.Locator("#models-list-container .model-card[data-model-id='test-model-1']").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
     }
 
     [Test]
@@ -366,8 +363,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 5000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
 
         // The host refuses the switch: nothing was activated, so nothing may be forgotten either
         // (decision 4 of §11.2: the reset happens only after a successful host answer).
@@ -381,8 +377,7 @@ public class SessionTrafficTests : AppTestBase
         await Page.Locator("#models-list-container .model-card[data-model-id='test-model-2']").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
     }
 
     [Test]
@@ -396,8 +391,7 @@ public class SessionTrafficTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
         await CompleteRequestAsync(totalTokens: 11000, promptTokens: 10000, completionTokens: 1000);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
 
         // The host rejects the new settings, so the endpoint did not change on its side either and
         // the traffic of the still-active endpoint must survive.
@@ -432,8 +426,7 @@ public class SessionTrafficTests : AppTestBase
         await dialog.Locator(".modal-footer button.btn-primary").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
     }
 
     [Test]
@@ -463,8 +456,7 @@ public class SessionTrafficTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("27", "4,400", "7.2k", "300", cached: "4.2k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("27", "4,400", "7.2k", "300", cached: "4.2k"));
     }
 
     [Test]
@@ -493,8 +485,7 @@ public class SessionTrafficTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("67", "11,000", "10k", "1k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("67", "11,000", "10k", "1k"));
     }
 
     [Test]
@@ -524,8 +515,7 @@ public class SessionTrafficTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("27", "4,400", "5k", "200", cached: "5k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("27", "4,400", "5k", "200", cached: "5k"));
     }
 
     [Test]
@@ -553,8 +543,7 @@ public class SessionTrafficTests : AppTestBase
         });
 
         // Occupancy 5000 / 16384 = 30.5% -> 31%; traffic 10k in (4k cached) / 1k out.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", SessionTitle("31", "5,000", "10k", "1k", cached: "4k"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k", cached: "4k"));
 
         // A cache hit belongs to the provider that produced it: switching the model drops the
         // cache share together with the traffic, so nothing of the previous model is shown.
@@ -564,7 +553,26 @@ public class SessionTrafficTests : AppTestBase
         await Page.Locator("#models-list-container .model-card[data-model-id='test-model-2']").ClickAsync();
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", ContextOnlyTitle("61", "5,000", tokenMax: 8192), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(ContextOnlyTitle("61", "5,000", tokenMax: 8192));
+    }
+
+    [Test]
+    [Category("TokenBar")]
+    public async Task SessionTraffic_AddsEstimatedToolResultTokens()
+    {
+        await StartSessionAsync();
+
+        await EmitAsync(new { Type = "ChatSessionStart" });
+        await EmitContentAsync("Hello", 900);
+        await EmitAsync(new { Type = "StreamEnd" });
+
+        // The host reports an estimate of the tool results that will be prepended to the next
+        // round's prompt. The live number must include it: 900 + 700 = 1600 -> 9.77% -> 10%.
+        await EmitAsync(new { Type = "ChatSessionIterating", RoundNumber = 1, ToolCount = 1, IsFinalRound = false, EstimatedToolResultTokens = 700 });
+        await ExpectTooltipAsync(ContextOnlyTitle("10", "1,600"));
+
+        // The authoritative total replaces the estimate together with the live counters.
+        await CompleteRequestAsync(totalTokens: 5000, promptTokens: 10000, completionTokens: 1000);
+        await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
     }
 }

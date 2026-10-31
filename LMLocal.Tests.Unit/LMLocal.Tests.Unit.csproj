@@ -97,6 +97,7 @@
     <Compile Include="Application\SubAgents\SubAgentsServiceTests.cs" />
     <Compile Include="Commands\CodeCommandHelperTests.cs" />
     <Compile Include="Core\Common\ExceptionFormatterTests.cs" />
+    <Compile Include="Core\Common\LineSplitterTests.cs" />
     <Compile Include="Core\Common\OpenDocumentsPromptBuilderTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimatorTests.cs" />
@@ -114,6 +115,7 @@
     <Compile Include="Infrastructure\ChatPersistenceServiceTests.cs" />
     <Compile Include="Infrastructure\ChatSessionControllerTests.cs" />
     <Compile Include="Infrastructure\DefaultFileSystemTests.cs" />
+    <Compile Include="Infrastructure\FileEncodingDetectorTests.cs" />
     <Compile Include="Infrastructure\FileLockManagerTests.cs" />
     <Compile Include="Infrastructure\HttpClientHandlerFactoryTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
@@ -155,8 +157,10 @@
     <Compile Include="Infrastructure\TestHttpClientWrapper.cs" />
     <Compile Include="Infrastructure\TogetherAiModelResponseConverterTests.cs" />
     <Compile Include="Infrastructure\ToolDefinitionConverterTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMapTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ContentSearchMatcherTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\DeclarationMatcherTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\LineMatcherComparisonTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ProjectMetadataProviderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\SdkProjectDetectorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\QueryClassifierTests.cs" />
@@ -167,10 +171,12 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParserTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ChatHistoryScorerTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileToolsReadReplaceRoundTripTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiffTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\KnowledgeScorerTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadReplaceRoundTripFixtureTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchChatHistoryTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchKnowledgeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesServiceTests.cs" />
@@ -216,6 +222,7 @@
     <Compile Include="Internal\TestHelpers\NullSubAgentFailureLogger.cs" />
     <Compile Include="Internal\TestHelpers\TestFileSystems.cs" />
     <Compile Include="Internal\ToolCallLoopDetectorTests.cs" />
+    <Compile Include="Internal\ToolResultTokenEstimatorTests.cs" />
     <Compile Include="Internal\WebViewBridgeTests.cs" />
     <Compile Include="Services\AutocompletionsServiceTests.cs" />
     <Compile Include="Services\Tool\ToolExecutionManagerTests.cs" />
@@ -246,6 +253,9 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Application\SubAgent\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\RoundTripContent.txt" />
   </ItemGroup>
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

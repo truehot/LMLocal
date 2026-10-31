@@ -48,7 +48,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Inserts lines at a specific position in a file. Lines are 1-indexed: position=0 inserts before the first line, position=5 inserts after line 5. Automatically pads the file with empty lines if position exceeds the current line count. The new_lines string can contain multiple lines separated by \\n or \\r\\n. Must not be empty. Fails if the file does not exist or is outside the solution directory. If expected_line is provided and the line at 'position' doesn't match, the tool searches nearby lines (±50) and auto-corrects the position.",
+                Description = "Inserts lines at a specific position in a file. Lines are 1-indexed: position=0 inserts before the first line, position=5 inserts after line 5. Automatically pads the file with empty lines if position exceeds the current line count; at most 50 empty lines are padded, and a larger position is rejected with the real line count of the file. The new_lines string can contain multiple lines separated by \\n or \\r\\n. Must not be empty. Fails if the file does not exist or is outside the solution directory. If expected_line is provided and the line at 'position' doesn't match, the tool searches nearby lines (±50) and auto-corrects the position; trailing whitespace is ignored in that comparison. expected_line is checked even when position is past the end of the file, so a position that slipped past the end cannot insert blindly. If no match is found that way, the tool compares lines again after character normalization (no-break and other typographic spaces treated as a space, typographic quotes and dashes as ASCII, zero-width characters ignored, Unicode composed form). A single normalized match is applied and sets matched_with_normalization=true. If multiple matches are found in either pass, candidates are returned; re-read the file and use a more specific expected_line. If no match is found at all, an error is returned. Re-read the file before the next edit.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -58,13 +58,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             { Type = "string", Description = "Absolute or relative path to file." }
                         },
                         { "position", new ToolDetails
-                            { Type = "integer",Description = "Line number after which to insert (1-indexed). Use 0 to insert before the first line. Must be >= 0." }
+                            { Type = "integer",Description = "Line number after which to insert (1-indexed). Use 0 to insert before the first line. Must be >= 0. A position more than 50 lines past the end of the file is rejected with the real line count." }
                         },
                         { "new_lines", new ToolDetails
                             { Type = "string",Description = "Raw source text to insert. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty." }
                         },
                         { "expected_line", new ToolDetails
-                            { Type = "string",Description = "The exact text of the line AFTER which to insert. If provided and the line has shifted, the tool searches nearby and auto-corrects position. Ignored when position=0." }
+                            { Type = "string",Description = "The text of the line AFTER which to insert (1-indexed). Comparison ignores trailing whitespace. If provided and the line has shifted, the tool searches nearby lines (±50) and auto-corrects position; if it still does not match, lines are compared again after character normalization and a single match sets matched_with_normalization=true. Several matches return candidates; none returns an error. Checked also when position is past the end of the file, so a position that slipped past the end never inserts blindly. Ignored when position=0." }
                         }
                     },
                     Required = new List<string> { "file_path", "position", "new_lines" }
@@ -106,24 +106,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
 
-                string[] lines = originalContent.Split(new[] { separator }, StringSplitOptions.None);
+                string[] lines = LineSplitter.Split(originalContent);
                 var linesList = new List<string>(lines);
 
-                bool hadTrailingNewline = linesList.Count > 0 && linesList[linesList.Count - 1] == "" && originalContent.EndsWith(separator);
-                if (hadTrailingNewline)
-                    linesList.RemoveAt(linesList.Count - 1);
+                bool hadTrailingNewline = LineSplitter.HasTrailingEol(originalContent);
 
-                string normalizedInsert = newLinesText.Replace("\r\n", "\n").Replace("\r", "\n");
-
-                string[] newLines = normalizedInsert.Split('\n');
+                string[] newLines = LineSplitter.Split(newLinesText);
 
                 int originalPosition = position;
                 bool autoCorrected = false;
+                bool matchedWithNormalization = false;
 
-                if (!string.IsNullOrEmpty(expectedLine)
-                    && position > 0
-                    && position <= linesList.Count)
+                if (!string.IsNullOrEmpty(expectedLine) && position > 0)
                 {
+
+                    string[] expectedLines = LineSplitter.Split(expectedLine);
+                    if (expectedLines.Length != 1)
+                    {
+                        return Error(
+                            $"expected_line must be a single line (got {expectedLines.Length}). Use replace_file_lines for a multi-line block.");
+                    }
+
+                    expectedLine = expectedLines[0];
+
                     int checkIdx = position - 1;
                     if (checkIdx >= linesList.Count || !LineMatcher.LinesEqual(linesList[checkIdx], expectedLine))
                     {
@@ -146,15 +151,50 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         }
                         else
                         {
-                            return Error("expected_line not found. The file may have changed. Re-read the file with read_file_lines.");
+                            var canonicalMatches = LineMatcher.FindMatchesCanonical(linesList, expectedLine, position);
+
+                            if (canonicalMatches.Count == 1)
+                            {
+                                position = canonicalMatches[0];
+                                autoCorrected = true;
+                                matchedWithNormalization = true;
+                            }
+                            else if (canonicalMatches.Count > 1)
+                            {
+                                return Error(new InsertLinesResponse
+                                {
+                                    Success = false,
+                                    FilePath = filePath,
+                                    ErrorMessage = $"expected_line matches {canonicalMatches.Count} locations after character normalization. Re-read the file or use a more specific expected_line.",
+                                    Candidates = LineMatcher.BuildCandidates(linesList, canonicalMatches)
+                                });
+                            }
+                            else
+                            {
+                                string beyondEnd = position > linesList.Count
+                                    ? $" Position {position} is past the end of the file, which has {linesList.Count} line(s)."
+                                    : string.Empty;
+
+                                return Error($"expected_line not found.{beyondEnd} The file may have changed. Re-read the file with read_file_lines.");
+                            }
                         }
                     }
+                }
+
+                int padding = position - linesList.Count;
+
+                if (padding > LineMatcher.MaxPaddingLines)
+                {
+                    return Error(
+                        $"position {position} is {padding} line(s) past the end of the file, which has {linesList.Count} " +
+                        $"line(s); at most {LineMatcher.MaxPaddingLines} empty line(s) may be added. " +
+                        $"Re-read the file with read_file_lines to get its real line numbers.");
                 }
 
                 while (linesList.Count < position)
                     linesList.Add("");
 
-                bool isAppendingToEnd = position >= linesList.Count;
+                bool isAppendingToEnd = position >= linesList.Count && linesList.Count > 0;
 
                 if (position == 0)
                 {
@@ -165,10 +205,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     linesList.InsertRange(position, newLines);
                 }
 
-                if (hadTrailingNewline || isAppendingToEnd)
-                    linesList.Add("");
-
-                string newContent = string.Join(separator, linesList);
+                string newContent = LineSplitter.Join(separator, linesList, hadTrailingNewline || isAppendingToEnd);
 
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken);
 
@@ -198,6 +235,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     response.OriginalPosition = originalPosition;
                     response.AppliedPosition = position;
                 }
+
+                if (matchedWithNormalization)
+                    response.MatchedWithNormalization = true;
 
                 return response;
             }
@@ -260,8 +300,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return $"Inserting lines failed: {response.ErrorMessage}";
 
                 string msg = $"{response.LinesInserted} {Pluralizer.Pluralize(response.LinesInserted, "line", "lines")} inserted";
+
+                var notes = new List<string>();
                 if (response.AutoCorrected == true)
-                    msg += $" (auto-corrected from position {response.OriginalPosition} to {response.AppliedPosition})";
+                    notes.Add($"auto-corrected from position {response.OriginalPosition} to {response.AppliedPosition}");
+                if (response.MatchedWithNormalization == true)
+                    notes.Add("matched after character normalization");
+                if (notes.Count > 0)
+                    msg += " (" + string.Join(", ", notes) + ")";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
                     msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
 
@@ -308,6 +354,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("applied_position", NullValueHandling = NullValueHandling.Ignore)]
         public int? AppliedPosition { get; set; }
+
+        [JsonProperty("matched_with_normalization", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? MatchedWithNormalization { get; set; }
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }

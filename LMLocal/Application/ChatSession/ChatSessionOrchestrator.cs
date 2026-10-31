@@ -484,12 +484,15 @@ namespace LMLocal.Application.ChatSession
                 InternalLogger.Info($"ChatSessionOrchestrator: Starting tool iteration {context.ConsecutiveToolIterationCount + 1} of {MAX_TOOL_ITERATIONS}");
 
                 int completedToolCount = context.LastResult?.ToolCalls?.Count ?? 0;
+                int estimatedToolResultTokens = ToolResultTokenEstimator.Estimate(context.ToolResultsForNextRound);
+
                 await onMessage(new WebView2ChatSessionIteratingMessage
                 {
                     Type = WebView2MessageType.ChatSessionIterating,
                     RoundNumber = context.RoundNumber,
                     ToolCount = completedToolCount,
-                    IsFinalRound = false
+                    IsFinalRound = false,
+                    EstimatedToolResultTokens = estimatedToolResultTokens
                 }).ConfigureAwait(false);
 
                 return ChatSessionState.Generating;

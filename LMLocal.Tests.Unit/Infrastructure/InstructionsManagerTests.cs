@@ -523,7 +523,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<string> ReadAllTextWithSharedReadAsync(string path, CancellationToken cancellationToken = default) => Task.FromResult("{}");
             public Task<(string content, Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
                 => Task.FromResult(("{}", Encoding.UTF8, false));
-            public (Encoding encoding, bool hasBom) DetectEncoding(string path) => (Encoding.UTF8, false);
             public Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
             public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName) { }

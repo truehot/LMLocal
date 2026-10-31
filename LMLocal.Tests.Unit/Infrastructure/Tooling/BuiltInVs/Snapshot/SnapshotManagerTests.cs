@@ -690,6 +690,25 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
         }
 
         [Test]
+        public async Task IsBatchActive_TracksBatchLifetime()
+        {
+            _fileSystemMock.Setup(fs => fs.FileExists(_testPaths.ManifestPath)).Returns(false);
+
+            var manager = CreateManager();
+            Assert.That(manager.IsBatchActive, Is.False, "a fresh manager has no open batch");
+
+            await manager.BeginBatchAsync(CancellationToken.None);
+            Assert.That(manager.IsBatchActive, Is.True, "BeginBatchAsync opens the batch");
+
+            await manager.EndBatchAsync(CancellationToken.None);
+            Assert.That(manager.IsBatchActive, Is.False, "EndBatchAsync closes the batch");
+
+            await manager.BeginBatchAsync(CancellationToken.None);
+            await manager.CancelBatchAsync(CancellationToken.None);
+            Assert.That(manager.IsBatchActive, Is.False, "CancelBatchAsync closes the batch");
+        }
+
+        [Test]
         public async Task EndBatchAsync_RemovesUnchangedFiles_FileCreatedThenDeleted()
         {
             var backupId = Guid.NewGuid();

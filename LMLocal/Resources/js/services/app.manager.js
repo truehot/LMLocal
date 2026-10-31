@@ -220,7 +220,8 @@ class AppManager {
             contextTokens: 0,
             sessionPromptTokens: 0,
             sessionCompletionTokens: 0,
-            sessionCachedTokens: 0
+            sessionCachedTokens: 0,
+            toolResultTokens: 0
         });
     }
 

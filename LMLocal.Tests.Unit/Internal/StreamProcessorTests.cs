@@ -79,6 +79,44 @@ namespace LMLocal.Tests.Unit
             }
         }
 
+        private class ThrowingStream : MemoryStream
+        {
+            private readonly Exception _exception;
+
+            public ThrowingStream(Exception exception) { _exception = exception; }
+
+            public override int Read(byte[] buffer, int offset, int count) => throw _exception;
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_ConnectionDropped_ReportsErrorNotCancellation()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+            var drop = new IOException("Unable to read data from the transport connection", new SocketException((int)SocketError.ConnectionReset));
+
+            using (var stream = new ThrowingStream(drop))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, null, 1);
+
+                Assert.That(result.WasCancelled, Is.False);
+                Assert.That(result.ErrorMessage, Is.Not.Null.And.Not.Empty);
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_ObjectDisposedWithoutCancellation_ReportsError()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+
+            using (var stream = new ThrowingStream(new ObjectDisposedException("stream")))
+            {
+                var result = await processor.ProcessStreamAsync(stream, CancellationToken.None, null, 1);
+
+                Assert.That(result.WasCancelled, Is.False);
+                Assert.That(result.ErrorMessage, Is.Not.Null.And.Not.Empty);
+            }
+        }
+
         [Test]
         public async Task ProcessStreamAsync_BatchesChunks_WhenIntervalElapsed()
         {

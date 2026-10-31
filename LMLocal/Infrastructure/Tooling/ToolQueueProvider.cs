@@ -167,15 +167,49 @@ namespace LMLocal.Infrastructure.Tooling
         }
 
         /// <summary>
-        /// Tool definitions of visible agents (reasoning-only or with at least one available allowed tool).
+        /// Built-in tool names available in the current mode (already filtered by mode and per-tool enabled state).
+        /// </summary>
+        private static HashSet<string> BuildAvailableNames(IReadOnlyList<ToolDefinition> builtIn)
+        {
+            return new HashSet<string>(
+                builtIn.Where(t => t != null && !string.IsNullOrWhiteSpace(t.Name)).Select(t => t.Name),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// True when the agent is visible in the current mode: no tools at all, or every resolvable allowed built-in tool is available.
+        /// </summary>
+        private bool IsAgentVisible(SubAgentDefinition agent, HashSet<string> availableNames)
+        {
+            var allowed = agent.AllowedTools;
+            if (allowed == null || allowed.Count == 0)
+                return true;
+
+            foreach (var name in allowed)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                var trimmed = name.Trim();
+
+                if (!_builtInTools.ToolExists(trimmed))
+                    continue; 
+
+                if (!availableNames.Contains(trimmed))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Tool definitions of visible agents (reasoning-only or with every allowed tool available).
         /// </summary>
         private IReadOnlyList<ToolDefinition> GetAgentTools(
             SubAgentsConfig config,
             IReadOnlyList<ToolDefinition> builtIn)
         {
-            var available = new HashSet<string>(
-                builtIn.Where(t => t != null && !string.IsNullOrWhiteSpace(t.Name)).Select(t => t.Name),
-                StringComparer.OrdinalIgnoreCase);
+            var available = BuildAvailableNames(builtIn);
 
             var agents = new List<ToolDefinition>();
             foreach (var agent in config.Agents)
@@ -183,16 +217,7 @@ namespace LMLocal.Infrastructure.Tooling
                 if (agent == null || !agent.Enabled || string.IsNullOrWhiteSpace(agent.Id))
                     continue;
 
-                var allowed = agent.AllowedTools;
-                if (allowed == null || allowed.Count == 0)
-                {
-                    // Reasoning-only agent: always visible.
-                    agents.Add(GetToolDefinition(agent));
-                    continue;
-                }
-
-                var anyAvailable = allowed.Any(n => !string.IsNullOrWhiteSpace(n) && available.Contains(n.Trim()));
-                if (anyAvailable)
+                if (IsAgentVisible(agent, available))
                     agents.Add(GetToolDefinition(agent));
             }
 
@@ -206,9 +231,7 @@ namespace LMLocal.Infrastructure.Tooling
             SubAgentsConfig config,
             IReadOnlyList<ToolDefinition> builtIn)
         {
-            var available = new HashSet<string>(
-                builtIn.Where(t => t != null && !string.IsNullOrWhiteSpace(t.Name)).Select(t => t.Name),
-                StringComparer.OrdinalIgnoreCase);
+            var available = BuildAvailableNames(builtIn);
 
             var owned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var agent in config.Agents)
@@ -220,8 +243,7 @@ namespace LMLocal.Infrastructure.Tooling
                 if (allowed == null || allowed.Count == 0)
                     continue;
 
-                var anyAvailable = allowed.Any(n => !string.IsNullOrWhiteSpace(n) && available.Contains(n.Trim()));
-                if (!anyAvailable)
+                if (!IsAgentVisible(agent, available))
                     continue;
 
                 foreach (var name in allowed)

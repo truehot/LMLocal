@@ -354,6 +354,177 @@ namespace LMLocal.Tests.Unit.Application.Changes
         }
 
         // ── Diff model ───────────────────────────────────────────────────────
+        // ── Middle edit script: trace layout, limits, empty inputs ───────────
+
+        [Test]
+        public void BuildMiddleEditScript_MatchesOnePassReferenceOnCorpus()
+        {
+            // The production search records its backtracking trace in one flat buffer, row d at d*(d+1)/2.
+            // The oracle below is the plain one-int[]-per-step Myers it replaced, so this test fails if the row
+            // arithmetic, the growth or the backtracking bounds change the *script*, not just the memory layout.
+            var corpus = new List<string[][]>
+            {
+                new[] { new string[0], new string[0] },
+                new[] { new[] { "a" }, new[] { "a" } },
+                new[] { new string[0], new[] { "a" } },
+                new[] { new[] { "a" }, new string[0] },
+                new[] { new[] { "a", "b", "c" }, new[] { "a", "b", "c" } },          // distance 0
+                new[] { new[] { "a", "b", "c" }, new[] { "x", "y", "z" } },          // distance n + m
+                new[] { new[] { "a", "b", "c" }, new[] { "a", "c", "b" } },          // transposition
+                new[] { new[] { "a" }, new[] { "b", "a", "c" } },                     // one shared line
+                new[] { new[] { "a", "b", "c", "d" }, new[] { "x", "b", "c", "y" } }, // shared middle
+                new[] { MakeLines(26), WithChangedMiddle(MakeLines(26), 12, "changed") }
+            };
+
+            var random = new Random(20240725);
+            var alphabet = new[] { "a", "b", "c", "" };
+            for (int i = 0; i < 20; i++)
+            {
+                corpus.Add(new[]
+                {
+                    RandomLines(random, alphabet, random.Next(0, 9)),
+                    RandomLines(random, alphabet, random.Next(0, 9))
+                });
+            }
+
+            for (int i = 0; i < corpus.Count; i++)
+            {
+                string[] original = corpus[i][0];
+                string[] modified = corpus[i][1];
+                string label = "case " + i;
+
+                List<DiffLine> expected = OnePassMyersReference(original, modified);
+
+                // A context window this large collapses every change into a single hunk, so the flattened hunk
+                // body is the complete edit script - the only view in which "same script" can be compared.
+                int contextLines = original.Length + modified.Length + 1;
+                var hunks = UnifiedDiffBuilder.Compute(original, modified, contextLines);
+
+                Assert.That(ApplyHunks(original, hunks), Is.EqualTo(modified), "apply mismatch (" + label + ")");
+
+                bool hasChange = false;
+                foreach (var line in expected)
+                {
+                    if (line.Kind != DiffLineKind.Context)
+                    {
+                        hasChange = true;
+                        break;
+                    }
+                }
+
+                if (!hasChange)
+                {
+                    Assert.That(hunks, Is.Empty, "identical input must produce no hunks (" + label + ")");
+                    continue;
+                }
+
+                var actual = new List<DiffLine>();
+                foreach (var hunk in hunks)
+                    foreach (var line in hunk.Lines)
+                        actual.Add(line);
+
+                Assert.That(actual, Is.EqualTo(expected), "script mismatch (" + label + ")");
+                Assert.That(UnifiedDiffBuilder.CountAdded(hunks) + UnifiedDiffBuilder.CountRemoved(hunks),
+                    Is.EqualTo(DistanceOf(expected)), "distance mismatch (" + label + ")");
+            }
+        }
+
+        [Test]
+        public void Compute_EditDistanceAtLimit_ProducesMinimalScript()
+        {
+            // One shared line in the middle of two 1001-line blocks: the minimal distance is
+            // n + m - 2 * 1 = 2000, i.e. exactly MaxEditDistance, the largest trace the search can record.
+            // The shared line is what makes the test meaningful: a coarse replacement would report 2002 edits
+            // (1001 removed + 1001 added), so the counts below distinguish the real search from the fallback.
+            var original = new string[1001];
+            var modified = new string[original.Length];
+            for (int i = 0; i < original.Length; i++)
+            {
+                original[i] = "left" + i;
+                modified[i] = "right" + i;
+            }
+
+            modified[500] = original[500];
+
+            Assert.That(original.Length + modified.Length - 2 * LcsLength(original, modified),
+                Is.EqualTo(UnifiedDiffBuilder.MaxEditDistance));
+
+            var hunks = UnifiedDiffBuilder.Compute(original, modified);
+
+            Assert.That(UnifiedDiffBuilder.CountRemoved(hunks), Is.EqualTo(original.Length - 1));
+            Assert.That(UnifiedDiffBuilder.CountAdded(hunks), Is.EqualTo(modified.Length - 1));
+            Assert.That(ApplyHunks(original, hunks), Is.EqualTo(modified));
+        }
+
+        [Test]
+        public void Compute_EditDistanceAboveLimit_ProducesCoarseReplacement()
+        {
+            // One line more on each side than the limit allows: the search never reaches the last diagonal, so
+            // the block is reported as a coarse replacement instead of a minimal script.
+            int length = UnifiedDiffBuilder.MaxEditDistance / 2 + 1;
+            var original = new string[length];
+            var modified = new string[length];
+            for (int i = 0; i < length; i++)
+            {
+                original[i] = "left" + i;
+                modified[i] = "right" + i;
+            }
+
+            Assert.That(original.Length + modified.Length,
+                Is.GreaterThan(UnifiedDiffBuilder.MaxEditDistance));
+
+            var hunks = UnifiedDiffBuilder.Compute(original, modified);
+
+            Assert.That(UnifiedDiffBuilder.CountRemoved(hunks), Is.EqualTo(original.Length));
+            Assert.That(UnifiedDiffBuilder.CountAdded(hunks), Is.EqualTo(modified.Length));
+            Assert.That(ApplyHunks(original, hunks), Is.EqualTo(modified));
+        }
+
+        [Test]
+        public void Compute_EmptyAndNullInputs_ProduceNoHunks()
+        {
+            Assert.That(UnifiedDiffBuilder.Compute(null, null), Is.Empty);
+            Assert.That(UnifiedDiffBuilder.Compute(new string[0], new string[0]), Is.Empty);
+            Assert.That(UnifiedDiffBuilder.Compute(null, new string[0]), Is.Empty);
+            Assert.That(UnifiedDiffBuilder.Compute(new string[0], null), Is.Empty);
+            Assert.That(UnifiedDiffBuilder.CountAdded(null), Is.EqualTo(0));
+            Assert.That(UnifiedDiffBuilder.CountRemoved(null), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Compute_PartialOverlap_ProducesExactlyTheEditedCount()
+        {
+            // 1000 lines, exactly 100 distinct ones rewritten: the minimal script has 200 edits, an order of
+            // magnitude below the limit. If the limit is ever lowered under this shape, the coarse fallback would
+            // report 2000 changed lines and this test fails before the diff silently degrades.
+            var original = MakeLines(1000);
+            var modified = (string[])original.Clone();
+
+            var indices = new List<int>();
+            for (int i = 0; i < modified.Length; i++)
+                indices.Add(i);
+
+            var random = new Random(424242);
+            for (int i = indices.Count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                int swap = indices[i];
+                indices[i] = indices[j];
+                indices[j] = swap;
+            }
+
+            for (int i = 0; i < 100; i++)
+                modified[indices[i]] = "changed" + i + "-" + indices[i];
+
+            var hunks = UnifiedDiffBuilder.Compute(original, modified);
+
+            Assert.That(UnifiedDiffBuilder.CountRemoved(hunks), Is.EqualTo(100));
+            Assert.That(UnifiedDiffBuilder.CountAdded(hunks), Is.EqualTo(100));
+            Assert.That(ApplyHunks(original, hunks), Is.EqualTo(modified));
+        }
+
+        // ── Diff model ───────────────────────────────────────────────────────
+
 
         [Test]
         public void DiffLine_IsValueTypeWithValueEquality()
@@ -454,6 +625,194 @@ namespace LMLocal.Tests.Unit.Application.Changes
                 lines[i] = "line" + i;
 
             return lines;
+        }
+
+        /// <summary>
+        /// Replaces one line of a copy of <paramref name="lines"/>, so a case has a common prefix and suffix.
+        /// </summary>
+        private static string[] WithChangedMiddle(string[] lines, int index, string replacement)
+        {
+            var copy = (string[])lines.Clone();
+            copy[index] = replacement;
+            return copy;
+        }
+
+        /// <summary>
+        /// Number of removed + added lines in a script, i.e. the edit distance the search found.
+        /// </summary>
+        private static int DistanceOf(List<DiffLine> script)
+        {
+            int distance = 0;
+            foreach (var line in script)
+            {
+                if (line.Kind != DiffLineKind.Context)
+                    distance++;
+            }
+
+            return distance;
+        }
+
+        /// <summary>
+        /// Oracle: the plain one-pass Myers search, with the furthest-reaching <c>x</c> of every step kept in its
+        /// own <c>int[]</c> and no edit-distance cap (the corpus is small enough for full coverage). It mirrors
+        /// the recurrence and the tie-breaking rule the production code used before the trace was flattened, so
+        /// comparing the two scripts pins down that the refactor changed memory only.
+        /// </summary>
+        private static List<DiffLine> OnePassMyersReference(string[] original, string[] modified)
+        {
+            string[] a = original ?? new string[0];
+            string[] b = modified ?? new string[0];
+            var ops = new List<DiffLine>(a.Length + b.Length);
+
+            int maxPrefix = Math.Min(a.Length, b.Length);
+            int prefix = 0;
+            while (prefix < maxPrefix && string.Equals(a[prefix], b[prefix], StringComparison.Ordinal))
+                prefix++;
+
+            int maxSuffix = maxPrefix - prefix;
+            int suffix = 0;
+            while (suffix < maxSuffix &&
+                   string.Equals(a[a.Length - 1 - suffix], b[b.Length - 1 - suffix], StringComparison.Ordinal))
+            {
+                suffix++;
+            }
+
+            for (int i = 0; i < prefix; i++)
+                ops.Add(new DiffLine(DiffLineKind.Context, a[i]));
+
+            int aStart = prefix;
+            int aEnd = a.Length - suffix;
+            int bStart = prefix;
+            int bEnd = b.Length - suffix;
+            int n = aEnd - aStart;
+            int m = bEnd - bStart;
+
+            if (n == 0)
+            {
+                for (int i = bStart; i < bEnd; i++)
+                    ops.Add(new DiffLine(DiffLineKind.Added, b[i]));
+            }
+            else if (m == 0)
+            {
+                for (int i = aStart; i < aEnd; i++)
+                    ops.Add(new DiffLine(DiffLineKind.Removed, a[i]));
+            }
+            else
+            {
+                ReferenceMiddleEditScript(a, aStart, aEnd, b, bStart, bEnd, ops);
+            }
+
+            for (int i = a.Length - suffix; i < a.Length; i++)
+                ops.Add(new DiffLine(DiffLineKind.Context, a[i]));
+
+            return ops;
+        }
+
+        private static void ReferenceMiddleEditScript(
+            string[] a, int aStart, int aEnd, string[] b, int bStart, int bEnd, List<DiffLine> ops)
+        {
+            int n = aEnd - aStart;
+            int m = bEnd - bStart;
+            int maxD = n + m;
+            int offset = maxD + 1;
+
+            var v = new int[2 * maxD + 3];
+            for (int i = 0; i < v.Length; i++)
+                v[i] = -1;
+            v[offset + 1] = 0;
+
+            var trace = new List<int[]>();
+            int finalD = -1;
+
+            for (int d = 0; d <= maxD; d++)
+            {
+                for (int k = -d; k <= d; k += 2)
+                {
+                    int x = k == -d || (k != d && v[offset + k - 1] < v[offset + k + 1])
+                        ? v[offset + k + 1]
+                        : v[offset + k - 1] + 1;
+
+                    int y = x - k;
+                    while (x < n && y < m && x >= 0 && y >= 0 &&
+                           string.Equals(a[aStart + x], b[bStart + y], StringComparison.Ordinal))
+                    {
+                        x++;
+                        y++;
+                    }
+
+                    v[offset + k] = x;
+
+                    if (x >= n && y >= m)
+                    {
+                        finalD = d;
+                        break;
+                    }
+                }
+
+                if (finalD >= 0)
+                    break;
+
+                var snapshot = new int[d + 1];
+                for (int k = -d; k <= d; k += 2)
+                    snapshot[(k + d) / 2] = v[offset + k];
+                trace.Add(snapshot);
+            }
+
+            Assert.That(finalD, Is.GreaterThanOrEqualTo(0),
+                "The reference search must always reach a script on inputs this small.");
+
+            var reversed = new List<DiffLine>(n + m);
+            int cx = n;
+            int cy = m;
+
+            for (int d = finalD; d > 0; d--)
+            {
+                int k = cx - cy;
+                int prevK;
+                if (k == -d || (k != d && ReferenceAfter(trace, d - 1, k - 1) < ReferenceAfter(trace, d - 1, k + 1)))
+                    prevK = k + 1;
+                else
+                    prevK = k - 1;
+
+                int prevX = ReferenceAfter(trace, d - 1, prevK);
+                int prevY = prevX - prevK;
+
+                int snakeX = prevK == k + 1 ? prevX : prevX + 1;
+                int snakeY = prevK == k + 1 ? prevY + 1 : prevY;
+
+                while (cx > snakeX && cy > snakeY)
+                {
+                    reversed.Add(new DiffLine(DiffLineKind.Context, a[aStart + cx - 1]));
+                    cx--;
+                    cy--;
+                }
+
+                if (prevK == k + 1)
+                    reversed.Add(new DiffLine(DiffLineKind.Added, b[bStart + prevY]));
+                else
+                    reversed.Add(new DiffLine(DiffLineKind.Removed, a[aStart + prevX]));
+
+                cx = prevX;
+                cy = prevY;
+            }
+
+            while (cx > 0 && cy > 0)
+            {
+                reversed.Add(new DiffLine(DiffLineKind.Context, a[aStart + cx - 1]));
+                cx--;
+                cy--;
+            }
+
+            for (int i = reversed.Count - 1; i >= 0; i--)
+                ops.Add(reversed[i]);
+        }
+
+        private static int ReferenceAfter(List<int[]> trace, int step, int k)
+        {
+            if (step < 0 || step >= trace.Count || k < -step || k > step)
+                return -1;
+
+            return trace[step][(k + step) / 2];
         }
 
         private static string[] RandomLines(Random random, string[] alphabet, int count)

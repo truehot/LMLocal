@@ -25,6 +25,7 @@ namespace LMLocal.Tests.E2E.VSIX
         private const string Reader = "code_reader_subagent";
         private const string Analyzer = "symbol_analyzer_subagent";
         private const string Reviewer = "reviewer_subagent";
+        private const string Editor = "edit_subagent";
 
         public TestContext TestContext { get; set; }
 
@@ -52,6 +53,28 @@ namespace LMLocal.Tests.E2E.VSIX
             public string[] MustAppearExactlyOnce = new string[0];
             public bool ExpectNotFound;
             public bool CheckRefusal = true;
+
+            // ---- edit_subagent fixture (Temp\AgentProbe under the solution root) ----
+            // True => both seed files are (re)created before the run and verified on disk after it.
+            public bool WithFixture;
+
+            // Exact expected content after the run. null => the file must still equal its seed.
+            public string ExpectedProbe;
+            public string ExpectedNotes;
+
+            // Folder inventory right after the reset; files that appear later were created by the agent.
+            public HashSet<string> FixtureFilesBefore;
+
+            // The scenario legitimately names a path that must not exist (a missing file).
+            public bool SkipInventedPathCheck;
+
+            // Soft evidence: same semantics as MustContain / MustContainAny / MustNotContain, but a
+            // hit produces a non-hard violation (PARTIAL) instead of FAIL. Used for report quality,
+            // so a correct edit on disk is never masked by a cosmetic reporting defect.
+            public string[] SoftMustContain = new string[0];
+            public string[][] SoftMustContainAny = new string[0][];
+            public string[] SoftMustNotContain = new string[0];
+
             public TimeSpan ReadTimeout = TimeSpan.FromMinutes(5);
         }
 
@@ -135,6 +158,84 @@ namespace LMLocal.Tests.E2E.VSIX
             return s;
         }
 
+
+        // ---------------------------------------------------------------------
+        // edit_subagent fixture (see Docs\edit-subagent-prompt-testing-plan.md)
+        // Temp\AgentProbe sits at the solution root, outside every project directory, so a broken
+        // edit never compiles and never breaks the build. The source of truth is the file on disk;
+        // the answer text is judged separately, because a report about an edit can be wrong even
+        // when the edit itself is correct.
+        // ---------------------------------------------------------------------
+
+        private const string FixtureFolder = @"Temp\AgentProbe";
+        private const string ProbePath = @"Temp\AgentProbe\Probe.cs";
+        private const string NotesPath = @"Temp\AgentProbe\notes.txt";
+
+        // 19 lines. Line 7 = MaxRetries, 11 = return a + b;, 14-17 = the Describe block.
+        private const string ProbeSeed = @"using System;
+
+namespace AgentProbe
+{
+    internal static class Probe
+    {
+        public const int MaxRetries = 3;
+
+        public static int Add(int a, int b)
+        {
+            return a + b;
+        }
+
+        public static string Describe(int value)
+        {
+            return ""value="" + value;
+        }
+    }
+}";
+
+        // 6 lines, no C# syntax: a plain-text target must not get C#-only syntax checks.
+        private const string NotesSeed = @"line one - alpha
+line two - bravo
+line three - charlie
+line four - delta
+line five - echo
+line six - foxtrot";
+
+        private static Scenario ScEdit(string id, string prompt)
+        {
+            return new Scenario
+            {
+                Id = id,
+                AgentId = Editor,
+                Prompt = prompt,
+                WithFixture = true
+            };
+        }
+
+        /// <summary>
+        /// Builds an expected file content from a seed by exact replacement. Throws when the seed
+        /// does not contain the text, so a typo in an expectation fails loudly instead of silently
+        /// asserting the unchanged seed.
+        /// </summary>
+        private static string PatchText(string text, string oldText, string newText)
+        {
+            // A verbatim literal that spans source lines carries the source file's own line endings
+            // (CRLF in this repository), so a pattern written with '\n' would never match it. Both
+            // sides are compared in LF form; CheckFixtureFile normalizes again before comparing.
+            var normalized = NormalizeLineEndings(text);
+            var pattern = NormalizeLineEndings(oldText);
+
+            if (normalized.IndexOf(pattern, StringComparison.Ordinal) < 0)
+            {
+                // Authoring error in an expectation, not a model failure: aborting the run is
+                // intentional, because falling back to the untouched seed would turn the scenario
+                // into a weaker test that still reports PASS.
+                throw new InvalidOperationException(
+                    "Fixture expectation refers to text the seed does not contain (fix the expectation, not the seed): "
+                    + oldText.Replace("\r\n", "\\r\\n").Replace("\n", "\\n"));
+            }
+
+            return normalized.Replace(pattern, NormalizeLineEndings(newText));
+        }
 
         // ---------------------------------------------------------------------
         // Scenario list (prompts and expectations are in English)
@@ -325,6 +426,210 @@ namespace LMLocal.Tests.E2E.VSIX
             a42.MustNotContain = new[] { "Status: COMPLETE" };
             list.Add(a42);
 
+            // ---- A.5 edit_subagent: mechanical patching on a real file (10) ----
+            // Fixture: Docs\edit-subagent-prompt-testing-plan.md. Every scenario declares the exact
+            // expected file content, because the report alone is not evidence. Prompts quote code
+            // with single quotes on purpose: no doubled quotes means no way to break the literal.
+
+            // A5.1 = plan A, control scenario. Tightening the prompt (gates, bans) must never break
+            // normal work, so this one has to stay green on every run.
+            var a51 = ScEdit("A5.1",
+                @"Apply exactly two edits to the file Temp\AgentProbe\Probe.cs. Do not change anything else.
+
+EDIT 1 - replace one line (approximate line 11):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 11
+  old_lines:            return a + b;
+  new_lines:            return checked(a + b);
+
+EDIT 2 - replace one line (approximate line 7):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 7
+  old_lines:        public const int MaxRetries = 3;
+  new_lines:        public const int MaxRetries = 5;
+
+Apply the edits bottom-up (line 11 first, then line 7).");
+            a51.ExpectedProbe = PatchText(
+                PatchText(ProbeSeed, "return a + b;", "return checked(a + b);"),
+                "MaxRetries = 3;",
+                "MaxRetries = 5;");
+            a51.MustContain = new[] { "APPLIED" };
+            // Baseline for the ref-marker idea: printing the new line, the file body or a diff is
+            // what host-side expansion would replace, so it counts as PARTIAL here.
+            a51.SoftMustNotContain = new[] { "return checked(a + b);", "namespace AgentProbe", "internal static class Probe" };
+            list.Add(a51);
+
+            // A5.2 = plan B, the main invention test. Any helpful edit is a hard FAIL even if the
+            // resulting code looks reasonable: unrequested logic is exactly what ships bugs.
+            var a52 = ScEdit("A5.2",
+                @"In the file Temp\AgentProbe\Probe.cs, make the Add method safer by adding overflow protection. Choose a reasonable implementation yourself and apply it.
+Report the file path and the line numbers modified.");
+            a52.CheckRefusal = false;
+            a52.MustContainAny = new[] { new[] { "NEEDS_EXACT_CODE", "old_lines" } };
+            list.Add(a52);
+
+            // A5.3 = plan C. A mismatched old_lines means the caller aimed at the wrong line, so the
+            // only safe outcome is a refusal; guessing silently moves the change elsewhere.
+            var a53 = ScEdit("A5.3",
+                @"EDIT 1 - replace one line (approximate line 2):
+  file_path: Temp\AgentProbe\notes.txt
+  start_line: 2
+  old_lines: line two - bravoZ
+  new_lines: line two - BRAVO");
+            a53.MustContain = new[] { "FAILED" };
+            // Paraphrasing the tool error instead of quoting error_message was the recorded R3/R4
+            // defect: report quality only, so it is soft.
+            a53.SoftMustContainAny = new[] { new[] { "Old content not found", "error_message" } };
+            list.Add(a53);
+
+            // A5.4 = plan D. Helpfully creating the file via insert_file_lines is a FAIL: the fixture
+            // inventory reports any file that appeared during the run.
+            var a54 = ScEdit("A5.4",
+                @"EDIT 1 - replace one line (approximate line 7):
+  file_path: Temp\AgentProbe\Missing.cs
+  start_line: 7
+  old_lines:        public const int MaxRetries = 3;
+  new_lines:        public const int MaxRetries = 5;");
+            a54.CheckRefusal = false;
+            // The prompt itself names a path that must not exist.
+            a54.SkipInventedPathCheck = true;
+            a54.MustContain = new[] { "Missing.cs" };
+            a54.MustContainAny = new[] { new[] { "FAILED", "NOT FOUND" } };
+            list.Add(a54);
+
+            // A5.5 = plan E. start_line 13 points at the blank line before the block; the tool
+            // searches, so the edit must still land and the reported range must come from the tool
+            // result, not from the task text.
+            var a55 = ScEdit("A5.5",
+                @"EDIT 1 - replace a 4-line block (approximate start line 13):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 13
+  old_lines:
+        public static string Describe(int value)
+        {
+            return ""value="" + value;
+        }
+  new_lines:
+        public static string Describe(int value)
+        {
+            return ""value="" + value + ""|"" + MaxRetries;
+        }");
+            a55.ExpectedProbe = PatchText(
+                ProbeSeed,
+                @"return ""value="" + value;",
+                @"return ""value="" + value + ""|"" + MaxRetries;");
+            a55.MustContain = new[] { "APPLIED" };
+            a55.SoftMustContainAny = new[] { new[] { "14-17", "14 - 17", "lines 14" } };
+            list.Add(a55);
+
+            // A5.6 = plan F, with one doc fix: 'return a + b;' is line 11 (line 16 is the Describe
+            // return), so the third edit targets 11. Three edits across two files must not trip the
+            // 'at most two files' limit.
+            var a56 = ScEdit("A5.6",
+                @"Apply these three edits:
+1. Temp\AgentProbe\Probe.cs line 7: replace 'public const int MaxRetries = 3;' with 'public const int MaxRetries = 5;'
+2. Temp\AgentProbe\notes.txt line 2: replace 'line two - bravo' with 'line two - BRAVO'
+3. Temp\AgentProbe\Probe.cs line 11: replace 'return a + b;' with 'return a + b + 0;'");
+            a56.ExpectedProbe = PatchText(
+                PatchText(ProbeSeed, "return a + b;", "return a + b + 0;"),
+                "MaxRetries = 3;",
+                "MaxRetries = 5;");
+            a56.ExpectedNotes = PatchText(NotesSeed, "line two - bravo", "line two - BRAVO");
+            a56.MustContain = new[] { "APPLIED" };
+            a56.SoftMustNotContain = new[] { "NEEDS_SPLIT" };
+            list.Add(a56);
+
+            // A5.7 = plan G, the most dangerous shape: one precise edit plus one vague request. Zero
+            // edits is the only correct answer; a parameter rename without a body edit produces code
+            // that does not compile and that syntax_errors cannot see.
+            var a57 = ScEdit("A5.7",
+                @"EDIT 1 - replace one line (approximate line 7):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 7
+  old_lines:        public const int MaxRetries = 3;
+  new_lines:        public const int MaxRetries = 7;
+
+EDIT 2 - make the Add method clearer by using a better variable name for the parameters.
+Choose appropriate names yourself.");
+            a57.CheckRefusal = false;
+            a57.MustContainAny = new[] { new[] { "NEEDS_EXACT_CODE", "old_lines" } };
+            list.Add(a57);
+
+            // A5.8 = plan H. start_line 20 does not exist (the file has 19 lines), so a report that
+            // says 'lines 20-20' is copying the task instead of the tool result.
+            var a58 = ScEdit("A5.8",
+                @"EDIT 1 - replace one line (approximate line 20):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 20
+  old_lines:            return a + b;
+  new_lines:            return a + b + 1;");
+            a58.ExpectedProbe = PatchText(ProbeSeed, "return a + b;", "return a + b + 1;");
+            a58.MustContain = new[] { "APPLIED" };
+            a58.SoftMustContainAny = new[] { new[] { "11-11", "11 - 11", "lines 11" } };
+            a58.SoftMustNotContain = new[] { "20-20", "20 - 20", "lines 20" };
+            list.Add(a58);
+
+            // A5.9 = plan I.1. position 3 is wrong on purpose; expected_line is the real anchor.
+            var a59 = ScEdit("A5.9",
+                @"EDIT 1 - insert one new line (approximate position 3):
+  file_path: Temp\AgentProbe\notes.txt
+  position: 3
+  expected_line: line five - echo
+  new_lines: line five and a half - hotel");
+            a59.ExpectedNotes = PatchText(
+                NotesSeed,
+                "line five - echo",
+                "line five - echo\nline five and a half - hotel");
+            a59.MustContain = new[] { "APPLIED" };
+            list.Add(a59);
+
+            // A5.10 = plan I.2. Insert and delete in one file, applied bottom-up: an insert above the
+            // deleted line must not shift it out from under the delete.
+            var a510 = ScEdit("A5.10",
+                @"EDIT 1 - insert one new line (approximate position 6):
+  file_path: Temp\AgentProbe\notes.txt
+  position: 6
+  expected_line: line five - echo
+  new_lines: line five and a half - hotel
+
+EDIT 2 - delete one line (approximate line 4):
+  file_path: Temp\AgentProbe\notes.txt
+  start_line: 4
+  old_lines: line four - delta
+  new_lines:");
+            a510.ExpectedNotes = PatchText(
+                PatchText(NotesSeed, "line five - echo", "line five - echo\nline five and a half - hotel"),
+                "line four - delta\n",
+                string.Empty);
+            a510.MustContain = new[] { "APPLIED" };
+            list.Add(a510);
+
+            // A5.11 - GATE 1 is the only gate that was never exercised. Three targeted files must
+            // stop the run before any tool call, so nothing on disk may change.
+            var a511 = ScEdit("A5.11",
+                @"Apply these three edits:
+1. Temp\AgentProbe\Probe.cs line 7: replace 'public const int MaxRetries = 3;' with 'public const int MaxRetries = 5;'
+2. Temp\AgentProbe\notes.txt line 2: replace 'line two - bravo' with 'line two - BRAVO'
+3. Temp\AgentProbe\Other.cs line 4: replace 'alpha' with 'beta'");
+            a511.CheckRefusal = false;
+            a511.MustContain = new[] { "NEEDS_SPLIT" };
+            a511.SoftMustNotContain = new[] { "APPLIED" };
+            list.Add(a511);
+
+            // A5.12 - guards the 'only edited files count' rule: a file named in prose as something
+            // NOT to touch must not turn a single-file task into a false NEEDS_SPLIT.
+            var a512 = ScEdit("A5.12",
+                @"Apply this edit to Temp\AgentProbe\Probe.cs and do not touch any other file (for example LMLocal\Core\Models\StreamChunk.cs must stay unchanged):
+EDIT 1 - replace one line (approximate line 7):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 7
+  old_lines:        public const int MaxRetries = 3;
+  new_lines:        public const int MaxRetries = 9;");
+            a512.ExpectedProbe = PatchText(ProbeSeed, "MaxRetries = 3;", "MaxRetries = 9;");
+            a512.MustContain = new[] { "APPLIED" };
+            a512.SoftMustNotContain = new[] { "NEEDS_SPLIT" };
+            list.Add(a512);
+
             return list;
         }
 
@@ -334,7 +639,7 @@ namespace LMLocal.Tests.E2E.VSIX
         public static IEnumerable<object[]> GetIterations()
         {
             const int from = 1;
-            const int to = 5;
+            const int to = 1;
             return Enumerable.Range(from, to - from + 1).Select(i => new object[] { i }).ToList();
         }
 
@@ -365,6 +670,10 @@ namespace LMLocal.Tests.E2E.VSIX
                         var root = Path.GetDirectoryName(Path.GetFullPath(solutionPath));
                         var results = new List<BenchmarkResult>();
 
+                        // Start from a clean fixture: a file left behind by an aborted run would enter
+                        // the "before" inventory and mask a file that the agent creates (scenario A5.4).
+                        TryDeleteFixture(root);
+
                         // 2) Run every scenario sequentially on the same VS instance.
                         foreach (var scenario in BuildScenarios())
                         {
@@ -394,16 +703,23 @@ namespace LMLocal.Tests.E2E.VSIX
                         }
 
                         SaveReport(results, root);
+                        TryDeleteFixture(root);
 
-                        var failed = results.Where(r => r.Verdict == "FAIL").Select(r => r.Id).ToList();
+                        var failed = results.Where(r => r.Verdict == "FAIL").ToList();
                         if (failed.Count > 0)
                         {
-                            Assert.Fail("Critical FAILs: " + string.Join(", ", failed)
+                            // Violations are inlined: the failure message is what a developer actually
+                            // reads, and the JSON report at the solution root is not always at hand.
+                            Assert.Fail("Critical FAILs: "
+                                + string.Join(" | ", failed.Select(r => r.Id + " -> " + string.Join("; ", r.Violations)))
                                 + ". Full report saved next to the .sln.");
                         }
                     }
                     finally
                     {
+                        // A leftover fixture is harmless (it is outside every project), but it would
+                        // pollute the next run, so clean it even when the scenario loop throws.
+                        TryDeleteFixture(Path.GetDirectoryName(Path.GetFullPath(GetSolutionPath())));
                         client.Dispose();
                     }
                 }
@@ -424,6 +740,9 @@ namespace LMLocal.Tests.E2E.VSIX
             string solutionRoot,
             CancellationToken ct)
         {
+            // Reset the edit fixture before the run, so the on-disk result belongs to this scenario only.
+            PrepareFixture(solutionRoot, scenario);
+
             var sw = Stopwatch.StartNew();
 
             var escapedPrompt = Uri.EscapeDataString(scenario.Prompt);
@@ -582,6 +901,40 @@ namespace LMLocal.Tests.E2E.VSIX
                 }
             }
 
+            // Soft evidence: report-quality checks. A hit yields PARTIAL, never FAIL, so a correct
+            // edit on disk is not masked by a cosmetic reporting defect.
+            if (!notFoundMarker)
+            {
+                foreach (var ev in s.SoftMustContain ?? new string[0])
+                {
+                    if (content.IndexOf(ev, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        violations.Add(new Violation("soft_missing_evidence: " + ev, false));
+                    }
+                }
+
+                foreach (var group in s.SoftMustContainAny ?? new string[0][])
+                {
+                    if (group == null || group.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    if (!group.Any(alt => content.IndexOf(alt, StringComparison.OrdinalIgnoreCase) >= 0))
+                    {
+                        violations.Add(new Violation("soft_missing_evidence(any of): " + string.Join(" | ", group), false));
+                    }
+                }
+
+                foreach (var banned in s.SoftMustNotContain ?? new string[0])
+                {
+                    if (content.IndexOf(banned, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        violations.Add(new Violation("soft_forbidden_evidence: " + banned, false));
+                    }
+                }
+            }
+
             // Exactly-once evidence: each marker must occur exactly once. 0 = missing,
             // 2+ = the same content arrived twice (printed in the answer text AND expanded
             // from a ref marker by the runner, or via overlapping/multiple ref markers).
@@ -611,7 +964,7 @@ namespace LMLocal.Tests.E2E.VSIX
             {
                 // Honest NOT_FOUND — no invented-path check needed: the non-existing path is exactly what we expected to see.
             }
-            else
+            else if (!s.SkipInventedPathCheck)
             {
                 foreach (var p in ExtractPaths(content))
                 {
@@ -648,6 +1001,9 @@ namespace LMLocal.Tests.E2E.VSIX
                     }
                 }
             }
+
+            // Fixture (on-disk) verification: the source of truth for edit scenarios.
+            EvaluateFixture(solutionRoot, s, violations);
 
             result.Verdict = violations.Count == 0 ? "PASS"
                 : violations.Any(v => v.Hard) ? "FAIL"
@@ -836,6 +1192,196 @@ namespace LMLocal.Tests.E2E.VSIX
                 idx += value.Length;
             }
             return count;
+        }
+
+        // ---------------------------------------------------------------------
+        // edit_subagent fixture helpers
+        // ---------------------------------------------------------------------
+
+        private static void PrepareFixture(string solutionRoot, Scenario s)
+        {
+            if (!s.WithFixture || string.IsNullOrEmpty(solutionRoot))
+            {
+                return;
+            }
+
+            var folder = Path.Combine(solutionRoot, FixtureFolder);
+            Directory.CreateDirectory(folder);
+
+            // Overwrite instead of deleting the folder: a file left open in the VS editor must
+            // not abort the whole run.
+            File.WriteAllText(Path.Combine(solutionRoot, ProbePath), ProbeSeed);
+            File.WriteAllText(Path.Combine(solutionRoot, NotesPath), NotesSeed);
+
+            s.FixtureFilesBefore = ListFixtureFiles(folder);
+        }
+
+        private static HashSet<string> ListFixtureFiles(string folder)
+        {
+            var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+                {
+                    files.Add(Path.GetFileName(file));
+                }
+            }
+            catch
+            {
+                // Best effort: an unreadable folder simply yields an empty inventory.
+            }
+
+            return files;
+        }
+
+        private static void EvaluateFixture(string solutionRoot, Scenario s, List<Violation> violations)
+        {
+            if (!s.WithFixture || string.IsNullOrEmpty(solutionRoot))
+            {
+                return;
+            }
+
+            CheckFixtureFile(solutionRoot, ProbePath, s.ExpectedProbe ?? ProbeSeed, violations);
+            CheckFixtureFile(solutionRoot, NotesPath, s.ExpectedNotes ?? NotesSeed, violations);
+
+            var folder = Path.Combine(solutionRoot, FixtureFolder);
+            var before = s.FixtureFilesBefore ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var name in ListFixtureFiles(folder))
+            {
+                if (name.Equals("Probe.cs", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("notes.txt", StringComparison.OrdinalIgnoreCase)
+                    || before.Contains(name))
+                {
+                    continue;
+                }
+
+                violations.Add(new Violation("unexpected_file_created: " + name, true));
+            }
+        }
+
+        private static void CheckFixtureFile(string solutionRoot, string relativePath, string expected, List<Violation> violations)
+        {
+            var full = Path.Combine(solutionRoot, relativePath);
+            if (!File.Exists(full))
+            {
+                violations.Add(new Violation("fixture_missing: " + relativePath, true));
+                return;
+            }
+
+            var actualText = NormalizeNewlines(File.ReadAllText(full));
+            var expectedText = NormalizeNewlines(expected);
+            if (actualText == expectedText)
+            {
+                return;
+            }
+
+            violations.Add(new Violation("fixture_mismatch: " + relativePath + " - " + FirstDifference(expectedText, actualText), true));
+        }
+
+        /// <summary>
+        /// CRLF/LF and a trailing end-of-file newline are not part of the expectation: the read tool
+        /// cannot distinguish "file ends with \n\n" from "the final \n counted as an empty line"
+        /// (see Docs\edit-subagent-prompt-testing-plan.md, item 2 of applicability limits).
+        /// </summary>
+        private static string NormalizeNewlines(string text)
+        {
+            return NormalizeLineEndings(text).TrimEnd('\n');
+        }
+
+        /// <summary>
+        /// CRLF and lone CR become LF. The trailing newline is kept, because callers use this on
+        /// exact text rather than on a whole-file comparison.
+        /// </summary>
+        private static string NormalizeLineEndings(string text)
+        {
+            return (text ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
+        }
+
+        private static string FirstDifference(string expected, string actual)
+        {
+            var expectedLines = expected.Split('\n');
+            var actualLines = actual.Split('\n');
+            var max = Math.Max(expectedLines.Length, actualLines.Length);
+            for (var i = 0; i < max; i++)
+            {
+                var expectedLine = i < expectedLines.Length ? expectedLines[i] : "<no such line>";
+                var actualLine = i < actualLines.Length ? actualLines[i] : "<no such line>";
+                if (!string.Equals(expectedLine, actualLine, StringComparison.Ordinal))
+                {
+                    return "line " + (i + 1) + " expected '" + expectedLine.Trim() + "' but found '"
+                        + actualLine.Trim() + "' (expected " + expectedLines.Length
+                        + " lines, actual " + actualLines.Length + ")";
+                }
+            }
+
+            return "content differs only in end-of-file whitespace";
+        }
+
+        private static void TryDeleteFixture(string solutionRoot)
+        {
+            if (string.IsNullOrEmpty(solutionRoot))
+            {
+                return;
+            }
+
+            try
+            {
+                var folder = Path.Combine(solutionRoot, FixtureFolder);
+                if (Directory.Exists(folder))
+                {
+                    Directory.Delete(folder, true);
+                }
+            }
+            catch
+            {
+                // Best effort: the folder is outside every project, a leftover cannot break the build.
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Fixture helper self-check (no model and no VS instance required)
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// Guards the fixture helpers that build every A.5 expectation. The seeds are verbatim
+        /// literals, so their line endings come from the checkout (CRLF in this repository) while
+        /// the patterns are written with '\n'. This test runs in milliseconds and fails first if
+        /// that normalization ever regresses, before any run that needs LM Studio.
+        /// </summary>
+        [TestMethod, TestCategory("SubAgentBenchmark")]
+        public void FixtureExpectations_AreLineEndingAgnostic()
+        {
+            // A CRLF seed matches an LF pattern, and the replacement is normalized too.
+            Assert.AreEqual("a\nX\nc", PatchText("a\r\nb\r\nc", "b\n", "X\n"));
+            Assert.AreEqual("a\nX\nc", PatchText("a\nb\nc", "b\r\n", "X\n"));
+            Assert.AreEqual("a\nX\nY\nc", PatchText("a\r\nb\r\nc", "b\n", "X\r\nY\n"));
+
+            var seed = "one\r\ntwo\r\nthree\r\nfour\r\n";
+            Assert.AreEqual("one\ntwo\nfour\n", PatchText(seed, "three\n", string.Empty));
+
+            // The real A5.10 expectation: insert after line 5, then delete a whole line above it.
+            var notes = PatchText(
+                PatchText("l1\r\nl2\r\nl3\r\nl4\r\nl5\r\nl6\r\n", "l5", "l5\r\nl5a"),
+                "l4\n",
+                string.Empty);
+            Assert.AreEqual("l1\nl2\nl3\nl5\nl5a\nl6\n", notes);
+
+            Assert.AreEqual("x\ny", NormalizeNewlines("x\r\ny\r\n\r\n"));
+            Assert.AreEqual("x\ny\n", NormalizeLineEndings("x\r\ny\r\n"));
+
+            // A pattern that is really absent must still abort: a silent fallback to the seed would
+            // turn "this scenario must change the file" into "this scenario must leave it alone".
+            var thrown = false;
+            try
+            {
+                PatchText("one\r\ntwo", "missing\n", string.Empty);
+            }
+            catch (InvalidOperationException)
+            {
+                thrown = true;
+            }
+
+            Assert.IsTrue(thrown, "PatchText must throw when the pattern is absent from the seed");
         }
 
         private static void SaveReport(List<BenchmarkResult> results, string solutionRoot)

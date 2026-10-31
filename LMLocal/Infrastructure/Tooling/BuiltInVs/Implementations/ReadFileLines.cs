@@ -78,7 +78,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 // Read one extra line past the requested range to detect if more content exists.
                 int readEnd = endLine == int.MaxValue ? int.MaxValue : endLine + 1;
-                var lines = await _fileSystem.ReadLinesRangeAsync(absolutePath, startLine, readEnd, cancellationToken).ConfigureAwait(false);
+                var lines = await _fileSystem
+                    .ReadLinesRangeAsync(absolutePath, startLine, readEnd, cancellationToken)
+                    .ConfigureAwait(false);
 
                 bool hasMore = lines.Count > (endLine - startLine + 1);
                 if (hasMore && lines.Count > 0)

@@ -6,8 +6,14 @@ using System.Text.RegularExpressions;
 /// Covers the live context-usage bar in the top toolbar (#token-bar-fill / #info-tooltip).
 ///
 /// The bar shows: base context of the last finished request + rounds already finished in the
-/// current request + the round currently streaming, and is overwritten with the exact value
-/// coming from ChatSessionComplete. On STOP the approximate value must stay on screen.
+/// current request + the round currently streaming + an estimate of the tool results already
+/// collected, and is overwritten with the exact value coming from ChatSessionComplete.
+/// On STOP the approximate value must stay on screen.
+///
+/// The tooltip text is exposed through the data-tooltip attribute (a native title attribute is
+/// unusable here: Chromium hides an already-visible native tooltip whenever the attribute
+/// changes, and the toolbar re-renders on every chunk flush). The popover itself is opened by
+/// hover only.
 ///
 /// The mock ("webview-mock-context-bar.js") does not schedule anything by itself, so every
 /// protocol step is emitted explicitly and the assertions are deterministic.
@@ -28,6 +34,15 @@ public partial class ToolbarContextBarTests : AppTestBase
     // A partially filled bar has a scaleY() factor below 1 with leading zeros (e.g. 0.0549).
     [GeneratedRegex(@"scaleY\(0\.0[0-9]+\)")]
     private static partial Regex PartiallyFilledBarRegex();
+
+    /// <summary>
+    /// Asserts the tooltip text published by the toolbar for the context bar.
+    /// </summary>
+    private async Task ExpectTooltipAsync(string expected)
+    {
+        await Expect(Page.Locator("#info-tooltip"))
+            .ToHaveAttributeAsync("data-tooltip", expected, new() { Timeout = 5000 });
+    }
 
     private async Task StartSessionAsync()
     {
@@ -65,8 +80,7 @@ public partial class ToolbarContextBarTests : AppTestBase
         await EmitContentAsync("Hello", 900);
 
         // 900 / 16384 = 5.49% -> 5%
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("5", "900"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("5", "900"));
 
         // The bar itself must be filled, not flat.
         await Expect(Page.Locator("#token-bar-fill"))
@@ -84,16 +98,14 @@ public partial class ToolbarContextBarTests : AppTestBase
         await EmitAsync(new { Type = "StreamEnd" });
 
         // Round finished: value must stay, it must not drop back to 0.
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("5", "900"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("5", "900"));
 
         // A tool round begins; Count restarts from 0 on the backend.
         await EmitAsync(new { Type = "ChatSessionIterating", RoundNumber = 1, ToolCount = 1, IsFinalRound = false });
         await EmitContentAsync("world", 400);
 
         // 900 (finished round) + 400 (current round) = 1300 -> 7.93% -> 8%
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("8", "1,300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("8", "1,300"));
     }
 
     [Test]
@@ -109,8 +121,7 @@ public partial class ToolbarContextBarTests : AppTestBase
         await EmitContentAsync("world", 400);
         await EmitAsync(new { Type = "StreamEnd" });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("8", "1,300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("8", "1,300"));
 
         // Authoritative context size for the whole session: 5000 tokens (30.5% -> 31%).
         await EmitAsync(new
@@ -122,8 +133,7 @@ public partial class ToolbarContextBarTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("31", "5,000"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("31", "5,000"));
     }
 
     [Test]
@@ -138,14 +148,12 @@ public partial class ToolbarContextBarTests : AppTestBase
         await EmitAsync(new { Type = "ChatSessionIterating", RoundNumber = 1, ToolCount = 1, IsFinalRound = false });
         await EmitContentAsync("world", 400);
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("8", "1,300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("8", "1,300"));
 
         // STOP: cancellation carries no usage, the approximate number must survive.
         await EmitAsync(new { Type = "ChatSessionCancelled", Payload = "Generation stopped by user" });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("8", "1,300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("8", "1,300"));
     }
 
     /// <summary>
@@ -168,13 +176,11 @@ public partial class ToolbarContextBarTests : AppTestBase
         await EmitThoughtAsync("pondering", 300);
 
         // THINKING is part of the live phase: 300 / 16384 = 1.83% -> 2%
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("2", "300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("2", "300"));
 
         // Reasoning -> content transition must keep the same round counter (no double count).
         await EmitContentAsync("answer", 500);
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("3", "500"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("3", "500"));
     }
 
     [Test]
@@ -195,17 +201,14 @@ public partial class ToolbarContextBarTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("31", "5,000"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("31", "5,000"));
 
         // History compaction runs after completion: it must not add anything nor reset the bar.
         await EmitAsync(new { Type = "CompactionStart" });
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("31", "5,000"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("31", "5,000"));
 
         await EmitAsync(new { Type = "CompactionEnd" });
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("31", "5,000"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("31", "5,000"));
     }
 
     [Test]
@@ -227,8 +230,7 @@ public partial class ToolbarContextBarTests : AppTestBase
         });
 
         // 5000 / 16384 = 30.5% -> 31%
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("31", "5,000"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("31", "5,000"));
 
         // Switch to a model with a smaller window (8192). The host does not clear the
         // conversation, so the occupied context must survive and only the percentage changes.
@@ -239,8 +241,7 @@ public partial class ToolbarContextBarTests : AppTestBase
         await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
 
         // Same 5000 tokens, new window: 5000 / 8192 = 61.03% -> 61%
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("61", "5,000", tokenMax: 8192), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("61", "5,000", tokenMax: 8192));
     }
 
     [Test]
@@ -261,8 +262,7 @@ public partial class ToolbarContextBarTests : AppTestBase
         await Expect(Page.Locator("#token-number"))
             .ToHaveTextAsync("400 tokens", new() { Timeout = 5000 });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("8", "1,300"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("8", "1,300"));
     }
 
     [Test]
@@ -286,8 +286,7 @@ public partial class ToolbarContextBarTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("0", "66"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("0", "66"));
 
         var style = await Page.Locator("#token-bar-fill").GetAttributeAsync("style");
         Assert.That(style, Does.Contain("scaleY(0)"), "0% must leave the bar empty");
@@ -303,10 +302,67 @@ public partial class ToolbarContextBarTests : AppTestBase
             TokensPerSecond = 12.0
         });
 
-        await Expect(Page.Locator("#info-tooltip"))
-            .ToHaveAttributeAsync("title", UsageTitle("100", "16,319"), new() { Timeout = 5000 });
+        await ExpectTooltipAsync(UsageTitle("100", "16,319"));
 
         style = await Page.Locator("#token-bar-fill").GetAttributeAsync("style");
         Assert.That(style, Does.Contain("scaleY(1)"), "100% must fill the bar completely");
+    }
+
+    [Test]
+    [Category("TokenBar")]
+    public async Task ContextBar_HasNoNativeTitleAttribute()
+    {
+        await StartSessionAsync();
+
+        await EmitAsync(new { Type = "ChatSessionStart" });
+        await EmitContentAsync("Hello", 900);
+
+        // A native title would compete with the custom popover and be dismissed on every
+        // value update, so neither anchor may carry one.
+        var barTitle = await Page.Locator("#info-tooltip").GetAttributeAsync("title");
+        Assert.That(barTitle, Is.Null, "#info-tooltip must not use the native title");
+
+        var modelTitle = await Page.Locator("#model-name").GetAttributeAsync("title");
+        Assert.That(modelTitle, Is.Null, "#model-name must not use the native title");
+    }
+
+    [Test]
+    [Category("TokenBar")]
+    public async Task ContextTooltip_StaysOpenWhileValuesChange()
+    {
+        await StartSessionAsync();
+
+        await EmitAsync(new { Type = "ChatSessionStart" });
+        await EmitContentAsync("Hello", 900);
+
+        await Page.Locator("#info-tooltip").HoverAsync();
+
+        var tooltip = Page.Locator("#context-tooltip");
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        // This is exactly where a native title died: every value update dismissed it.
+        await EmitContentAsync(" more", 1200);
+        await EmitContentAsync(" more", 1500);
+
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+        await Expect(tooltip).ToContainTextAsync("1,500");
+    }
+
+    [Test]
+    [Category("TokenBar")]
+    public async Task ContextTooltip_ClosesOnMouseLeave()
+    {
+        await StartSessionAsync();
+
+        await EmitAsync(new { Type = "ChatSessionStart" });
+        await EmitContentAsync("Hello", 900);
+
+        await Page.Locator("#info-tooltip").HoverAsync();
+        var tooltip = Page.Locator("#context-tooltip");
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        // Move the pointer away from the bar.
+        await Page.Locator("#userInput").HoverAsync();
+        await Expect(tooltip).ToBeHiddenAsync(new() { Timeout = 3000 });
     }
 }

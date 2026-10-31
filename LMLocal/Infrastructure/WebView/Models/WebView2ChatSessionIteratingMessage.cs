@@ -12,5 +12,11 @@ namespace LMLocal.Infrastructure.WebView
 
         [JsonProperty("IsFinalRound")]
         public bool IsFinalRound { get; set; }
+
+        /// <summary>
+        /// Estimate of the tokens taken by the tool results that will be prepended to the next round's prompt.
+        /// </summary>
+        [JsonProperty("EstimatedToolResultTokens")]
+        public int? EstimatedToolResultTokens { get; set; }
     }
 }

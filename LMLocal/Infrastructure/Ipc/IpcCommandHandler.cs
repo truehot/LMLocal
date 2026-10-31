@@ -295,16 +295,61 @@ internal static class IpcCommandHandler
                     ApiKey = !string.IsNullOrWhiteSpace(agent.CustomApiKey) ? agent.CustomApiKey : config.CustomApiKey
                 };
 
-                var response = await subAgentService.ExecutePromptAsync(request, token);
-
-                var json = JsonConvert.SerializeObject(response, new JsonSerializerSettings
+                // A subagent that owns write tools records file snapshots too, and SnapshotManager
+                // requires an active batch around every execution round. Nothing else opens one on
+                // this path: ChatSessionOrchestrator opens the batch for chat rounds, and the RunTool
+                // branch above opens it for raw IPC tool calls. Open it here as well, and never nest
+                // it - BeginBatchAsync clears the paths recorded by an already open batch.
+                ISnapshotManager snapshotManager = null;
+                bool snapshotBatchBegan = false;
+                if (NeedsSnapshotBatch(agent.AllowedTools))
                 {
-                    NullValueHandling = NullValueHandling.Ignore,
-                    Formatting = Formatting.None,
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore
-                });
+                    snapshotManager = ServiceConfiguration.GetService<ISnapshotManager>();
+                    if (snapshotManager != null && !snapshotManager.IsBatchActive)
+                    {
+                        await package.JoinableTaskFactory.SwitchToMainThreadAsync(token);
+                        await snapshotManager.BeginBatchAsync(token).ConfigureAwait(false);
+                        snapshotBatchBegan = true;
+                    }
+                }
 
-                await writer.WriteLineAsync(json);
+                var runSucceeded = false;
+                try
+                {
+                    var response = await subAgentService.ExecutePromptAsync(request, token);
+                    runSucceeded = response != null && response.Success;
+
+                    var json = JsonConvert.SerializeObject(response, new JsonSerializerSettings
+                    {
+                        NullValueHandling = NullValueHandling.Ignore,
+                        Formatting = Formatting.None,
+                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                    });
+
+                    await writer.WriteLineAsync(json);
+                }
+                finally
+                {
+                    if (snapshotBatchBegan && snapshotManager != null)
+                    {
+                        // Cleanup must not be skipped because of a cancelled token and must not mask
+                        // the original exception. End keeps the recorded snapshots for the Changes
+                        // panel and rollback; Cancel drops only the batch bookkeeping.
+                        try
+                        {
+                            await package.JoinableTaskFactory.SwitchToMainThreadAsync(CancellationToken.None);
+
+                            if (runSucceeded)
+                                await snapshotManager.EndBatchAsync(CancellationToken.None).ConfigureAwait(false);
+                            else
+                                await snapshotManager.CancelBatchAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception batchEx)
+                        {
+                            InternalLogger.Error($"IPC: RunSubAgent snapshot batch cleanup failed: {batchEx.Message}", batchEx);
+                        }
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -327,6 +372,35 @@ internal static class IpcCommandHandler
         }
 
         await writer.WriteLineAsync("UnknownCommand");
+    }
+
+    /// <summary>
+    /// True when at least one allowed tool of the agent records file snapshots (FullAccess), so the
+    /// subagent run needs an open snapshot batch around its tool calls.
+    /// </summary>
+    private static bool NeedsSnapshotBatch(IEnumerable<string> allowedTools)
+    {
+        if (allowedTools == null)
+            return false;
+
+        var provider = ServiceConfiguration.GetService<IBuiltInVsToolProvider>();
+        if (provider == null)
+            return false;
+
+        foreach (var name in allowedTools)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var trimmed = name.Trim();
+            if (!provider.ToolExists(trimmed))
+                continue;
+
+            if (provider.GetToolAccessLevel(trimmed) == ToolAccessLevel.FullAccess)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

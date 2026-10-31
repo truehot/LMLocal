@@ -85,6 +85,13 @@ class BridgeMessageHandler {
     }
 
     handleChatSessionIterating(data) {
+        const estimatedToolResultTokens = data.EstimatedToolResultTokens || 0;
+        if (estimatedToolResultTokens > 0) {
+            sessionStore.setState(prevState => ({
+                toolResultTokens: (prevState?.toolResultTokens || 0) + estimatedToolResultTokens
+            }));
+        }
+
         if (!!data.IsFinalRound) {
             this.onFinalRound.emit();
             return;
@@ -106,6 +113,7 @@ class BridgeMessageHandler {
     handleChatSessionStart() {
         this.contentBuffer.reset();
         this.thoughtBuffer.reset();
+        sessionStore.setState({ toolResultTokens: 0 });
     }
 
     handleChatSessionComplete(metadata) {
@@ -119,6 +127,7 @@ class BridgeMessageHandler {
 
         sessionStore.setState(prevState => ({
             contextTokens: contextTokens,
+            toolResultTokens: 0,
             sessionPromptTokens: (prevState?.sessionPromptTokens || 0) + requestPromptTokens,
             sessionCompletionTokens: (prevState?.sessionCompletionTokens || 0) + requestCompletionTokens,
             sessionCachedTokens: (prevState?.sessionCachedTokens || 0) + requestCachedTokens

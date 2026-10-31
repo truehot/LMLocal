@@ -119,6 +119,65 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public async Task ExecuteAsync_FilesFromJsonArguments_AreAccepted()
+        {
+            // Regression: the runtime builds parameters with
+            // JObject.Parse(arguments).ToObject<Dictionary<string, object>>(), which yields a JArray of JValue
+            // items. A `item is string` check rejected every well-formed `files: ["..."]` call, so a documented
+            // parameter was unusable from the model. Tests that pass List<object> of strings never hit the path.
+            var parameters = Newtonsoft.Json.Linq.JObject
+                .Parse("{\"files\":[\"src/Foo.cs\"],\"include_diff\":true}")
+                .ToObject<Dictionary<string, object>>();
+
+            var result = await _tool.ExecuteAsync(parameters) as ChangesResult;
+
+            Assert.That(result.Success, Is.True, result.ErrorMessage);
+            _readerMock.Verify(
+                r => r.GetChangesAsync(
+                    It.Is<IReadOnlyCollection<string>>(f => f.Count == 1 && f.Contains("src/Foo.cs")),
+                    true,
+                    It.IsAny<int>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_FilesWithNullElementFromJson_SkipsNull()
+        {
+            // JSON null inside the array arrives as JValue of type Null, not as a CLR null.
+            var parameters = Newtonsoft.Json.Linq.JObject
+                .Parse("{\"files\":[null,\"src/Foo.cs\"]}")
+                .ToObject<Dictionary<string, object>>();
+
+            var result = await _tool.ExecuteAsync(parameters) as ChangesResult;
+
+            Assert.That(result.Success, Is.True, result.ErrorMessage);
+            _readerMock.Verify(
+                r => r.GetChangesAsync(
+                    It.Is<IReadOnlyCollection<string>>(f => f.Count == 1 && f.Contains("src/Foo.cs")),
+                    It.IsAny<bool>(),
+                    It.IsAny<int>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_FilesWithNumberFromJson_ReturnsFailure()
+        {
+            var parameters = Newtonsoft.Json.Linq.JObject
+                .Parse("{\"files\":[42]}")
+                .ToObject<Dictionary<string, object>>();
+
+            var result = await _tool.ExecuteAsync(parameters) as ChangesResult;
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorMessage, Does.Contain("array of strings"));
+            VerifyReaderNeverCalled();
+        }
+
+        [Test]
         public async Task ExecuteAsync_TooManyFiles_ReturnsFailure()
         {
             var files = new List<object>();

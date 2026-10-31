@@ -30,6 +30,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
         Task BeginBatchAsync(CancellationToken cancellationToken = default);
         Task EndBatchAsync(CancellationToken cancellationToken = default);
         Task CancelBatchAsync(CancellationToken cancellationToken = default);
+        bool IsBatchActive { get; }
         Task ResetAsync(CancellationToken ct = default);
     }
 
@@ -216,6 +217,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
         {
             using (_lock.Lock())
                 return _paths?.TmpDirectory;
+        }
+
+        /// <summary>
+        /// True while a snapshot batch is open.
+        /// </summary>
+        public bool IsBatchActive
+        {
+            get
+            {
+                using (_lock.Lock())
+                    return _isBatching;
+            }
         }
 
         public async Task SnapshotFileAsync(string absolutePath, SnapshotChangeStatus changeStatus, CancellationToken ct)

@@ -60,63 +60,68 @@ namespace LMLocal.Commands
         private static bool HasOpenDocuments()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-
-            try
-            {
-                var dte = Package.GetGlobalService(typeof(DTE)) as DTE;
-                if (dte?.Documents == null)
-                    return false;
-
-                foreach (Document document in dte.Documents)
-                {
-                    if (document == null)
-                        continue;
-
-                    string filePath = document.FullName;
-                    if (!string.IsNullOrEmpty(filePath) && !SourceFileFilter.ShouldExclude(filePath))
-                        return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"SendAllOpenFiles: cannot inspect open documents: {ex.Message}");
-            }
-
-            return false;
+            return CollectOpenDocuments(out _).Count > 0;
         }
 
-        private void Execute(object sender, EventArgs e)
+        /// <summary>
+        /// Single source of truth for "All Open Files": every open document that has a path and is not junk.
+        /// </summary>
+        private static List<OpenDocumentsPromptBuilder.DocumentItem> CollectOpenDocuments(out int skippedCount)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
+            skippedCount = 0;
             var items = new List<OpenDocumentsPromptBuilder.DocumentItem>();
 
             try
             {
                 var dte = Package.GetGlobalService(typeof(DTE)) as DTE;
                 if (dte?.Documents == null)
-                {
-                    InternalLogger.Warn("SendAllOpenFiles: DTE documents are not available — aborting.");
-                    return;
-                }
+                    return items;
 
                 foreach (Document document in dte.Documents)
                 {
                     if (document == null)
                         continue;
 
-                    // Capture the document for the lazy reader so content comes from the editor buffer.
+                    string filePath;
+                    try
+                    {
+                        filePath = document.FullName;
+                    }
+                    catch (Exception ex)
+                    {
+                        InternalLogger.Warn($"SendAllOpenFiles: cannot read document path: {ex.Message}");
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(filePath) || SourceFileFilter.ShouldExclude(filePath))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     Document openDocument = document;
                     items.Add(new OpenDocumentsPromptBuilder.DocumentItem(
-                        openDocument.FullName,
+                        filePath,
                         () => CodeCommandHelper.ReadDocumentContent(openDocument)));
                 }
             }
             catch (Exception ex)
             {
                 InternalLogger.Warn($"SendAllOpenFiles: failed to enumerate open documents: {ex.Message}");
-                return;
             }
+
+            return items;
+        }
+
+        private void Execute(object sender, EventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            List<OpenDocumentsPromptBuilder.DocumentItem> items = CollectOpenDocuments(out int skipped);
+
+            InternalLogger.Info($"SendAllOpenFiles: {items.Count} open document(s) collected, {skipped} skipped.");
 
             string markdownText = OpenDocumentsPromptBuilder.Build(items);
 

@@ -106,8 +106,12 @@
     <Compile Include="Application\Tool\ToolActivityEvent.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
+    <Compile Include="Application\Tool\ToolResultTokenEstimator.cs" />
+    <Compile Include="Commands\SendActiveFilesCommand.cs" />
     <Compile Include="Commands\SendAllOpenFilesCommand.cs" />
+    <Compile Include="Commands\VisibleDocumentsHelper.cs" />
     <Compile Include="Core\Common\ChatLogConstants.cs" />
+    <Compile Include="Core\Common\LineSplitter.cs" />
     <Compile Include="Core\Common\OpenDocumentsPromptBuilder.cs" />
     <Compile Include="Core\Common\PromptContentLimits.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
@@ -115,8 +119,11 @@
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
+    <Compile Include="Infrastructure\Persistence\FileEncodingDetector.cs" />
     <Compile Include="Infrastructure\SubAgents\ISubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentFailureLogger.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CanonicalWindowCache.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />

@@ -41,6 +41,13 @@
           <ButtonText>LM Local Commands</ButtonText>
         </Strings>
       </Menu>
+      <!-- Submenu "Send to LM Local" inside the document tab context menu -->
+      <Menu guid="guidLMLocalPackageCmdSet" id="SendToLMLocalTabSubMenu" priority="0x0100" type="Menu">
+        <Parent guid="guidLMLocalPackageCmdSet" id="EditorTabContextGroup" />
+        <Strings>
+          <ButtonText>Send to LM Local</ButtonText>
+        </Strings>
+      </Menu>
     </Menus>
 
     <!-- In this section you can define new menu groups. A menu group is a container for
@@ -58,6 +65,10 @@
       <!-- Context menu group inside the document tab context menu (IDM_VS_CTXT_EZDOCWINTAB) -->
       <Group guid="guidLMLocalPackageCmdSet" id="EditorTabContextGroup" priority="0x0100">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_EZDOCWINTAB"/>
+      </Group>
+      <!-- Group inside the "Send to LM Local" submenu of the document tab context menu -->
+      <Group guid="guidLMLocalPackageCmdSet" id="SendToLMLocalTabCommandsGroup" priority="0x0010">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SendToLMLocalTabSubMenu" />
       </Group>
       <!-- Group inside the "LM Local Commands" submenu to hold all code commands -->
       <Group guid="guidLMLocalPackageCmdSet" id="LMLocalCommandsGroup" priority="0x0010">
@@ -115,13 +126,23 @@
         </Strings>
       </Button>
 
-      <!-- Document tab context menu button: sends every open document in a single prompt -->
+      <!-- Document tab context menu: sends every open document in a single prompt -->
       <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendAllOpenFiles" priority="0x100" type="Button">
-        <Parent guid="guidLMLocalPackageCmdSet" id="EditorTabContextGroup" />
+        <Parent guid="guidLMLocalPackageCmdSet" id="SendToLMLocalTabCommandsGroup" />
         <Icon guid="guidMyIconSet" id="iconLMLocal" />
         <CommandFlag>DynamicVisibility</CommandFlag>
         <Strings>
-          <ButtonText>Send All Open Files to LM Local</ButtonText>
+          <ButtonText>All Open Files</ButtonText>
+        </Strings>
+      </Button>
+
+      <!-- Document tab context menu: sends only the documents currently visible on screen -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidSendActiveFiles" priority="0x110" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="SendToLMLocalTabCommandsGroup" />
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>All Active Files</ButtonText>
         </Strings>
       </Button>
 
@@ -232,6 +253,13 @@
                 mod1="ALT"
                 key2="L"
                 mod2="ALT" />
+    <KeyBinding guid="guidLMLocalPackageCmdSet"
+                id="cmdidSendActiveFiles"
+                editor="guidVSStd97"
+                key1="K"
+                mod1="ALT"
+                key2="A"
+                mod2="ALT" />
   </KeyBindings>
 
 
@@ -256,7 +284,9 @@
       <IDSymbol name="EditorContextGroup" value="0x1030" />
       <IDSymbol name="EditorTabContextGroup" value="0x1031" />
       <IDSymbol name="LMLocalSubMenu" value="0x2000" />
+      <IDSymbol name="SendToLMLocalTabSubMenu" value="0x2001" />
       <IDSymbol name="LMLocalCommandsGroup" value="0x1040" />
+      <IDSymbol name="SendToLMLocalTabCommandsGroup" value="0x1032" />
       <IDSymbol name="cmdidAskLMLocal" value="0x0200" />
       <IDSymbol name="cmdidReviewCode" value="0x0201" />
       <IDSymbol name="cmdidBugFixCode" value="0x0202" />
@@ -265,8 +295,9 @@
       <IDSymbol name="cmdidImproveCode" value="0x0206" />
       <IDSymbol name="cmdidExplainCode" value="0x0207" />
 
-      <!-- Document tab context menu command ID -->
+      <!-- Document tab context menu command IDs -->
       <IDSymbol name="cmdidSendAllOpenFiles" value="0x020C" />
+      <IDSymbol name="cmdidSendActiveFiles" value="0x020D" />
 
       <!-- Solution Explorer group IDs -->
       <IDSymbol name="SolutionExplorerItemGroup" value="0x1050" />
