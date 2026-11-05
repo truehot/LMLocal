@@ -33,7 +33,8 @@ namespace LMLocal.Core.Models
         public bool EnableHistoryCompression { get; set; } = false;
 
         /// <summary>
-        /// When true, older conversation history is summarized into a concise summary as context limits are approached.
+        /// When true, older conversation history is summarized into a concise summary as context limits are approached,
+        /// and a request rejected by the provider for exceeding the context window is compacted and retried automatically.
         /// </summary>
         public bool EnableHistoryCompaction { get; set; } = false;
 

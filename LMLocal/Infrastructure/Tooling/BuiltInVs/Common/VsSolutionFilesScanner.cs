@@ -126,29 +126,103 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             if (!string.IsNullOrEmpty(projectFilter) && !string.IsNullOrEmpty(normalizedSolutionDir))
             {
-                if (normalizedFilePath.StartsWith(normalizedSolutionDir, StringComparison.OrdinalIgnoreCase))
-                {
-                    string relativePath = normalizedFilePath.Substring(normalizedSolutionDir.Length).TrimStart(Path.DirectorySeparatorChar);
-                    string[] pathComponents = relativePath.Split(Path.DirectorySeparatorChar);
-                    bool projectFound = false;
-                    foreach (var component in pathComponents)
-                    {
-                        if (component.IndexOf(projectFilter, StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            projectFound = true;
-                            break;
-                        }
-                    }
-                    if (!projectFound)
-                        return false;
-                }
-                else
-                {
+                if (!normalizedFilePath.StartsWith(normalizedSolutionDir, StringComparison.OrdinalIgnoreCase))
                     return false;
-                }
+
+                string relativePath = normalizedFilePath.Substring(normalizedSolutionDir.Length).TrimStart(Path.DirectorySeparatorChar);
+                if (!MatchesProjectFilter(relativePath, projectFilter, normalizedSolutionDir))
+                    return false;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Applies a tool's file cap to a list enumerated with <c>Limit = limit + 1</c>.
+        /// </summary>
+        internal static bool TrimToLimit(List<string> files, int limit)
+        {
+            if (files == null || limit <= 0 || files.Count <= limit)
+                return false;
+
+            files.RemoveRange(limit, files.Count - limit);
+            return true;
+        }
+
+        /// <summary>
+        /// Matches a solution-relative path against a project_filter value.
+        /// </summary>
+        internal static bool MatchesProjectFilter(string relativePath, string projectFilter, string normalizedSolutionDir = null)
+        {
+            if (string.IsNullOrEmpty(projectFilter))
+                return true;
+            if (string.IsNullOrEmpty(relativePath))
+                return false;
+
+            string filter = NormalizeSeparators(projectFilter.Trim());
+            string path = NormalizeSeparators(relativePath);
+
+            if (!string.IsNullOrEmpty(normalizedSolutionDir))
+            {
+                string solutionDir = NormalizeSeparators(normalizedSolutionDir).TrimEnd('\\') + "\\";
+                if (filter.StartsWith(solutionDir, StringComparison.OrdinalIgnoreCase))
+                    filter = "\\" + filter.Substring(solutionDir.Length);
+            }
+
+            bool isPath = filter.IndexOf('\\') >= 0;
+            string[] components = path.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (!isPath)
+            {
+                if (filter.Length == 0)
+                    return true;
+
+                foreach (var component in components)
+                {
+                    if (component.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+                return false;
+            }
+
+            string[] segments = filter.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+                return true;
+
+            for (int start = 0; start + segments.Length <= components.Length; start++)
+            {
+                int i = 0;
+                while (i < segments.Length && string.Equals(components[start + i], segments[i], StringComparison.OrdinalIgnoreCase))
+                    i++;
+                if (i == segments.Length)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeSeparators(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return value;
+
+            var sb = new System.Text.StringBuilder(value.Length);
+            bool previousWasSeparator = false;
+            foreach (char c in value)
+            {
+                bool isSeparator = c == '\\' || c == '/';
+                if (isSeparator)
+                {
+                    if (!previousWasSeparator)
+                        sb.Append('\\');
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+                previousWasSeparator = isSeparator;
+            }
+            return sb.ToString();
         }
 
         /// <summary>

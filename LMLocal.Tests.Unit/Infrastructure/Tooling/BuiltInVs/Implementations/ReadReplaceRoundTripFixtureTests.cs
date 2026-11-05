@@ -34,8 +34,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
     /// </para>
     /// <para>
     /// Several cases characterise known defects instead of asserting ideal behaviour (their names say
-    /// "_Documents..." / carry a NOTE). The defect registry, severities and the fix plan are in
-    /// <c>Docs\file-tools-encoding-defects-plan.md</c> (E1, E2, E5, E6).
+    /// "_Documents..." / carry a NOTE).
     /// </para>
     /// </summary>
     [TestFixture]
@@ -325,7 +324,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public async Task EightKilobyteProbe_ClassifiesUtf8FileWithEarlyMultibyteChar()
         {
-            // E2 (Docs\file-tools-encoding-defects-plan.md): the old probe validated only the first four bytes, so a
+            // E2: the old probe validated only the first four bytes, so a
             // multibyte sequence starting inside that window made a valid UTF-8 file look like ANSI. The probe
             // buffer is now 8 KB and a file that fits in it is validated whole, so this content is UTF-8 and
             // verbatim old_lines matches.

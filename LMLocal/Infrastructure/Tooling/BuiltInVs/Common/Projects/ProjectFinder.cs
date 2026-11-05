@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using EnvDTE;
 using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
@@ -64,6 +65,87 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
                 CollectByName(p, searchName, results);
             }
             return results;
+        }
+
+        /// <summary>
+        /// Spellings to try for a project reference a model sent: as given, then with one level of JSON escaping removed (<c>A\\\\B.csproj</c> → <c>A\\B.csproj</c>).
+        /// </summary>
+        public static List<string> SearchVariants(string search)
+        {
+            var variants = new List<string>();
+            if (string.IsNullOrWhiteSpace(search))
+                return variants;
+
+            variants.Add(search);
+            if (JsonEscapes.TryUnescape(search, out string unescaped)
+                && !string.IsNullOrWhiteSpace(unescaped)
+                && !string.Equals(unescaped, search, StringComparison.Ordinal))
+            {
+                variants.Add(unescaped);
+            }
+
+            return variants;
+        }
+
+        /// <summary>
+        /// Finds projects by name, unique name, project file name, or project file path (relative to <paramref name="solutionDirectory"/> or absolute); each spelling from <see cref="SearchVariants"/> is tried in turn.
+        /// </summary>
+        public static List<Project> FindByNameOrPath(Solution solution, string search, string solutionDirectory)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            var variants = SearchVariants(search);
+            foreach (string variant in variants)
+            {
+                var byName = FindByName(solution, variant);
+                if (byName.Count > 0)
+                    return byName;
+            }
+
+            foreach (string variant in variants)
+            {
+                string fullPath = ToProjectFullPath(variant, solutionDirectory);
+                if (fullPath == null)
+                    continue;
+
+                var byPath = FindByPath(solution, fullPath);
+                if (byPath != null)
+                    return new List<Project> { byPath };
+            }
+
+            return new List<Project>();
+        }
+
+        /// <summary>
+        /// Full path of a project file reference, or null when the text is not a usable path.
+        /// </summary>
+        internal static string ToProjectFullPath(string reference, string solutionDirectory)
+        {
+            string trimmed = NormalizeProjectName(reference);
+            if (string.IsNullOrEmpty(trimmed) || !trimmed.EndsWith("proj", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            try
+            {
+                if (Path.IsPathRooted(trimmed))
+                    return Path.GetFullPath(trimmed);
+
+                return string.IsNullOrEmpty(solutionDirectory)
+                    ? null
+                    : Path.GetFullPath(Path.Combine(solutionDirectory, trimmed));
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (NotSupportedException)
+            {
+                return null;
+            }
+            catch (PathTooLongException)
+            {
+                return null;
+            }
         }
 
         /// <summary>

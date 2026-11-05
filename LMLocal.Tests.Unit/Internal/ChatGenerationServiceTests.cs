@@ -55,7 +55,7 @@ namespace LMLocal.Tests.Unit
                 .ReturnsAsync(new ModelsConfigFile { Models = new List<ModelDefinition>() });
 
             var roundService = new StreamingRoundService(_clientMock.Object, _settingsMock.Object, _mockFactory.Object, _modelsConfigMock.Object);
-            _service = new ChatStreamService(roundService, _historyMock.Object);
+            _service = new ChatStreamService(roundService, _historyMock.Object, new ContextCalibration());
         }
 
 
@@ -145,17 +145,27 @@ namespace LMLocal.Tests.Unit
             public Task<List<ChatMessage>> LoadLastSessionAsync() => Task.FromResult(new List<ChatMessage>());
             public void EnsureHistoryNormalized() { }
             public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls) { }
+            public void DiscardPendingAssistant() { }
+            public void DiscardLastAssistantFromFailedRound() { }
+            public Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages) => Task.FromResult(true);
             public Task MoveLastExchangeToNewSessionAsync() => Task.CompletedTask;
             public Task ConsolidateLastExchangeAsync() => Task.CompletedTask;
             public Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = 200) => Task.FromResult(new List<ChatSessionSummary>());
             public Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId) => Task.FromResult(new List<ChatMessage>());
             public Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages) => Task.CompletedTask;
+
+            public void ReplaceHistoryInMemory(IEnumerable<ChatMessage> messages)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         private class DummyCompactor : IHistoryCompactor
         {
             public Task CompactIfNeededAsync(string modelId, CancellationToken token) => Task.CompletedTask;
             public bool NeedsCompaction() => false;
+            public bool IsCompactionEnabled() => false;
+            public Task<(CompactionOutcome Outcome, IReadOnlyList<ChatMessage> Messages)> CompactForcedAsync(string modelId, int attempt, CancellationToken ct) => Task.FromResult((CompactionOutcome.NothingChanged, (IReadOnlyList<ChatMessage>)null));
             public Task<string> SummarizeAsync(IReadOnlyList<ChatMessage> history, string modelId, CancellationToken ct) => Task.FromResult<string>(null);
         }
 
@@ -185,7 +195,7 @@ namespace LMLocal.Tests.Unit
                 .ReturnsAsync(new ModelsConfigFile { Models = new List<ModelDefinition>() });
 
             var roundService = new StreamingRoundService(client, settingsMock.Object, mockFactory.Object, modelsConfigMock.Object);
-            var svc = new ChatStreamService(roundService, history);
+            var svc = new ChatStreamService(roundService, history, new ContextCalibration());
 
             var context = new GenerateStreamContext
             {

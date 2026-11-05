@@ -69,6 +69,12 @@ namespace LMLocal.Core.Models
         /// Null if no server-side error occurred.
         /// </summary>
         public string ErrorCode { get; set; }
+
+        /// <summary>
+        /// HTTP status code of the failed request (e.g. 400, 413), when the failure came from a non-success response.
+        /// Null for stream-internal (SSE) errors and successful completions.
+        /// </summary>
+        public int? HttpStatusCode { get; set; }
     }
     /// <summary>
     /// Token usage breakdown for a single generation request.

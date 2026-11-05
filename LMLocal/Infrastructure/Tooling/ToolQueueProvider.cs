@@ -19,6 +19,9 @@ namespace LMLocal.Infrastructure.Tooling
         private readonly IBuiltInVsToolProvider _builtInTools;
         private readonly IMcpToolManager _mcpToolManager;
         private readonly ISubAgentsCatalog _subAgentsCatalog;
+        private readonly ISubAgentsParallelPolicy _parallelPolicy;
+
+        private const string ParallelHint = "Safe to call several times in parallel.";
 
         private readonly object _lock = new object();
         private SubAgentsConfig _cachedConfig;
@@ -31,12 +34,14 @@ namespace LMLocal.Infrastructure.Tooling
             ISettingsManager settingsManager,
             IBuiltInVsToolProvider builtInTools,
             IMcpToolManager mcpToolManager,
-            ISubAgentsCatalog subAgentsCatalog)
+            ISubAgentsCatalog subAgentsCatalog,
+            ISubAgentsParallelPolicy parallelPolicy)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _builtInTools = builtInTools ?? throw new ArgumentNullException(nameof(builtInTools));
             _mcpToolManager = mcpToolManager ?? throw new ArgumentNullException(nameof(mcpToolManager));
             _subAgentsCatalog = subAgentsCatalog ?? throw new ArgumentNullException(nameof(subAgentsCatalog));
+            _parallelPolicy = parallelPolicy ?? throw new ArgumentNullException(nameof(parallelPolicy));
         }
 
         public ToolQueue GetMainQueue()
@@ -193,7 +198,7 @@ namespace LMLocal.Infrastructure.Tooling
                 var trimmed = name.Trim();
 
                 if (!_builtInTools.ToolExists(trimmed))
-                    continue; 
+                    continue;
 
                 if (!availableNames.Contains(trimmed))
                     return false;
@@ -256,9 +261,12 @@ namespace LMLocal.Infrastructure.Tooling
             return owned;
         }
 
-        private static ToolDefinition GetToolDefinition(SubAgentDefinition agent)
+        private ToolDefinition GetToolDefinition(SubAgentDefinition agent)
         {
-            var description = BuildAgentDescription(agent);
+            var description = agent.Description?.Trim() ?? string.Empty;
+
+            if (_parallelPolicy.IsParallelEnabled(agent.Id))
+                description = string.IsNullOrEmpty(description) ? ParallelHint : description + " " + ParallelHint;
             return new ToolDefinition
             {
                 Name = agent.Id,
@@ -273,26 +281,6 @@ namespace LMLocal.Infrastructure.Tooling
                     Required = new List<string> { TaskParam }
                 }
             };
-        }
-
-        /// <summary>
-        /// Agent description seen by the main model, extended with the actual run limits (maxRounds / timeoutSeconds) so the model can size the task before delegating.
-        /// </summary>
-        private static string BuildAgentDescription(SubAgentDefinition agent)
-        {
-            var description = agent.Description?.Trim() ?? string.Empty;
-
-            var limits = new List<string>();
-            if (agent.MaxRounds.HasValue && agent.MaxRounds.Value > 0)
-                limits.Add($"up to {agent.MaxRounds.Value} tool rounds");
-            if (agent.TimeoutSeconds.HasValue && agent.TimeoutSeconds.Value > 0)
-                limits.Add($"{agent.TimeoutSeconds.Value}s timeout");
-
-            if (limits.Count == 0)
-                return description;
-
-            var suffix = "Run limits: " + string.Join(", ", limits) + ".";
-            return string.IsNullOrEmpty(description) ? suffix : description + " " + suffix;
         }
 
         private static string BuildNamesKey(IReadOnlyList<ToolDefinition> tools)

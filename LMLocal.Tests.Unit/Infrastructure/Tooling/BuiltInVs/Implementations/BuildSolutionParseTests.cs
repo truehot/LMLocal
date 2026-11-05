@@ -239,5 +239,67 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(ProjectFinder.NormalizeProjectName("MyApp/MyApp.csproj"), Is.EqualTo(@"MyApp\MyApp.csproj"));
             Assert.That(ProjectFinder.NormalizeProjectName(null), Is.Null);
         }
+
+        [Test]
+        public void SearchVariants_JsonEscapedPath_AddsUnescapedSpelling()
+        {
+            // Seen in a real session: the model sent "LMLocal.Tests.Unit\\\\LMLocal.Tests.Unit.csproj" (doubled backslash).
+            var variants = ProjectFinder.SearchVariants(@"LMLocal.Tests.Unit\\LMLocal.Tests.Unit.csproj");
+
+            Assert.That(variants, Is.EqualTo(new[]
+            {
+                @"LMLocal.Tests.Unit\\LMLocal.Tests.Unit.csproj",
+                @"LMLocal.Tests.Unit\LMLocal.Tests.Unit.csproj"
+            }));
+        }
+
+        [Test]
+        public void SearchVariants_UnescapedSpellingMatchesUniqueName()
+        {
+            const string uniqueName = @"LMLocal.Tests.Unit\LMLocal.Tests.Unit.csproj";
+            var variants = ProjectFinder.SearchVariants(@"LMLocal.Tests.Unit\\LMLocal.Tests.Unit.csproj");
+
+            Assert.That(ProjectFinder.IsProjectNameMatch("LMLocal.Tests.Unit", uniqueName, null, variants[0]), Is.False,
+                "the doubled backslash alone does not match");
+            Assert.That(ProjectFinder.IsProjectNameMatch("LMLocal.Tests.Unit", uniqueName, null, variants[1]), Is.True);
+        }
+
+        [TestCase("LMLocal")]
+        [TestCase(@"MyApp\MyApp.csproj")]
+        public void SearchVariants_NothingToUnescape_ReturnsOnlyTheInput(string search)
+        {
+            Assert.That(ProjectFinder.SearchVariants(search), Is.EqualTo(new[] { search }));
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("   ")]
+        public void SearchVariants_Empty_ReturnsNothing(string search)
+        {
+            Assert.That(ProjectFinder.SearchVariants(search), Is.Empty);
+        }
+
+        [Test]
+        public void ToProjectFullPath_RelativeProjectPath_IsResolvedAgainstTheSolutionDirectory()
+        {
+            Assert.That(ProjectFinder.ToProjectFullPath(@"MyApp\MyApp.csproj", @"C:\src"),
+                Is.EqualTo(@"C:\src\MyApp\MyApp.csproj"));
+            Assert.That(ProjectFinder.ToProjectFullPath("MyApp/MyApp.csproj", @"C:\src"),
+                Is.EqualTo(@"C:\src\MyApp\MyApp.csproj"));
+        }
+
+        [Test]
+        public void ToProjectFullPath_AbsolutePath_IsKept()
+        {
+            Assert.That(ProjectFinder.ToProjectFullPath(@"D:\other\X.vcxproj", @"C:\src"), Is.EqualTo(@"D:\other\X.vcxproj"));
+        }
+
+        [TestCase("MyApp")]
+        [TestCase(@"MyApp\Program.cs")]
+        [TestCase("")]
+        public void ToProjectFullPath_NotAProjectFile_ReturnsNull(string reference)
+        {
+            Assert.That(ProjectFinder.ToProjectFullPath(reference, @"C:\src"), Is.Null);
+        }
     }
 }

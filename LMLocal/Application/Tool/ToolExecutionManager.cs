@@ -160,7 +160,7 @@ namespace LMLocal.Application.Tool
             }
             catch (OperationCanceledException)
             {
-                var errorMsg = $"Tool execution cancelled: {toolCall.FunctionName}";
+                var errorMsg = $"Tool execution stopped before completion: {toolCall.FunctionName}";
                 InternalLogger.Warn($"ToolExecutionManager: {errorMsg}");
                 return new ToolExecutionResult
                 {

@@ -156,6 +156,160 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             Assert.That(results.Count, Is.EqualTo(3));
         }
 
+        [TestCase(@"LMLocal\Application\Chat")]
+        [TestCase("LMLocal/Application/Chat")]
+        [TestCase(@"LMLocal\\Application\\Chat")]
+        [TestCase(@"\LMLocal\Application\Chat\")]
+        [TestCase(@"application\chat")]
+        public async Task EnumerateSolutionFiles_WithPathProjectFilter_ReturnsOnlyFilesUnderThatFolder(string projectFilter)
+        {
+            // Arrange
+            var inChat = Path.Combine(_root, "LMLocal", "Application", "Chat", "HistoryCompactor.cs");
+            var inChatSub = Path.Combine(_root, "LMLocal", "Application", "Chat", "Sub", "Nested.cs");
+            var inSession = Path.Combine(_root, "LMLocal", "Application", "ChatSession", "Orchestrator.cs");
+            var otherChat = Path.Combine(_root, "Other", "Chat", "Other.cs");
+            foreach (var f in new[] { inChat, inChatSub, inSession, otherChat })
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var scanner = CreateScanner();
+
+            // Act
+            var results = (await scanner.EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter
+            {
+                ExtensionFilter = ".cs",
+                ProjectFilter = projectFilter,
+                ReturnRelative = true
+            })).ToList();
+
+            // Assert: path segments match whole folder names, so the sibling 'ChatSession' folder is excluded.
+            Assert.That(results, Has.Count.EqualTo(2));
+            Assert.That(results, Has.Some.EndWith(Path.Combine("Chat", "HistoryCompactor.cs")));
+            Assert.That(results, Has.Some.EndWith(Path.Combine("Chat", "Sub", "Nested.cs")));
+            Assert.That(results, Has.None.Contains("ChatSession"));
+            Assert.That(results, Has.None.Contains("Other"));
+        }
+
+        [TestCase(@"LMLocal\")]
+        [TestCase("LMLocal/")]
+        public async Task EnumerateSolutionFiles_WithTrailingSeparatorFilter_MatchesOnlyThatFolder(string projectFilter)
+        {
+            var inLmLocal = Path.Combine(_root, "LMLocal", "Core", "A.cs");
+            var inTests = Path.Combine(_root, "LMLocal.Tests.Unit", "B.cs");
+            foreach (var f in new[] { inLmLocal, inTests })
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var results = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter
+            {
+                ExtensionFilter = ".cs",
+                ProjectFilter = projectFilter
+            })).ToList();
+
+            Assert.That(results, Has.Count.EqualTo(1));
+            Assert.That(results[0], Does.EndWith(Path.Combine("LMLocal", "Core", "A.cs")));
+        }
+
+        [Test]
+        public async Task EnumerateSolutionFiles_WithAbsolutePathProjectFilter_IsMadeRelative()
+        {
+            var inModels = Path.Combine(_root, "Core", "Models", "A.cs");
+            var outside = Path.Combine(_root, "Core", "Other", "B.cs");
+            foreach (var f in new[] { inModels, outside })
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var results = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter
+            {
+                ExtensionFilter = ".cs",
+                ProjectFilter = Path.Combine(_root, "Core", "Models")
+            })).ToList();
+
+            Assert.That(results, Has.Count.EqualTo(1));
+            Assert.That(results[0], Does.EndWith(Path.Combine("Models", "A.cs")));
+        }
+
+        [TestCase("LMLocal.Tests.Unit\\Infrastructure\\Vs\\X.cs", "Tests", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Models", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "X.cs", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Core\\Models", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "core/models", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "LMLocal\\Core\\Models\\X.cs", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Core\\Common", false)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Models\\Core", false)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Nope", false)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Local\\Core", false)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "Core\\Mod", false)]
+        [TestCase("LMLocal\\Application\\ChatSession\\X.cs", "LMLocal\\Application\\Chat", false)]
+        [TestCase("LMLocal\\Application\\ChatSessionStream\\X.cs", "Application\\Chat", false)]
+        [TestCase("LMLocal\\Application\\Chat\\X.cs", "Application\\Chat", true)]
+        [TestCase("LMLocal.Tests.Unit\\A\\X.cs", "LMLocal\\", false)]
+        [TestCase("LMLocal\\A\\X.cs", "LMLocal/", true)]
+        [TestCase("LMLocal.Tests.Unit\\A\\X.cs", "LMLocal", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "  ", true)]
+        [TestCase("LMLocal\\Core\\Models\\X.cs", "\\", true)]
+        public void MatchesProjectFilter_Cases(string relativePath, string filter, bool expected)
+        {
+            Assert.That(VsSolutionFilesScanner.MatchesProjectFilter(relativePath, filter), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void MatchesProjectFilter_WithoutSeparator_DoesNotMatchAcrossComponents()
+        {
+            // Pre-existing semantics are kept: a separator-free filter must lie within a single component.
+            Assert.That(VsSolutionFilesScanner.MatchesProjectFilter("Core\\Models\\X.cs", "CoreModels"), Is.False);
+            Assert.That(VsSolutionFilesScanner.MatchesProjectFilter("Core\\Models\\X.cs", "reMod"), Is.False);
+        }
+
+        [TestCase(0, 3, false, 0)]
+        [TestCase(3, 3, false, 3)]
+        [TestCase(4, 3, true, 3)]
+        [TestCase(10, 3, true, 3)]
+        public void TrimToLimit_ReportsAndRemovesOverflow(int count, int limit, bool expectedTruncated, int expectedCount)
+        {
+            var files = Enumerable.Range(1, count).Select(i => "f" + i).ToList();
+
+            bool truncated = VsSolutionFilesScanner.TrimToLimit(files, limit);
+
+            Assert.That(truncated, Is.EqualTo(expectedTruncated));
+            Assert.That(files, Has.Count.EqualTo(expectedCount));
+            Assert.That(files, Is.EqualTo(Enumerable.Range(1, expectedCount).Select(i => "f" + i)), "order of kept files must be preserved");
+        }
+
+        [Test]
+        public async Task EnumerateSolutionFiles_LimitPlusOneProbe_DetectsCapExactlyAtLimit()
+        {
+            // The tools enumerate with Limit = cap + 1: exactly 'cap' files must not be reported as truncated,
+            // 'cap + 1' files must.
+            for (int i = 1; i <= 4; i++)
+            {
+                var f = Path.Combine(_root, "P", $"file{i}.cs");
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var atCap = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter { ExtensionFilter = ".cs", Limit = 4 + 1 })).ToList();
+            var overCap = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter { ExtensionFilter = ".cs", Limit = 3 + 1 })).ToList();
+
+            Assert.That(VsSolutionFilesScanner.TrimToLimit(atCap, 4), Is.False);
+            Assert.That(atCap, Has.Count.EqualTo(4));
+            Assert.That(VsSolutionFilesScanner.TrimToLimit(overCap, 3), Is.True);
+            Assert.That(overCap, Has.Count.EqualTo(3));
+        }
+
+        private VsSolutionFilesScanner CreateScanner()
+        {
+            var provider = new TestFileProvider(_root);
+            var dependencies = new TestVsDependencies(_root, provider);
+            return new VsSolutionFilesScanner(dependencies, new TestUiThreadGuard(), new PathResolver(), provider);
+        }
+
 
 
         private class TestFileProvider : ISolutionFileProvider

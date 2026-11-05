@@ -26,11 +26,8 @@ namespace LMLocal.Tests.Unit
         private static void SetupCompletedPersistence(Mock<IChatPersistenceService> mockPersistence)
         {
             mockPersistence
-                .Setup(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
-            mockPersistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
         }
 
         [Test]
@@ -57,7 +54,9 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[1].Content, Is.EqualTo("last response"));
 
             mockPersistence.Verify(
-                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                p => p.StartSessionWithMessagesAsync(
+                    It.Is<IReadOnlyList<ChatMessage>>(m => m.Count == 2),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
@@ -98,17 +97,17 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task MoveLastExchangeToNewSessionAsync_WaitsForNewSessionMarkerBeforeSaving()
+        public async Task MoveLastExchangeToNewSession_AwaitsAtomicSessionWrite()
         {
             var mockSettings = CreateSettingsMock();
-            var markerTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            IReadOnlyList<ChatMessage> written = null;
+
             var mockPersistence = new Mock<IChatPersistenceService>();
             mockPersistence
-                .Setup(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()))
-                .Returns(markerTcs.Task);
-            mockPersistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyList<ChatMessage>, CancellationToken>((messages, _) => written = messages)
+                .Returns(gate.Task);
 
             var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
             manager.AddUserMessage("last");
@@ -118,27 +117,32 @@ namespace LMLocal.Tests.Unit
 
             await Task.Delay(50);
 
+            Assert.That(moveTask.IsCompleted, Is.False,
+                "The session write must be awaited, not fire-and-forget");
             mockPersistence.Verify(
-                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
                 Times.Never,
-                "SaveMessagesAsync must not run until MarkNewSessionAsync completes");
+                "The marker belongs to the atomic session write; it must not be written as a separate operation");
 
-            markerTcs.SetResult(true);
+            gate.SetResult(true);
             await moveTask;
+
+            Assert.That(written, Is.Not.Null);
+            Assert.That(written.Count, Is.EqualTo(2));
+            Assert.That(written[0].Content, Is.EqualTo("last"));
+            Assert.That(written[1].Content, Is.EqualTo("response"));
         }
 
         [Test]
-        public async Task ConsolidateLastExchangeAsync_WaitsForNewSessionMarkerBeforeSaving()
+        public async Task ConsolidateLastExchange_AwaitsAtomicSessionWrite()
         {
             var mockSettings = CreateSettingsMock();
-            var markerTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
             var mockPersistence = new Mock<IChatPersistenceService>();
             mockPersistence
-                .Setup(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()))
-                .Returns(markerTcs.Task);
-            mockPersistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .Returns(gate.Task);
 
             var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
             manager.AddUserMessage("last");
@@ -148,12 +152,14 @@ namespace LMLocal.Tests.Unit
 
             await Task.Delay(50);
 
+            Assert.That(consolidateTask.IsCompleted, Is.False,
+                "The session write must be awaited, not fire-and-forget");
             mockPersistence.Verify(
-                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
                 Times.Never,
-                "SaveMessagesAsync must not run until MarkNewSessionAsync completes");
+                "The marker belongs to the atomic session write; it must not be written as a separate operation");
 
-            markerTcs.SetResult(true);
+            gate.SetResult(true);
             await consolidateTask;
         }
 
@@ -181,26 +187,56 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[1].Role, Is.EqualTo("assistant"));
             Assert.That(history[1].Content, Is.EqualTo("summary response"));
 
+            // Marker + messages are written by a single atomic call: a half-written session cannot appear.
             mockPersistence.Verify(
-                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                p => p.StartSessionWithMessagesAsync(
+                    It.Is<IReadOnlyList<ChatMessage>>(m =>
+                        m.Count == 2
+                        && (string)m[0].Content == "summary prompt"
+                        && (string)m[1].Content == "summary response"),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
             mockPersistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockPersistence.Verify(
                 p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public async Task ClearAndSaveMessagesAsync_WithNoMessages_StillStartsNewSession()
+        {
+            var mockSettings = CreateSettingsMock();
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            SetupCompletedPersistence(mockPersistence);
+
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            manager.AddUserMessage("stale");
+            manager.AddAssistantMessage("stale response");
+
+            await manager.ClearAndSaveMessagesAsync(new List<ChatMessage>());
+
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(0));
+
+            // An empty payload still rotates the session: the marker alone is the boundary.
+            mockPersistence.Verify(
+                p => p.StartSessionWithMessagesAsync(
+                    It.Is<IReadOnlyList<ChatMessage>>(m => m.Count == 0),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
         [Test]
-        public async Task ClearAndSaveMessagesAsync_WaitsForNewSessionMarkerBeforeSaving()
+        public async Task ClearAndSaveMessagesAsync_AwaitsAtomicSessionWrite()
         {
             var mockSettings = CreateSettingsMock();
-            var markerTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
             var mockPersistence = new Mock<IChatPersistenceService>();
             mockPersistence
-                .Setup(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()))
-                .Returns(markerTcs.Task);
-            mockPersistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .Returns(gate.Task);
 
             var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
 
@@ -212,31 +248,14 @@ namespace LMLocal.Tests.Unit
 
             await Task.Delay(50);
 
+            Assert.That(task.IsCompleted, Is.False,
+                "The session write must be awaited, not fire-and-forget");
             mockPersistence.Verify(
-                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
-                Times.Never,
-                "SaveMessagesAsync must not run until MarkNewSessionAsync completes");
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
 
-            markerTcs.SetResult(true);
+            gate.SetResult(true);
             await task;
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

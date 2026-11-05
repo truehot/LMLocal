@@ -400,7 +400,10 @@
                         <input type="checkbox" data-setting="EnableHistoryCompaction">
                         <span class="checkbox-content-wrapper">
                             <span class="checkbox-title">Summarize long conversations</span>
-                            <span class="checkbox-description">When the conversation gets long, older messages are summarized into a concise overview to save tokens.</span>
+                            <span class="checkbox-description">
+                                When the conversation gets long, older messages are summarized into a concise overview to save tokens.
+                                The chat also recovers automatically when a request no longer fits the model's context window.
+                            </span>
                         </span>
                     </label>
                 </div>
@@ -428,9 +431,9 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="OpenToolFilesInEditor">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Open edited files in editor (Beta)</span>
+                            <span class="checkbox-title">Open edited files in editor</span>
                             <span class="checkbox-description">
-                                Opens files created or modified by built-in AI tools directly in the Visual Studio editor. Applies to built-in tools only; files written by MCP servers or subagents are not opened.
+                                Opens files created or modified by built-in AI tools directly in the Visual Studio editor, only when the tool actually wrote the file. Applies to built-in tools only; files written by MCP servers or subagents are not opened.
                             </span>
                         </span>
                     </label>

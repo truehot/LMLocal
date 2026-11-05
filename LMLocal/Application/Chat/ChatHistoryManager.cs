@@ -45,9 +45,24 @@ namespace LMLocal.Application.Chat
         Task<bool> ReplaceHistoryAndPersistAsync(string summary, IEnumerable<ChatMessage> recent, int expectedSize);
 
         /// <summary>
+        /// Replaces the in-memory history without touching persistence. The disk log keeps the full conversation.
+        /// </summary>
+        void ReplaceHistoryInMemory(IEnumerable<ChatMessage> messages);
+
+        /// <summary>
         /// Builds a message list for the current provider. 
         /// </summary>
         List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null);
+
+        /// <summary>
+        /// Removes the assistant message an unsuccessful round committed, and drops the pending assistant state, so the retry neither sees a truncated answer nor commits its tool calls.
+        /// </summary>
+        void DiscardLastAssistantFromFailedRound();
+
+        /// <summary>
+        /// Replaces the in-memory history and writes it as a new session: the marker and every message go out as one append, so a restart loads the compacted history instead of the version that already overflowed.
+        /// </summary>
+        Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages);
 
         /// <summary>
         /// Adds tool execution result messages to history and persists them.
@@ -68,6 +83,11 @@ namespace LMLocal.Application.Chat
         /// Queues an assistant with tool calls to be committed together with the next AddToolExecutionResultMessages, ensuring tool call is saved before results.
         /// </summary>
         void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls);
+
+        /// <summary>
+        /// Drops the queued assistant tool call without committing it, so the next AddToolExecutionResultMessages call cannot resurrect a tool call that was rejected (e.g. an identical repeated call detected as a loop).
+        /// </summary>
+        void DiscardPendingAssistant();
 
         /// <summary>
         /// Clears history and starts a new session, carrying over the last completed step 1:1 (user message + assistant reply with text + tool calls/results in between).
@@ -247,6 +267,59 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
+        /// Drops the queued assistant tool call without committing it.
+        /// </summary>
+        public void DiscardPendingAssistant()
+        {
+            _pendingAssistantContent = null;
+            _pendingAssistantToolCalls = null;
+        }
+
+        /// <summary>
+        /// Replaces the in-memory history and writes it as a new session.
+        /// </summary>
+        public async Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages)
+        {
+            var replacement = messages == null
+                ? new List<ChatMessage>()
+                : messages.Where(m => m != null).ToList();
+
+            _pendingAssistantContent = null;
+            _pendingAssistantToolCalls = null;
+
+            lock (_lock)
+            {
+                _history.Clear();
+                _history.AddRange(replacement);
+                InvalidateCacheLocked();
+            }
+
+            return await _persistence.StartSessionWithMessagesAsync(replacement, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Removes the assistant message an unsuccessful round committed, and drops the pending assistant state, so the retry neither sees a truncated answer nor commits its tool calls.
+        /// </summary>
+        public void DiscardLastAssistantFromFailedRound()
+        {
+            _pendingAssistantContent = null;
+            _pendingAssistantToolCalls = null;
+
+            lock (_lock)
+            {
+                if (_history.Count == 0)
+                    return;
+
+                var last = _history[_history.Count - 1];
+                if (last == null || last.Role != "assistant")
+                    return;
+
+                _history.RemoveAt(_history.Count - 1);
+                InvalidateCacheLocked();
+            }
+        }
+
+        /// <summary>
         /// Adds tool execution result messages to history and persists them.
         /// </summary>
         public void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages)
@@ -312,22 +385,20 @@ namespace LMLocal.Application.Chat
         {
             ClearInMemory();
 
-            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
+            var list = messages == null
+                ? new List<ChatMessage>()
+                : messages.Where(m => m != null).ToList();
 
-            if (messages == null)
-                return;
-
-            var list = messages.Where(m => m != null).ToList();
-            if (list.Count == 0)
-                return;
-
-            lock (_lock)
+            if (list.Count > 0)
             {
-                _history.AddRange(list);
-                InvalidateCacheLocked();
+                lock (_lock)
+                {
+                    _history.AddRange(list);
+                    InvalidateCacheLocked();
+                }
             }
 
-            await _persistence.SaveMessagesAsync(list, CancellationToken.None).ConfigureAwait(false);
+            await _persistence.StartSessionWithMessagesAsync(list, CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -347,8 +418,6 @@ namespace LMLocal.Application.Chat
 
             ClearInMemory();
 
-            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
-
             if (historyFragment != null && historyFragment.Count > 0)
             {
                 lock (_lock)
@@ -356,8 +425,11 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(historyFragment);
                     InvalidateCacheLocked();
                 }
-                await _persistence.SaveMessagesAsync(historyFragment, CancellationToken.None).ConfigureAwait(false);
             }
+
+            await _persistence.StartSessionWithMessagesAsync(
+                historyFragment ?? new List<ChatMessage>(),
+                CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -431,8 +503,6 @@ namespace LMLocal.Application.Chat
 
             ClearInMemory();
 
-            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
-
             if (consolidatedFragment != null && consolidatedFragment.Count > 0)
             {
                 lock (_lock)
@@ -440,8 +510,11 @@ namespace LMLocal.Application.Chat
                     _history.AddRange(consolidatedFragment);
                     InvalidateCacheLocked();
                 }
-                await _persistence.SaveMessagesAsync(consolidatedFragment, CancellationToken.None).ConfigureAwait(false);
             }
+
+            await _persistence.StartSessionWithMessagesAsync(
+                consolidatedFragment ?? new List<ChatMessage>(),
+                CancellationToken.None).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -501,9 +574,28 @@ namespace LMLocal.Application.Chat
                     return false;
             }
 
-            await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
-            await _persistence.SaveMessagesAsync(newHistory, CancellationToken.None).ConfigureAwait(false);
+            await _persistence.StartSessionWithMessagesAsync(newHistory, CancellationToken.None).ConfigureAwait(false);
             return true;
+        }
+
+        /// <summary>
+        /// Replaces the in-memory history without touching persistence. The disk log keeps the full conversation.
+        /// </summary>
+        public void ReplaceHistoryInMemory(IEnumerable<ChatMessage> messages)
+        {
+            var replacement = messages == null
+                ? new List<ChatMessage>()
+                : messages.Where(m => m != null).ToList();
+
+            _pendingAssistantContent = null;
+            _pendingAssistantToolCalls = null;
+
+            lock (_lock)
+            {
+                _history.Clear();
+                _history.AddRange(replacement);
+                InvalidateCacheLocked();
+            }
         }
 
         /// <summary>
@@ -778,14 +870,14 @@ namespace LMLocal.Application.Chat
                 _pendingAssistantContent = null;
                 _pendingAssistantToolCalls = null;
 
-                await _persistence.MarkNewSessionAsync().ConfigureAwait(false);
-
                 lock (_lock)
                 {
                     _history.Clear();
                     _history.AddRange(messages);
                     InvalidateCacheLocked();
                 }
+
+                await _persistence.StartSessionWithMessagesAsync(messages, CancellationToken.None).ConfigureAwait(false);
             }
 
             return messages;

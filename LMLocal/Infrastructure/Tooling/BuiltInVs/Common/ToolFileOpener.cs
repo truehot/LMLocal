@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Reflection;
+using System;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
@@ -21,54 +19,58 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         Task TryOpenEditedFileAsync(string toolName, object result);
     }
 
+    /// <summary>
+    /// Opt-in: only results implementing <see cref="IToolFileOpenResult"/> can open a file, and only when they report that the file was written.
+    /// </summary>
     internal class ToolFileOpener : IToolFileOpener
     {
-        /// <summary>
-        /// Tools that never open their file: they remove files or only change project metadata.
-        /// </summary>
-        private static readonly HashSet<string> IgnoredTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "delete_file",
-            "set_file_project_status"
-        };
-
-        private const string FilePathPropertyName = "FilePath";
-
         private readonly ISettingsManager _settingsManager;
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
+        private readonly Func<string, Task> _openFile;
 
         public ToolFileOpener(
             ISettingsManager settingsManager,
             IVsDependencies vsDependencies,
             IPathResolver pathResolver,
             IFileSystem fileSystem)
+            : this(settingsManager, vsDependencies, pathResolver, fileSystem, FileViewer.OpenFileAsync)
+        {
+        }
+
+        /// <summary>
+        /// Test seam: <paramref name="openFile"/> replaces <see cref="FileViewer.OpenFileAsync"/>.
+        /// </summary>
+        internal ToolFileOpener(
+            ISettingsManager settingsManager,
+            IVsDependencies vsDependencies,
+            IPathResolver pathResolver,
+            IFileSystem fileSystem,
+            Func<string, Task> openFile)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _openFile = openFile ?? throw new ArgumentNullException(nameof(openFile));
         }
 
         public async Task TryOpenEditedFileAsync(string toolName, object result)
         {
             try
             {
-                if (result == null || string.IsNullOrEmpty(toolName))
+                if (!(result is IToolFileOpenResult openResult) || !openResult.WroteFile)
                     return;
 
-                if (IgnoredTools.Contains(toolName))
+                string filePath = openResult.FileToOpen;
+                if (string.IsNullOrEmpty(filePath))
                     return;
 
                 if (!IsOpenInEditorEnabled())
                     return;
 
-                string filePath = GetFilePathFromResult(result);
-                if (string.IsNullOrEmpty(filePath))
-                    return;
-
-                string solutionDir = _vsDependencies?.GetSolutionDirectory();
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
                 if (string.IsNullOrEmpty(solutionDir))
                     return;
 
@@ -78,7 +80,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 if (!_fileSystem.FileExists(absolutePath))
                     return;
 
-                await FileViewer.OpenFileAsync(absolutePath).ConfigureAwait(false);
+                await _openFile(absolutePath).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -96,15 +98,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 return false;
             }
-        }
-
-        private static string GetFilePathFromResult(object result)
-        {
-            var property = result.GetType().GetProperty(FilePathPropertyName, BindingFlags.Public | BindingFlags.Instance);
-            if (property == null || property.PropertyType != typeof(string))
-                return null;
-
-            return property.GetValue(result) as string;
         }
     }
 }

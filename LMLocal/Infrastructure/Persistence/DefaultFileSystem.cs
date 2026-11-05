@@ -39,6 +39,12 @@ namespace LMLocal.Infrastructure.Persistence
         Task WriteAllBytesWithEncodingAsync(string path, string content, Encoding encoding, bool hasBom, CancellationToken cancellationToken = default);
 
         Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Same read as <see cref="ReadLinesRangeAsync"/>, plus the file's line count when that read reached the end of the file (null when it stopped after <paramref name="endLine"/>).
+        /// </summary>
+        Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default);
+
         Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default);
         void ReplaceOrCreate(string sourceFileName, string destinationFileName);
 
@@ -294,6 +300,12 @@ namespace LMLocal.Infrastructure.Persistence
 
         public async Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
         {
+            var (lines, _) = await ReadLinesRangeWithTotalAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false);
+            return lines;
+        }
+
+        public async Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+        {
             if (string.IsNullOrEmpty(path)) throw new ArgumentNullException(nameof(path));
             if (startLine < 1) throw new ArgumentOutOfRangeException(nameof(startLine), "startLine must be >= 1");
             if (endLine < startLine) throw new ArgumentOutOfRangeException(nameof(endLine), "endLine must be >= startLine");
@@ -306,17 +318,22 @@ namespace LMLocal.Infrastructure.Persistence
                 {
                     var result = new List<string>();
                     int currentLine = 0;
+                    bool reachedEnd = true;
                     string line;
                     while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         currentLine++;
                         if (currentLine < startLine) continue;
-                        if (currentLine > endLine) break;
+                        if (currentLine > endLine)
+                        {
+                            reachedEnd = false;
+                            break;
+                        }
                         result.Add(line);
                     }
 
-                    return result;
+                    return (result, reachedEnd ? currentLine : (int?)null);
                 }
             }
         }

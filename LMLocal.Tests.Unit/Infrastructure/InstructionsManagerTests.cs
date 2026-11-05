@@ -524,6 +524,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<(string content, Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
                 => Task.FromResult(("{}", Encoding.UTF8, false));
             public Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
+            public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+                => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
+
             public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public void ReplaceOrCreate(string sourceFileName, string destinationFileName) { }
             public string[] GetFiles(string path, string searchPattern) => Array.Empty<string>();

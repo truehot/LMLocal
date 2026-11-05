@@ -20,6 +20,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
         private Mock<IBuiltInVsToolProvider> _builtInMock;
         private Mock<IMcpToolManager> _mcpToolManagerMock;
         private Mock<ISubAgentsCatalog> _catalogMock;
+        private Mock<ISubAgentsParallelPolicy> _parallelPolicyMock;
         private ToolQueueProvider _provider;
 
         private static SubAgentsConfig Config(params SubAgentDefinition[] agents)
@@ -49,6 +50,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
             _builtInMock = new Mock<IBuiltInVsToolProvider>();
             _mcpToolManagerMock = new Mock<IMcpToolManager>();
             _catalogMock = new Mock<ISubAgentsCatalog>();
+            _parallelPolicyMock = new Mock<ISubAgentsParallelPolicy>();
 
             _settingsManagerMock.SetupGet(s => s.Current)
                 .Returns(new AppSettings { EnableAiTools = true, EnableSubAgents = true, EnableAiWriteTools = false });
@@ -59,7 +61,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
                 _settingsManagerMock.Object,
                 _builtInMock.Object,
                 _mcpToolManagerMock.Object,
-                _catalogMock.Object);
+                _catalogMock.Object,
+                _parallelPolicyMock.Object);
         }
 
         private void SetBuiltIn(params ToolDefinition[] tools)
@@ -244,7 +247,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
         }
 
         [Test]
-        public void GetMainQueue_AgentDescription_IncludesRunLimits()
+        public void GetMainQueue_AgentDescription_OmitsRunLimits()
         {
             SetBuiltIn(new ToolDefinition { Name = "read_file_lines" });
             var agent = new SubAgentDefinition
@@ -261,9 +264,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
 
             var def = _provider.GetMainQueue().Definitions.Single(d => d.Name == "editor");
 
-            Assert.That(def.Description, Does.Contain("Edits files."));
-            Assert.That(def.Description, Does.Contain("up to 35 tool rounds"));
-            Assert.That(def.Description, Does.Contain("180s timeout"));
+            Assert.That(def.Description, Is.EqualTo("Edits files."));
         }
 
         [Test]
@@ -275,6 +276,23 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
             var def = _provider.GetMainQueue().Definitions.Single(d => d.Name == "reasoner");
 
             Assert.That(def.Description, Is.EqualTo("Agent reasoner"));
+        }
+
+        [Test]
+        public void GetMainQueue_AgentDescription_ParallelAgent_AppendsParallelHint()
+        {
+            SetBuiltIn(new ToolDefinition { Name = "read_file_lines" });
+            SetSnapshot(Config(
+                Agent("reader", new List<string> { "read_file_lines" }),
+                Agent("reasoner", new List<string>())));
+            _parallelPolicyMock.Setup(p => p.IsParallelEnabled("reader")).Returns(true);
+
+            var defs = _provider.GetMainQueue().Definitions;
+
+            Assert.That(defs.Single(d => d.Name == "reader").Description,
+                Is.EqualTo("Agent reader Safe to call several times in parallel."));
+            Assert.That(defs.Single(d => d.Name == "reasoner").Description,
+                Is.EqualTo("Agent reasoner"));
         }
 
         // =====================================================================

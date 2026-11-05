@@ -13,8 +13,6 @@ using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Persistence
 {
-
-
     internal class ChatPersistenceService : IChatPersistenceService
     {
         private readonly string _chatHistoryDir;
@@ -83,6 +81,8 @@ namespace LMLocal.Infrastructure.Persistence
         /// </summary>
         public async Task SaveLastMessageAsync(ChatMessage message, CancellationToken cancellationToken = default)
         {
+            Guid sessionId = _currentSessionId;
+
             if (_settingsManager?.Current?.EnableChatLogging != true || message == null) return;
 
             await _writeSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -92,14 +92,14 @@ namespace LMLocal.Infrastructure.Persistence
                 string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                string jsonLine = ChatLogSerializer.BuildMessageLine(message, _currentSessionId.ToString(), DateTime.UtcNow);
+                string jsonLine = ChatLogSerializer.BuildMessageLine(message, sessionId.ToString(), DateTime.UtcNow);
 
                 await AppendLineAsync(filePath, jsonLine, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error("Failed to save chat message history, trying again", ex);
-                await TryFallbackSaveAsync(message, cancellationToken).ConfigureAwait(false);
+                await TryFallbackSaveAsync(message, sessionId, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -112,6 +112,8 @@ namespace LMLocal.Infrastructure.Persistence
         /// </summary>
         public async Task SaveMessagesAsync(IEnumerable<ChatMessage> messages, CancellationToken cancellationToken = default)
         {
+            Guid sessionId = _currentSessionId;
+
             if (_settingsManager?.Current?.EnableChatLogging != true || messages == null)
                 return;
 
@@ -127,7 +129,7 @@ namespace LMLocal.Infrastructure.Persistence
 
                 var sb = new StringBuilder(list.Count * 256);
                 for (int i = 0; i < list.Count; i++)
-                    sb.Append(ChatLogSerializer.BuildMessageLine(list[i], _currentSessionId.ToString(), DateTime.UtcNow));
+                    sb.Append(ChatLogSerializer.BuildMessageLine(list[i], sessionId.ToString(), DateTime.UtcNow));
 
                 await AppendLineAsync(filePath, sb.ToString(), cancellationToken).ConfigureAwait(false);
             }
@@ -135,7 +137,7 @@ namespace LMLocal.Infrastructure.Persistence
             {
                 InternalLogger.Error("Failed to batch-save chat messages, trying fallback", ex);
                 foreach (var msg in list)
-                    await TryFallbackSaveAsync(msg, cancellationToken).ConfigureAwait(false);
+                    await TryFallbackSaveAsync(msg, sessionId, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -144,13 +146,14 @@ namespace LMLocal.Infrastructure.Persistence
         }
 
         /// <summary>
-        /// Writes a session_start marker to the current jsonl file, establishing a new session boundary and rotating the current session ID.
+        /// Writes a session_start marker to the current jsonl file and rotates the current session ID.
         /// </summary>
         public async Task MarkNewSessionAsync(CancellationToken cancellationToken = default)
         {
             if (_settingsManager?.Current?.EnableChatLogging != true) return;
 
-            _currentSessionId = Guid.NewGuid();
+            Guid newSessionId = Guid.NewGuid();
+            _currentSessionId = newSessionId;
 
             await _writeSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -159,13 +162,76 @@ namespace LMLocal.Infrastructure.Persistence
                 string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                string jsonLine = ChatLogSerializer.BuildSessionStartMarker(_currentSessionId.ToString(), DateTime.UtcNow);
+                string jsonLine = ChatLogSerializer.BuildSessionStartMarker(newSessionId.ToString(), DateTime.UtcNow);
 
                 await AppendLineAsync(filePath, jsonLine, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
+                // No rollback.
                 InternalLogger.Error("Failed to write session_start marker", ex);
+            }
+            finally
+            {
+                _writeSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// Starts a new session and writes its session_start marker together with the supplied messages as a single append, under one semaphore acquisition and one session ID rotation.
+        /// </summary>
+        public async Task<bool> StartSessionWithMessagesAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default)
+        {
+            if (_settingsManager?.Current?.EnableChatLogging != true)
+                return false;
+
+            List<ChatMessage> validMessages = null;
+            if (messages != null)
+            {
+                for (int i = 0; i < messages.Count; i++)
+                {
+                    var message = messages[i];
+                    if (message == null) continue;
+
+                    if (validMessages == null)
+                        validMessages = new List<ChatMessage>(messages.Count);
+
+                    validMessages.Add(message);
+                }
+            }
+
+            Guid previousSessionId = _currentSessionId;
+            Guid newSessionId = Guid.NewGuid();
+            _currentSessionId = newSessionId;
+
+            await _writeSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                string fileName = ChatLogSerializer.BuildFileName(DateTime.UtcNow, _settingsManager.ChatHistoryFileLabel);
+                string filePath = Path.Combine(_chatHistoryDir, fileName);
+
+                DateTime utcNow = DateTime.UtcNow;
+                string sessionId = newSessionId.ToString();
+
+                var sb = new StringBuilder((validMessages?.Count ?? 0) * 256 + 128);
+                sb.Append(ChatLogSerializer.BuildSessionStartMarker(sessionId, utcNow));
+
+                if (validMessages != null)
+                {
+                    for (int i = 0; i < validMessages.Count; i++)
+                        sb.Append(ChatLogSerializer.BuildMessageLine(validMessages[i], sessionId, utcNow));
+                }
+
+                await AppendLineAsync(filePath, sb.ToString(), cancellationToken).ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                // Roll back.
+                _currentSessionId = previousSessionId;
+                InternalLogger.Error("Failed to start chat session with messages", ex);
+                return false;
             }
             finally
             {
@@ -255,7 +321,7 @@ namespace LMLocal.Infrastructure.Persistence
         /// <summary>
         /// Fallback save: writes to a unique file name when the primary write fails.
         /// </summary>
-        private async Task TryFallbackSaveAsync(ChatMessage message, CancellationToken cancellationToken)
+        private async Task TryFallbackSaveAsync(ChatMessage message, Guid sessionId, CancellationToken cancellationToken)
         {
             try
             {
@@ -263,7 +329,7 @@ namespace LMLocal.Infrastructure.Persistence
                 string fileName = baseName.Replace(".jsonl", $"_{Guid.NewGuid():N}.jsonl");
                 string filePath = Path.Combine(_chatHistoryDir, fileName);
 
-                string jsonLine = ChatLogSerializer.BuildMessageLine(message, _currentSessionId.ToString(), DateTime.UtcNow);
+                string jsonLine = ChatLogSerializer.BuildMessageLine(message, sessionId.ToString(), DateTime.UtcNow);
 
                 await _fileSystem.WriteAllBytesAsync(filePath, Encoding.UTF8.GetBytes(jsonLine), cancellationToken).ConfigureAwait(false);
             }

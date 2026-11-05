@@ -66,7 +66,14 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Returns(_persistenceMock.Object);
         }
 
-        private SubAgentsService CreateService(ISubAgentFailureLogger failureLogger = null)
+        /// <summary>
+        /// Builds the service under test. <paramref name="loopRecoveryEnabled"/> defaults to the production
+        /// configuration, so the suite covers what actually ships; tests that pin the hard-stop behaviour
+        /// pass <c>false</c> explicitly.
+        /// </summary>
+        private SubAgentsService CreateService(
+            ISubAgentFailureLogger failureLogger = null,
+            bool loopRecoveryEnabled = SubAgentsService.DefaultLoopRecoveryEnabled)
         {
             return new SubAgentsService(
                 _settingsManagerMock.Object,
@@ -76,16 +83,19 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 _queueProviderMock.Object,
                 _loopDetectorMock.Object,
                 _persistenceFactoryMock.Object,
-                failureLogger ?? NullSubAgentFailureLogger.Instance);
+                failureLogger ?? NullSubAgentFailureLogger.Instance,
+                loopRecoveryEnabled);
         }
 
-        private static SubAgentRunRequest BuildRequest()
+        private static SubAgentRunRequest BuildRequest(int? timeoutSeconds = null, int? maxRounds = null)
         {
             return new SubAgentRunRequest
             {
                 AgentName = "agent",
                 Prompt = "do it",
-                Model = "m"
+                Model = "m",
+                TimeoutSeconds = timeoutSeconds,
+                MaxRounds = maxRounds
             };
         }
 
@@ -147,7 +157,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     Result = "file text"
                 });
 
-            var response = await CreateService(logger).ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+            var response = await CreateService(logger, loopRecoveryEnabled: false)
+                .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
             Assert.That(response.Error, Does.Contain("repeated tool call loop"));
@@ -164,13 +175,139 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public async Task ExecutePromptAsync_LoopRecoveryEnabled_ClosesTurnAndContinuesAsUserRound()
+        {
+            var logger = new RecordingFailureLogger();
+            _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+
+            var call = new ToolCallRecord
+            {
+                CallId = "call_1",
+                FunctionName = "read_file_lines",
+                ArgumentsJson = "{\"path\":\"a.cs\"}"
+            };
+
+            var toolRound = new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.ToolCalls,
+                Stream = new StreamCompletionResult { ToolCalls = new[] { call } }
+            };
+            var completedRound = new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Completed,
+                Stream = new StreamCompletionResult { ContentResponse = "done" }
+            };
+
+            var requests = new List<StreamRoundRequest>();
+
+            // MaxDuplicateToolRounds = 2, so the loop is detected on the third identical round.
+            var rounds = new Queue<StreamRoundResult>(new[] { toolRound, toolRound, toolRound, completedRound });
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest req, CancellationToken ct) =>
+                {
+                    requests.Add(req);
+                    return Task.FromResult(rounds.Count > 0 ? rounds.Dequeue() : completedRound);
+                });
+
+            AllowTool("read_file_lines");
+            _loopDetectorMock
+                .Setup(d => d.AreSameToolCalls(
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
+                .Returns(true);
+
+            _toolExecutionManagerMock
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
+                .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
+
+            var response = await CreateService(logger, loopRecoveryEnabled: true)
+                .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("done"));
+            Assert.That(logger.Stages, Does.Contain("Recovered"));
+            Assert.That(logger.Stage, Is.Not.EqualTo("Final"), "A recovered run must not be logged as a failure.");
+
+            Assert.That(requests, Has.Count.EqualTo(4));
+
+            // Round 0 is the original user turn; rounds 1 and 2 repeat the same call.
+            Assert.That(requests[0].IsToolRound, Is.False);
+            Assert.That(requests[0].Prompt, Is.EqualTo("do it"));
+            Assert.That(requests[1].IsToolRound, Is.True);
+            Assert.That(requests[1].Prompt, Is.Null);
+            Assert.That(requests[2].IsToolRound, Is.True);
+
+            // Round 3 is the recovered user turn: it carries the nudge as its prompt, and the original prompt
+            // is not sent twice.
+            Assert.That(requests[3].IsToolRound, Is.False);
+            Assert.That(requests[3].Prompt, Is.EqualTo(SubAgentsService.LoopRecoveryNudge),
+                "The nudge must be delivered as the round prompt, otherwise the model never sees it.");
+            Assert.That(requests[3].ToolResults, Is.Null);
+
+            var recoveredHistory = requests[3].History.GetHistoryCopy();
+            Assert.That(
+                recoveredHistory.Select(m => m.Role),
+                Is.EqualTo(new[] { "assistant" }),
+                "The tool turn is closed by an assistant message before the new user turn starts.");
+            Assert.That(recoveredHistory[0].Content, Is.EqualTo("INTERRUPTED"));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_LoopRecoveryEnabled_ExhaustedAttemptsStillFail()
+        {
+            var logger = new RecordingFailureLogger();
+            _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+
+            var call = new ToolCallRecord
+            {
+                CallId = "call_1",
+                FunctionName = "read_file_lines",
+                ArgumentsJson = "{\"path\":\"a.cs\"}"
+            };
+            var toolRound = new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.ToolCalls,
+                Stream = new StreamCompletionResult { ToolCalls = new[] { call } }
+            };
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(toolRound);
+
+            AllowTool("read_file_lines");
+            _loopDetectorMock
+                .Setup(d => d.AreSameToolCalls(
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
+                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
+                .Returns(true);
+
+            _toolExecutionManagerMock
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
+                .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
+
+            var response = await CreateService(logger, loopRecoveryEnabled: true)
+                .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.Contain("repeated tool call loop"),
+                "Once the recovery budget is spent, the hard stop must remain the last line of defence.");
+            Assert.That(logger.Stages.Count(s => s == "Recovered"), Is.EqualTo(2),
+                "The run recovers at most LoopRecoveryMaxAttempts times.");
+            Assert.That(logger.Stage, Is.EqualTo("Final"));
+        }
+
+        [Test]
         public async Task ExecutePromptAsync_RejectedToolCall_IsLoggedWithErrorAndWithoutResult()
         {
             var logger = new RecordingFailureLogger();
             SetupRepeatedToolCalls("write_file", "{\"path\":\"a.cs\"}");
 
             // The queue has no definitions, so every call is rejected before execution.
-            var response = await CreateService(logger).ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+            // Recovery is pinned off: this test guards the logging of rejected attempts, not the recovery path.
+            var response = await CreateService(logger, loopRecoveryEnabled: false)
+                .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
             Assert.That(response.Error, Does.Contain("maximum rounds"));
@@ -215,12 +352,67 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Returns(ToolQueue.ForSubAgent("agent", definitions));
         }
 
+        // =====================================================================
+        // Timeout / cancellation reporting
+        // =====================================================================
+
+        [Test]
+        public async Task ExecutePromptAsync_InternalTimeout_ReportsTimeoutWithSeconds()
+        {
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest req, CancellationToken ct) => RoundThatNeverCompletes(ct));
+
+            var response = await CreateService()
+                .ExecutePromptAsync(BuildRequest(timeoutSeconds: 1, maxRounds: 50), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.StartWith("SubAgent timed out after 1s"),
+                "The reason and the number must survive the 120-char UI truncation.");
+            Assert.That(response.Error, Does.Contain("Split the task into smaller pieces"),
+                "A timeout must tell the main model how to retry.");
+            Assert.That(response.Error, Does.Not.Contain("cancelled"),
+                "An internal timeout must not be reported as a cancellation.");
+            Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_ParentCancellation_ReportsStoppedBeforeCompletion()
+        {
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest req, CancellationToken ct) => RoundThatNeverCompletes(ct));
+
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+
+                var response = await CreateService()
+                    .ExecutePromptAsync(BuildRequest(timeoutSeconds: 360), cts.Token);
+
+                Assert.That(response.Success, Is.False);
+                Assert.That(response.Error, Does.StartWith("SubAgent did not finish: stopped before completion (360s"));
+                Assert.That(response.Error, Does.Not.Contain("timed out"));
+                Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+                Assert.That(response.Error, Does.Not.Contain(".."));
+            }
+        }
+
+        private static Task<StreamRoundResult> RoundThatNeverCompletes(CancellationToken ct)
+        {
+            var tcs = new TaskCompletionSource<StreamRoundResult>();
+            ct.Register(() => tcs.TrySetCanceled(ct));
+            return tcs.Task;
+        }
+
         /// <summary>
         /// Captures what <see cref="SubAgentsService"/> hands to the failure logger.
         /// </summary>
         private sealed class RecordingFailureLogger : ISubAgentFailureLogger
         {
             public string Stage { get; private set; }
+
+            public List<string> Stages { get; } = new List<string>();
 
             public List<SubAgentRecentCall> RecentCalls { get; private set; }
 
@@ -239,6 +431,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 CancellationToken cancellationToken = default)
             {
                 Stage = stage;
+                Stages.Add(stage);
                 RecentCalls = recentCalls?.ToList();
 
                 return Task.CompletedTask;

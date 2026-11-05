@@ -52,7 +52,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                "Optionally filter by 'project_name', 'namespace' and/or 'assembly_name' (NuGet package id usually matches the assembly name). " +
                                "Generic types use arity for exact lookup (e.g., 'System.Collections.Generic.List`1'). " +
                                "Member lists are capped at 100 per category; totals and a 'has_more_results' flag are included. " +
-                               "Partial search results are capped at 50 matches.",
+                               "Partial search results are capped at 50 matches. " +
+                               "Safe to call several times in parallel.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -613,6 +614,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return (null, null, null, null, false, "Parameter 'type_name' is required and must be a string.");
 
             if (string.IsNullOrWhiteSpace(typeName))
+                return (null, null, null, null, false, "Parameter 'type_name' cannot be empty.");
+
+            typeName = typeName.Trim();
+            const string GlobalAlias = "global::";
+            if (typeName.StartsWith(GlobalAlias, StringComparison.Ordinal))
+                typeName = typeName.Substring(GlobalAlias.Length);
+
+            if (typeName.Length == 0)
                 return (null, null, null, null, false, "Parameter 'type_name' cannot be empty.");
 
             string projectName = null;

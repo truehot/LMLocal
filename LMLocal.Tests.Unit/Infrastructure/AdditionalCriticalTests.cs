@@ -140,6 +140,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             }
 
 
+            public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+                => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
+
             public async Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
             {
                 await _allowWrite.Task.ConfigureAwait(false);

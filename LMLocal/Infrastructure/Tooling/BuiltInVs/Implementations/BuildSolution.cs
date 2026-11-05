@@ -98,7 +98,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             string selectedProjectName = null;
             if (!string.IsNullOrWhiteSpace(projectName))
             {
-                var matches = ProjectFinder.FindByName(dte.Solution, projectName);
+                var matches = ProjectFinder.FindByNameOrPath(dte.Solution, projectName, Path.GetDirectoryName(solutionPath));
                 if (matches.Count == 0)
                     return ErrorResponse($"Project '{projectName}' not found in the open solution.", solutionName, solutionPath);
                 if (matches.Count > 1)
@@ -510,7 +510,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ["project_name"] = new ToolDetails
                         {
                             Type = "string",
-                            Description = "Name of the project to build instead of the whole solution. Accepts project name, unique name, or project file name."
+                            Description = "Project to build instead of the whole solution. Accepts the project name, unique name, project file name, or the path to its .csproj (relative to the solution or absolute). Omit it to build the whole solution."
                         },
                         ["timeout_seconds"] = new ToolDetails
                         {

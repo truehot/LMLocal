@@ -95,7 +95,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var result = ApiErrorParser.ParseErrorBody(json);
 
-            Assert.That(result.Message, Is.EqualTo("{}"));
+            Assert.That(result.Message, Is.Not.Empty);
+            Assert.That(result.RawBody, Is.EqualTo("{}"));
         }
 
         [Test]
@@ -115,21 +116,36 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
-        public void ParseErrorBody_InvalidJson_ReturnsTrimmedRawText()
+        public void ParseErrorBody_WithoutMessage_KeepsBodyOutOfMessage()
         {
-            var result = ApiErrorParser.ParseErrorBody("<html>Server Error</html>");
+            // The body must not become the text the user reads or the text the overflow detector matches on.
+            var json = "{\"error\":{\"code\":\"context_length_exceeded\"}}";
 
-            Assert.That(result.Message, Is.EqualTo("<html>Server Error</html>"));
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.Message, Does.Not.Contain("context_length_exceeded"));
+            Assert.That(result.Message, Is.Not.Empty);
+            Assert.That(result.RawBody, Does.Contain("context_length_exceeded"));
+            Assert.That(result.RawCode, Is.EqualTo("context_length_exceeded"));
         }
 
         [Test]
-        public void ParseErrorBody_TruncatesLongInvalidJson()
+        public void ParseErrorBody_InvalidJson_KeepsRawTextInRawBody()
+        {
+            var result = ApiErrorParser.ParseErrorBody("<html>Server Error</html>");
+
+            Assert.That(result.Message, Is.Not.EqualTo("<html>Server Error</html>"));
+            Assert.That(result.RawBody, Is.EqualTo("<html>Server Error</html>"));
+        }
+
+        [Test]
+        public void ParseErrorBody_TruncatesLongInvalidBody()
         {
             var longText = new string('x', 500);
 
             var result = ApiErrorParser.ParseErrorBody(longText);
 
-            Assert.That(result.Message.Length, Is.EqualTo(303)); // 300 + "..."
+            Assert.That(result.RawBody.Length, Is.EqualTo(303)); // 300 + "..."
         }
 
         [Test]
@@ -139,8 +155,8 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var result = ApiErrorParser.ParseErrorBody(longJson);
 
-            Assert.That(result.Message.Length, Is.EqualTo(303)); // 300 + "..."
-            Assert.That(result.Message.EndsWith("..."));
+            Assert.That(result.RawBody.Length, Is.EqualTo(303)); // 300 + "..."
+            Assert.That(result.RawBody.EndsWith("..."), Is.True);
         }
 
         // --- metadata / provider / retry_after ---
@@ -184,6 +200,55 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var result = ApiErrorParser.ParseErrorBody(json);
 
             Assert.That(result.RetryAfterSeconds, Is.EqualTo(10.0));
+        }
+
+        // --- structured context-overflow markers ---
+
+        [Test]
+        public void ParseErrorBody_StringCode_KeepsRawCode()
+        {
+            var json = "{\"error\":{\"message\":\"This model's maximum context length is 8192 tokens\",\"code\":\"context_length_exceeded\"}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.RawCode, Is.EqualTo("context_length_exceeded"));
+            Assert.That(result.Code, Is.Null, "string code must not be parsed as a number");
+        }
+
+        [Test]
+        public void ParseErrorBody_ErrorType_IsRead()
+        {
+            var json = "{\"error\":{\"message\":\"exceeds the available context size\",\"type\":\"exceed_context_size_error\"}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.Type, Is.EqualTo("exceed_context_size_error"));
+        }
+
+        [Test]
+        public void ParseErrorBody_NumericCode_StillFillsCodeAndLeavesRawCodeNull()
+        {
+            var json = "{\"error\":{\"message\":\"bad request\",\"code\":400}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.Code, Is.EqualTo(400));
+            Assert.That(result.RawCode, Is.Null);
+        }
+
+        [Test]
+        public void ParseErrorBody_WithoutMessage_KeepsStructuredFieldsAndRawBody()
+        {
+            var json = "{\"error\":{\"type\":\"exceed_context_size_error\",\"code\":\"context_length_exceeded\"}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.Type, Is.EqualTo("exceed_context_size_error"));
+            Assert.That(result.RawCode, Is.EqualTo("context_length_exceeded"));
+
+            // The body is available for the log, but it must not masquerade as the user-facing message.
+            Assert.That(result.RawBody, Does.Contain("context_length_exceeded"));
+            Assert.That(result.Message, Does.Not.Contain("context_length_exceeded"));
         }
 
         // --- IsRateLimit ---

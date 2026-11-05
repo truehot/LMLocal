@@ -133,6 +133,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
 
+        public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
+
         public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
         {
             if (lineHandler == null) throw new ArgumentNullException(nameof(lineHandler));
@@ -275,6 +278,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             return result;
         }
 
+
+        public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
 
         public async Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
         {
@@ -436,6 +442,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
 
+        public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
+
         public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
         {
             if (lineHandler == null) throw new ArgumentNullException(nameof(lineHandler));
@@ -586,6 +595,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
 
+        public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
+
         public async Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
         {
             await _allowWrite.Task.ConfigureAwait(false);
@@ -727,6 +739,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             return Task.FromResult(result);
         }
 
+
+        public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
 
         public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default)
         {

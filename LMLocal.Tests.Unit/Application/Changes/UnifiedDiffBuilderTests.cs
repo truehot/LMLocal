@@ -508,9 +508,7 @@ namespace LMLocal.Tests.Unit.Application.Changes
             for (int i = indices.Count - 1; i > 0; i--)
             {
                 int j = random.Next(i + 1);
-                int swap = indices[i];
-                indices[i] = indices[j];
-                indices[j] = swap;
+                (indices[j], indices[i]) = (indices[i], indices[j]);
             }
 
             for (int i = 0; i < 100; i++)

@@ -26,6 +26,32 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(error, Is.Not.Null.And.Contains("type_name"));
         }
 
+        [TestCase("global::LMLocal.Core.Models.SubAgentsConfig", "LMLocal.Core.Models.SubAgentsConfig")]
+        [TestCase("  global::System.IO.Path  ", "System.IO.Path")]
+        [TestCase("System.Collections.Generic.List`1", "System.Collections.Generic.List`1")]
+        [TestCase("Global::Foo", "Global::Foo")] // the C# alias is lower-case only
+        public void ExtractAndValidateParameters_StripsGlobalAliasQualifier(string input, string expected)
+        {
+            var (typeName, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            {
+                ["type_name"] = input
+            });
+
+            Assert.That(error, Is.Null);
+            Assert.That(typeName, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ExtractAndValidateParameters_OnlyGlobalAlias_ReturnsError()
+        {
+            var (_, _, _, _, _, error) = InspectType.ExtractAndValidateParameters(new Dictionary<string, object>
+            {
+                ["type_name"] = "global::"
+            });
+
+            Assert.That(error, Is.Not.Null.And.Contains("cannot be empty"));
+        }
+
         [Test]
         public void ExtractAndValidateParameters_NonStringTypeName_ReturnsError()
         {

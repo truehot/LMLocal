@@ -19,6 +19,53 @@ namespace LMLocal.Tests.Unit
     public class ChatHistoryManagerTests
     {
         [Test]
+        public void ReplaceHistoryInMemory_ReplacesHistory_WithoutTouchingPersistence()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+
+            manager.AddUserMessage("first");
+            mockPersistence.Invocations.Clear();
+
+            manager.ReplaceHistoryInMemory(new List<ChatMessage>
+            {
+                new ChatMessage("user", "summary placeholder"),
+                new ChatMessage("assistant", "summary"),
+                new ChatMessage("user", "prompt")
+            });
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(3));
+            Assert.That(history[0].Content, Is.EqualTo("summary placeholder"));
+            Assert.That(history[2].Content, Is.EqualTo("prompt"));
+
+            mockPersistence.Verify(
+                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+            mockPersistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [Test]
+        public void ReplaceHistoryInMemory_SkipsNullEntries()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.ReplaceHistoryInMemory(new List<ChatMessage>
+            {
+                new ChatMessage("user", "kept"),
+                null
+            });
+
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(1));
+        }
+
+        [Test]
         public void AddUserMessage_AddsMessageToHistory()
         {
             var mockSettings = new Mock<ISettingsManager>();
@@ -300,11 +347,20 @@ namespace LMLocal.Tests.Unit
             // Returned list matches history
             Assert.That(messages.Count, Is.EqualTo(2));
 
-            // Must fork into a new session (MarkNewSessionAsync called exactly once)
+            // Must fork into a new session that carries the loaded messages with it (regression: the fork
+            // used to write only a marker, so after a restart it contained nothing of the loaded history)
+            mockPersistence.Verify(
+                p => p.StartSessionWithMessagesAsync(
+                    It.Is<IReadOnlyList<ChatMessage>>(m =>
+                        m.Count == 2
+                        && (string)m[0].Content == "q1"
+                        && (string)m[1].Content == "a1"),
+                    It.IsAny<System.Threading.CancellationToken>()),
+                Times.Once,
+                "Must fork a new session with the loaded messages so continuation does not mutate the loaded session");
             mockPersistence.Verify(
                 p => p.MarkNewSessionAsync(It.IsAny<System.Threading.CancellationToken>()),
-                Times.Once,
-                "Must fork a new session so continuation does not mutate the loaded session");
+                Times.Never);
         }
 
         [Test]
@@ -1488,6 +1544,124 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public void DiscardPendingAssistant_PendingCallIsNotResurrectedByTheNextToolRound()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("q1");
+            manager.SetPendingAssistant(null, ToolCalls(("c1", "read_file_lines")));
+
+            manager.DiscardPendingAssistant();
+
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "{\"ok\":true}", "c1") });
+
+            var roles = manager.GetHistoryCopy().Select(m => m.Role).ToList();
+
+            Assert.That(roles, Is.EqualTo(new[] { "user", "tool" }),
+                "The discarded call must not be committed by the next tool round.");
+        }
+
+        [Test]
+        public void DiscardPendingAssistant_LeavesCommittedHistoryUntouched()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("q1");
+            manager.AddAssistantMessage("a1");
+            manager.AddUserMessage("q2");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "read_file_lines")));
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "{\"ok\":true}", "c1") });
+
+            var before = manager.GetHistoryCopy().Select(m => m.Role + "|" + m.Content).ToList();
+
+            manager.SetPendingAssistant(null, ToolCalls(("c2", "read_file_lines")));
+            manager.DiscardPendingAssistant();
+
+            var after = manager.GetHistoryCopy().Select(m => m.Role + "|" + m.Content).ToList();
+
+            Assert.That(after, Is.EqualTo(before),
+                "Discarding a pending call must not modify the committed history.");
+        }
+
+        [Test]
+        public void DiscardPendingAssistant_WithoutPendingState_IsIdempotentNoOp()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("q1");
+
+            Assert.DoesNotThrow(() => manager.DiscardPendingAssistant());
+            Assert.DoesNotThrow(() => manager.DiscardPendingAssistant());
+
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "{\"ok\":true}", "c1") });
+
+            Assert.That(manager.GetHistoryCopy().Select(m => m.Role), Is.EqualTo(new[] { "user", "tool" }));
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_AssistantClosureBeforeUserNudge_KeepsTheUserMessage()
+        {
+            // The loop-recovery shape: tool result -> assistant(closure) -> user(nudge).
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("q1");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "read_file_lines")));
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "{\"ok\":true}", "c1") });
+            manager.AddAssistantMessage("INTERRUPTED", null);
+
+            // Production sequence of a loop-recovery round: normalize, then the round's prompt is added
+            // (see StreamingRoundService: EnsureHistoryNormalized -> AddUserMessage(Prompt) -> Build).
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("RECOVERY MODE: DATA VALIDATION");
+
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            Assert.That(
+                messages.Select(m => m.Role),
+                Is.EqualTo(new[] { "system", "user", "assistant", "tool", "assistant", "user" }),
+                "The collected work must stay in context and the nudge must reach the model.");
+            Assert.That(messages.Last().Content, Does.Contain("RECOVERY MODE"));
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_UserMessagePreAddedToHistory_IsNotSentToTheModel()
+        {
+            // Guards the delivery mechanism: a user message appended directly to history is the TRAILING message,
+            // so normalization skips it and nothing re-adds it. This is why SubAgentsService delivers the nudge
+            // as the next round's prompt instead of calling AddUserMessage itself.
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("q1");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "read_file_lines")));
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "{\"ok\":true}", "c1") });
+            manager.AddAssistantMessage("INTERRUPTED", null);
+            manager.AddUserMessage("RECOVERY MODE: DATA VALIDATION");
+
+            manager.EnsureHistoryNormalized();
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            Assert.That(
+                messages.Select(m => m.Role),
+                Is.EqualTo(new[] { "system", "user", "assistant", "tool", "assistant" }),
+                "A pre-added trailing user message is dropped by normalization and never reaches the model.");
+            Assert.That(messages.Any(m => m.Content != null && m.Content.ToString().Contains("RECOVERY MODE")), Is.False);
+        }
+
+        [Test]
         public async Task ConsolidateLastExchange_LastAssistantHasNoText_FallsBackToPreviousStep()
         {
             var persistence = CreatePersistenceMock();
@@ -1566,7 +1740,13 @@ namespace LMLocal.Tests.Unit
             await manager.ConsolidateLastExchangeAsync();
 
             Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(0));
-            persistence.Verify(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()), Times.Once);
+            // Marker-only atomic write: nothing is carried over, but the new session still starts.
+            persistence.Verify(
+                p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Once);
+            persistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
             persistence.Verify(
                 p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
                 Times.Never);
@@ -1578,9 +1758,9 @@ namespace LMLocal.Tests.Unit
             var persistence = CreatePersistenceMock();
             List<ChatMessage> saved = null;
             persistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Callback<IEnumerable<ChatMessage>, CancellationToken>((messages, _) => saved = new List<ChatMessage>(messages))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyList<ChatMessage>, CancellationToken>((messages, _) => saved = new List<ChatMessage>(messages))
+                .ReturnsAsync(true);
 
             var manager = CreateManager(persistence);
 
@@ -1651,7 +1831,9 @@ namespace LMLocal.Tests.Unit
             Assert.That(second.Count, Is.EqualTo(2));
             Assert.That(second[0].Content, Is.EqualTo("q1"));
             Assert.That(second[1].Content, Is.EqualTo("a1"));
-            persistence.Verify(p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+            persistence.Verify(
+                p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(2));
         }
 
         [Test]
@@ -1660,9 +1842,9 @@ namespace LMLocal.Tests.Unit
             var persistence = CreatePersistenceMock();
             List<ChatMessage> saved = null;
             persistence
-                .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
-                .Callback<IEnumerable<ChatMessage>, CancellationToken>((messages, _) => saved = new List<ChatMessage>(messages))
-                .Returns(Task.CompletedTask);
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyList<ChatMessage>, CancellationToken>((messages, _) => saved = new List<ChatMessage>(messages))
+                .ReturnsAsync(true);
 
             var manager = CreateManager(persistence);
 
@@ -1676,8 +1858,11 @@ namespace LMLocal.Tests.Unit
             await manager.MoveLastExchangeToNewSessionAsync();
 
             persistence.Verify(
-                p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()),
                 Times.Once);
+            persistence.Verify(
+                p => p.MarkNewSessionAsync(It.IsAny<CancellationToken>()),
+                Times.Never);
             Assert.That(saved, Is.Not.Null);
             Assert.That(saved.Count, Is.EqualTo(4));
             Assert.That(saved[0].Content, Is.EqualTo("do something"));

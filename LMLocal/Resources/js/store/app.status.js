@@ -5,6 +5,8 @@
  * OFFLINE → CONNECTING → IDLE
  * 
  * IDLE  → [PROCESSING → THINKING → STREAMING → FINISHING → EXECUTING → RESPONDING]* → IDLE
+ * FINISHING → COMPACTING → PROCESSING (context overflow: history compacted, the same session retries,
+ * COMPACTING → ERROR on failure: the terminal error event replaces the compaction end)
  * IDLE → COMPACTING → IDLE
  * IDLE → CLEARING → IDLE
  */

@@ -51,8 +51,9 @@
 <a id="content--core-features"></a>
 ## ⚡ Core Features
 
-- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, manual rollback via the Changes panel, **and code autocompletions** as you type.
-- **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, and any OpenAI‑compatible API.
+- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, and manual rollback via the Changes panel.
+- **🤖 Local Subagents** – Delegate code search, reading, symbol analysis, planning, builds/tests, and review to specialised [subagents](#content--subagents) running on a small, fast local model (default: `google_gemma-4-e4b-it`). The main model gets compact results instead of raw tool output, which keeps its context lean and cuts token costs.
+- **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, Unsloth, and any OpenAI‑compatible API.
 - **🔌 MCP Extensibility** – Add external tools via Model Context Protocol (stdio/http).
 - **📂 Flexible Workspace Context** – Quickly pass code to the AI: use the **`+`** button to attach the active file in the background, or right-click to send specific text selections.
 - **🧩 Reasoning, Roles & Efficiency** – Expandable thoughts, collapsible tool calls, custom system presets, token optimization (summarization, live stats).
@@ -148,7 +149,7 @@ To use LM Local, you need:
   * *UI & Logs:* The attached file content is kept hidden to avoid cluttering the chat UI, but it is tracked and visible in the extension logs.
 * **Drag and Drop:** You can drag and drop a text file (e.g., .txt, .md, .csv) directly into the chat window text input – its content will be loaded automatically.
 * **Attach Files (Browse file):** Pick one or more text files from disk; their contents are inserted into the chat input code blocks (same rules as drag & drop).
-* **Context Menu:** Right‑click in editor window or solution explorer and choose "Send to LM Local" – this adds content from the clipboard or a selected file to the conversation.
+* **Context Menu:** Right‑click in editor window or solution explorer and choose "Send to LM Local" – this adds the selected content to the chat input (see [Context Menu Commands](#content--context-menu-commands)).
 * ⏹️ **Stop** – Cancel an active generation.
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
   * **Start fresh:** Clear everything and open a completely empty chat.
@@ -169,7 +170,7 @@ To use LM Local, you need:
 - 📋 **Quick Copy** – A button above code blocks that copies the code to your clipboard.
 - ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
-- ⌨️ **AI Inline Autocompletions** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
+- ⌨️ **AI Inline Autocompletions (Beta)** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
 - 📄 **Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
 - 🖼️ **Image Attachments** – Paste (`Ctrl+V`) or drag-and-drop images into the chat input for vision-capable models (JPEG/PNG, up to 3 per message, ~4 MB each). Images are **not** compressed and are **not** saved to history.
 - ↕️ **Resizable Panels** – Drag the grip above the input or above the Changes panel to adjust their height.
@@ -178,7 +179,7 @@ To use LM Local, you need:
 
 ### Context & Solution Awareness
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
-- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked two times with identical arguments, preventing infinite loops and token waste.
+- 🔁 **Tool Loop Prevention**  – Monitors tool execution and halts the process if a tool (e.g., read_file_lines) is consecutively invoked two times with identical arguments, preventing infinite loops and token waste. Subagents use their own guard: on repeated identical tool rounds they first get up to two automatic recovery prompts, and only then is the run stopped.
 - 📝 **Automated Code Editing** – Enabled tools can automatically create, delete, or modify code files directly inside Visual Studio.
 - 🛡️ **Changes & Rollback Manager** – Shows all file modifications in a dedicated real-time panel above the chat, allowing you to review diffs, accept changes, or roll them back in one click.
 - ➕ **Active Window Context** – Dedicated "+" button to include active editor content in the request.
@@ -189,8 +190,8 @@ To use LM Local, you need:
 
 ### Efficiency & Token Management
 - 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
-- 📊 **Live Stats** – Status bar metrics: real-time speed (tokens/sec) and total token count.
-- 🏷️ **Token Stats Badge** – After each response, a compact summary shows total tokens, cached tokens (when available), and the average generation speed (tokens/sec).
+- 📊 **Live Stats** – Status bar metrics during streaming: approximate speed (tokens/sec) and an approximate running token count. Both are estimated client-side (the count from the streamed text length, the speed from the rate of streamed chunks); exact totals reported by the provider appear in the Token Stats Badge after the response.
+- 🏷️ **Token Stats Badge** – After each response, a compact summary shows the total tokens reported by the provider (reasoning tokens excluded), cached tokens (when available), and the approximate average generation speed (tokens/sec). Shown only when the provider returns token usage.
 
 ### Infrastructure & Settings
 - ⚙️ **Persistent Settings** – Centralized configuration for API URLs, stream timeouts, and history management.
@@ -313,12 +314,12 @@ The built‑in tools let the AI read, edit, build, and test your code. You contr
 **In the Built‑in Tools… dialog (list of built‑in tools):**  
 Open this from the extension's main menu. You’ll see all built‑in tools (for example, `delete_file`, `replace_file_content`). Each tool can be enabled or disabled individually. Even if the global write/modify checkbox is on, you can still turn off specific tools like `delete_file`. Use “Enable All” or “Disable All” to change many at once, then click Save.
 
-### Open edited files in editor (Beta)
+### Open edited files in editor
 
-**Settings > Open edited files in editor (Beta)** - disabled by default. When enabled, Visual Studio activates the file that a tool has just created or modified, so you can review the result immediately.
+**Settings > Open edited files in editor** - disabled by default. When enabled, Visual Studio activates the file that a tool has just created or modified, so you can review the result immediately.
 
-> **Scope (Beta)**
-> This applies to **built-in LM Local tools only**. Files written by **MCP servers** or by **subagents** are **not** opened automatically.
+> **Scope**
+> This applies to **built-in LM Local tools only** (`create_file`, `replace_file_content`, `replace_file_lines`, `insert_file_lines`), and only when the call actually wrote the file: failed and no-change edits do not open anything. Files written by **MCP servers** or by **subagents** are **not** opened automatically.
 
 <a id="content--list-of-builtin-tools"></a>
 ### List of built‑in tools
@@ -339,7 +340,7 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Automatic syntax check applies * |
 | `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Automatic syntax check applies * |
 | `insert_file_lines` | Inserts lines at a specific position. | All | Automatic syntax check applies * |
-| `format_document` | Applies Visual Studio's code formatting to a file. | Any (VS editor) | `organize_usings` applies only to C# files. |
+| `format_document` | Applies Visual Studio's code formatting to a file. | Any (VS editor) | `organize_usings` applies only to C# files. File types VS cannot format (e.g. Markdown) are left unchanged and reported as skipped. |
 | `get_symbol_info` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | C# only | Uses Roslyn |
 | `get_symbol_info_js` | Finds declarations and references to a symbol (class, method, etc.) across the solution, with line numbers and context. | JS only | only .js, .mjs, .cjs |
 | `inspect_type` | Inspects a fully qualified type from the open solution (source or referenced assemblies) and returns its full metadata. | C# only | Uses Roslyn. |
@@ -393,7 +394,7 @@ Use subagents to:
 
 ### Option 1: Quick Start (Default Local Setup)
 
-Out of the box, subagents automatically look for `google_gemma-4-e4b-it` on your default local server (LM Studio / Ollama):
+Out of the box, subagents use `google_gemma-4-e4b-it` on the default local LM Studio server (`http://localhost:1234`). For Ollama or any other server, use **Option 2**.
 
 1. **Start the Local Server:** Open LM Studio and load `google_gemma-4-e4b-it`.
    * **Enable MTP:** Select the draft model (`gemma-4-E4B-it-assistant`) in the LM Studio settings to hit high token speeds.
@@ -412,11 +413,31 @@ To bind subagents to a different provider (e.g., cloud API, custom endpoint) or 
 
 ---
 
+### Predefined Subagents
+
+Out of the box, LMLocal includes **9 predefined subagents** (8 enabled, 1 disabled by default):
+
+1. **Code explorer** (`code_explorer_subagent`) — Read-only code search agent for finding files by name or content, listing directories, and general path discovery. Returns verified locations (file path, line number, matched line); matched lines are reported through ref markers, so the line text comes verbatim from the search results.
+2. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to read specific files or code ranges verbatim (via ref markers that the runner replaces with the real file lines). At most 4 files per task.
+3. **Symbol analyzer** (`symbol_analyzer_subagent`) — Read-only symbol analyzer for C# and JavaScript symbols, declarations, references, and type metadata.
+4. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
+5. **Context retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
+6. **Architect** (`architect_subagent`) — Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
+7. **Task planner** (`task_planner_subagent`) — Planning agent without tools: decides whether a plan is needed (`needs_plan`, `persist`, `blocked`) and returns one consolidated Markdown plan that the main model presents, saves when required, and keeps up to date.
+8. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that inspects the actual pending diff and validates proposed plans and implementations before delivery, ending with `Status: COMPLETE`, `PARTIAL`, or `REJECTED`.
+9. **Edit** (`edit_subagent`) — *Disabled by default.* Mechanical line-level patcher that applies only exact `old_lines`/`new_lines` edits supplied by the main model to 1–2 files; it never designs code and answers `NEEDS_EXACT_CODE` when exact text is missing.
+
+**Typical order:** explorer / reader / symbol analyzer / context retriever gather evidence → architect (only when an architectural decision is needed) → task planner → edits → build & test → reviewer.
+
+> * **Note:** The default subagent prompts are specifically optimized for the `google_gemma-4-e4b-it` model.
+
+---
+
 ### Troubleshooting (`subagents.json`)
 
 * **Updates:** Custom `subagents.json` files are preserved across extension updates and are never overwritten.
 * **Reset to Defaults:** Close the Sub Agents dialog, **delete `subagents.json`** from your config folder, and restart Visual Studio (or start a new session). The extension will fall back to built-in defaults in memory without recreating the file.
-* **Recreating the Config File:** With no `subagents.json` present, the Sub Agents dialog displays the built-in defaults. To generate an editable file again, click **Use Active Model** → **Save**.
+* **Recreating the Config File:** With no `subagents.json` present, the runtime uses the built-in defaults, but the Sub Agents dialog is **empty by design** (*"No SubAgents configured"*) because it edits only the custom file. To generate an editable file again, click **Use Active Model** (this loads the built-in defaults into the dialog) → **Save**.
 
 ---
 
@@ -456,10 +477,9 @@ llama-server.exe ^
 
 Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents as needed.
 
-Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`) serve as defaults for all agents. Agents inherit these values unless they explicitly override them, so changing a root-level value automatically updates every agent that uses the default.
+**Root-level defaults** (`providerType`, `customBaseUrl`, `customApiKey`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`, `parallel`, `maxParallel`) are applied to any agent that doesn't set its own value. Changing a root value updates every agent that currently *inherits* it; explicit per-agent values stay exactly as typed.
 
-
-## Example (illustrative)
+#### Example (illustrative)
 
 ```json
 {
@@ -492,17 +512,11 @@ Root-level fields (`providerType`, `customBaseUrl`, `model`, `temperature`, `tim
 }
 ```
 
-### Configuration
-
-Until `%LOCALAPPDATA%\LMLocalChat\subagents.json` exists, the runtime uses the built-in defaults (read-only) and the **Sub Agents dialog is empty by design** (it edits only the custom file; click **Use Active Model** to load the built-ins).
-
-**Root-level defaults** (`providerType`, `customBaseUrl`, `customApiKey`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`, `parallel`, `maxParallel`) are applied to any agent that doesn't set its own value. Changing a root value updates every agent that currently *inherits* it; explicit per-agent values stay exactly as typed.
-
 #### `agents[]` schema
 
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
-| `id` | string | ✅ | — | unique, tool-name: `[A-Za-z0-9_-]{1,64}` |
+| `id` | string | ✅ | — | unique, tool-name: `[A-Za-z0-9_-]{1,64}`; must not collide with a built-in tool name |
 | `displayName` | string | | `id` | shown in UI |
 | `description` | string | ✅ | — | shown to the model/user |
 | `system` | string | | — | overrides default system prompt |
@@ -518,9 +532,9 @@ Until `%LOCALAPPDATA%\LMLocalChat\subagents.json` exists, the runtime uses the b
 | `parallel` | bool | | `false` | enable parallel grouping |
 | `maxParallel` | int `>=1` | | root default | parallel width |
 | `enabled` | bool | | `true` | runtime gate |
-| `allowedTools[]` | string[] | | `[]` | built-in tool names; unknown → save rejected |
+| `allowedTools[]` | string[] | | `[]` | built-in tool names; an unknown name or another subagent's `id` (no recursion) → save rejected |
 
-**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_active_document`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`.
+**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_active_document`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`, `get_changes_diff`, `replace_file_lines`, `insert_file_lines`.
 
 ---
 
@@ -529,7 +543,7 @@ Until `%LOCALAPPDATA%\LMLocalChat\subagents.json` exists, the runtime uses the b
 Open the Sub Agents dialog from the main menu.
 
 - **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 7 built-in defaults into the dialog**.
+- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 9 built-in defaults into the dialog** (`edit_subagent` disabled).
 - **Save** behaves in two modes:
   - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the whole agent set is written, creating or replacing `subagents.json`.
   - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags and root-level changes are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
@@ -544,7 +558,7 @@ Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable S
 
 1. **Defensive Prompting is Mandatory:** You **must** use a strict system prompt with explicit planning steps and verification loops, or be prepared to switch to a larger model.
 2. **Fine-Tuning Option:** Fine-tuning the model (e.g., via LoRA/QLoRA) on task-specific function-calling datasets builds native adherence to tool schemas.
-3. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal tests for the predefined read agents to check basic functionality.
+3. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal scenarios for most predefined agents (explorer, reader, symbol analyzer, reviewer, edit, architect, planner) to check basic functionality.
 
 > ⏱️ **Important for models <8B:** Because `Run_Full_Benchmark` executes against a live `lmlocal` solution in real time, it runs **relatively slowly**. **Run the benchmark multiple times** rather than just once to account for model variance and verify how reliably your custom prompts or fine-tuned models handle real workloads across multiple attempts.
 
@@ -637,7 +651,7 @@ If you are new to local LLMs and don't know where to start, try these model fami
 
 ### 🤔 Model can't find what you're looking for?
 
-The AI doesn't have a full filesystem index — it relies on the context you provide. If the model fails to find a specific file, class, or code block:
+The AI doesn't have a full filesystem index — without built-in tools enabled, it relies only on the context you provide. If the model fails to find a specific file, class, or code block:
 
 - **Use the "+" button** – Click the `+` button to include the entire active document in the request. This gives the AI immediate access to the current file.
 - **Use "Send to LM Local"** – Right-click in the editor and select **"Send to LM Local"**. If you highlight code, it sends only the selection; if nothing is highlighted, it sends the entire active document.
@@ -650,7 +664,7 @@ LM Local allows you to switch the active LLM on the fly **without clearing the c
 
 It's simple. Just ask one AI model to write a plan, then switch to a different model in the same chat and tell it: "Critique this and update the plan." The new model reads the whole conversation and gives you a fresh perspective, catching edge cases the first one missed.
 
-**Why it works:**  It’s like bringing in two experts one after another. The first drafts a strategy. The second walks into the room, reads the finished document, and says: "Here’s where you went wrong," without ever seeing the first expert’s rough drafts. By swapping models, you collect the best from each perspective — and you never have to copy-paste or start a new chat, because the entire history stays right there.
+**Why it works:**  It’s like bringing in two experts one after another. The first drafts a strategy. The second walks into the room, reads everything so far, and says: "Here’s where you went wrong." By swapping models, you collect the best from each perspective — and you never have to copy-paste or start a new chat, because the entire history stays right there.
 
 ### 📉 Hitting Context Limits
 
@@ -680,7 +694,7 @@ Context window accumulation can lead to high API costs or local performance drop
 ### ⚡ How do I maximize model speed (even with a quality drop)?
 When you just need to generate straightforward boilerplate, repetitive CRUD methods, or standard unit tests at maximum speed:
 * **Hardware VRAM Optimization:** Choose quantized weights (e.g., `Q4_K_M` GGUF formats) that **fully fit into your GPU VRAM**. As soon as layers spill over into system RAM (CPU fallback), streaming speed drops significantly.
-* **Enable Speculative Decoding:** If your local inference engine (such as vLLM, LM Studio, or llama.cpp) supports it, turn on Speculative Decoding. This technique pairs your main LLM with a tiny, ultra-fast "draft" model. The draft model rapidly guesses the next several tokens, and the target model verifies them in parallel. This drastically increases your tokens-per-second generation rate. For example, you can run the base model `google/gemma-4-e4b` alongside its dedicated drafter `gemma-4-e4b-it-assistant`, which is optimized for fast speculative generation.
+* **Enable Speculative Decoding:** If your local inference engine (such as vLLM, LM Studio, or llama.cpp) supports it, turn on Speculative Decoding. This technique pairs your main LLM with a tiny, ultra-fast "draft" model. The draft model rapidly guesses the next several tokens, and the target model verifies them in parallel. This noticeably increases your tokens-per-second generation rate. For example, you can run the base model `google/gemma-4-e4b` alongside its dedicated drafter `gemma-4-e4b-it-assistant`, which is optimized for fast speculative generation.
 * **Tweak Backend Inference Settings:** Open your server configurations and check the parameters that directly impact processing and generation speed. Pay close attention to:
     * **GPU Offload** & **CPU Thread Pool Size**
     * **Flash Attention** & **Unified KV Cache**
@@ -691,7 +705,7 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
 * **Fine-Tune Small Models (<8B) for Structured Tasks:** If small local models struggle with tool calling, looping, or complex JSON schema adherence, fine-tune them (e.g., via LoRA/QLoRA) on task-specific function-calling datasets. Fine-tuning builds native schema adherence into light models, making them faster and more reliable for background tasks and subagents without needing heavy system prompts.
 
 <a id="content--auto-completions"></a>
-## Auto-Completions
+## Auto-Completions (Beta)
 
 Provides fast, **single-line ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
 
@@ -758,7 +772,7 @@ All editor commands are **disabled** while a chat session is running. If no text
 - **Max 200 KB** total content; excess files appear as `(content truncated)`  
 - **Folder with ≤20 files** (recursive count) → file contents are sent  
 - **Folder with >20 files** → hierarchical directory tree is sent instead (no content)  
-- Directories automatically excluded: `bin`, `obj`, `.vs`, `.git`, `CopilotBaseline`, `node_modules`, `packages`  
+- Build output, dependency and cache directories are automatically excluded (e.g. `bin`, `obj`, `build`, `out`, `dist`, `.vs`, `.git`, `node_modules`, `packages`)  
 - Binary / image files (`.exe`, `.dll`, `.pdb`, `.png`, `.jpg`, `.gif`, etc.) are skipped  
 - Button is disabled while a chat session is in progress 
 
@@ -902,6 +916,8 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 
 LM Local keeps things simple and stores your preferences locally. Configuration files are maintained in:
 
+`%LOCALAPPDATA%\LMLocalChat\`
+
 The following configuration files are stored there:
 
 | File | Purpose |
@@ -909,12 +925,16 @@ The following configuration files are stored there:
 | `settings.json` | Main extension settings (provider, model, UI, timeouts, history). |
 | `providers.json` | Saved provider profiles (see [Providers](#content--providers)). |
 | `models.config.json` | Model records & overrides (see [Models Dialog](#content--models-dialog)). |
+| `recent-models.json` | Recently used models. |
+| `instructions.json` | AI Instructions presets (see [AI Instructions & Modes](#content--ai-instructions--modes)). |
+| `tools.json` | Enabled/disabled state of built-in tools (Built‑in Tools… dialog). |
+| `autocompletions.json` | Auto-completion settings (see [Auto-Completions](#content--auto-completions)). |
 | `subagents.json` | Subagent (worker agent) definitions. |
 | `mcp.json` | MCP server configuration. |
 | `ChatHistory\` | Chat session logs (history dialog, session restore). |
-| `SubAgentsLogs\` | Sub Agent session logs. |
-
-`%LOCALAPPDATA%\LMLocalChat\`
+| `SubAgentsLogs\` | Sub Agent session logs and `SubAgentsFailures.jsonl` (failed / recovered runs). |
+| `Snapshots\` | Internal backups used by the Changes panel to revert edits. |
+| `WebViewData\` | WebView2 browser data of the chat window. |
 
 
 <a id="content--license--compliance--third-party"></a>

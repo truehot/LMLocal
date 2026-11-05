@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using LMLocal.Infrastructure.Persistence;
@@ -58,7 +58,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void Detect_MultibyteCharAtFourthByte_IsUtf8()
         {
-            // E2 (Docs\file-tools-encoding-defects-plan.md): the old four-byte probe ended inside the
+            // E2: the old four-byte probe ended inside the
             // three-byte sequence of '→' and classified a valid UTF-8 file as the system ANSI codepage.
             // The 8 KB probe validates the whole buffer, so the offset of the sequence no longer matters.
             var shortSequence = FileEncodingDetector.Detect(Stream(Encoding.UTF8.GetBytes("abc→\n")));

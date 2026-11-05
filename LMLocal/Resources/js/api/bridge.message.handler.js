@@ -18,7 +18,22 @@ class BridgeMessageHandler {
         appStore.setState({ status: AppStatus.COMPACTING });
     }
 
-    handleCompactionEnd() {
+    handleCompactionEnd(data) {
+        if (data && data.Continues) {
+
+            this.contentBuffer.reset();
+            this.thoughtBuffer.reset();
+
+            appStore.setState({
+                status: AppStatus.PROCESSING,
+                accumulatedText: '',
+                accumulatedThoughtText: '',
+                roundTokens: 0,
+                tokenSpeed: 0
+            });
+            return;
+        }
+
         if (appStore.getState().status !== AppStatus.ERROR) {
             appStore.setState({ status: AppStatus.IDLE });
         }

@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 
 namespace LMLocal.Application.SubAgents.ReadRefs
 {
@@ -31,13 +31,23 @@ namespace LMLocal.Application.SubAgents.ReadRefs
     /// </summary>
     internal sealed class ReadRefExpander
     {
+        private static readonly Regex BulletPrefix = new Regex(@"^\s*(?:[-*+]\s+)?$", RegexOptions.CultureInvariant);
+        private static readonly Regex NumberedPrefix = new Regex(@"^\s*\d+[.)]\s+$", RegexOptions.CultureInvariant);
+
+        // A whole line that is only "[list prefix] path:line[,line...]" - a search marker without its leading '@'.
+        private static readonly Regex BareSearchLocation = new Regex(
+            @"^(?<prefix>[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?)(?<path>[^\s""@:`*]+\.[A-Za-z0-9]+):(?<lines>\d+(?:,\d+)*)(?=[ \t]*\r?$)",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline);
+
         private readonly ReadLedger _ledger;
+        private readonly SearchLedger _searchLedger;
         private readonly IFileSystem _fileSystem;
 
-        public ReadRefExpander(ReadLedger ledger, IFileSystem fileSystem)
+        public ReadRefExpander(ReadLedger ledger, IFileSystem fileSystem, SearchLedger searchLedger = null)
         {
             _ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _searchLedger = searchLedger;
         }
 
         public async Task<ReadExpandResult> ExpandAsync(string content, CancellationToken cancellationToken)
@@ -45,6 +55,8 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             var result = new ReadExpandResult { Content = content };
             if (string.IsNullOrEmpty(content))
                 return result;
+
+            content = AddMissingSearchMarkerPrefixes(content);
 
             var markers = FileRefMarker.ParseAll(content, out int malformedRefCount);
             result.MalformedRefCount = malformedRefCount;
@@ -64,7 +76,8 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 string rendered = null;
                 try
                 {
-                    rendered = await TryRenderAsync(marker, cancellationToken).ConfigureAwait(false);
+                    rendered = await TryRenderAsync(marker, cancellationToken).ConfigureAwait(false)
+                        ?? TryRenderSearch(marker, content);
                 }
                 catch (Exception ex)
                 {
@@ -132,6 +145,70 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             }
 
             return sb.ToString().TrimEnd('\r', '\n');
+        }
+
+        /// <summary>
+        /// Renders a marker whose every line was returned by search_file_content as location lines with the exact matched text.
+        /// </summary>
+        private string TryRenderSearch(FileRefMarker marker, string content)
+        {
+            if (_searchLedger == null || _searchLedger.Count == 0)
+                return null;
+
+            var lines = new List<SearchRecord>();
+            for (int i = 0; i < marker.Ranges.Count; i++)
+            {
+                if (!_searchLedger.TryResolve(marker.Path, marker.Ranges[i], out var records))
+                    return null;
+                lines.AddRange(records);
+            }
+
+            if (lines.Count == 0)
+                return null;
+
+            string separator = BuildSeparator(content, marker.StartIndex);
+            var sb = new StringBuilder();
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i > 0)
+                    sb.Append(separator);
+                FileContentRenderer.AppendSearchLocation(sb, lines[i].RelativePath, lines[i].LineNumber, lines[i].Text);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Models sometimes drop the leading <c>@</c> and write a bare <c>path:line</c> list item.
+        /// </summary>
+        private string AddMissingSearchMarkerPrefixes(string content)
+        {
+            if (_searchLedger == null || _searchLedger.Count == 0)
+                return content;
+
+            return BareSearchLocation.Replace(content, m =>
+            {
+                string path = m.Groups["path"].Value;
+                foreach (var part in m.Groups["lines"].Value.Split(','))
+                {
+                    if (!int.TryParse(part, out int line) || !_searchLedger.TryResolve(path, new LineRange(line, line), out _))
+                        return m.Value;
+                }
+
+                return m.Groups["prefix"].Value + "@" + path + ":" + m.Groups["lines"].Value;
+            });
+        }
+
+        private static string BuildSeparator(string content, int markerStart)
+        {
+            int lineStart = markerStart > 0 ? content.LastIndexOf('\n', markerStart - 1) + 1 : 0;
+            string before = content.Substring(lineStart, markerStart - lineStart);
+
+            if (BulletPrefix.IsMatch(before))
+                return "\n" + before;
+            if (NumberedPrefix.IsMatch(before))
+                return "\n" + new string(' ', before.Length);
+            return "; ";
         }
     }
 }

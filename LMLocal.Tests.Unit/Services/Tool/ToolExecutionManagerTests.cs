@@ -108,7 +108,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
         }
 
         [Test]
-        public async Task ExecuteToolAsync_OperationCanceledException_ReturnsCancelledError()
+        public async Task ExecuteToolAsync_OperationCanceledException_ReturnsStoppedError()
         {
             var call = new ToolCallRecord { CallId = "id3", FunctionName = "cancel", ArgumentsJson = null };
             AllowToolsInMainQueue("cancel");
@@ -117,7 +117,7 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var mgr = CreateManager();
             var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
 
-            Assert.That(res.Error, Does.Contain("cancelled"));
+            Assert.That(res.Error, Does.Contain("stopped before completion"));
             Assert.That(res.IsSuccess, Is.False);
         }
 

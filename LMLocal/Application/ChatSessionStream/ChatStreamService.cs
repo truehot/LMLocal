@@ -28,12 +28,14 @@ namespace LMLocal.Application.ChatSessionStream
     {
         private readonly IStreamingRoundService _roundService;
         private readonly IChatHistoryManager _history;
+        private readonly IContextCalibration _calibration;
         private readonly SemaphoreSlim _requestLock = new SemaphoreSlim(1, 1);
 
-        public ChatStreamService(IStreamingRoundService roundService, IChatHistoryManager history)
+        public ChatStreamService(IStreamingRoundService roundService, IChatHistoryManager history, IContextCalibration calibration)
         {
             _roundService = roundService ?? throw new ArgumentNullException(nameof(roundService));
             _history = history ?? throw new ArgumentNullException(nameof(history));
+            _calibration = calibration ?? throw new ArgumentNullException(nameof(calibration));
         }
 
         public async Task GenerateStreamAsync(
@@ -48,10 +50,13 @@ namespace LMLocal.Application.ChatSessionStream
 
             try
             {
+                _calibration.ResetForModel(context.ModelId);
+
                 var request = new StreamRoundRequest
                 {
                     History = _history,
                     IsToolRound = toolResults != null && toolResults.Count > 0,
+                    IsContextOverflowRetry = context.IsContextOverflowRetry,
                     ToolResults = toolResults,
                     Prompt = context.Prompt,
                     ActiveDocumentContent = context.ActiveDocumentContent,
@@ -59,7 +64,8 @@ namespace LMLocal.Application.ChatSessionStream
                     SystemPrompt = context.AdditionalPrompt,
                     ModelId = context.ModelId,
                     Temperature = context.Temperature,
-                    OnChunk = onChunk
+                    OnChunk = onChunk,
+                    Calibration = _calibration
                 };
 
                 var roundResult = await _roundService.RunAsync(request, cancellationToken).ConfigureAwait(false);

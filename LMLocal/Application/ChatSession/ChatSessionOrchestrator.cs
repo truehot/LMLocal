@@ -49,16 +49,19 @@ namespace LMLocal.Application.ChatSession
         private readonly IChatStreamService _chatService;
         private readonly IToolExecutionManager _toolManager;
         private readonly IHistoryCompactor _compactor;
+        private readonly IChatHistoryManager _history;
         private readonly ISnapshotManager _snapshotManager;
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly ISubAgentsParallelPolicy _parallelPolicy;
         private readonly ISubAgentsParallelRunner _parallelRunner;
+        private readonly IActiveModelContext _activeModelContext;
         private readonly object _resetLock = new object();
 
         private const int MAX_TOOL_ITERATIONS = 9999;
         private const int MAX_STATE_ITERATIONS = 9999;
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
         private const int MAX_DUPLICATE_TOOL_ROUNDS = 1;
+        private const int MAX_CONTEXT_OVERFLOW_RETRIES = 2;
 
         private delegate Task<ChatSessionState> StateHandler(
             ChatSessionOrchestrator instance,
@@ -75,7 +78,7 @@ namespace LMLocal.Application.ChatSession
             {
                 { ChatSessionState.Initial, (self, ctx, gen, msg, ct) => self.HandleInitialStateAsync(msg) },
                 { ChatSessionState.Generating, (self, ctx, gen, msg, ct) => self.HandleGeneratingStateAsync(ctx, gen, msg) },
-                { ChatSessionState.ProcessingResult, (self, ctx, gen, msg, ct) => self.HandleProcessingResultStateAsync(ctx, msg) },
+                { ChatSessionState.ProcessingResult, (self, ctx, gen, msg, ct) => self.HandleProcessingResultStateAsync(ctx, gen, msg, ct) },
                 { ChatSessionState.ExecutingTools, (self, ctx, gen, msg, ct) => self.HandleExecutingToolsStateAsync(ctx, msg, ct) },
                 { ChatSessionState.Completing, (self, ctx, gen, msg, ct) => self.HandleCompletingStateAsync(ctx, msg) },
                 { ChatSessionState.CompactingHistory, (self, ctx, gen, msg, ct) => self.HandleCompactingHistoryStateAsync(gen, msg, ct) },
@@ -89,18 +92,22 @@ namespace LMLocal.Application.ChatSession
             IChatStreamService chatService,
             IToolExecutionManager toolManager,
             IHistoryCompactor compactor,
+            IChatHistoryManager history,
             ISnapshotManager snapshotManager,
             IToolCallLoopDetector loopDetector,
             ISubAgentsParallelPolicy parallelPolicy,
-            ISubAgentsParallelRunner parallelRunner)
+            ISubAgentsParallelRunner parallelRunner,
+            IActiveModelContext activeModelContext = null)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
             _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
             _compactor = compactor ?? throw new ArgumentNullException(nameof(compactor));
+            _history = history ?? throw new ArgumentNullException(nameof(history));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _parallelPolicy = parallelPolicy ?? throw new ArgumentNullException(nameof(parallelPolicy));
             _parallelRunner = parallelRunner ?? throw new ArgumentNullException(nameof(parallelRunner));
+            _activeModelContext = activeModelContext;
         }
 
         public async Task RunSessionAsync(
@@ -239,7 +246,9 @@ namespace LMLocal.Application.ChatSession
         /// </summary>
         private async Task<ChatSessionState> HandleProcessingResultStateAsync(
             SessionStateContext context,
-            Func<WebView2ScriptMessage, Task> onMessage)
+            GenerateStreamContext generateContext,
+            Func<WebView2ScriptMessage, Task> onMessage,
+            CancellationToken ct)
         {
             await onMessage(new WebView2ScriptMessage
             {
@@ -254,6 +263,10 @@ namespace LMLocal.Application.ChatSession
                 return ChatSessionState.Error;
             }
 
+            var overflowState = await HandleContextOverflowAsync(context, generateContext, onMessage, ct).ConfigureAwait(false);
+            if (overflowState.HasValue)
+                return overflowState.Value;
+
             if (!string.IsNullOrEmpty(context.LastResult.ErrorMessage))
             {
                 InternalLogger.Info($"СhatSessionOrchestrator: Generation completed with error: {context.LastResult.ErrorMessage}");
@@ -265,6 +278,13 @@ namespace LMLocal.Application.ChatSession
             {
                 InternalLogger.Info($"СhatSessionOrchestrator: Generation was cancelled by user");
                 return ChatSessionState.Cancelled;
+            }
+
+            if (context.ContextOverflowRetryCount > 0 || generateContext.IsContextOverflowRetry)
+            {
+                InternalLogger.Info("ChatSessionOrchestrator: Round succeeded, resetting context-overflow recovery state.");
+                context.ContextOverflowRetryCount = 0;
+                generateContext.IsContextOverflowRetry = false;
             }
 
             if (context.LastResult.ToolCalls == null || context.LastResult.ToolCalls.Count == 0)
@@ -288,9 +308,99 @@ namespace LMLocal.Application.ChatSession
         }
 
         /// <summary>
+        /// Handles a provider context-overflow error: compacts the history in memory and schedules a retry.
+        /// Returns null when the result is not a context overflow and normal error handling must continue.
+        /// </summary>
+        private async Task<ChatSessionState?> HandleContextOverflowAsync(
+            SessionStateContext context,
+            GenerateStreamContext generateContext,
+            Func<WebView2ScriptMessage, Task> onMessage,
+            CancellationToken ct)
+        {
+            if (!ContextOverflowDetector.IsContextOverflow(
+                    context.LastResult,
+                    null,
+                    _activeModelContext?.MaxContextLength > 0 ? _activeModelContext.MaxContextLength : (int?)null))
+                return null;
+
+            InternalLogger.Info("ChatSessionOrchestrator: Context overflow detected, attempting recovery.");
+
+            if (!_compactor.IsCompactionEnabled())
+            {
+                InternalLogger.Info("ChatSessionOrchestrator: History compaction disabled, cannot recover from context overflow.");
+                context.LastException = new InvalidOperationException(
+                    "The request does not fit the model context window. Enable \"Summarize long conversations\" in settings to compact the history automatically.");
+                return ChatSessionState.Error;
+            }
+
+            if (context.ContextOverflowRetryCount >= MAX_CONTEXT_OVERFLOW_RETRIES)
+            {
+                InternalLogger.Info("ChatSessionOrchestrator: Context overflow recovery attempts exhausted.");
+                context.LastException = new InvalidOperationException(context.LastResult?.ErrorMessage);
+                return ChatSessionState.Error;
+            }
+
+            CompactionOutcome outcome;
+            IReadOnlyList<ChatMessage> compactedHistory = null;
+
+            _history.DiscardLastAssistantFromFailedRound();
+
+            await onMessage(new WebView2ScriptMessage
+            {
+                Type = WebView2MessageType.CompactionStart,
+                Payload = null
+            }).ConfigureAwait(false);
+
+            (outcome, compactedHistory) = await _compactor
+                .CompactForcedAsync(generateContext.ModelId, context.ContextOverflowRetryCount, ct)
+                .ConfigureAwait(false);
+
+            if (outcome == CompactionOutcome.Cancelled)
+                return ChatSessionState.Cancelled;
+
+            if (outcome != CompactionOutcome.Success)
+            {
+                InternalLogger.Info($"ChatSessionOrchestrator: Context overflow recovery failed ({outcome}).");
+                if (outcome == CompactionOutcome.NothingChanged)
+                {
+                    context.LastException = new InvalidOperationException(
+                        "There is nothing left to compact, and the prompt or its attachment together with the enabled tools does not fit the model context window. Shorten it, or attach a smaller document.");
+                }
+
+                return ChatSessionState.Error;
+            }
+
+            if (compactedHistory != null && compactedHistory.Count > 0)
+            {
+                await _history.ReplaceHistoryWithNewSessionAsync(compactedHistory).ConfigureAwait(false);
+                context.HistoryCompacted = true;
+            }
+
+            context.ContextOverflowRetryCount++;
+
+            if (context.AllResults.Count > 0)
+                context.AllResults.RemoveAt(context.AllResults.Count - 1);
+
+            context.LastResult = null;
+            context.ToolResultsForNextRound.Clear();
+            context.ConsecutiveDuplicateToolRounds = 0;
+            context.ConsecutiveToolIterationCount = 0;
+            generateContext.IsContextOverflowRetry = true;
+
+            await onMessage(new WebView2CompactionEndMessage
+            {
+                Type = WebView2MessageType.CompactionEnd,
+                Payload = null,
+                Continues = true
+            }).ConfigureAwait(false);
+
+            InternalLogger.Info($"ChatSessionOrchestrator: Context overflow recovered, retrying (attempt {context.ContextOverflowRetryCount}).");
+            return ChatSessionState.Generating;
+        }
+
+        /// <summary>
         /// ExecutingTools state: Executes all tool calls from current generation result.
         /// Collects results and transitions back to Generating for next round with tool context.
-        /// Prevents infinite loops by limiting consecutive tool iterations per request.
         /// </summary>
         private async Task<ChatSessionState> HandleExecutingToolsStateAsync(
             SessionStateContext context,
@@ -526,11 +636,19 @@ namespace LMLocal.Application.ChatSession
             ToolExecutionResult toolResult;
             using (var toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
-                toolCts.CancelAfter(_toolManager.GetToolTimeout(toolCall.FunctionName) ??
-                                    TimeSpan.FromMilliseconds(TOOL_EXECUTION_TIMEOUT_MS));
+                var toolTimeout = _toolManager.GetToolTimeout(toolCall.FunctionName) ?? TimeSpan.FromMilliseconds(TOOL_EXECUTION_TIMEOUT_MS);
+                toolCts.CancelAfter(toolTimeout);
 
                 var stepProgress = new ToolActivityForwarder(uiCallId, onMessage);
                 toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress).ConfigureAwait(false);
+
+                if (toolCts.IsCancellationRequested && !ct.IsCancellationRequested && !toolResult.IsSuccess)
+                {
+                    var timeoutText = $"Tool '{toolCall.FunctionName}' timed out after {(int)toolTimeout.TotalSeconds} s.";
+                    toolResult.Error = timeoutText;
+                    toolResult.Result = null;
+                    toolResult.UserMessage = timeoutText;
+                }
             }
 
             ct.ThrowIfCancellationRequested();
@@ -593,7 +711,9 @@ namespace LMLocal.Application.ChatSession
                 }
             }
 
-            return ChatSessionState.CompactingHistory;
+            return context.HistoryCompacted
+                ? ChatSessionState.Terminated
+                : ChatSessionState.CompactingHistory;
         }
 
         /// <summary>
@@ -647,7 +767,10 @@ namespace LMLocal.Application.ChatSession
             SessionStateContext context,
             Func<WebView2ScriptMessage, Task> onMessage)
         {
-            var errorMsg = context.LastResult?.ErrorMessage ?? ExceptionFormatter.Format(context.LastException);
+
+            var errorMsg = context.LastException != null
+                ? ExceptionFormatter.Format(context.LastException)
+                : context.LastResult?.ErrorMessage;
 
             await onMessage(new WebView2ScriptMessage
             {
@@ -691,10 +814,11 @@ namespace LMLocal.Application.ChatSession
             }
             finally
             {
-                await onMessage(new WebView2ScriptMessage
+                await onMessage(new WebView2CompactionEndMessage
                 {
                     Type = WebView2MessageType.CompactionEnd,
-                    Payload = null
+                    Payload = null,
+                    Continues = false
                 }).ConfigureAwait(false);
             }
 

@@ -19,6 +19,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
 
         [JsonProperty("declaration_kind", NullValueHandling = NullValueHandling.Ignore)]
         public string DeclarationKind { get; set; }
+
+        /// <summary>
+        /// Fallback term that matched this line.
+        /// </summary>
+        [JsonProperty("matched_term", NullValueHandling = NullValueHandling.Ignore)]
+        public string MatchedTerm { get; set; }
     }
 
     /// <summary>
@@ -77,6 +83,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         [JsonProperty("results")]
         public List<SearchResult> Results { get; set; }
 
+        /// <summary>Set when the literal text had no matches and an OR-split / unquoted fallback was searched.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
+
         [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
         public string NextPageToken { get; set; }
 
@@ -100,6 +110,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
     {
         [JsonProperty("results")]
         public List<SearchTextGroupResult> Results { get; set; }
+
+        /// <summary>Set when the literal text had no matches and an OR-split / unquoted fallback was searched.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
 
         [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
         public string NextPageToken { get; set; }

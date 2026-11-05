@@ -7,7 +7,6 @@ namespace LMLocal.Application.ChatSession
 {
     /// <summary>
     /// Mutable context for current chat session state.
-    /// Updated by state handlers during execution.
     /// </summary>
     internal class SessionStateContext
     {
@@ -23,13 +22,11 @@ namespace LMLocal.Application.ChatSession
 
         /// <summary>
         /// Number of consecutive tool iterations in current cycle (resets after generation completes).
-        /// Used to prevent infinite tool loops within a single request.
         /// </summary>
         public int ConsecutiveToolIterationCount { get; set; }
 
         /// <summary>
-        /// Number of consecutive rounds where the model called the same tools
-        /// with identical arguments. Reset when tool set changes or session ends.
+        /// Number of consecutive rounds where the model called the same tools with identical arguments.
         /// </summary>
         public int ConsecutiveDuplicateToolRounds { get; set; }
 
@@ -52,6 +49,16 @@ namespace LMLocal.Application.ChatSession
         /// Exception that caused error state (if applicable).
         /// </summary>
         public Exception LastException { get; set; }
+
+        /// <summary>
+        /// Number of context-overflow recoveries performed in the current session.
+        /// </summary>
+        public int ContextOverflowRetryCount { get; set; }
+
+        /// <summary>
+        /// True once the history has been compacted in this session.
+        /// </summary>
+        public bool HistoryCompacted { get; set; }
 
         /// <summary>
         /// Cancellation token for the session. Used to propagate cancellation to service methods.

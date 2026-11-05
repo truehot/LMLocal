@@ -31,7 +31,8 @@ namespace LMLocal.Infrastructure.SubAgents
             IProgress<ToolActivityEvent> progress = null);
 
         /// <summary>
-        /// Returns the external timeout for the given agent tool, or null when the agent's timeout is off (0) or the agent is not enabled.
+        /// Returns the external timeout for the given agent tool.
+        /// Null when the agent is unavailable; <see cref="Timeout.InfiniteTimeSpan"/> when its timeout is off (0).
         /// </summary>
         TimeSpan? GetToolTimeout(string toolName);
 
@@ -43,7 +44,7 @@ namespace LMLocal.Infrastructure.SubAgents
 
     internal class SubAgentsToolSource : ISubAgentsToolSource
     {
-        private static readonly TimeSpan TimeoutGrace = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan TimeoutGrace = TimeSpan.FromSeconds(20);
 
         private readonly ISubAgentsCatalog _catalog;
         private readonly ISettingsManager _settingsManager;
@@ -157,10 +158,11 @@ namespace LMLocal.Infrastructure.SubAgents
             if (agent == null)
                 return null;
 
-            if (!agent.TimeoutSeconds.HasValue || agent.TimeoutSeconds.Value <= 0)
-                return null;
+            if (agent.TimeoutSeconds.HasValue && agent.TimeoutSeconds.Value <= 0)
+                return Timeout.InfiniteTimeSpan;
 
-            return TimeSpan.FromSeconds(agent.TimeoutSeconds.Value) + TimeoutGrace;
+            var seconds = agent.TimeoutSeconds ?? SubAgentsService.DefaultTimeoutSeconds;
+            return TimeSpan.FromSeconds(seconds) + TimeoutGrace;
         }
 
         public string GetDisplayName(string toolName)

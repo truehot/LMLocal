@@ -61,6 +61,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
+                string pruneRejection = PrunedContentGuard.Validate(parameters);
+                if (pruneRejection != null)
+                    return Error(pruneRejection);
+
                 var (filePath, newContent, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
                     return Error(error);
@@ -210,8 +214,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
     }
 
-    internal class ApplyCodeEditResponse
+    internal class ApplyCodeEditResponse : IToolFileOpenResult
     {
+        string IToolFileOpenResult.FileToOpen => FilePath;
+
+        bool IToolFileOpenResult.WroteFile => Success && !IsNoOp;
+
         [JsonProperty("success")]
         public bool Success { get; set; }
 

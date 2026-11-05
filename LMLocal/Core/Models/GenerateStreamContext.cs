@@ -33,5 +33,10 @@ namespace LMLocal.Core.Models
         /// Optional list of base64 image data URLs attached to the user message as multimodal content.
         /// </summary>
         public IReadOnlyList<string> Images { get; set; }
+
+        /// <summary>
+        /// True when the next round retries a request that failed on context overflow.
+        /// </summary>
+        public bool IsContextOverflowRetry { get; set; }
     }
 }

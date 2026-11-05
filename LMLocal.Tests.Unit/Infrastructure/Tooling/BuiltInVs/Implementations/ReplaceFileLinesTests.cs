@@ -653,8 +653,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 oldLines: "SYM-QUOTE-DOUBLE: \\\"double quoted value\\\"",
                 newLines: "replaced"));
             var resp = result as ReplaceLinesResponse;
+            // Still not applied (fail closed); since the JSON-escape diagnosis the error names the cause.
             Assert.That(resp.Success, Is.False);
-            Assert.That(resp.ErrorMessage, Does.Contain("Old content not found in file"));
+            Assert.That(resp.OldLinesJsonEscaped, Is.True);
+            Assert.That(resp.ErrorMessage, Does.Contain("looks JSON-escaped"));
+            VerifyNothingWritten();
         }
 
         [Test]
@@ -1275,6 +1278,164 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.Success, Is.True);
             Assert.That(resp.IsNoOp, Is.True);
             Assert.That(resp.LinesReplaced, Is.EqualTo(0));
+        }
+
+        // ── JSON-escaped old_lines: diagnosed, fail closed ─────────────────────
+
+        private void VerifyNothingWritten()
+        {
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Encoding>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+            _snapshotMock.Verify(s => s.SnapshotFileAsync(It.IsAny<string>(), It.IsAny<SnapshotChangeStatus>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_JsonEscapedQuotes_FailsClosedWithFlagAndCandidate()
+        {
+            SetupFileContent("a\n    sb.Append($\"**`{filePath}`**\");\nb");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 2,
+                oldLines: "    sb.Append($\\\"**`{filePath}`**\\\");",
+                newLines: "    sb.Append($\\\"**{filePath}**\\\");"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.OldLinesJsonEscaped, Is.True);
+            Assert.That(resp.ErrorMessage, Does.Contain("looks JSON-escaped").And.Contain("line 2").And.Contain("Nothing was written"));
+            Assert.That(resp.Candidates, Has.Count.EqualTo(1));
+            Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(2));
+            Assert.That(resp.Candidates[0].Text, Does.Contain("sb.Append($\"**`{filePath}`**\");"), "candidate is the raw file text");
+            VerifyNothingWritten();
+        }
+
+        [Test]
+        public async Task ExecuteAsync_JsonEscapedNewlinesInOneLine_IsDiagnosed()
+        {
+            SetupFileContent("first\nsecond \"x\"\nthird");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "first\\nsecond \\\"x\\\"",
+                newLines: "anything"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.OldLinesJsonEscaped, Is.True);
+            Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(1));
+            VerifyNothingWritten();
+        }
+
+        [Test]
+        public async Task ExecuteAsync_LegitEscapedQuoteInSource_IsReplacedNormally()
+        {
+            // The file really contains \" (a C# escaped quote): the literal match wins, no diagnosis.
+            SetupFileContent("var s = \"a\\\"b\";");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                startLine: 1,
+                oldLines: "var s = \"a\\\"b\";",
+                newLines: "var s = \"c\\\"d\";"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.True);
+            Assert.That(resp.OldLinesJsonEscaped, Is.Null);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "var s = \"c\\\"d\";", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task ExecuteAsync_NotFoundEvenAfterUnescape_KeepsOriginalError()
+        {
+            SetupFileContent("alpha\nbeta");
+
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "gamma \\\"x\\\"", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.OldLinesJsonEscaped, Is.Null);
+            Assert.That(resp.ErrorMessage, Does.StartWith("Old content not found"));
+            VerifyNothingWritten();
+        }
+
+        [Test]
+        public async Task ExecuteAsync_UnescapedMatchesSeveralLocations_KeepsOriginalError()
+        {
+            // start_line points at 'y', so the unescaped block is searched nearby and found twice.
+            SetupFileContent("x(\"a\");\ny\nx(\"a\");");
+
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 2, oldLines: "x(\\\"a\\\");", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.OldLinesJsonEscaped, Is.Null, "an ambiguous unescaped match is not diagnosed");
+            VerifyNothingWritten();
+        }
+
+        [Test]
+        public void GetCompletionMessage_JsonEscaped_SaysSo()
+        {
+            var msg = _tool.GetCompletionMessage(new ReplaceLinesResponse { Success = false, OldLinesJsonEscaped = true });
+
+            Assert.That(msg, Does.Contain("JSON-escaped"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_MatchFailure_SaysNotReplacedInsteadOfFailed()
+        {
+            var msg = _tool.GetCompletionMessage(new ReplaceLinesResponse { Success = false, IsMatchFailure = true });
+
+            Assert.That(msg, Does.Contain("not replaced"));
+            Assert.That(msg, Does.Not.Contain("failed"));
+        }
+
+        [Test]
+        public void GetCompletionMessage_ToolFailure_SaysFailed()
+        {
+            var msg = _tool.GetCompletionMessage(new ReplaceLinesResponse { Success = false, ErrorMessage = "No solution is currently open." });
+
+            Assert.That(msg, Does.Contain("failed"));
+        }
+
+        [Test]
+        public async Task Replace_NotFound_ReportsFilePath()
+        {
+            SetupFileContent("a\nb");
+
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "zzz", newLines: "x"));
+
+            var resp = (ReplaceLinesResponse)result;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.FilePath, Is.Not.Null.And.Not.Empty, "file_path used to be null on not-found");
+            Assert.That(resp.ErrorMessage, Does.Contain("re-read"));
+            Assert.That(resp.IsMatchFailure, Is.True);
+            VerifyNothingWritten();
+        }
+
+        [Test]
+        public void Description_TellsToEditBottomUpAndRereadOnlyOnFailure()
+        {
+            string description = _tool.GetToolInfo().Description;
+
+            Assert.That(description, Does.Contain("bottom-up"));
+            Assert.That(description, Does.Contain("success=false means nothing was written"));
+            Assert.That(description, Does.Not.Contain("applied=false"));
+            Assert.That(description, Does.Not.Contain("re-read before making another edit"));
+            Assert.That(description, Does.Not.Contain("Re-read before continuing"));
+        }
+
+        [Test]
+        public void Description_InvitesSeveralEditsInOneTurnFromOneRead()
+        {
+            // Logs of 2026-11-05: "obtain a fresh read" / "do not use an older read" made the model edit one block per turn
+            // and re-read the file in between.
+            var info = _tool.GetToolInfo();
+            string oldLines = info.Parameters.Properties["old_lines"].Description;
+
+            Assert.That(info.Description, Does.Contain("ONE turn"));
+            Assert.That(info.Description, Does.Contain("same read"));
+            Assert.That(info.Description + oldLines, Does.Not.Contain("fresh read_file_lines"));
+            Assert.That(oldLines, Does.Not.Contain("older read"));
         }
     }
 }

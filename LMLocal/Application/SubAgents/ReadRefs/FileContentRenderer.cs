@@ -70,6 +70,33 @@ namespace LMLocal.Application.SubAgents.ReadRefs
         }
 
         /// <summary>
+        /// Appends a search-location line <c>path:line: `text`</c> with the matched line text verbatim as inline code.
+        /// </summary>
+        public static void AppendSearchLocation(StringBuilder sb, string filePath, int lineNumber, string text)
+        {
+            sb.Append(filePath).Append(':').Append(lineNumber).Append(':');
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            int longestRun = 0, run = 0;
+            foreach (char c in text)
+            {
+                run = c == '`' ? run + 1 : 0;
+                if (run > longestRun)
+                    longestRun = run;
+            }
+
+            string fence = new string('`', longestRun + 1);
+            bool pad = text[0] == '`' || text[text.Length - 1] == '`';
+
+            sb.Append(' ').Append(fence);
+            if (pad) sb.Append(' ');
+            sb.Append(text);
+            if (pad) sb.Append(' ');
+            sb.Append(fence);
+        }
+
+        /// <summary>
         /// Appends a ref-expansion block: a <c>File: &lt;path&gt;, lines &lt;start&gt;-&lt;end&gt;</c> header, then a fenced block of <b>verbatim</b> lines (no line numbers) with <b>no trailing newline</b>.
         /// </summary>
         public static void AppendRefContentBlock(StringBuilder sb, string filePath, int startLine, int endLine, IEnumerable<NumberedLine> lines)

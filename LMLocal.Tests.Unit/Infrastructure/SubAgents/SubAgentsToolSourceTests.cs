@@ -216,17 +216,31 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
 
             var timeout = _source.GetToolTimeout("researcher");
 
-            Assert.That(timeout, Is.EqualTo(TimeSpan.FromSeconds(125)));
+            Assert.That(timeout, Is.EqualTo(TimeSpan.FromSeconds(140)));
         }
 
         [Test]
-        public void GetToolTimeout_TimeoutZero_ReturnsNull()
+        public void GetToolTimeout_MissingTimeout_UsesServiceDefault()
+        {
+            var agent = Agent("researcher", new List<string>());
+            SetEnabledAgents(agent);
+
+            var timeout = _source.GetToolTimeout("researcher");
+
+            Assert.That(
+                timeout,
+                Is.EqualTo(TimeSpan.FromSeconds(SubAgentsService.DefaultTimeoutSeconds) + TimeSpan.FromSeconds(20)),
+                "An agent without a timeout must not fall back to the caller's short default.");
+        }
+
+        [Test]
+        public void GetToolTimeout_TimeoutZero_IsUnbounded()
         {
             var agent = Agent("researcher", new List<string>());
             agent.TimeoutSeconds = 0;
             SetEnabledAgents(agent);
 
-            Assert.That(_source.GetToolTimeout("researcher"), Is.Null);
+            Assert.That(_source.GetToolTimeout("researcher"), Is.EqualTo(Timeout.InfiniteTimeSpan));
         }
 
         [Test]

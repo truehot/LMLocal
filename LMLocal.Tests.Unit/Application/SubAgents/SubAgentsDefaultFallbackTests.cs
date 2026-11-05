@@ -14,8 +14,8 @@ using NUnit.Framework;
 namespace LMLocal.Tests.Unit.Application.SubAgents
 {
     /// <summary>
-    /// Verifies the runtime fallback to the built-in default SubAgents shipped with the extension
-    /// (see docs\SubAgent_model_default.md, Часть 6 / v5): when no custom subagents.json exists the
+    /// Verifies the runtime fallback to the built-in default SubAgents shipped with the extension: 
+    /// when no custom subagents.json exists the
     /// runtime snapshot (<see cref="SubAgentsConfigManager.RefreshAsync"/>) is populated from the default
     /// resource, while <see cref="SubAgentsConfigManager.GetAsync"/> (dialog / IPC) stays custom-only.
     /// </summary>

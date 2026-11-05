@@ -34,7 +34,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// <summary>
         /// Version of the search/matching/ranking logic.
         /// </summary>
-        private const string CacheVersion = "sig3";
+        private const string CacheVersion = "sig4";
 
         public string ToolName => "search_file_content";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -58,7 +58,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Use this tool whenever the user asks to search for text, literal text, a substring, an occurrence, a match, an identifier, or content inside files. This is the required tool for content searches, even when the search string looks like a file name or path. Searches file contents only in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Uses a case-insensitive literal substring match. Use for plain-text or identifier searches when you need matching lines and file locations. It does not search file names; use find_files for that. Supports optional extension and project filters. Use group_by to control result grouping: 'file' (default) groups matches by file, with each matching line and its line number; 'text' groups identical matching text across the searched solution files, showing each distinct line once with its total occurrence count and all file:line locations. Both modes include line numbers; 'text' only collapses repeated lines, reducing duplicate results and pagination. Prefer 'text' for broad or exploratory searches, or when many identical/repeated matches are expected. Results are paginated; the response includes 'next_page_token' when more results exist and omits/nulls it when exhausted. If 'next_page_token' is present, call this tool again with 'page_token' set to retrieve the remaining results before finalizing an answer that claims completeness. Default max_results is 25 (max 500); for exhaustive searches or searches where relevant results may be buried among many matches, use a higher max_results value (e.g. 100-200) rather than relying on the default. The search returns at most 1500 matching results in total. Lines are 1-indexed.",
+                Description = "Use this tool whenever the user asks to search for text, literal text, a substring, an occurrence, a match, an identifier, or content inside files. This is the required tool for content searches, even when the search string looks like a file name or path. Searches file contents only in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Uses a case-insensitive literal substring match: pass one literal term per call; OR, wildcards, regular expressions and phrase quotes are not search syntax. If the literal text has no matches but looks like 'A OR B' or is wrapped in quotes, the tool also searches the split/unquoted terms and explains this in 'note'. Use for plain-text or identifier searches when you need matching lines and file locations. It does not search file names; use find_files for that. Supports optional extension and project filters. Use group_by to control result grouping: 'file' (default) groups matches by file, with each matching line and its line number; 'text' groups identical matching text across the searched solution files, showing each distinct line once with its total occurrence count and all file:line locations. Both modes include line numbers; 'text' only collapses repeated lines, reducing duplicate results and pagination. Prefer 'text' for broad or exploratory searches, or when many identical/repeated matches are expected. Results are paginated; the response includes 'next_page_token' when more results exist and omits/nulls it when exhausted. If 'next_page_token' is present, call this tool again with 'page_token' set to retrieve the remaining results before finalizing an answer that claims completeness. Default max_results is 25 (max 500); for exhaustive searches or searches where relevant results may be buried among many matches, use a higher max_results value (e.g. 100-200) rather than relying on the default. The search scans at most 1500 solution files; when this limit is reached, the response 'note' says the search was limited, and you should narrow it with extension_filter and/or project_filter. Lines are 1-indexed. Safe to call several times in parallel.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -97,11 +97,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (grouping == SearchGrouping.Text)
                 {
                     if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<TextSearchPage> cachedText))
-                        return BuildTextPageResponse(cachedText.AllResults, pageNumber);
+                        return BuildTextPageResponse(cachedText.AllResults, pageNumber, cachedText.Note);
                 }
                 else if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchPage> cachedFile))
                 {
-                    return BuildFilePageResponse(cachedFile.AllResults, pageNumber);
+                    return BuildFilePageResponse(cachedFile.AllResults, pageNumber, cachedFile.Note);
                 }
 
                 var filter = new EnumerateSolutionFilesFilter
@@ -109,18 +109,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     ExtensionFilter = fileExtensions,
                     ReturnRelative = false,
                     ProjectFilter = projectFilter,
-                    Limit = MaxFilesToScan,
+                    Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
                     IncludeProjects = true
                 };
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var allFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
+                bool scanLimitReached = TrimToLimit(allFiles, MaxFilesToScan);
+                if (scanLimitReached)
+                    InternalLogger.Warn($"SearchInSolution: scan limit of {MaxFilesToScan} files reached for '{searchText}'.");
 
                 await TaskScheduler.Default;
 
-                var allResults = new List<SearchResult>();
+                var literalResults = new List<SearchResult>();
+                var fallbackResults = new List<SearchResult>();
                 bool isIdentifierQuery = QueryClassifier.IsIdentifierQuery(searchText);
                 bool needRanking = grouping == SearchGrouping.File;
+
+                var fallback = SearchQueryFallback.Create(searchText);
+                var fallbackIsIdentifier = fallback.Terms.ToDictionary(t => t, QueryClassifier.IsIdentifierQuery, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var absolutePath in allFiles)
                 {
@@ -134,49 +141,37 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     try
                     {
-                        var matches = new List<SearchMatch>();
-                        int exactWordCount = 0;
-                        int declarationWeightSum = 0;
+                        var literal = new FileMatchAccumulator(needRanking);
+                        var fallbackAcc = fallback.HasTerms ? new FileMatchAccumulator(needRanking) : null;
                         string extension = Path.GetExtension(absolutePath);
 
                         await _fileSystem.ReadLinesAsync(absolutePath, (lineNumber, line) =>
                         {
                             var m = ContentSearchMatcher.Match(line, searchText, extension, needRanking && isIdentifierQuery, needRanking);
-                            if (!m.IsMatch)
+                            if (m.IsMatch)
+                                literal.Add(lineNumber, line, m, null);
+
+                            if (fallbackAcc == null || literalResults.Count > 0 || literal.Count > 0)
                                 return;
 
-                            var match = new SearchMatch
-                            {
-                                LineNumber = lineNumber,
-                                LineText = line.Trim()
-                            };
+                            string term = fallback.FindTerm(line);
+                            if (term == null)
+                                return;
 
-                            if (needRanking)
-                            {
-                                match.IsExactWord = m.IsExactWord;
-                                match.DeclarationKind = m.Kind == SearchMatchKind.Other ? null : m.Kind.ToString();
-
-                                if (m.IsExactWord)
-                                    exactWordCount++;
-                                if (m.Kind != SearchMatchKind.Other)
-                                    declarationWeightSum += DeclarationWeights.WeightOf(m.Kind);
-                            }
-
-                            matches.Add(match);
+                            var fm = ContentSearchMatcher.Match(line, term, extension, needRanking && fallbackIsIdentifier[term], needRanking);
+                            if (fm.IsMatch)
+                                fallbackAcc.Add(lineNumber, line, fm, term);
                         }, cancellationToken).ConfigureAwait(false);
 
-                        if (matches.Count > 0)
+                        if (literal.Count > 0 || (fallbackAcc != null && fallbackAcc.Count > 0))
                         {
                             if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                                 relativePath = absolutePath;
 
-                            allResults.Add(new SearchResult
-                            {
-                                FilePath = relativePath,
-                                Matches = matches,
-                                MatchCount = matches.Count,
-                                Score = needRanking ? ComputeScore(matches.Count, exactWordCount, declarationWeightSum) : 0
-                            });
+                            if (literal.Count > 0)
+                                literalResults.Add(literal.ToResult(relativePath));
+                            else if (literalResults.Count == 0)
+                                fallbackResults.Add(fallbackAcc.ToResult(relativePath));
                         }
                     }
                     catch (OperationCanceledException)
@@ -187,6 +182,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     {
                         InternalLogger.Warn($"SearchInSolution: error reading '{absolutePath}': {ex.Message}");
                     }
+                }
+
+                List<SearchResult> allResults = literalResults;
+                string note = null;
+                if (literalResults.Count == 0 && fallback.HasTerms)
+                {
+                    allResults = fallbackResults;
+                    note = fallback.BuildNote(fallbackResults.Sum(r => r.MatchCount));
+                }
+
+                if (scanLimitReached)
+                {
+                    string limitNote = $"The search was limited: the scan limit of {MaxFilesToScan} files was reached, so only the first {MaxFilesToScan} solution files were searched and matches in the remaining files are missing. A missing match is not proof of absence. Narrow the search with extension_filter and/or project_filter.";
+                    note = string.IsNullOrEmpty(note) ? limitNote : note + " " + limitNote;
                 }
 
                 if (needRanking)
@@ -209,10 +218,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     _searchCache.Set(cacheKey, solutionDir, new CachedToolResults<TextSearchPage>
                     {
                         AllResults = textPages,
-                        ItemsScanned = allFiles.Count
+                        ItemsScanned = allFiles.Count,
+                        Note = note
                     });
 
-                    return BuildTextPageResponse(textPages, 0);
+                    return BuildTextPageResponse(textPages, 0, note);
                 }
                 else
                 {
@@ -221,10 +231,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     _searchCache.Set(cacheKey, solutionDir, new CachedToolResults<FileSearchPage>
                     {
                         AllResults = pages,
-                        ItemsScanned = allFiles.Count
+                        ItemsScanned = allFiles.Count,
+                        Note = note
                     });
 
-                    return BuildFilePageResponse(pages, 0);
+                    return BuildFilePageResponse(pages, 0, note);
                 }
             }
             catch (OperationCanceledException)
@@ -263,7 +274,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private static SearchResultsResponse BuildFilePageResponse(IReadOnlyList<FileSearchPage> pages, int pageNumber)
+        private static SearchResultsResponse BuildFilePageResponse(IReadOnlyList<FileSearchPage> pages, int pageNumber, string note)
         {
             if (pageNumber >= 0 && pageNumber < pages.Count)
             {
@@ -272,6 +283,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return new SearchResultsResponse
                 {
                     Results = page.Results,
+                    Note = note,
                     NextPageToken = nextToken,
                     TotalMatches = page.TotalMatches,
                     TotalFiles = page.TotalFiles,
@@ -282,6 +294,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new SearchResultsResponse
             {
                 Results = new List<SearchResult>(),
+                Note = note,
                 NextPageToken = null,
                 TotalMatches = pages.Count > 0 ? pages[0].TotalMatches : 0,
                 TotalFiles = pages.Count > 0 ? pages[0].TotalFiles : 0,
@@ -289,7 +302,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private static SearchTextGroupResponse BuildTextPageResponse(IReadOnlyList<TextSearchPage> pages, int pageNumber)
+        private static SearchTextGroupResponse BuildTextPageResponse(IReadOnlyList<TextSearchPage> pages, int pageNumber, string note)
         {
             if (pageNumber >= 0 && pageNumber < pages.Count)
             {
@@ -298,6 +311,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return new SearchTextGroupResponse
                 {
                     Results = page.Results,
+                    Note = note,
                     NextPageToken = nextToken,
                     TotalMatches = page.TotalMatches,
                     TotalFiles = page.TotalFiles,
@@ -308,6 +322,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new SearchTextGroupResponse
             {
                 Results = new List<SearchTextGroupResult>(),
+                Note = note,
                 NextPageToken = null,
                 TotalMatches = pages.Count > 0 ? pages[0].TotalMatches : 0,
                 TotalFiles = pages.Count > 0 ? pages[0].TotalFiles : 0,
@@ -390,6 +405,56 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private static int ComputeScore(int matchCount, int exactWordCount, int declarationWeightSum)
         {
             return matchCount + exactWordCount * DeclarationWeights.ExactWordBonus + declarationWeightSum;
+        }
+
+        /// <summary>Collects the matches of one file and the ranking inputs for its score.</summary>
+        private sealed class FileMatchAccumulator
+        {
+            private readonly bool _needRanking;
+            private readonly List<SearchMatch> _matches = new List<SearchMatch>();
+            private int _exactWordCount;
+            private int _declarationWeightSum;
+
+            public FileMatchAccumulator(bool needRanking)
+            {
+                _needRanking = needRanking;
+            }
+
+            public int Count => _matches.Count;
+
+            public void Add(int lineNumber, string line, LineMatch m, string matchedTerm)
+            {
+                var match = new SearchMatch
+                {
+                    LineNumber = lineNumber,
+                    LineText = line.Trim(),
+                    MatchedTerm = matchedTerm
+                };
+
+                if (_needRanking)
+                {
+                    match.IsExactWord = m.IsExactWord;
+                    match.DeclarationKind = m.Kind == SearchMatchKind.Other ? null : m.Kind.ToString();
+
+                    if (m.IsExactWord)
+                        _exactWordCount++;
+                    if (m.Kind != SearchMatchKind.Other)
+                        _declarationWeightSum += DeclarationWeights.WeightOf(m.Kind);
+                }
+
+                _matches.Add(match);
+            }
+
+            public SearchResult ToResult(string relativePath)
+            {
+                return new SearchResult
+                {
+                    FilePath = relativePath,
+                    Matches = _matches,
+                    MatchCount = _matches.Count,
+                    Score = _needRanking ? ComputeScore(_matches.Count, _exactWordCount, _declarationWeightSum) : 0
+                };
+            }
         }
 
         private (string searchText, string fileExtensions, string projectFilter, string pageToken, int pageSize, SearchGrouping grouping, string error) ExtractAndValidateParameters(

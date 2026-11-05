@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Common;
+using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
@@ -46,6 +46,9 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>True when this round answers tool results, false for a new user round.</summary>
         public bool IsToolRound { get; set; }
 
+        /// <summary>True when this round retries a request that failed after a forced compaction of the history.</summary>
+        public bool IsContextOverflowRetry { get; set; }
+
         /// <summary>Tool results for a tool round.</summary>
         public List<ToolResultMessage> ToolResults { get; set; }
 
@@ -81,6 +84,9 @@ namespace LMLocal.Application.ChatSessionStream
 
         /// <summary>Optional streaming callback (chunks/token stats).</summary>
         public Func<TextStreamChunk, TokenGenerationStats, Task> OnChunk { get; set; }
+
+        /// <summary>Calibration of the conversation this round belongs to. Optional.</summary>
+        public IContextCalibration Calibration { get; set; }
     }
 
     /// <summary>Outcome of a round plus the raw stream result.</summary>
@@ -88,6 +94,11 @@ namespace LMLocal.Application.ChatSessionStream
     {
         public StreamRoundOutcome Outcome { get; set; }
         public StreamCompletionResult Stream { get; set; }
+
+        /// <summary>
+        /// Estimated size of the request envelope this round sent, before calibration. Zero when unknown.
+        /// </summary>
+        public int EnvelopeEstimate { get; set; }
     }
 
     /// <summary>
@@ -104,17 +115,20 @@ namespace LMLocal.Application.ChatSessionStream
         private readonly ISettingsManager _settingsManager;
         private readonly IStreamProcessorFactory _streamProcessorFactory;
         private readonly IModelsConfigManager _modelsConfigManager;
+        private readonly IToolQueueProvider _toolQueueProvider;
 
         public StreamingRoundService(
             IOpenApiAdapter openApiAdapter,
             ISettingsManager settingsManager,
             IStreamProcessorFactory streamProcessorFactory,
-            IModelsConfigManager modelsConfigManager)
+            IModelsConfigManager modelsConfigManager,
+            IToolQueueProvider toolQueueProvider = null)
         {
             _openApiAdapter = openApiAdapter ?? throw new ArgumentNullException(nameof(openApiAdapter));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _streamProcessorFactory = streamProcessorFactory ?? throw new ArgumentNullException(nameof(streamProcessorFactory));
             _modelsConfigManager = modelsConfigManager ?? throw new ArgumentNullException(nameof(modelsConfigManager));
+            _toolQueueProvider = toolQueueProvider;
         }
 
         public async Task<StreamRoundResult> RunAsync(
@@ -129,7 +143,7 @@ namespace LMLocal.Application.ChatSessionStream
                 var history = request.History;
                 bool isToolRound = request.IsToolRound;
 
-                if (!isToolRound)
+                if (!isToolRound && !request.IsContextOverflowRetry)
                 {
                     history.EnsureHistoryNormalized();
                 }
@@ -147,7 +161,7 @@ namespace LMLocal.Application.ChatSessionStream
 
                     history.AddToolExecutionResultMessages(pendingToolMessages);
                 }
-                else
+                else if (!request.IsContextOverflowRetry)
                 {
                     history.AddUserMessage(request.Prompt, request.ActiveDocumentContent, request.Images);
                 }
@@ -165,18 +179,94 @@ namespace LMLocal.Application.ChatSessionStream
                     contextLength: modelProfile?.ContextLength,
                     reasoning: request.ReasoningEffort ?? modelProfile?.ReasoningEffort);
 
+                int envelopeEstimate = EnvelopeEstimator.Estimate(messages, ResolveToolsForEstimate(request));
+                int fixedOverhead = Math.Max(0, envelopeEstimate - EnvelopeEstimator.Estimate(WithoutSystemMessage(messages), null));
+                request.Calibration?.RecordEnvelope(envelopeEstimate, fixedOverhead);
+
                 StreamCompletionResult result;
-                using (var streaming = await SendStreamingAsync(messageContext, modelContext, request, linkedCts.Token).ConfigureAwait(false))
+                try
                 {
-                    result = await processor.ProcessStreamAsync(
-                        streaming.Stream,
-                        linkedCts.Token,
-                        request.OnChunk,
-                        _settingsManager.BatchIntervalMs).ConfigureAwait(false);
+                    using (var streaming = await SendStreamingAsync(messageContext, modelContext, request, linkedCts.Token).ConfigureAwait(false))
+                    {
+                        result = await processor.ProcessStreamAsync(
+                            streaming.Stream,
+                            linkedCts.Token,
+                            request.OnChunk,
+                            _settingsManager.BatchIntervalMs).ConfigureAwait(false);
+                    }
+                }
+                catch (ApiException ex) when (!linkedCts.Token.IsCancellationRequested)
+                {
+                    request.Calibration?.RecordOverflowError(ex.ErrorInfo?.PromptTokens, ex.ErrorInfo?.ContextLength, envelopeEstimate);
+
+                    return new StreamRoundResult
+                    {
+                        Outcome = StreamRoundOutcome.Error,
+                        Stream = BuildErrorResult(ex),
+                        EnvelopeEstimate = envelopeEstimate
+                    };
                 }
 
-                return ClassifyAndCommit(history, result);
+                request.Calibration?.RecordSuccessfulRound(result?.TokenUsage?.PromptTokens, envelopeEstimate);
+
+                var classified = ClassifyAndCommit(history, result);
+                classified.EnvelopeEstimate = envelopeEstimate;
+                return classified;
             }
+        }
+
+        /// <summary>
+        /// Copies the message list without its system message, so the non-history part of the envelope can be measured.
+        /// </summary>
+        private static List<ChatMessage> WithoutSystemMessage(IReadOnlyList<ChatMessage> messages)
+        {
+            var rest = new List<ChatMessage>(messages?.Count ?? 0);
+            if (messages == null)
+                return rest;
+
+            foreach (var message in messages)
+            {
+                if (message != null && message.Role != "system")
+                    rest.Add(message);
+            }
+
+            return rest;
+        }
+
+        /// <summary>
+        /// Maps an API exception to a stream result carrying the structured error fields.
+        /// </summary>
+        private static StreamCompletionResult BuildErrorResult(ApiException ex)
+        {
+            var errorInfo = ex.ErrorInfo;
+
+            return new StreamCompletionResult
+            {
+                ErrorMessage = !string.IsNullOrEmpty(errorInfo?.Message) ? errorInfo.Message : ex.Message,
+                ErrorCode = !string.IsNullOrEmpty(errorInfo?.RawCode) ? errorInfo.RawCode : errorInfo?.Code?.ToString(),
+                ErrorType = errorInfo?.Type,
+                FinishReason = "error",
+                HttpStatusCode = ex.HttpStatusCode
+            };
+        }
+
+        /// <summary>
+        /// Tools that travel with the request: the explicit set of a SubAgent round, or the main chat queue that the
+        /// request builder injects for the chat.
+        /// </summary>
+        private IReadOnlyList<ToolDefinition> ResolveToolsForEstimate(StreamRoundRequest request)
+        {
+            if (request.Tools != null)
+                return request.Tools;
+
+            if (request.Provider != null)
+                return null;
+
+            var settings = _settingsManager?.Current;
+            if (settings == null || !settings.EnableAiTools)
+                return null;
+
+            return _toolQueueProvider?.GetMainQueue()?.Definitions;
         }
 
         /// <summary>
@@ -190,17 +280,9 @@ namespace LMLocal.Application.ChatSessionStream
             try
             {
                 var config = await _modelsConfigManager.GetAsync(cancellationToken).ConfigureAwait(false);
-                if (config == null || config.Models == null || config.Models.Count == 0)
-                    return null;
+                var current = _settingsManager.Current;
 
-                string providerType = _settingsManager.Current?.Provider;
-                int? providerId = _settingsManager.Current?.ProviderId;
-
-                return config.Models.FirstOrDefault(m => m != null
-                    && m.Enabled
-                    && string.Equals(m.ModelId, modelId, StringComparison.Ordinal)
-                    && string.Equals(m.ProviderType, providerType, StringComparison.OrdinalIgnoreCase)
-                    && Nullable.Equals(m.ProviderId, providerId));
+                return ModelProfileLookup.Find(config, modelId, current?.Provider, current?.ProviderId);
             }
             catch (Exception ex)
             {

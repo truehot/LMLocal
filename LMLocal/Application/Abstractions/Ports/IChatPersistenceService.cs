@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,9 +23,15 @@ namespace LMLocal.Application.Abstractions.Ports
         Task SaveMessagesAsync(IEnumerable<ChatMessage> messages, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Writes a session_start marker to the current jsonl file, establishing a new session boundary.
+        /// Writes a session_start marker to the current jsonl file, establishing a new session boundary
         /// </summary>
         Task MarkNewSessionAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Starts a new session and writes its session_start marker together with <paramref name="messages"/> as a single append.
+        /// </summary>
+
+        Task<bool> StartSessionWithMessagesAsync(IReadOnlyList<ChatMessage> messages, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Scans all jsonl chat files, finds the most recent session_start marker, and returns all messages belonging to that session in chronological order.

@@ -54,14 +54,29 @@ namespace LMLocal.Application.ChatSession
             _subAgentsConfigManager = subAgentsConfigManager ?? throw new ArgumentNullException(nameof(subAgentsConfigManager));
         }
 
+        /// <summary>
+        /// How long a new session waits for the previous one to finish before it is rejected.
+        /// </summary>
+        private static readonly TimeSpan SessionLockTimeout = TimeSpan.FromSeconds(5);
+
         public async Task<bool> TryStartSessionAsync(
             GenerateStreamContext context,
             Func<WebView2ScriptMessage, Task> onMessage,
             CancellationToken cancellationToken)
         {
-            if (!await _sessionLock.WaitAsync(0).ConfigureAwait(false))
+            if (!await WaitForSessionLockAsync(cancellationToken).ConfigureAwait(false))
             {
-                InternalLogger.Info("SessionManager: Session already in progress (lock unavailable)");
+                InternalLogger.Info("SessionManager: Previous session is still finishing; giving up on the new one.");
+
+                if (onMessage != null)
+                {
+                    await onMessage(new WebView2ScriptMessage
+                    {
+                        Type = WebView2MessageType.ChatSessionError,
+                        Payload = "Previous session is still finishing. Try again in a moment."
+                    }).ConfigureAwait(false);
+                }
+
                 return false;
             }
 
@@ -97,6 +112,21 @@ namespace LMLocal.Application.ChatSession
             finally
             {
                 _sessionLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Waits a bounded time for the session lock.
+        /// </summary>
+        private async Task<bool> WaitForSessionLockAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _sessionLock.WaitAsync(SessionLockTimeout, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
             }
         }
 

@@ -49,5 +49,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
     {
         public List<T> AllResults { get; set; }
         public int ItemsScanned { get; set; }
+
+        /// <summary>Optional note returned with every page of this result set (e.g. a search fallback explanation).</summary>
+        public string Note { get; set; }
     }
 }

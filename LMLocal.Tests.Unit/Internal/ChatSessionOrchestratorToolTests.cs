@@ -45,6 +45,7 @@ namespace LMLocal.Tests.Unit.Internal
                 _chatServiceMock.Object,
                 _toolManagerMock.Object,
                 _compactorMock.Object,
+                new Mock<IChatHistoryManager>().Object,
                 _snapshotManagerMock.Object,
                 _loopDetectorMock.Object,
                 _parallelPolicyMock.Object,

@@ -97,6 +97,26 @@ internal static class IpcCommandHandler
             return;
         }
 
+        else if (string.Equals(command, "CommitSnapshot", StringComparison.OrdinalIgnoreCase))
+        {
+            var snapshotManager = ServiceConfiguration.GetService<ISnapshotManager>();
+            if (snapshotManager == null)
+            {
+                await writer.WriteLineAsync("{\"error\":\"Snapshot service is not registered.\"}");
+                return;
+            }
+
+            if (snapshotManager.IsBatchActive)
+            {
+                await writer.WriteLineAsync("{\"error\":\"A snapshot batch is active; commit is not possible now.\"}");
+                return;
+            }
+
+            await snapshotManager.CommitAllAsync(token).ConfigureAwait(false);
+            await writer.WriteLineAsync("OK");
+            return;
+        }
+
         else if (command.StartsWith("RunTool"))
         {
             var builtInVsToolProvider = ServiceConfiguration.GetService<IBuiltInVsToolProvider>();

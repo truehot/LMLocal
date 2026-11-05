@@ -220,5 +220,124 @@ namespace LMLocal.Tests.Unit
             Assert.That(text, Does.Not.Contain("tool"));
             Assert.That(text, Does.Not.Contain("{}"));
         }
+
+        [Test]
+        public void CompactIfNeededAsync_UsesPromptThatDoesNotCopyCode()
+        {
+            var fixture = new EndOfSessionFixture(new ChatChoice { Message = new AssistantMessage { Content = "summary" }, FinishReason = "stop" });
+
+            fixture.Compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
+
+            string systemPrompt = fixture.CapturedMessages.Input[0].Content.ToString();
+            Assert.That(systemPrompt, Does.Contain("Do not reproduce large code blocks"));
+            Assert.That(systemPrompt, Does.Not.Contain("Copy all code blocks"));
+        }
+
+        [Test]
+        public void CompactIfNeededAsync_LengthStop_KeepsHistory()
+        {
+            var fixture = new EndOfSessionFixture(new ChatChoice { Message = new AssistantMessage { Content = "cut off summ" }, FinishReason = "length" });
+
+            fixture.Compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
+
+            fixture.History.Verify(h => h.ReplaceHistoryAndPersistAsync(
+                It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<int>()), Times.Never);
+        }
+
+        [Test]
+        public void CompactIfNeededAsync_ProfileWithReasoning_SendsReasoningNone()
+        {
+            var fixture = new EndOfSessionFixture(
+                new ChatChoice { Message = new AssistantMessage { Content = "summary" }, FinishReason = "stop" },
+                profileReasoningEffort: "medium");
+
+            fixture.Compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(fixture.CapturedModel.Reasoning, Is.EqualTo("none"));
+        }
+
+        [Test]
+        public void CompactIfNeededAsync_ProfileWithoutReasoning_SendsNoReasoning()
+        {
+            var fixture = new EndOfSessionFixture(
+                new ChatChoice { Message = new AssistantMessage { Content = "summary" }, FinishReason = "stop" },
+                profileReasoningEffort: null);
+
+            fixture.Compactor.CompactIfNeededAsync("m", CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(fixture.CapturedModel.Reasoning, Is.Null);
+        }
+
+        [Test]
+        public void SummarizeAsync_LengthStop_StillReturnsSummary()
+        {
+            var fixture = new EndOfSessionFixture(
+                new ChatChoice { Message = new AssistantMessage { Content = "manual summary" }, FinishReason = "length" },
+                profileReasoningEffort: "medium");
+
+            var result = fixture.Compactor.SummarizeAsync(
+                new List<ChatMessage> { new ChatMessage("user", "hello") }, "m", CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(result, Is.EqualTo("manual summary"));
+            Assert.That(fixture.CapturedModel.Reasoning, Is.Null);
+            Assert.That(fixture.CapturedMessages.Input[0].Content.ToString(), Does.Contain("Copy all code blocks"));
+        }
+
+        /// <summary>
+        /// End-of-session compaction over a history large enough to need it, with an optional model profile.
+        /// </summary>
+        private sealed class EndOfSessionFixture
+        {
+            public EndOfSessionFixture(ChatChoice choice, string profileReasoningEffort = null)
+            {
+                var settings = new Mock<ISettingsManager>();
+                settings.Setup(s => s.Current).Returns(new AppSettings
+                {
+                    EnableHistoryCompaction = true,
+                    Provider = "lmstudio",
+                    ProviderId = null
+                });
+
+                var snapshot = new List<ChatMessage>();
+                for (int i = 0; i < 50; i++)
+                    snapshot.Add(new ChatMessage("user", "message " + i));
+
+                History = new Mock<IChatHistoryManager>();
+                History.Setup(h => h.GetHistoryCopy()).Returns(snapshot);
+                History.Setup(h => h.ReplaceHistoryAndPersistAsync(It.IsAny<string>(), It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<int>()))
+                    .ReturnsAsync(true);
+
+                var client = new Mock<IOpenApiAdapter>();
+                client.Setup(c => c.SendChatAsync(It.IsAny<MessageContext>(), It.IsAny<ModelContext>(), It.IsAny<CancellationToken>()))
+                    .Callback<MessageContext, ModelContext, CancellationToken>((ctx, mc, ct) =>
+                    {
+                        CapturedMessages = ctx;
+                        CapturedModel = mc;
+                    })
+                    .ReturnsAsync(new SendChatResponse { Choices = new List<ChatChoice> { choice } });
+
+                var models = new Mock<LMLocal.Infrastructure.ModelsConfig.IModelsConfigManager>();
+                models.Setup(m => m.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new ModelsConfigFile
+                {
+                    Models = new List<ModelDefinition>
+                    {
+                        new ModelDefinition { ModelId = "m", ProviderType = "lmstudio", ProviderId = null, ReasoningEffort = profileReasoningEffort }
+                    }
+                });
+
+                var activeModel = new Mock<IActiveModelContext>();
+                activeModel.SetupGet(a => a.MaxContextLength).Returns(100);
+
+                Compactor = new HistoryCompactor(History.Object, client.Object, settings.Object, activeModel.Object, null, models.Object);
+            }
+
+            public HistoryCompactor Compactor { get; }
+
+            public Mock<IChatHistoryManager> History { get; }
+
+            public MessageContext CapturedMessages { get; private set; }
+
+            public ModelContext CapturedModel { get; private set; }
+        }
     }
 }

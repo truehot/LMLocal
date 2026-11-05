@@ -30,7 +30,8 @@ namespace LMLocal.Infrastructure.WebView
         CompactionStart,
 
         /// <summary>
-        /// History compaction(summarization)  completed.
+        /// History compaction(summarization) completed. Closes the pair opened by CompactionStart on both
+        /// paths: the end-of-session compaction and the context-overflow recovery.
         /// </summary>
         CompactionEnd,
 

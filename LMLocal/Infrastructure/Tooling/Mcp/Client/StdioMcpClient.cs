@@ -245,7 +245,11 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 if (!_process.Start())
                     throw new InvalidOperationException("Failed to start process");
 
-                _stdinWriter = _process.StandardInput;
+                _stdinWriter = new StreamWriter(
+                    _process.StandardInput.BaseStream,
+                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                    4096,
+                    leaveOpen: true);
                 _stdoutReader = _process.StandardOutput;
                 _stderrReader = _process.StandardError;
 
@@ -400,6 +404,9 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             try
             {
                 _stdinWriter?.Dispose();
+
+                try { _process?.StandardInput.Close(); } catch (InvalidOperationException) { }
+
                 _stdoutReader?.Dispose();
                 _stderrReader?.Dispose();
 

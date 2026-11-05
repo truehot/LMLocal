@@ -100,7 +100,7 @@ class BridgeMessageDispatcher {
                 this._handler.handleCompactionStart();
                 break;
             case 'CompactionEnd':
-                this._handler.handleCompactionEnd();
+                this._handler.handleCompactionEnd(data);
                 break;
 
             case 'SnapshotFilesChanged':

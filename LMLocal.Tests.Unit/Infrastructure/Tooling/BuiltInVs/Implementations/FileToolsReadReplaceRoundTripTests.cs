@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -21,10 +21,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
     /// splitting are the production ones) and the real <see cref="PathResolver"/>; only the
     /// Visual Studio dependencies, the snapshot manager and the syntax checker are mocked.
     /// Characterisation cases (names end with "_Documents...") pin currently observed defects
-    /// so a change in behaviour is noticed; see Docs\file-tools-encoding-defects-plan.md (E1, E2, E5).
+    /// so a change in behaviour is noticed.
     /// Scope: raw file I/O symmetry only. Editor-side effects (VS document buffer, format_document,
     /// get_changes_diff, snapshot diffing) are intentionally not covered here — see the E2E counterpart
-    /// <c>RunTool_ReadReplaceRead_RoundTripsOneToOneAsync</c> and the known limitations in Docs\file-tools-encoding-defects-plan.md.
+    /// <c>RunTool_ReadReplaceRead_RoundTripsOneToOneAsync</c> and the known limitations.
     /// </summary>
     [TestFixture]
     public class FileToolsReadReplaceRoundTripTests
@@ -166,7 +166,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public async Task NoOpReplace_MixedEol_IsByteStable()
         {
-            // P2-2 (Docs\file-tools-encoding-defects-plan.md): the no-op is decided on lines, so a call that asks
+            // P2-2: the no-op is decided on lines, so a call that asks
             // for exactly what the file already holds writes nothing — the mixed EOL of the untouched lines
             // survives. E5 (EOL unification on a real edit) stays a separate boundary with its own test.
             var bytes = Encoding.UTF8.GetBytes("a\r\nb\nc\r\n");
@@ -184,7 +184,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public async Task ReadThenReplace_Cp1251WithoutBom_MatchesItsOwnRead()
         {
-            // E1 (Docs\file-tools-encoding-defects-plan.md): both paths now go through FileEncodingDetector, so the
+            // E1: both paths now go through FileEncodingDetector, so the
             // text read_file_lines shows can be matched by replace_file_lines even in a BOM-less non-UTF-8 file.
             Encoding cp1251;
             try

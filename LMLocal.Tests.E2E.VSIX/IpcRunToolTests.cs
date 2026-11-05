@@ -360,6 +360,46 @@ namespace LMLocal.Tests.E2E.VSIX
         }
 
         [TestMethod]
+        public async Task RunTool_FormatDocument_Markdown_IsSkippedNotFailedAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                EnsureScratchExists();
+                var path = ScratchPath("e2e_format.md");
+                CleanupFiles(path);
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+                        var rel = "LMLocal.Tests.E2E.VSIX\\Scratch\\e2e_format.md";
+
+                        var content = "# Title\n\nSome   text  with   spaces.\n";
+                        await SendAsync(client, $"RunTool|create_file|{UriEnc(rel)}|{UriEnc(content)}", cts.Token);
+                        var before = File.ReadAllBytes(path);
+
+                        // VS has no Markdown formatter: previously COM E_FAIL, now a clear no-op.
+                        var resp = await SendAsync(client, $"RunTool|format_document|{UriEnc(rel)}|false", cts.Token);
+                        var obj = JObject.Parse(resp);
+                        Assert.IsTrue((bool)obj["success"], "format_document on .md should not fail: " + resp);
+                        Assert.IsTrue(obj["skipped"]?.Value<bool>() ?? false, "format_document on .md should report skipped: " + resp);
+                        Assert.Contains(".md", obj["note"]?.Value<string>() ?? "", "note should name the file type: " + resp);
+                        CollectionAssert.AreEqual(before, File.ReadAllBytes(path), "a skipped format must not change the file");
+
+                        await SendAsync(client, $"RunTool|delete_file|{UriEnc(rel)}", cts.Token);
+                    }
+                }
+                finally
+                {
+                    CleanupFiles(path);
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
         public async Task RunTool_SearchSolutionKnowledge_ReturnsJsonAsync()
         {
             using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
@@ -509,6 +549,189 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue(obj.ContainsKey("success"), "Response should contain 'success' key");
                         Assert.IsFalse((bool)obj["success"], "set_file_project_status should fail for a missing project");
                         Assert.IsTrue(obj.ContainsKey("error_message"), "Response should contain 'error_message' key");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        // ---- search_file_content: project_filter with a path, OR / quote fallback ---------------
+        // Terms are assembled at runtime so this source file never contains the full search text
+        // literally (the VSIX test project is part of the solution and is searched too).
+        private const string TermA = "CompactForced" + "Async";
+        private const string TermB = "ConsolidateLast" + "ExchangeAsync";
+
+        /// <summary>
+        /// Positional RunTool order for search_file_content: text, group_by, extension_filter,
+        /// project_filter, page_token, max_results.
+        /// </summary>
+        private async Task<JObject> SearchAsync(IpcClient client, string text, string projectFilter, CancellationToken ct)
+        {
+            var resp = await SendAsync(client,
+                $"RunTool|search_file_content|{UriEnc(text)}|file||{UriEnc(projectFilter)}||500", ct);
+            Assert.StartsWith("{", resp, "search_file_content should return JSON: " + resp);
+            var obj = JObject.Parse(resp);
+            Assert.IsTrue((bool)obj["success"], "search_file_content should succeed: " + resp);
+            return obj;
+        }
+
+        private static System.Collections.Generic.List<string> FilePaths(JObject searchResponse) =>
+            (searchResponse["results"] as JArray ?? new JArray())
+                .Select(r => r["file_path"].Value<string>())
+                .ToList();
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_PathProjectFilter_LimitsToFolderAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        // Unfiltered baseline: the term also occurs outside LMLocal\Application (tests) and in the
+                        // sibling folder LMLocal\Application\ChatSession, which a folder filter must exclude.
+                        var all = FilePaths(await SearchAsync(client, TermA, "", cts.Token));
+                        Assert.Contains(p => !p.StartsWith(@"LMLocal\Application\", StringComparison.OrdinalIgnoreCase), all,
+                            "baseline should include files outside LMLocal\\Application: " + string.Join(", ", all));
+                        Assert.Contains(p => p.StartsWith(@"LMLocal\Application\ChatSession\", StringComparison.OrdinalIgnoreCase), all,
+                            "baseline should include LMLocal\\Application\\ChatSession: " + string.Join(", ", all));
+
+                        foreach (var filter in new[] { @"LMLocal\Application\Chat", "LMLocal/Application/Chat", @"LMLocal\\Application\\Chat", @"Application\Chat\" })
+                        {
+                            var obj = await SearchAsync(client, TermA, filter, cts.Token);
+                            var paths = FilePaths(obj);
+                            Assert.IsGreaterThan(0, paths.Count, $"filter '{filter}' should find matches: {obj}");
+                            Assert.IsTrue(paths.All(p => p.StartsWith(@"LMLocal\Application\Chat\", StringComparison.OrdinalIgnoreCase)),
+                                $"filter '{filter}' should keep only the LMLocal\\Application\\Chat folder (not ChatSession): " + string.Join(", ", paths));
+                            Assert.Contains(p => p.EndsWith("HistoryCompactor.cs", StringComparison.OrdinalIgnoreCase), paths,
+                                $"filter '{filter}' should include HistoryCompactor.cs: " + string.Join(", ", paths));
+                            Assert.IsNull(obj["note"], "a literal search with hits must not carry a fallback note");
+                        }
+
+                        // A trailing separator means the folder itself: 'LMLocal\' must not pull in LMLocal.Tests.*.
+                        var lmLocalOnly = FilePaths(await SearchAsync(client, TermA, @"LMLocal\", cts.Token));
+                        Assert.IsTrue(lmLocalOnly.Count > 0 && lmLocalOnly.All(p => p.StartsWith(@"LMLocal\", StringComparison.OrdinalIgnoreCase)),
+                            "'LMLocal\\' should keep only the LMLocal folder: " + string.Join(", ", lmLocalOnly));
+
+                        // A separator-free filter keeps the original per-component semantics.
+                        var byProject = FilePaths(await SearchAsync(client, TermA, "LMLocal.Tests.Unit", cts.Token));
+                        Assert.IsTrue(byProject.Count > 0 && byProject.All(p => p.StartsWith(@"LMLocal.Tests.Unit\", StringComparison.OrdinalIgnoreCase)),
+                            "project-name filter should keep only LMLocal.Tests.Unit: " + string.Join(", ", byProject));
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_OrQuery_FallsBackToSplitTermsAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        var obj = await SearchAsync(client, TermA + " OR " + TermB, @"LMLocal\Application", cts.Token);
+
+                        var note = obj["note"]?.Value<string>();
+                        Assert.IsNotNull(note, "an OR query without a literal match should carry a fallback note: " + obj);
+                        Assert.Contains("does not support OR", note);
+                        Assert.IsGreaterThan(0, obj["total_matches"].Value<int>(), "split terms should match: " + obj);
+
+                        var matchedTerms = (obj["results"] as JArray)
+                            .SelectMany(r => r["matches"] as JArray)
+                            .Select(m => m["matched_term"]?.Value<string>())
+                            .Distinct()
+                            .ToList();
+                        CollectionAssert.Contains(matchedTerms, TermA, "matched_term should report " + TermA);
+                        CollectionAssert.Contains(matchedTerms, TermB, "matched_term should report " + TermB);
+                        CollectionAssert.DoesNotContain(matchedTerms, null, "every fallback match must carry matched_term");
+
+                        // Pagination/cache path: the same query again returns the cached result with the note.
+                        var again = await SearchAsync(client, TermA + " OR " + TermB, @"LMLocal\Application", cts.Token);
+                        Assert.AreEqual(note, again["note"]?.Value<string>(), "cached response must keep the note");
+
+                        // No split term matches either: still a note, now stating the negative explicitly.
+                        var none = await SearchAsync(client, "lmlocal-e2e-" + Guid.NewGuid().ToString("N") + " OR lmlocal-e2e-" + Guid.NewGuid().ToString("N"), "", cts.Token);
+                        Assert.AreEqual(0, none["total_matches"].Value<int>(), "random terms should not match: " + none);
+                        Assert.Contains("found no matches either", none["note"]?.Value<string>() ?? "", "negative fallback should say so: " + none);
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        // Exists literally in this file, so the literal match must win over the OR-split fallback.
+        private const string OrLiteralInThisFile = "lmlocal-e2e-or-literal ALPHA OR BETA";
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_OrLiteralPresent_LiteralWinsAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        var obj = await SearchAsync(client, OrLiteralInThisFile, "LMLocal.Tests.E2E.VSIX", cts.Token);
+
+                        Assert.IsNull(obj["note"], "a literal match must not trigger the OR fallback: " + obj);
+                        var paths = FilePaths(obj);
+                        Assert.Contains(p => p.EndsWith("IpcRunToolTests.cs", StringComparison.OrdinalIgnoreCase), paths,
+                            "literal should be found in IpcRunToolTests.cs: " + string.Join(", ", paths));
+                        var terms = (obj["results"] as JArray).SelectMany(r => r["matches"] as JArray).Select(m => m["matched_term"]).ToList();
+                        Assert.IsTrue(terms.All(t => t == null), "literal matches must not carry matched_term");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_WholeTextQuoted_FallsBackToUnquotedAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        var plain = await SearchAsync(client, TermA, @"LMLocal\Application", cts.Token);
+                        var quoted = await SearchAsync(client, "\"" + TermA + "\"", @"LMLocal\Application", cts.Token);
+
+                        Assert.Contains("quotes were removed", quoted["note"]?.Value<string>() ?? "", "quoted text should fall back: " + quoted);
+                        Assert.AreEqual(plain["total_matches"].Value<int>(), quoted["total_matches"].Value<int>(),
+                            "unquoted fallback should find the same matches as the plain term");
                     }
                 }
                 finally

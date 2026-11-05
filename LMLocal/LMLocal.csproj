@@ -82,9 +82,14 @@
     <Compile Include="Application\Changes\DiffModels.cs" />
     <Compile Include="Application\Changes\Models\ChangesResult.cs" />
     <Compile Include="Application\Changes\UnifiedDiffBuilder.cs" />
+    <Compile Include="Application\ChatSessionStream\ContextOverflowDetector.cs" />
     <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
     <Compile Include="Application\Chat\ChatHistoryService.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
+    <Compile Include="Application\Chat\ContextBudget.cs" />
+    <Compile Include="Application\Chat\ConversationSegmenter.cs" />
+    <Compile Include="Application\Chat\SummaryInputFormatter.cs" />
+    <Compile Include="Application\Chat\ToolHistoryPruner.cs" />
     <Compile Include="Application\ModelsList\TestConnectionResult.cs" />
     <Compile Include="Application\ModelsList\TestConnectionService.cs" />
     <Compile Include="Application\SubAgents\ISubAgentsParallelPolicy.cs" />
@@ -98,6 +103,8 @@
     <Compile Include="Application\SubAgents\ReadRefs\ReadRecord.cs" />
     <Compile Include="Application\SubAgents\ReadRefs\ReadRefExpander.cs" />
     <Compile Include="Application\SubAgents\ReadRefs\ReadResultRecorder.cs" />
+    <Compile Include="Application\SubAgents\ReadRefs\SearchLedger.cs" />
+    <Compile Include="Application\SubAgents\ReadRefs\SearchResultRecorder.cs" />
     <Compile Include="Application\SubAgents\SubAgentRunRequest.cs" />
     <Compile Include="Application\SubAgents\SubAgentsParallelRunResult.cs" />
     <Compile Include="Application\SubAgents\SubAgentsRunResponse.cs" />
@@ -116,6 +123,7 @@
     <Compile Include="Core\Common\PromptContentLimits.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
     <Compile Include="Core\Models\ChatSessionSummary.cs" />
+    <Compile Include="Core\Models\ModelProfileLookup.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
@@ -124,9 +132,12 @@
     <Compile Include="Infrastructure\SubAgents\SubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CanonicalWindowCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PrunedContentGuard.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\IToolFileOpenResult.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
+    <Compile Include="Infrastructure\WebView\Models\WebView2CompactionEndMessage.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
     <Compile Include="UI\ChatInjectionService.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
@@ -219,6 +230,8 @@
     <Compile Include="Infrastructure\Syntax\CSharpSyntaxChecker.cs" />
     <Compile Include="Infrastructure\Syntax\VisualBasicSyntaxChecker.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\DocumentSyncGuard.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\FilePathList.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\JsonEscapes.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\LineMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\ProjectFinder.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\SdkProjectDetector.cs" />
@@ -227,6 +240,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ChatHistoryScorer.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ChatHistorySearchModels.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ContentSearchMatcher.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchQueryFallback.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\DeclarationMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\KnowledgeSearchModels.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\QueryClassifier.cs" />

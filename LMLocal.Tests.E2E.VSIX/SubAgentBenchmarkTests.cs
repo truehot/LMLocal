@@ -26,6 +26,8 @@ namespace LMLocal.Tests.E2E.VSIX
         private const string Analyzer = "symbol_analyzer_subagent";
         private const string Reviewer = "reviewer_subagent";
         private const string Editor = "edit_subagent";
+        private const string Architect = "architect_subagent";
+        private const string Planner = "task_planner_subagent";
 
         public TestContext TestContext { get; set; }
 
@@ -160,7 +162,7 @@ namespace LMLocal.Tests.E2E.VSIX
 
 
         // ---------------------------------------------------------------------
-        // edit_subagent fixture (see Docs\edit-subagent-prompt-testing-plan.md)
+        // edit_subagent fixture
         // Temp\AgentProbe sits at the solution root, outside every project directory, so a broken
         // edit never compiles and never breaks the build. The source of truth is the file on disk;
         // the answer text is judged separately, because a report about an edit can be wrong even
@@ -247,7 +249,7 @@ line six - foxtrot";
             var guid = Guid.NewGuid().ToString("N").Substring(0, 12);
             //----A.1 code_explorer_subagent: discovery(10)------------------ -
             list.Add(Sc("A1.1", Explorer,
-                "Search for the exact identifier ToolCallRecord. Report yes if the returned result includes StreamCompletionResult.cs at line 114.",
+                "Search for the exact identifier ToolCallRecord. Report yes if the returned result includes StreamCompletionResult.cs at line 120.",
                 "yes"));
 
             list.Add(Sc("A1.2", Explorer,
@@ -283,8 +285,32 @@ line six - foxtrot";
                 "yes"));
 
             list.Add(Sc("A1.10", Explorer,
-                "Search for the exact identifier ToolCallRecord and retrieve all returned pages. Report yes if the returned results include StreamCompletionResult.cs at line 114.",
+                "Search for the exact identifier ToolCallRecord and retrieve all returned pages. Report yes if the returned results include StreamCompletionResult.cs at line 120.",
                 "yes"));
+
+            // Ref markers for explorer: matched lines are reported as @path:line and the runner substitutes the
+            // exact matched text. The line below contains backticks, which the model used to escape (\`) when retyping.
+            var a111 = Sc("A1.11", Explorer,
+                "Search for the exact text formatSpeed(stats.tokenSpeed) with extension filter .js and report every matched line with its text.",
+                @"LMLocal\Resources\js\lib\token.stats.js:16: ``parts.push(`${formatSpeed(stats.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND}`);``");
+            a111.MustNotContain = new[] { @"\`", "@LMLocal" };
+            list.Add(a111);
+
+            // Folder project_filter (whole path components) + marker expansion; the sibling ChatSession folder
+            // also contains the identifier and must not leak in.
+            // The line number is read from the file at run time, so edits above the enum do not break the scenario.
+            const string a112File = @"LMLocal\Application\Chat\HistoryCompactor.cs";
+            const string a112Text = "internal enum CompactionOutcome";
+            var a112 = Sc("A1.12", Explorer,
+                @"Search for the exact text CompactionOutcome with project filter LMLocal\Application\Chat and report every matched line with its text.",
+                a112File + ":" + LineOf(a112File, a112Text) + ": `" + a112Text + "`");
+            a112.MustNotContain = new[] { "ChatSession", "@LMLocal" };
+            list.Add(a112);
+
+            // OR query: either the tool fallback (note) or the model's own split must find both identifiers.
+            list.Add(Sc("A1.13", Explorer,
+                "Search for CompactForcedAsync OR ConsolidateLastExchangeAsync in project LMLocal and report the files that contain each of them.",
+                "CompactForcedAsync", "ConsolidateLastExchangeAsync", "HistoryCompactor.cs", "ChatHistoryManager.cs"));
 
             // ---- A.2 code_reader_subagent: deterministic reading (9) ----------
             list.Add(Sc("A2.1", Reader,
@@ -373,7 +399,7 @@ line six - foxtrot";
             //----A.3 symbol_analyzer_subagent: symbols & references(9)------ -
             list.Add(Sc("A3.1", Analyzer,
                 "Find the C# symbol ToolCallRecord and report its declaration file and line.",
-                "StreamCompletionResult.cs", "114"));
+                "StreamCompletionResult.cs", "120"));
 
             list.Add(Sc("A3.2", Analyzer,
                 "Find all references to ChatLogSerializer. Report file:line coordinates.",
@@ -413,7 +439,7 @@ line six - foxtrot";
 
             // ---- A.4 reviewer_subagent: structured status review (2) ----
             var a41 = Sc("A4.1", Reviewer,
-                "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. The change is a small refactoring of ChatHistoryManager: the ToolCalls copying logic was extracted into a private helper. The build passes, all existing unit tests for the chat service pass, and a new unit test covers the copied-by-reference behavior. The user requested exactly this refactoring and it is complete; no further phases are planned. Review it adversarially.",
+                "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. The change is a small refactoring of ChatHistoryManager: the ToolCalls copying logic was extracted into a private helper. The build passes, all existing unit tests for the chat service pass, and a new unit test covers the copied-by-reference behavior. The user requested exactly this refactoring and it is complete; no further phases are planned. The change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect of the deliverable. Review it adversarially.",
                 "Status:");
             a41.MustContainAny = new[] { new[] { "COMPLETE", "PARTIAL" } };
             a41.MustNotContain = new[] { "Status: REJECTED" };
@@ -630,6 +656,31 @@ EDIT 1 - replace one line (approximate line 7):
             a512.SoftMustNotContain = new[] { "NEEDS_SPLIT" };
             list.Add(a512);
 
+            // ---- A.6 architect_subagent: architecture decision (1) ----
+
+            // A6.1 - an in-process notification that an existing event already delivers. The architect must
+            // reuse it instead of introducing a bus/mediator; the context is real code, so it can be verified.
+            var a61 = Sc("A6.1", Architect,
+                @"Requirement: show the number of pending (uncommitted) file changes in the Visual Studio status bar and keep it current whenever the snapshot changes. Single process, one consumer, no persistence or retries needed.
+Verified context:
+- ISnapshotManager (LMLocal\Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManager.cs) exposes event Func<IReadOnlyList<SnapshotFileChange>, Task> SnapshotChangedAsync, raised after every snapshot change, commit, rollback and reset.
+- WebViewBridge (LMLocal\Infrastructure\WebView\WebViewBridge.cs) already subscribes to it in its constructor: _snapshotManager.SnapshotChangedAsync += OnSnapshotChangedAsync.
+- ISnapshotManager is resolved from DI.
+Choose the architecture for this change.",
+                "SnapshotChangedAsync");
+            a61.MustContainAny = new[] { new[] { "NO_ARCH_CHANGE", "DECIDED", "CONDITIONAL" } };
+            list.Add(a61);
+
+            // ---- A.7 task_planner_subagent: planning decisions (1) ----
+
+            // A7.1 - a one-line change in a single file is below the planning threshold: the planner must not
+            // force a plan on it (needs_plan=false), otherwise every trivial edit pays for a planning round.
+            // The prompt fixes a plain three-line header, so the exact line is required (no format variants).
+            var a71 = Sc("A7.1", Planner,
+                @"Task: in LMLocal\Application\Chat\HistoryCompactor.cs change the modifier of the private struct ChatStepRange from 'private struct' to 'private readonly struct'. All its fields are already readonly. One file, one line, no callers change.",
+                "needs_plan: false", "persist: false", "blocked: false");
+            list.Add(a71);
+
             return list;
         }
 
@@ -642,6 +693,154 @@ EDIT 1 - replace one line (approximate line 7):
             const int to = 1;
             return Enumerable.Range(from, to - from + 1).Select(i => new object[] { i }).ToList();
         }
+
+        // ---------------------------------------------------------------------
+        // Loop recovery
+        //
+        // Guards the recovery path: an identical repeated tool call must close the turn and
+        // continue on the same history instead of hard-stopping the run.
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// Forces three byte-identical tool calls. The audit-trail sentence is deliberate: a plain
+        /// "search three times" is silently skipped by the model (observed during a manual probe),
+        /// which would let the test pass without the recovery branch ever running.
+        /// </summary>
+        private const string LoopProbePrompt =
+            "You are being instrumented. Do exactly this:\n" +
+            "1. Call search_file_content with query \"zzz_nonexistent_marker_zzz\" and max_results 25.\n" +
+            "2. Call search_file_content a SECOND time with exactly the same arguments.\n" +
+            "3. Call search_file_content a THIRD time with exactly the same arguments.\n" +
+            "An empty result is NOT a reason to skip a call. Do not change the query. Do not use find_files.\n" +
+            "Then answer with one line only: CALLS_MADE: <how many calls you actually made>";
+
+        [TestMethod]
+
+        public async Task Run_LoopRecovery_RepeatedToolCall_IsRecoveredNotFailed()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(2), cts.Token);
+                    try
+                    {
+                        var solutionPath = GetSolutionPath();
+                        var open = await client.SendCommandAsync("OpenSolution|" + solutionPath, cts.Token);
+                        Assert.AreEqual("OK", open, "OpenSolution IPC command failed");
+
+                        await WaitForSolutionLoadedAsync(client, cts.Token);
+
+                        var command = "RunSubAgent|" + Explorer + "|" + Uri.EscapeDataString(LoopProbePrompt);
+                        var json = await client.SendCommandAsync(command, TimeSpan.FromMinutes(5), cts.Token);
+
+                        var run = JsonConvert.DeserializeObject<RunResponseDto>(json);
+                        Assert.IsNotNull(run, "RunSubAgent returned no parsable response: " + json);
+
+                        TestContext.WriteLine("loop probe: success=" + run.Success
+                            + " rounds=" + run.Rounds
+                            + " runId=" + run.RunId
+                            + " error=" + (run.Error ?? "<none>"));
+
+                        // The recovery branch is proven by its own log record, never by the answer
+                        // text: the model can confidently answer without repeating a single call,
+                        // so a content-only assertion would pass while the branch under test never ran.
+                        var logPath = ResolveSubAgentFailureLogPath();
+                        Assert.IsTrue(
+                            FindRecoveryRecord(logPath, run.RunId),
+                            "No 'Recovered' record for runId '" + run.RunId + "' in '" + logPath + "'. "
+                            + "Either recovery did not fire, or the model never repeated the call "
+                            + "(probe inconclusive - re-run before suspecting the feature).");
+
+                        Assert.IsTrue(run.Success, "A recovered run must complete, not fail: " + (run.Error ?? "<no error>"));
+                        Assert.DoesNotMatchRegex(
+                            new Regex("repeated tool call loop"),
+                            run.Error ?? string.Empty,
+                            "The hard stop must not be reached while recovery is still available.");
+                    }
+                    finally
+                    {
+                        client.Dispose();
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Live failure log written by <c>SubAgentFailureLogger</c>. Recovery records land here too.
+        /// </summary>
+        private static string ResolveSubAgentFailureLogPath()
+        {
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LMLocalChat",
+                "SubAgentsLogs",
+                "SubAgentsFailures.jsonl");
+        }
+
+        /// <summary>
+        /// Finds a recovery record belonging to <paramref name="runId"/>. The log is shared between
+        /// runs and rotates, so the run id is the correlation key: a stale record from an earlier
+        /// run can never satisfy the assertion.
+        /// </summary>
+        private static bool FindRecoveryRecord(string logPath, string runId)
+        {
+            if (string.IsNullOrEmpty(runId) || string.IsNullOrEmpty(logPath))
+                return false;
+
+            foreach (var line in ReadLogLines(logPath))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                JObject record;
+                try
+                {
+                    record = JObject.Parse(line);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+
+                if (string.Equals((string)record["runId"], runId, StringComparison.Ordinal)
+                    && string.Equals((string)record["stage"], "Recovered", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Yields the lines of the live log and all of its rotated siblings, so a rotation that
+        /// happens mid-run cannot hide the record being searched for.
+        /// </summary>
+        private static IEnumerable<string> ReadLogLines(string logPath)
+        {
+            var directory = Path.GetDirectoryName(logPath);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+                yield break;
+
+            foreach (var file in Directory.GetFiles(directory, "SubAgentsFailures*.jsonl"))
+            {
+                // The add-in keeps the live file open for writing, so share both access modes.
+                using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(stream))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                        yield return line;
+                }
+            }
+        }
+
 
         [TestMethod]
         [DynamicData(nameof(GetIterations))]
@@ -674,6 +873,11 @@ EDIT 1 - replace one line (approximate line 7):
                         // the "before" inventory and mask a file that the agent creates (scenario A5.4).
                         TryDeleteFixture(root);
 
+                        // Start from an empty get_changes_diff: the snapshot history survives VS restarts, so
+                        // fixture edits of an earlier run would otherwise show up as pending deletions in the
+                        // reviewer scenarios (A4.x) and be flagged as invented paths.
+                        await CommitSnapshotAsync(client, cts.Token);
+
                         // 2) Run every scenario sequentially on the same VS instance.
                         foreach (var scenario in BuildScenarios())
                         {
@@ -703,6 +907,7 @@ EDIT 1 - replace one line (approximate line 7):
                         }
 
                         SaveReport(results, root);
+                        await CommitSnapshotAsync(client, cts.Token);
                         TryDeleteFixture(root);
 
                         var failed = results.Where(r => r.Verdict == "FAIL").ToList();
@@ -1074,6 +1279,21 @@ EDIT 1 - replace one line (approximate line 7):
             return solutionPath;
         }
 
+        /// <summary>
+        /// 1-based number of the first line of a solution-relative file whose trimmed text equals <paramref name="trimmedLine"/>.
+        /// Lets scenarios expect "path:line: `text`" without hard-coding a line that shifts on every edit above it.
+        /// </summary>
+        private static int LineOf(string relativePath, string trimmedLine)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            var lines = File.ReadAllLines(Path.Combine(root, relativePath));
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Trim() == trimmedLine) return i + 1;
+            }
+            throw new InvalidOperationException("'" + trimmedLine + "' not found in " + relativePath);
+        }
+
         private static string ResolveFullPath(string solutionRoot, string candidate)
         {
             var trimmed = candidate.Trim().TrimStart('.', '\\', '/');
@@ -1280,8 +1500,7 @@ EDIT 1 - replace one line (approximate line 7):
 
         /// <summary>
         /// CRLF/LF and a trailing end-of-file newline are not part of the expectation: the read tool
-        /// cannot distinguish "file ends with \n\n" from "the final \n counted as an empty line"
-        /// (see Docs\edit-subagent-prompt-testing-plan.md, item 2 of applicability limits).
+        /// cannot distinguish "file ends with \n\n" from "the final \n counted as an empty line".
         /// </summary>
         private static string NormalizeNewlines(string text)
         {
@@ -1315,6 +1534,12 @@ EDIT 1 - replace one line (approximate line 7):
             }
 
             return "content differs only in end-of-file whitespace";
+        }
+
+        private static async Task CommitSnapshotAsync(IpcClient client, CancellationToken ct)
+        {
+            var resp = await client.SendCommandAsync("CommitSnapshot", TimeSpan.FromSeconds(30), ct);
+            Assert.AreEqual("OK", resp, "CommitSnapshot IPC command failed");
         }
 
         private static void TryDeleteFixture(string solutionRoot)

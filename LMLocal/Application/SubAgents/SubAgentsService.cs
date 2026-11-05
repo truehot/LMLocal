@@ -25,8 +25,32 @@ namespace LMLocal.Application.SubAgents
     {
         private const string LogsFolderName = "SubAgentsLogs";
         private const int DefaultMaxRounds = 10;
-        private const int DefaultTimeoutSeconds = 120;
+        internal const int DefaultTimeoutSeconds = 120;
+
+        // Told to the main model when a run hits maxRounds or the timeout: the limit itself is not actionable, the next step is.
+        private const string LimitRetryHint = "Split the task into smaller pieces or narrow it and retry.";
         private const int MaxDuplicateToolRounds = 2;
+
+        /// <summary>
+        /// Enables loop recovery: on an identical repeated tool call the run closes the turn and continues as a new user turn on the same history instead of failing.
+        /// </summary>
+        internal const bool DefaultLoopRecoveryEnabled = true;
+
+        /// <summary>
+        /// How many times a single run may recover from a repeated tool call before it fails.
+        /// </summary>
+        private const int LoopRecoveryMaxAttempts = 2;
+
+        /// <summary>
+        /// User-turn instruction injected after a repeated tool call.
+        /// </summary>
+
+        internal const string LoopRecoveryNudge = @"[AUTOMATED GUARD: DUPLICATE TOOL CALL BLOCKED]
+Your last call repeated an earlier one; its result is above.
+Answer the task now, or make one call with different arguments.
+Answer directly.";
+
+
 
         /// <summary>
         /// How many tool-call attempts are carried into a failure record (see <see cref="SubAgentRecentCall"/>).
@@ -42,6 +66,7 @@ namespace LMLocal.Application.SubAgents
         private readonly IChatPersistenceFactory _chatPersistenceFactory;
         private readonly ISubAgentFailureLogger _failureLogger;
         private readonly string _logsFolder;
+        private readonly bool _loopRecoveryEnabled;
 
         public SubAgentsService(
             ISettingsManager settingsManager,
@@ -51,7 +76,8 @@ namespace LMLocal.Application.SubAgents
             IToolQueueProvider queueProvider,
             IToolCallLoopDetector loopDetector,
             IChatPersistenceFactory chatPersistenceFactory,
-            ISubAgentFailureLogger failureLogger)
+            ISubAgentFailureLogger failureLogger,
+            bool loopRecoveryEnabled = DefaultLoopRecoveryEnabled)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -61,6 +87,7 @@ namespace LMLocal.Application.SubAgents
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _chatPersistenceFactory = chatPersistenceFactory ?? throw new ArgumentNullException(nameof(chatPersistenceFactory));
             _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
+            _loopRecoveryEnabled = loopRecoveryEnabled;
 
             string appDataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -90,10 +117,8 @@ namespace LMLocal.Application.SubAgents
             int? lastRound = null;
             Guid? chatSessionId = null;
 
-            // Must stay a local: this service is a singleton and ExecutePromptAsync runs concurrently for a fan-out.
             var recentCalls = new List<SubAgentRecentCall>(MaxRecentCalls);
 
-            // Tracks the attempt (not the result), so a call that is rejected or throws is still in the record.
             SubAgentRecentCall TrackCall(ToolCallRecord call, int round, int? step)
             {
                 var entry = new SubAgentRecentCall
@@ -162,10 +187,15 @@ namespace LMLocal.Application.SubAgents
                 IReadOnlyList<ToolCallRecord> previousToolCalls = null;
                 int consecutiveDuplicateRounds = 0;
                 List<ToolResultMessage> toolResultsForRound = null;
-                bool isFirstRound = true;
+
+
+                bool isToolRound = false;
+                string promptForRound = request.Prompt;
+                int reevaluationAttempts = 0;
                 int stepCounter = 0;
 
                 var ledger = new ReadLedger();
+                var searchLedger = new SearchLedger();
 
                 using (var overallCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
@@ -182,9 +212,9 @@ namespace LMLocal.Application.SubAgents
                         var roundRequest = new StreamRoundRequest
                         {
                             History = history,
-                            IsToolRound = !isFirstRound,
-                            ToolResults = isFirstRound ? null : toolResultsForRound,
-                            Prompt = isFirstRound ? request.Prompt : null,
+                            IsToolRound = isToolRound,
+                            ToolResults = isToolRound ? toolResultsForRound : null,
+                            Prompt = isToolRound ? null : promptForRound,
                             SystemPrompt = systemPrompt,
                             ModelId = modelId,
                             Temperature = request.Temperature,
@@ -194,20 +224,24 @@ namespace LMLocal.Application.SubAgents
                             Tools = tools,
                             OnChunk = null
                         };
-                        isFirstRound = false;
+
+                        promptForRound = null;
+                        isToolRound = true;
 
                         var roundResult = await _roundService.RunAsync(roundRequest, overallCts.Token).ConfigureAwait(false);
                         var streamResult = roundResult.Stream;
 
                         if (cancellationToken.IsCancellationRequested)
                         {
-                            return Fail(response, "SubAgent execution was cancelled.");
+                            return await FailLoggedAsync(
+                                response, request, DescribeCancellation(request, round, stepCounter),
+                                round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                         }
 
                         if (overallCts.Token.IsCancellationRequested)
                         {
                             return await FailLoggedAsync(
-                                response, request, "SubAgent timed out (no response within the configured window).",
+                                response, request, DescribeTimeout(request, round),
                                 round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                         }
 
@@ -234,6 +268,31 @@ namespace LMLocal.Application.SubAgents
                                     consecutiveDuplicateRounds++;
                                     if (consecutiveDuplicateRounds >= MaxDuplicateToolRounds)
                                     {
+                                        if (CanRecoverFromLoop(reevaluationAttempts, round, maxRounds))
+                                        {
+                                            ApplyLoopRecovery(history);
+
+                                            await _failureLogger
+                                                .LogFromRequestAsync(
+                                                    request,
+                                                    "Recovered",
+                                                    $"SubAgent recovered from a repeated tool call loop (attempt {reevaluationAttempts + 1} of {LoopRecoveryMaxAttempts}).",
+                                                    response.RunId,
+                                                    round,
+                                                    chatSessionId,
+                                                    cancellationToken: CancellationToken.None)
+                                                .ConfigureAwait(false);
+
+                                            reevaluationAttempts++;
+                                            previousToolCalls = null;
+                                            consecutiveDuplicateRounds = 0;
+                                            toolResultsForRound = null;
+
+                                            isToolRound = false;
+                                            promptForRound = LoopRecoveryNudge;
+                                            continue;
+                                        }
+
                                         return await FailLoggedAsync(
                                             response, request, "SubAgent detected a repeated tool call loop and stopped.",
                                             round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
@@ -280,7 +339,6 @@ namespace LMLocal.Application.SubAgents
 
                                     object resultValue = string.IsNullOrEmpty(execResult.Error) ? execResult.Result : execResult.Error;
 
-                                    // The attempt is tracked before execution, so a throwing tool still leaves its arguments in the log.
                                     trackedCall.ResultText = SubAgentFailureLogger.StringifyResult(execResult.Result);
                                     trackedCall.Error = toolCall.IsInvalid && string.IsNullOrEmpty(execResult.Error)
                                         ? "Tool-call arguments were not valid JSON and were sanitized to '{}'."
@@ -290,6 +348,11 @@ namespace LMLocal.Application.SubAgents
                                         && string.Equals(toolCall.FunctionName, ReadResultRecorder.ReadFileLinesToolName, StringComparison.OrdinalIgnoreCase))
                                     {
                                         ReadResultRecorder.TryRecord(ledger, execResult.Result);
+                                    }
+                                    else if (string.IsNullOrEmpty(execResult.Error)
+                                        && string.Equals(toolCall.FunctionName, SearchResultRecorder.SearchFileContentToolName, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        SearchResultRecorder.TryRecord(searchLedger, execResult.Result);
                                     }
 
                                     toolResults.Add(new ToolResultMessage
@@ -312,9 +375,9 @@ namespace LMLocal.Application.SubAgents
                                 CopyUsage(streamResult, response);
                                 response.TokensPerSecond = streamResult.TokensPerSecond;
 
-                                if (ledger.Count > 0 && !string.IsNullOrEmpty(response.Content))
+                                if ((ledger.Count > 0 || searchLedger.Count > 0) && !string.IsNullOrEmpty(response.Content))
                                 {
-                                    var expander = new ReadRefExpander(ledger, _fileSystem);
+                                    var expander = new ReadRefExpander(ledger, _fileSystem, searchLedger);
                                     var expanded = await expander.ExpandAsync(response.Content, overallCts.Token).ConfigureAwait(false);
                                     response.Content = expanded.Content;
                                     response.ExpandedRefCount = expanded.ExpandedRefCount;
@@ -326,7 +389,7 @@ namespace LMLocal.Application.SubAgents
                     }
 
                     return await FailLoggedAsync(
-                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}).",
+                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {LimitRetryHint}",
                         lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                 }
             }
@@ -334,11 +397,13 @@ namespace LMLocal.Application.SubAgents
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return Fail(response, "SubAgent execution was cancelled.");
+                    return await FailLoggedAsync(
+                        response, request, DescribeCancellation(request, lastRound, null),
+                        lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
                 }
 
                 return await FailLoggedAsync(
-                    response, request, "SubAgent timed out (no response within the configured window).",
+                    response, request, DescribeTimeout(request, lastRound),
                     lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
             }
             catch (ApiException ex)
@@ -377,6 +442,49 @@ namespace LMLocal.Application.SubAgents
                 response.TotalTokens = stream.TokenUsage.TotalTokens;
             }
         }
+
+        /// <summary>
+        /// Decides whether a repeated tool call may be recovered from instead of failing the run.
+        /// </summary>
+        private bool CanRecoverFromLoop(int reevaluationAttempts, int round, int maxRounds)
+            => _loopRecoveryEnabled
+            && reevaluationAttempts < LoopRecoveryMaxAttempts
+            && round + 1 < maxRounds;
+
+        /// <summary>
+        /// Closes the current tool turn on the SAME history, so everything already collected stays in context.
+        /// </summary>
+        private void ApplyLoopRecovery(IChatHistoryManager history)
+        {
+            history.DiscardPendingAssistant();
+            history.AddAssistantMessage(_settingsManager.AssistantPlaceholder, null);
+        }
+
+        // Keep the reason and the numbers inside the first ~100 chars: the UI truncates tool errors at 120.
+        private static string DescribeCancellation(SubAgentRunRequest request, int? round, int? step)
+        {
+            var text = $"SubAgent did not finish: stopped before completion ({EffectiveTimeoutSeconds(request)}s";
+            if (round.HasValue)
+                text += $", round {round.Value + 1}/{EffectiveMaxRounds(request)}";
+            if (step.HasValue && step.Value > 0)
+                text += $", step {step.Value}";
+            return text + ").";
+        }
+
+        private static string DescribeTimeout(SubAgentRunRequest request, int? round)
+        {
+            var text = $"SubAgent timed out after {EffectiveTimeoutSeconds(request)}s";
+            text = round.HasValue
+                ? text + $" (round {round.Value + 1}/{EffectiveMaxRounds(request)})."
+                : text + ".";
+            return text + " " + LimitRetryHint;
+        }
+
+        private static int EffectiveTimeoutSeconds(SubAgentRunRequest request)
+            => request?.TimeoutSeconds ?? DefaultTimeoutSeconds;
+
+        private static int EffectiveMaxRounds(SubAgentRunRequest request)
+            => request?.MaxRounds ?? DefaultMaxRounds;
 
         private static SubAgentsRunResponse Fail(SubAgentsRunResponse response, string error)
         {

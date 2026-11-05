@@ -49,7 +49,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Before this call, obtain a fresh read_file_lines result for the same file and use the raw source text from it for old_lines. read_file_lines returns each line as an object with 'line_number' and 'text'; old_lines must contain the raw source text, with no line-number prefix and no trailing newline. The tool verifies old_lines before changing the file. Leading whitespace and character casing are significant; trailing whitespace and line-ending differences are ignored. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. After a replacement, line numbers may shift; re-read before making further edits, or apply multiple edits bottom-up (largest line numbers first). If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1, then new_lines are inserted; at most 50 empty lines are padded, and a start_line or an old_lines block that would need more is rejected with the real line count of the file. If start_line is valid but the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. Set new_lines to an empty string to delete the range. If syntax_errors is non-empty, the file is still saved, but the change is not complete; re-read the affected range and fix the errors before considering the task complete. If old_lines does not match at start_line, the tool searches nearby lines (±50). If exactly one exact match is found, it auto-corrects and applies the change (auto_corrected=true); re-read before making another edit. If multiple exact matches are found, candidates are returned; re-read a wider range and expand old_lines to disambiguate. If no exact match is found, the tool retries once with the first line's leading indentation ignored. If exactly one relaxed match is found, it applies the change, sets matched_ignoring_first_line_indent=true, and re-indents the first line of new_lines to match the file. Re-read before continuing. If multiple relaxed matches are found, candidates are returned. If still no match is found, the tool compares lines again after character normalization (no-break and other typographic spaces treated as a space, typographic quotes and dashes as ASCII, zero-width characters ignored, Unicode composed form). If exactly one match is found that way it applies the change and sets matched_with_normalization=true; unchanged lines of the block are written from the file, so characters the model cannot see are preserved. Re-read the file before the next edit. If multiple normalized matches are found, candidates are returned. If no match is found, check leading whitespace and re-read the file.",
+                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Take start_line and old_lines from a read_file_lines result of the same file: old_lines is the raw 'text' of those lines (see old_lines). The tool verifies old_lines before changing the file. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. " +
+                              "Set new_lines to an empty string to delete the range. " +
+                              "SEVERAL EDITS IN ONE FILE: send them all in ONE turn as several calls, ordered bottom-up (LARGEST start_line first), all taken from the same read - do not re-read between them. Calls of one turn run in the order sent, and an edit never shifts the lines above it. " +
+                              "If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1 (at most 50; more is rejected with the real line count). If the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. " +
+                              "If old_lines does not match at start_line, the tool searches nearby lines (±50); a single match is applied there and reported by a flag: auto_corrected=true (exact match), matched_ignoring_first_line_indent=true (first line's indentation ignored; the first line of new_lines is re-indented to match the file), or matched_with_normalization=true (typographic spaces, quotes, dashes and zero-width characters normalized; unchanged lines are kept from the file). The flags only report how the match was found: the change is written. " +
+                              "success=false means nothing was written; error_message says why, and candidates list the start lines when old_lines matches several places. Only then re-read the file and retry; after a successful edit you do not need to re-read it. For .cs and .js files the syntax is checked automatically: if syntax_errors is non-empty, the file is saved but the change is not complete - re-read the affected range and fix the errors.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -70,7 +75,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "old_lines", new ToolDetails
                             {
                                 Type = "string",
-                                Description = "Raw source text currently occupying the lines from start_line through the end of the block. Obtain it from a fresh read_file_lines result for the same file. Do not use search results or an older read. No line-number prefix and no trailing newline. Leading whitespace and character casing must match exactly; trailing whitespace and line-ending style (\\r\\n vs \\n) are ignored during comparison. If the requested range extends past the current line count, missing trailing lines are treated as empty strings for comparison. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty."
+                                Description = "Raw source text currently occupying the lines from start_line through the end of the block, copied from read_file_lines (not from search results). Edits lower in the file do not change it. No line-number prefix and no trailing newline. Leading whitespace and character casing must match exactly; trailing whitespace and line-ending style (\\r\\n vs \\n) are ignored during comparison. If the requested range extends past the current line count, missing trailing lines are treated as empty strings for comparison. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty."
                             }
                         },
                         { "new_lines", new ToolDetails
@@ -89,6 +94,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
+                string pruneRejection = PrunedContentGuard.Validate(parameters);
+                if (pruneRejection != null)
+                    return Error(pruneRejection);
+
                 var (filePath, startLine, oldLinesText, newLinesText, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
                     return Error(error);
@@ -128,9 +137,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 long requiredTotalLines = (long)(startLine - 1) + oldLinesCount;
                 long padding = requiredTotalLines - fileLines.Length;
 
+                string reportedPath = relativePath ?? filePath;
+
                 if (padding > LineMatcher.MaxPaddingLines)
                 {
-                    return Error(
+                    return MatchFailure(
+                        reportedPath,
                         $"start_line {startLine} with {oldLinesCount} line(s) of old_lines needs {padding} empty line(s) " +
                         $"past the end of a file that has {fileLines.Length} line(s); at most {LineMatcher.MaxPaddingLines} " +
                         $"are allowed. Re-read the file with read_file_lines to get its real line numbers.");
@@ -139,9 +151,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 while (linesList.Count < requiredTotalLines)
                     linesList.Add("");
 
-                var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, filePath);
+                var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, reportedPath);
                 if (errorResponse != null)
-                    return errorResponse;
+                    return DiagnoseJsonEscapedOldLines(errorResponse, fileLines, oldLinesText, startLine, reportedPath, absolutePath) ?? errorResponse;
 
                 bool autoCorrected = resolvedStartLine != startLine;
                 startLine = resolvedStartLine;
@@ -278,13 +290,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (blockMatches.Count > 1)
             {
-                return (0, false, false, null, Error(new ReplaceLinesResponse
-                {
-                    Success = false,
-                    FilePath = filePath,
-                    ErrorMessage = $"old_lines matches {blockMatches.Count} locations. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    Candidates = ToCandidates(linesList, blockMatches, oldLinesCount)
-                }));
+                return (0, false, false, null, MatchFailure(
+                    filePath,
+                    $"old_lines matches {blockMatches.Count} locations. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    ToCandidates(linesList, blockMatches, oldLinesCount)));
             }
 
             var relaxedMatches = FindBlock(linesList, oldLinesArray, startLine, LineComparison.StrictIgnoreLeadingIndent);
@@ -294,13 +303,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (relaxedMatches.Count > 1)
             {
-                return (0, false, false, null, Error(new ReplaceLinesResponse
-                {
-                    Success = false,
-                    FilePath = filePath,
-                    ErrorMessage = $"old_lines matches {relaxedMatches.Count} locations when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    Candidates = ToCandidates(linesList, relaxedMatches, oldLinesCount)
-                }));
+                return (0, false, false, null, MatchFailure(
+                    filePath,
+                    $"old_lines matches {relaxedMatches.Count} locations when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    ToCandidates(linesList, relaxedMatches, oldLinesCount)));
             }
 
             var cache = new CanonicalWindowCache(linesList, startLine, oldLinesCount);
@@ -314,13 +320,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (canonicalMatches.Count > 1)
             {
-                return (0, false, false, null, Error(new ReplaceLinesResponse
-                {
-                    Success = false,
-                    FilePath = filePath,
-                    ErrorMessage = $"old_lines matches {canonicalMatches.Count} locations after character normalization. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    Candidates = ToCandidates(linesList, canonicalMatches, oldLinesCount)
-                }));
+                return (0, false, false, null, MatchFailure(
+                    filePath,
+                    $"old_lines matches {canonicalMatches.Count} locations after character normalization. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    ToCandidates(linesList, canonicalMatches, oldLinesCount)));
             }
 
             var canonicalRelaxed = FindBlock(
@@ -331,29 +334,66 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             if (canonicalRelaxed.Count > 1)
             {
-                return (0, false, false, null, Error(new ReplaceLinesResponse
-                {
-                    Success = false,
-                    FilePath = filePath,
-                    ErrorMessage = $"old_lines matches {canonicalRelaxed.Count} locations after character normalization when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    Candidates = ToCandidates(linesList, canonicalRelaxed, oldLinesCount)
-                }));
+                return (0, false, false, null, MatchFailure(
+                    filePath,
+                    $"old_lines matches {canonicalRelaxed.Count} locations after character normalization when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
+                    ToCandidates(linesList, canonicalRelaxed, oldLinesCount)));
             }
 
             var firstLineMatches = LineMatcher.FindMatches(linesList, oldLinesArray[0], startLine);
 
             if (firstLineMatches.Count > 0)
             {
-                return (0, false, false, null, Error(new ReplaceLinesResponse
-                {
-                    Success = false,
-                    FilePath = filePath,
-                    ErrorMessage = $"First line of old_lines found at {firstLineMatches.Count} location(s), but the full block didn't match. Re-read the file or retry with the suggested start_line.",
-                    Candidates = ToCandidates(linesList, firstLineMatches, oldLinesCount)
-                }));
+                var partial = MatchFailure(
+                    filePath,
+                    $"First line of old_lines found at {firstLineMatches.Count} location(s), but the full block didn't match. Re-read the file or retry with the suggested start_line.",
+                    ToCandidates(linesList, firstLineMatches, oldLinesCount));
+                partial.IsNotFound = true;
+                return (0, false, false, null, partial);
             }
 
-            return (0, false, false, null, Error("Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file."));
+            var notFound = MatchFailure(
+                filePath,
+                "Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file.");
+            notFound.IsNotFound = true;
+            return (0, false, false, null, notFound);
+        }
+
+        /// <summary>
+        /// Diagnoses the known "JSON escape confusion" failure: old_lines was passed with one extra level of JSON string escaping (e.g. <c>\"</c> for <c>"</c>), so it does not match the file. 
+        /// </summary>
+        private ReplaceLinesResponse DiagnoseJsonEscapedOldLines(
+            ReplaceLinesResponse notFound, string[] fileLines, string oldLinesText, int startLine, string filePath, string absolutePath)
+        {
+            if (notFound == null || !notFound.IsNotFound)
+                return null;
+            if (!JsonEscapes.TryUnescape(oldLinesText, out string unescaped))
+                return null;
+
+            string[] unescapedLines = LineSplitter.Split(unescaped);
+            long requiredTotalLines = (long)(startLine - 1) + unescapedLines.Length;
+            if (requiredTotalLines - fileLines.Length > LineMatcher.MaxPaddingLines)
+                return null;
+
+            var probeLines = new List<string>(fileLines);
+            while (probeLines.Count < requiredTotalLines)
+                probeLines.Add("");
+
+            var (foundLine, _, _, _, probeError) = ResolveStartLine(probeLines, unescapedLines, startLine, filePath);
+            if (probeError != null)
+                return null;
+
+            InternalLogger.Warn(
+                $"replace_file_lines: old_lines for '{absolutePath}' looks JSON-escaped; it matches line {foundLine} only after unescaping. Nothing written.");
+
+            var escaped = MatchFailure(
+                filePath,
+                $"old_lines looks JSON-escaped: it matches the file at line {foundLine} only after removing one level of escaping " +
+                "(\\\" -> \", \\\\ -> \\, \\n -> newline). Nothing was written. Resend old_lines AND new_lines as raw source text " +
+                "without JSON escaping; the candidate below is the real file text at that location.",
+                ToCandidates(probeLines, new List<int> { foundLine }, unescapedLines.Length));
+            escaped.OldLinesJsonEscaped = true;
+            return escaped;
         }
 
         /// <summary>
@@ -632,7 +672,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (result is ReplaceLinesResponse response)
             {
                 if (!response.Success)
-                    return "Replacing lines failed.";
+                {
+                    if (response.OldLinesJsonEscaped == true)
+                        return "Lines not replaced: old_lines looks JSON-escaped.";
+                    return response.IsMatchFailure
+                        ? "Lines not replaced: old_lines did not match the file."
+                        : "Replacing lines failed.";
+                }
 
                 if (response.IsNoOp)
                     return "No changes needed.";
@@ -676,14 +722,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ReplaceLinesResponse { Success = false, ErrorMessage = message };
         }
 
-        private static ReplaceLinesResponse Error(ReplaceLinesResponse response)
+        /// <summary>
+        /// old_lines could not be placed.
+        /// </summary>
+        private static ReplaceLinesResponse MatchFailure(string filePath, string message, List<LineCandidate> candidates = null)
         {
-            return response;
+            return new ReplaceLinesResponse
+            {
+                Success = false,
+                FilePath = filePath,
+                ErrorMessage = message,
+                Candidates = candidates,
+                IsMatchFailure = true
+            };
         }
     }
 
-    internal class ReplaceLinesResponse
+    internal class ReplaceLinesResponse : IToolFileOpenResult
     {
+        string IToolFileOpenResult.FileToOpen => FilePath;
+
+        bool IToolFileOpenResult.WroteFile => Success && !IsNoOp;
+
         [JsonProperty("success")]
         public bool Success { get; set; }
 
@@ -724,10 +784,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public bool? MatchedWithNormalization { get; set; }
 
         /// <summary>
+        /// Set when old_lines did not match but matched exactly one location after removing one level of JSON escaping. 
+        /// </summary>
+        [JsonProperty("old_lines_json_escaped", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? OldLinesJsonEscaped { get; set; }
+
+        /// <summary>
         /// Set when the call would have written exactly the text the file already holds.
         /// </summary>
         [JsonIgnore]
         internal bool IsNoOp { get; set; }
+
+        /// <summary>
+        /// Set on the final "not found" outcomes of matching (as opposed to ambiguity or validation errors).
+        /// </summary>
+        [JsonIgnore]
+        internal bool IsNotFound { get; set; }
+
+        /// <summary>
+        /// Set when the call failed only because old_lines could not be placed in the file (the tool itself worked); used for the UI message.
+        /// </summary>
+        [JsonIgnore]
+        internal bool IsMatchFailure { get; set; }
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }

@@ -36,7 +36,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads a specific line range from a file and returns the lines as an array of objects, one per line. Each object has 'line_number' (the 1-based line number) and 'text' (the exact raw source text of that line, with no line-number prefix and no trailing newline). A blank line is returned as an object with its line_number set and text equal to an empty string. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. has_more_results=true means additional lines exist after the returned content; to continue, call the tool again for the same file starting from the next line number after the last line shown in the returned content. Only works inside the open solution directory — a path that resolves outside the solution is rejected with an explicit error. Use this tool to inspect a known file and line range without loading the entire content, or to visually confirm a fact after another tool has located it. Prefer search_file_content or symbol tools to locate unknown text, identifiers, or line numbers before using this tool.",
+                Description = "Reads a specific line range from a file and returns the lines as an array of objects, one per line. Each object has 'line_number' (the 1-based line number) and 'text' (the exact raw source text of that line, with no line-number prefix and no trailing newline). A blank line is returned as an object with its line_number set and text equal to an empty string. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. has_more_results=true means additional lines exist after the returned content; to continue, call the tool again for the same file starting from the next line number after the last line shown in the returned content. When has_more_results=false, total_lines is the file's line count (empty content: start_line is past the end). Only works inside the open solution directory — a path that resolves outside the solution is rejected with an explicit error. Use this tool to inspect a known file and line range without loading the entire content, or to visually confirm a fact after another tool has located it. Prefer search_file_content or symbol tools to locate unknown text, identifiers, or line numbers before using this tool. Safe to call several times in parallel.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -76,15 +76,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
 
-                // Read one extra line past the requested range to detect if more content exists.
                 int readEnd = endLine == int.MaxValue ? int.MaxValue : endLine + 1;
-                var lines = await _fileSystem
-                    .ReadLinesRangeAsync(absolutePath, startLine, readEnd, cancellationToken)
+
+                var (lines, totalLines) = await _fileSystem
+                    .ReadLinesRangeWithTotalAsync(absolutePath, startLine, readEnd, cancellationToken)
                     .ConfigureAwait(false);
 
                 bool hasMore = lines.Count > (endLine - startLine + 1);
                 if (hasMore && lines.Count > 0)
                     lines.RemoveAt(lines.Count - 1);
+                if (hasMore)
+                    totalLines = null;
 
                 return new FileLinesResponse
                 {
@@ -92,7 +94,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     FilePath = relativePath,
                     AbsolutePath = absolutePath,
                     Content = NumberLines(lines, startLine),
-                    HasMoreResults = hasMore
+                    HasMoreResults = hasMore,
+                    TotalLines = totalLines
                 };
             }
             catch (Exception ex)
@@ -205,6 +208,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("has_more_results")]
             public bool HasMoreResults { get; set; }
+
+            /// <summary>
+            /// Number of lines in the file; reported only when the read reached the end of the file (has_more_results=false).
+            /// </summary>
+            [JsonProperty("total_lines", NullValueHandling = NullValueHandling.Ignore)]
+            public int? TotalLines { get; set; }
 
             [JsonProperty("success")]
             public bool Success { get; set; }

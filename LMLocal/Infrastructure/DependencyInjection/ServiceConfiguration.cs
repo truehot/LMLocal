@@ -197,6 +197,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IWebViewInitializer, WebViewInitializer>();
             services.AddSingleton<IChatSessionOrchestratorFactory, ChatSessionOrchestratorFactory>();
             services.AddSingleton<IActiveModelContext, ActiveModelContext>();
+            services.AddSingleton<IContextCalibration, ContextCalibration>();
             services.AddSingleton<IHistoryCompactor, HistoryCompactor>();
 
             services.AddSingleton<IToolCallLoopDetector, ToolCallLoopDetector>();

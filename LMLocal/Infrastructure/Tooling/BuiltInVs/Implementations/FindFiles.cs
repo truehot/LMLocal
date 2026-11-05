@@ -44,7 +44,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching results in total.",
+                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Safe to call several times in parallel.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -89,6 +89,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return new FileSearchResultsResponse
                     {
                         Results = page,
+                        Note = cached.Note,
                         NextPageToken = nextToken,
                         TotalFiles = cached.AllResults.Count,
                         Success = true,
@@ -102,12 +103,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     ReturnRelative = true,
                     FileName = fileName,
                     ProjectFilter = projectFilter,
-                    Limit = MaxFilesToScan,
+                    Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
                     IncludeProjects = true
                 };
 
                 await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                 var matchingFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
+                bool limitReached = TrimToLimit(matchingFiles, MaxFilesToScan);
+                string note = limitReached
+                    ? $"The search was limited: the limit of {MaxFilesToScan} matching files was reached, so more files match than are listed and the list is incomplete. Narrow the search with file_name, extension_filter and/or project_filter."
+                    : null;
+                if (limitReached)
+                    InternalLogger.Warn($"{ToolName}: limit of {MaxFilesToScan} files reached for '{fileName}'.");
 
                 var response = await Task.Run(() =>
                 {
@@ -118,7 +125,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     var cacheEntry = new CachedToolResults<FileSearchResult>
                     {
                         AllResults = results,
-                        ItemsScanned = matchingFiles.Count
+                        ItemsScanned = matchingFiles.Count,
+                        Note = note
                     };
                     _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
@@ -127,6 +135,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return new FileSearchResultsResponse
                     {
                         Results = page,
+                        Note = note,
                         NextPageToken = nextToken,
                         TotalFiles = cacheEntry.AllResults.Count,
                         Success = true,
@@ -234,6 +243,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             [JsonProperty("results")]
             public List<FileSearchResult> Results { get; set; }
+
+            /// <summary>Set when the file limit was reached and the result list is incomplete.</summary>
+            [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+            public string Note { get; set; }
 
             [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
             public string NextPageToken { get; set; }
