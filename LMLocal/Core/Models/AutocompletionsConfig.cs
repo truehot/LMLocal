@@ -37,5 +37,19 @@ namespace LMLocal.Core.Models
         /// </summary>
         [JsonProperty("debounceDelayMs")]
         public int DebounceDelayMs { get; set; } = 300;
+
+        /// <summary>
+        /// Inline completion backend: "legacy" (custom ghost-text stack, default)
+        /// or "native" (Visual Studio Inline Suggestions via Microsoft.VisualStudio.Language.Proposals).
+        /// </summary>
+        [JsonProperty("backend")]
+        public string Backend { get; set; } = "legacy";
+
+        /// <summary>
+        /// Native backend only: show only the first line as ghost text while Tab inserts the full
+        /// multiline suggestion. Prevents the native multiline renderer from shifting the code below.
+        /// </summary>
+        [JsonProperty("singleLinePreview")]
+        public bool SingleLinePreview { get; set; } = true;
     }
 }

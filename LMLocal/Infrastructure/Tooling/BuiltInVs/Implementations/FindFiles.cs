@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.VisualStudio.Shell;
 using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
@@ -44,7 +45,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Safe to call several times in parallel.",
+                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -74,28 +75,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!string.IsNullOrEmpty(error))
                     return ErrorResponse(error);
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
-
-                int maxSafePage = (int.MaxValue - pageSize) / pageSize;
-                if (pageNumber > maxSafePage)
-                    pageNumber = maxSafePage;
-                int skip = pageNumber * pageSize;
+                int offset = ToolPagination.ParseOffset(pageToken, pageSize);
 
                 string cacheKey = BuildCacheKey(fileName, fileExtension, projectFilter);
                 if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
-                {
-                    var page = cached.AllResults.Skip(skip).Take(pageSize).ToList();
-                    string nextToken = (skip + pageSize) < cached.AllResults.Count ? (pageNumber + 1).ToString() : null;
-                    return new FileSearchResultsResponse
-                    {
-                        Results = page,
-                        Note = cached.Note,
-                        NextPageToken = nextToken,
-                        TotalFiles = cached.AllResults.Count,
-                        Success = true,
-                        ErrorMessage = null
-                    };
-                }
+                    return BuildPageResponse(cached.AllResults, offset, pageSize, cached.Note);
 
                 var filter = new EnumerateSolutionFilesFilter
                 {
@@ -130,17 +114,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     };
                     _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
-                    var page = cacheEntry.AllResults.Skip(skip).Take(pageSize).ToList();
-                    string nextToken = (skip + pageSize) < cacheEntry.AllResults.Count ? (pageNumber + 1).ToString() : null;
-                    return new FileSearchResultsResponse
-                    {
-                        Results = page,
-                        Note = note,
-                        NextPageToken = nextToken,
-                        TotalFiles = cacheEntry.AllResults.Count,
-                        Success = true,
-                        ErrorMessage = null
-                    };
+                    return BuildPageResponse(cacheEntry.AllResults, offset, pageSize, cacheEntry.Note);
 
                 }, cancellationToken).ConfigureAwait(false);
 
@@ -151,6 +125,27 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 InternalLogger.Error($"Error in {ToolName}: {ex}");
                 return ErrorResponse(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Builds one page of the full result list: the page comes from <paramref name="allResults"/>,
+        /// the totals are computed over that whole list, and the token is the offset of the first
+        /// item that is not on this page.
+        /// </summary>
+        internal static FileSearchResultsResponse BuildPageResponse(IReadOnlyList<FileSearchResult> allResults, int offset, int pageSize, string note)
+        {
+            var all = allResults ?? new List<FileSearchResult>();
+            var page = all.Skip(offset).Take(pageSize).ToList();
+
+            return new FileSearchResultsResponse
+            {
+                Results = page,
+                Note = note,
+                NextPageToken = ToolPagination.NextToken(offset + page.Count, all.Count),
+                TotalFiles = all.Count,
+                Success = true,
+                ErrorMessage = null
+            };
         }
 
         private string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
@@ -168,15 +163,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var fileName = parameters.TryGetValue("file_name", out var fn) ? fn?.ToString() : "";
             var ext = parameters.TryGetValue("extension_filter", out var fe) ? fe?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var pf) ? pf?.ToString() : null;
-            var pageToken = parameters.TryGetValue("page_token", out var t) ? t?.ToString() : null;
+            var pageToken = ToolPagination.ReadToken(parameters);
 
             var message = $"Finding '{fileName}'";
             if (!string.IsNullOrEmpty(project))
                 message += $" in project '{project}'";
             if (!string.IsNullOrEmpty(ext))
                 message += $", with extension '{ext}'";
-            if (!string.IsNullOrEmpty(pageToken) && int.TryParse(pageToken, out var pageTokenValue) && pageTokenValue > 0)
-                message += $" (page {++pageTokenValue})";
+            int offset = ToolPagination.ParseOffset(pageToken);
+            if (offset > 0)
+                message += $" (from result {(long)offset + 1})";
 
             message += "... ";
             return message;
@@ -211,7 +207,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var fileName = (string)fileNameObj;
             var fileExtension = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
             var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
-            var pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
+            var pageToken = ToolPagination.ReadToken(parameters);
 
             int pageSize = DefaultPageSize;
             if (parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))

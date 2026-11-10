@@ -281,6 +281,9 @@ namespace LMLocal.Tests.Unit.Internal
             var errorPayload = errorMessages[0].Payload as string;
             Assert.That(errorPayload, Does.Contain("identical arguments"),
                 "Error message should mention 'identical arguments'");
+            Assert.That(errorPayload, Does.Contain("2 identical rounds in a row: read_file_lines"),
+                "The count must be the number of identical rounds, not the number of repeats.");
+            Assert.That(errorPayload, Does.Not.Contain("1 times"));
         }
 
         /// <summary>

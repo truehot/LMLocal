@@ -74,6 +74,26 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(markers[0].Ranges[0], Is.EqualTo(new LineRange(1, 120)));
         }
 
+        [TestCase(@"@D:\Work\lmlocal\Docs\plan.md:280-440", @"D:\Work\lmlocal\Docs\plan.md")]
+        [TestCase("@D:/Work/lmlocal/Docs/plan.md:280-440", "D:/Work/lmlocal/Docs/plan.md")]
+        public void Parse_AbsoluteDrivePath_KeepsDriveColonInPath(string text, string expectedPath)
+        {
+            var markers = FileRefMarker.ParseAll(text, out int malformed);
+
+            Assert.That(malformed, Is.EqualTo(0));
+            Assert.That(markers.Count, Is.EqualTo(1));
+            Assert.That(markers[0].Path, Is.EqualTo(expectedPath));
+            Assert.That(markers[0].Ranges[0], Is.EqualTo(new LineRange(280, 440)));
+            Assert.That(markers[0].Length, Is.EqualTo(text.Length));
+        }
+
+        [Test]
+        public void Parse_DriveLetterWithoutSeparator_StaysBarePath()
+        {
+            Assert.That(FileRefMarker.ParseAll("@D:12").Count, Is.EqualTo(1), "'D' is a bare path, 12 a line - unchanged behavior");
+            Assert.That(FileRefMarker.ParseAll("@D:12")[0].Path, Is.EqualTo("D"));
+        }
+
         [Test]
         public void Parse_QuotedPathWithSpaces()
         {

@@ -1,4 +1,3 @@
-using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +8,7 @@ using System.Threading.Tasks;
 using EnvDTE;
 using EnvDTE80;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
@@ -30,6 +30,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// Default cap (seconds) for waiting on a build result. Protects against hung builds / modal dialogs blocking the tool forever.
         /// </summary>
         private const int DefaultBuildTimeoutSeconds = 600;
+
+        /// <summary>
+        /// Upper bound for the wait (seconds): <c>Task.Delay</c> throws for a delay longer than 2147483 seconds (~24.8 days), and by then the build is already running.
+        /// </summary>
+        private const int MaxTimeoutSeconds = 2147483;
 
         /// <summary>
         /// Initial wait (ms) before the first build-output stabilization poll.
@@ -57,16 +62,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int BuildOutputTailLines = 300;
 
         /// <summary>
-        /// Max number of error messages reported. Taken from the tail of the build output (most recent last).
+        /// Max number of error messages reported.
         /// </summary>
         private const int MaxReportedErrors = 25;
 
+        /// <summary>
+        /// GUID of the built-in Build pane.
+        /// </summary>
+        private const string BuildOutputPaneGuid = "{1BD8A850-02D1-11D1-BEE7-00A0C913D1F8}";
 
         public BuildSolution(IVsDependencies vsDependencies)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
         }
-
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
@@ -91,14 +99,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             int timeoutSeconds = DefaultBuildTimeoutSeconds;
             if (parameters != null && parameters.TryGetValue("timeout_seconds", out var t) && t != null && int.TryParse(Convert.ToString(t), out int parsed) && parsed > 0)
-                timeoutSeconds = parsed;
+                timeoutSeconds = Math.Min(parsed, MaxTimeoutSeconds);
 
             Project selectedProject = null;
             string projectUniqueName = null;
             string selectedProjectName = null;
             if (!string.IsNullOrWhiteSpace(projectName))
             {
-                var matches = ProjectFinder.FindByNameOrPath(dte.Solution, projectName, Path.GetDirectoryName(solutionPath));
+                var matches = ProjectFinder.FindByNameOrPath(dte.Solution, projectName, _vsDependencies.GetSolutionDirectory());
                 if (matches.Count == 0)
                     return ErrorResponse($"Project '{projectName}' not found in the open solution.", solutionName, solutionPath);
                 if (matches.Count > 1)
@@ -114,30 +122,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return ErrorResponse($"Project '{projectName}' has no buildable UniqueName.", solutionName, solutionPath);
             }
 
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             BuildEvents buildEvents = dte.Events.BuildEvents;
+
+            var failedProjectsSeen = new List<string>();
+            var failedProjectsLock = new object();
+
+            void projectDoneHandler(string project, string projectConfig, string platform, string solutionConfig, bool success)
+            {
+                if (success || string.IsNullOrEmpty(project))
+                    return;
+
+                lock (failedProjectsLock)
+                {
+                    if (!failedProjectsSeen.Contains(project))
+                        failedProjectsSeen.Add(project);
+                }
+            }
 
             void buildDoneHandler(vsBuildScope scope, vsBuildAction action)
             {
                 if (action != vsBuildAction.vsBuildActionBuild)
                     return;
 
-                try
-                {
-                    bool succeeded = dte.Solution.SolutionBuild.LastBuildInfo == 0;
-                    tcs.TrySetResult(succeeded);
-                }
-                catch (Exception ex)
-                {
-                    tcs.TrySetException(ex);
-                }
-                finally
-                {
-                    buildEvents.OnBuildDone -= buildDoneHandler;
-                }
+                buildEvents.OnBuildDone -= buildDoneHandler;
+                tcs.TrySetResult(true);
             }
 
             buildEvents.OnBuildDone += buildDoneHandler;
+            buildEvents.OnBuildProjConfigDone += projectDoneHandler;
 
             try
             {
@@ -166,44 +179,59 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     if (timeoutSeconds > 0)
                     {
-                        var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds), cancellationToken);
-                        var completed = await Task.WhenAny(buildTask, timeout);
-                        if (completed != buildTask)
+                        using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                         {
-                            if (cancellationToken.IsCancellationRequested)
-                                return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
-                            return ErrorResponse(
-                                $"Build timed out after {timeoutSeconds} second(s). It may still be running in Visual Studio.",
-                                solutionName, solutionPath);
+                            var timeout = Task.Delay(TimeSpan.FromSeconds(timeoutSeconds), timeoutCts.Token);
+                            var completed = await Task.WhenAny(buildTask, timeout);
+                            timeoutCts.Cancel();
+
+                            if (completed != buildTask && !buildTask.IsCompleted)
+                            {
+                                if (cancellationToken.IsCancellationRequested)
+                                    return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
+
+                                return ErrorResponse(
+                                    $"Build timed out after {timeoutSeconds} second(s). It may still be running in Visual Studio.",
+                                    solutionName, solutionPath);
+                            }
                         }
                     }
 
-                    bool buildSucceeded = await buildTask;
+                    await buildTask;
                     if (cancellationToken.IsCancellationRequested)
                         return ErrorResponse("Build was cancelled.", solutionName, solutionPath);
 
+                    await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+
+                    bool buildSucceeded = dte.Solution.SolutionBuild.LastBuildInfo == 0;
+
                     var messages = new List<BuildMessage>();
-                    string errorDetail = buildSucceeded ? null : "Build failed. See messages for details.";
+                    string errorDetail = null;
 
                     if (!buildSucceeded)
                     {
                         string tailOutput = await StabilizeBuildOutputAsync(dte, cancellationToken);
 
+                        List<string> failedProjects;
+                        lock (failedProjectsLock)
+                            failedProjects = failedProjectsSeen.ToList();
+
+                        int totalErrors = 0;
+
                         if (!string.IsNullOrEmpty(tailOutput))
                         {
-                            string section = TrimToLastBuildSection(tailOutput);
-                            messages = await Task.Run(() => ParseBuildOutput(section), cancellationToken).ConfigureAwait(false);
+                            string solutionDirectory = _vsDependencies.GetSolutionDirectory();
 
+                            messages = await Task.Run(
+                                () => OrderByFailedProjects(ParseBuildOutput(tailOutput), failedProjects, solutionDirectory),
+                                cancellationToken);
+
+                            totalErrors = messages.Count;
                             if (messages.Count > MaxReportedErrors)
                                 messages.RemoveRange(MaxReportedErrors, messages.Count - MaxReportedErrors);
-
-                            if (projectUniqueName != null)
-                            {
-                                foreach (var m in messages)
-                                    if (m != null)
-                                        m.Project = projectUniqueName;
-                            }
                         }
+
+                        errorDetail = FailureSummary(failedProjects, messages.Count, totalErrors);
 
                         if (messages.Count == 0)
                         {
@@ -213,12 +241,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                 int start = Math.Max(0, lines.Length - ErrorDetailTailLineCount);
                                 var tail = new string[Math.Min(ErrorDetailTailLineCount, lines.Length)];
                                 Array.Copy(lines, start, tail, 0, tail.Length);
-                                errorDetail = "Build failed. Last output lines:\n" + string.Join(Environment.NewLine, tail);
+                                errorDetail += " Last output lines:\n" + string.Join(Environment.NewLine, tail);
                             }
                             else
                             {
-                                errorDetail = "Build failed. No build output available.";
+                                errorDetail += " No build output available.";
                             }
+                        }
+                        else
+                        {
+                            errorDetail += " See messages for details.";
                         }
                     }
 
@@ -245,12 +277,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             finally
             {
                 buildEvents.OnBuildDone -= buildDoneHandler;
+                buildEvents.OnBuildProjConfigDone -= projectDoneHandler;
             }
         }
 
         private static readonly Regex _buildErrorRegex = new Regex(
             @"^(?:\d+>)?" +
-            @"(?:(?<file>.+?)(?:\((?<line>\d+)(?:,(?<col>\d+))?\))?\s*:\s*)?" +
+            @"(?:(?<file>.+?)(?:\((?<line>\d+)(?:,(?<col>\d+)(?:,\d+,\d+)?)?\))?\s*:\s*)?" +
             @"(?:(?:fatal\s+)?(?<kind>error|warning)\s+)" +
             @"(?:(?<code>[A-Za-z]+\d+)\s*:\s*|:)" +
             @"(?<message>.*)$",
@@ -268,13 +301,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!string.Equals(m.Groups["kind"].Value, "error", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                string message = m.Groups["message"].Value.Trim();
-                int bracket = message.LastIndexOf(" [");
-                if (bracket >= 0) message = message.Substring(0, bracket).Trim();
+                string message = StripProjectSuffix(m.Groups["message"].Value.Trim());
                 if (message.Length == 0) continue;
+
+                string code = m.Groups["code"].Value.Trim();
 
                 messages.Add(new BuildMessage
                 {
+                    Code = code.Length == 0 ? null : code,
                     File = m.Groups["file"].Value.Trim(),
                     Line = int.TryParse(m.Groups["line"].Value, out int l) ? l : 0,
                     Column = int.TryParse(m.Groups["col"].Value, out int c) ? c : 0,
@@ -285,40 +319,105 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         /// <summary>
-        /// Keeps only the lines belonging to the most recent build section.
+        /// Removes the trailing project suffix MSBuild appends to a message (<c>... [C:\src\App\App.csproj]</c>).
         /// </summary>
-        internal static string TrimToLastBuildSection(string output)
+        internal static string StripProjectSuffix(string message)
         {
-            if (string.IsNullOrEmpty(output)) return output;
+            if (string.IsNullOrEmpty(message) || message[message.Length - 1] != ']')
+                return message;
 
-            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            int bracket = message.LastIndexOf(" [", StringComparison.Ordinal);
+            if (bracket < 0)
+                return message;
 
-            int summaryIndex = -1;
-            for (int i = lines.Length - 1; i >= 0; i--)
-            {
-                if (lines[i].IndexOf("==========", StringComparison.Ordinal) >= 0 &&
-                    lines[i].IndexOf("Build:", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    summaryIndex = i;
-                    break;
-                }
-            }
-            int upperExclusive = summaryIndex >= 0 ? summaryIndex : lines.Length;
+            if (!message.EndsWith("proj]", StringComparison.OrdinalIgnoreCase))
+                return message;
 
-            int lowerInclusive = 0;
-            for (int i = upperExclusive - 1; i >= 0; i--)
-            {
-                if (lines[i].IndexOf("Build started", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    lowerInclusive = i + 1;
-                    break;
-                }
-            }
-
-            if (lowerInclusive >= upperExclusive) return output;
-            return string.Join(Environment.NewLine, lines, lowerInclusive, upperExclusive - lowerInclusive);
+            return message.Substring(0, bracket).Trim();
         }
 
+        /// <summary>
+        /// Fills each message's Project from the failed projects and returns the messages of projects that failed earlier first, keeping the output order inside one project.
+        /// </summary>
+        internal static List<BuildMessage> OrderByFailedProjects(
+            List<BuildMessage> messages, IList<string> failedProjects, string solutionDirectory)
+        {
+            if (messages == null || messages.Count == 0)
+                return messages;
+            if (failedProjects == null || failedProjects.Count == 0)
+                return messages;
+
+            var projectDirectories = new List<string>(failedProjects.Count);
+            foreach (var project in failedProjects)
+                projectDirectories.Add(TryGetProjectDirectory(solutionDirectory, project));
+
+            bool singleProject = failedProjects.Count == 1 && projectDirectories[0] != null;
+
+            int RankOf(BuildMessage message)
+            {
+                if (message.File == null)
+                    return singleProject ? 0 : -1;
+
+                int best = -1;
+                for (int i = 0; i < projectDirectories.Count; i++)
+                {
+                    string directory = projectDirectories[i];
+                    if (directory == null || !message.File.StartsWith(directory, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (best < 0 || directory.Length > projectDirectories[best].Length)
+                        best = i;
+                }
+
+                return best >= 0 ? best : (singleProject ? 0 : -1);
+            }
+
+            var ranked = messages.Select(m => new { Message = m, Rank = RankOf(m) }).ToList();
+            foreach (var item in ranked)
+                item.Message.Project = item.Rank >= 0 ? failedProjects[item.Rank] : null;
+
+            return ranked
+                .OrderBy(x => x.Rank < 0 ? int.MaxValue : x.Rank)
+                .Select(x => x.Message)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Directory of a project given its unique name, with a trailing separator so that a prefix match cannot hit a sibling directory with the same name start.
+        /// </summary>
+        private static string TryGetProjectDirectory(string solutionDirectory, string projectUniqueName)
+        {
+            if (string.IsNullOrEmpty(solutionDirectory) || string.IsNullOrEmpty(projectUniqueName))
+                return null;
+
+            try
+            {
+                string directory = Path.GetDirectoryName(Path.GetFullPath(Path.Combine(solutionDirectory, projectUniqueName)));
+                if (string.IsNullOrEmpty(directory))
+                    return null;
+
+                return directory + Path.DirectorySeparatorChar;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"BuildSolution: cannot resolve the directory of project '{projectUniqueName}': {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// First line of the failure detail: which projects failed and whether the error list was cut.
+        /// </summary>
+        internal static string FailureSummary(IList<string> failedProjects, int shown, int total)
+        {
+            string summary = failedProjects != null && failedProjects.Count > 0
+                ? "Failed projects: " + string.Join(", ", failedProjects) + "."
+                : "Build failed.";
+
+            if (total > shown)
+                summary += $" Showing {shown} of {total} errors.";
+
+            return summary;
+        }
 
         private static readonly string[] BuildPaneContentMarkers = { "Build started", "==========", "Build FAILED", "Build succeeded" };
 
@@ -338,6 +437,33 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
+        private static OutputWindowPane LocateBuildPaneByGuid(DTE2 dte)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            if (dte?.ToolWindows?.OutputWindow == null) return null;
+
+            try
+            {
+                foreach (OutputWindowPane pane in dte.ToolWindows.OutputWindow.OutputWindowPanes)
+                {
+                    string guid = pane?.Guid;
+                    if (!string.IsNullOrEmpty(guid) &&
+                        string.Equals(guid.Trim(), BuildOutputPaneGuid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return pane;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"BuildSolution: LocateBuildPaneByGuid failed: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Fallback for a host where the built-in pane is missing or is not the one that carries the build output.
+        /// </summary>
         private static OutputWindowPane LocateBuildPaneByName(DTE2 dte)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -368,6 +494,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
+                var byGuid = LocateBuildPaneByGuid(dte);
+                if (byGuid != null) return byGuid;
+
                 var byName = LocateBuildPaneByName(dte);
                 if (byName != null) return byName;
 
@@ -550,6 +679,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
     public class BuildMessage
     {
+        /// <summary>
+        /// Compiler or tool error code (<c>CS0103</c>, <c>MSB3027</c>).
+        /// </summary>
+        [JsonProperty("code", NullValueHandling = NullValueHandling.Ignore)]
+        public string Code { get; set; }
+
         [JsonProperty("project")]
         public string Project { get; set; }
 

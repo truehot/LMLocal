@@ -37,7 +37,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             for (int i = 0; i < _records.Count; i++)
             {
                 var candidate = _records[i];
-                if (!string.Equals(Normalize(candidate.RelativePath), normalized, StringComparison.OrdinalIgnoreCase))
+                if (!Matches(candidate, normalized))
                     continue;
 
                 if (!candidate.Contains(range))
@@ -62,7 +62,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             for (int i = 0; i < _records.Count; i++)
             {
                 var candidate = _records[i];
-                if (!string.Equals(Normalize(candidate.RelativePath), normalizedPath, StringComparison.OrdinalIgnoreCase))
+                if (!Matches(candidate, normalizedPath))
                     continue;
 
                 if (!sample.HasValue)
@@ -108,6 +108,14 @@ namespace LMLocal.Application.SubAgents.ReadRefs
 
             return false;
         }
+
+        /// <summary>
+        /// A marker path matches a record by its solution-relative path or by its absolute path.
+        /// </summary>
+        private static bool Matches(ReadRecord candidate, string normalizedPath)
+            => string.Equals(Normalize(candidate.RelativePath), normalizedPath, StringComparison.OrdinalIgnoreCase)
+               || (!string.IsNullOrEmpty(candidate.AbsolutePath)
+                   && string.Equals(Normalize(candidate.AbsolutePath), normalizedPath, StringComparison.OrdinalIgnoreCase));
 
         private static bool IsCovered(int unionStart, int unionEnd, LineRange range)
             => range.Start >= unionStart && range.End <= unionEnd;

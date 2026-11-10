@@ -254,7 +254,7 @@ Answer directly.";
 
                             case StreamRoundOutcome.Cancelled:
                                 return await FailLoggedAsync(
-                                    response, request, "SubAgent stream was cancelled unexpectedly.",
+                                    response, request, DescribeUnexpectedCancel(request, round),
                                     round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
 
                             case StreamRoundOutcome.Incomplete:
@@ -463,13 +463,18 @@ Answer directly.";
         // Keep the reason and the numbers inside the first ~100 chars: the UI truncates tool errors at 120.
         private static string DescribeCancellation(SubAgentRunRequest request, int? round, int? step)
         {
-            var text = $"SubAgent did not finish: stopped before completion ({EffectiveTimeoutSeconds(request)}s";
-            if (round.HasValue)
-                text += $", round {round.Value + 1}/{EffectiveMaxRounds(request)}";
+            const string text = "SubAgent stopped: the request was stopped by the user";
+            if (!round.HasValue)
+                return text + ".";
+
+            var position = $"round {round.Value + 1}/{EffectiveMaxRounds(request)}";
             if (step.HasValue && step.Value > 0)
-                text += $", step {step.Value}";
-            return text + ").";
+                position += $", step {step.Value}";
+            return $"{text} ({position}).";
         }
+
+        private static string DescribeUnexpectedCancel(SubAgentRunRequest request, int round)
+            => $"SubAgent stream ended as cancelled without a stop request (round {round + 1}/{EffectiveMaxRounds(request)}).";
 
         private static string DescribeTimeout(SubAgentRunRequest request, int? round)
         {

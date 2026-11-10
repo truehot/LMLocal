@@ -66,7 +66,10 @@ function __startMock() {
         console.log('[mock] calling window.lmInit');
         window.__instructionsOverride = {
             GetInstructionsAsync: async () => '{}',
-            UpdateInstructionsAsync: async (json) => JSON.stringify({ success: true }),
+            UpdateInstructionsAsync: async (json) => {
+                window.__lastSavedInstructions = typeof json === 'string' ? json : JSON.stringify(json);
+                return JSON.stringify({ success: true });
+            },
             UpdateInstructionsSelectedTabAsync: async (id) => true,
         };
         window.__providersOverride = {

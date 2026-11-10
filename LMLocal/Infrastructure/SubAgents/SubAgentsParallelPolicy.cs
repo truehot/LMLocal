@@ -2,15 +2,12 @@ using System;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
 
 namespace LMLocal.Infrastructure.SubAgents
 {
     /// <summary>
-    /// Default <see cref="ISubAgentsParallelPolicy"/>. Resolves agents through the SubAgents catalog,
-    /// refuses to parallelize any agent that can touch write/exec tools, and resolves each agent's
-    /// fan-out concurrency width (maxParallel) from the agent, the top-level config, then the built-in default.
+    /// Default <see cref="ISubAgentsParallelPolicy"/>.
     /// </summary>
     internal sealed class SubAgentsParallelPolicy : ISubAgentsParallelPolicy
     {
@@ -41,11 +38,13 @@ namespace LMLocal.Infrastructure.SubAgents
             if (agent == null || !agent.Parallel)
                 return false;
 
-            // Never parallelize an agent that can touch write/exec tools: those must stay sequential (plan §6.3).
             return HasOnlyReadOnlyTools(agent);
         }
 
         public int ResolveMaxParallel(string toolName)
+            => Math.Min(ResolveConfiguredMaxParallel(toolName), SubAgentsConfig.MaxParallelLimit);
+
+        private int ResolveConfiguredMaxParallel(string toolName)
         {
             var agent = FindAgent(toolName);
             if (agent != null && agent.MaxParallel.HasValue && agent.MaxParallel.Value >= 1)

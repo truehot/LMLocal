@@ -121,6 +121,7 @@ class BridgeMessageHandler {
         appStore.setState({
             status: AppStatus.ERROR,
             error: errorMessage,
+            stoppedByUser: true,
             tokenSpeed: 0
         });
     }
@@ -163,6 +164,7 @@ class BridgeMessageHandler {
         appStore.setState({
             status: AppStatus.ERROR,
             error: errorMessage,
+            stoppedByUser: false,
             tokenSpeed: 0
         });
     }

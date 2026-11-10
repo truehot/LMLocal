@@ -18,9 +18,15 @@ function normalizeInstructionsDoc(raw) {
     }
 
     const tabs = Array.isArray(raw.tabs) ? raw.tabs : [];
-    const selectedTabId = raw.selectedTabId !== undefined && raw.selectedTabId !== null
+    let selectedTabId = raw.selectedTabId !== undefined && raw.selectedTabId !== null
         ? raw.selectedTabId
         : null;
+
+    const selected = tabs.find(t => t && t.id == selectedTabId);
+    if (!selected || !selected.enabled) {
+        const firstEnabled = tabs.find(t => t && t.enabled);
+        if (firstEnabled) selectedTabId = firstEnabled.id;
+    }
 
     return { selectedTabId, tabs };
 }

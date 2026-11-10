@@ -32,6 +32,11 @@ namespace LMLocal.Application.ChatSession
         /// Checks if a session is currently running.
         /// </summary>
         bool IsSessionRunning { get; }
+
+        /// <summary>
+        /// Identifier of the current (or last started) session.
+        /// </summary>
+        long CurrentSessionId { get; }
     }
 
     internal class SessionManager : ISessionManager
@@ -41,8 +46,11 @@ namespace LMLocal.Application.ChatSession
         private readonly ISubAgentsConfigManager _subAgentsConfigManager;
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
         private volatile bool _isSessionRunning = false;
+        private long _sessionId;
 
         public bool IsSessionRunning => _isSessionRunning;
+
+        public long CurrentSessionId => Interlocked.Read(ref _sessionId);
 
         public SessionManager(
             IChatSessionOrchestrator orchestrator,
@@ -89,6 +97,8 @@ namespace LMLocal.Application.ChatSession
                 }
 
                 _searchCache.Clear();
+
+                Interlocked.Increment(ref _sessionId);
                 _isSessionRunning = true;
                 InternalLogger.Info("SessionManager: Starting new session");
 

@@ -365,8 +365,7 @@ public class SessionTrafficTests : AppTestBase
 
         await ExpectTooltipAsync(SessionTitle("31", "5,000", "10k", "1k"));
 
-        // The host refuses the switch: nothing was activated, so nothing may be forgotten either
-        // (decision 4 of §11.2: the reset happens only after a successful host answer).
+        // The host refuses the switch: nothing was activated, so nothing may be forgotten either.
         await Page.EvaluateAsync(@"() => {
             window.__modelsOverride.SetActiveModelAsync = async () => false;
         }");

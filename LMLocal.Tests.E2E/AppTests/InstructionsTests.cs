@@ -414,4 +414,177 @@ public class InstructionsTests : AppTestBase
         // The active tab is the custom one above (it exposes a name field), not a built-in tab.
         await Expect(dialog.Locator("input[data-field='displayName']")).ToHaveCountAsync(1);
     }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task InstructionsDialog_BuiltInTabHasResetButton_UserTabHasNot()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        // No saved file: every built-in tab still carries the shipped text, so the reset control exists
+        // (right after the enable checkbox) but is disabled.
+        var resetBtn = dialog.Locator(".group-header-row .header-actions > input[type='checkbox'] + .tab-reset-btn");
+        await Expect(resetBtn).ToHaveCountAsync(1);
+        await Expect(resetBtn).ToHaveAttributeAsync("title", "Reset to default");
+        await Expect(resetBtn.Locator("svg")).ToHaveCountAsync(1);
+        await Expect(resetBtn).ToBeDisabledAsync();
+
+        // A custom instruction has nothing to be reset to.
+        await dialog.Locator(".settings-sidebar button:has-text('+ Add')").ClickAsync();
+        await Expect(dialog.Locator(".tab-reset-btn")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task InstructionsDialog_ResetRestoresShippedTextAndKeepsEnabledState()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        var promptBox = dialog.Locator("textarea[data-field='prompt']");
+        var enabled = dialog.Locator("input[data-field='enabled']");
+        var resetBtn = dialog.Locator(".tab-reset-btn");
+
+        string shippedPrompt = await promptBox.InputValueAsync();
+        Assert.That(shippedPrompt, Is.Not.Empty);
+        await Expect(resetBtn).ToBeDisabledAsync();
+
+        // An edit enables the reset button.
+        await promptBox.FillAsync("my custom text");
+        await Expect(resetBtn).ToBeEnabledAsync();
+
+        // 'enabled' is the user's choice, not shipped content: the reset must leave it alone.
+        await enabled.UncheckAsync();
+
+        await resetBtn.ClickAsync();
+
+        await Expect(promptBox).ToHaveValueAsync(shippedPrompt);
+        await Expect(enabled).Not.ToBeCheckedAsync();
+        await Expect(resetBtn).ToBeDisabledAsync();
+
+        
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task InstructionsDialog_EditedTab_IsNotMarkedInSidebar_AndKeepsResetAfterSwitching()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        var sidebar = dialog.Locator(".settings-sidebar");
+        string? editedId = await sidebar.Locator(".tab-btn.active").GetAttributeAsync("data-target");
+        Assert.That(editedId, Is.Not.Null.And.Not.Empty, "active instructions tab has no data-target");
+
+        await dialog.Locator("textarea[data-field='prompt']").FillAsync("my custom text");
+
+        // A text that differs from the shipped one may be the user's own, better prompt: the sidebar does not flag it.
+        await Expect(sidebar.Locator("button[data-modified]")).ToHaveCountAsync(0);
+
+        // Switching away and back keeps the draft, so the reset button of the edited tab is enabled again.
+        await sidebar.Locator($".tab-btn[data-target]:not([data-target='{editedId}'])").First.ClickAsync();
+        await Expect(dialog.Locator(".tab-reset-btn")).ToBeDisabledAsync();
+        await sidebar.Locator($".tab-btn[data-target='{editedId}']").ClickAsync();
+        await Expect(dialog.Locator("textarea[data-field='prompt']")).ToHaveValueAsync("my custom text");
+        await Expect(dialog.Locator(".tab-reset-btn")).ToBeEnabledAsync();
+        await Expect(sidebar.Locator("button[data-modified]")).ToHaveCountAsync(0);
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task InstructionsDialog_ResetThenSave_SendsShippedText()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        var promptBox = dialog.Locator("textarea[data-field='prompt']");
+        string shippedPrompt = await promptBox.InputValueAsync();
+
+        await promptBox.FillAsync("my custom text");
+        await dialog.Locator(".tab-reset-btn").ClickAsync();
+        await Expect(promptBox).ToHaveValueAsync(shippedPrompt);
+
+        await dialog.Locator("#instructions-dialog-confirm").ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        // The dialog sends the shipped text again; the backend is what drops it from the file. 
+        var payload = await Page.EvaluateAsync<string>("() => window.__lastSavedInstructions ?? null");
+        Assert.That(payload, Is.Not.Null, "Save must reach UpdateInstructionsAsync");
+
+        var sent = System.Text.Json.JsonDocument.Parse(payload!).RootElement;
+        System.Text.Json.JsonElement defaultTab = default;
+        foreach (var tab in sent.GetProperty("tabs").EnumerateArray())
+        {
+            if (tab.GetProperty("id").GetInt32() == 1)
+            {
+                defaultTab = tab;
+                break;
+            }
+        }
+
+        Assert.That(defaultTab.GetProperty("prompt").GetString(), Is.EqualTo(shippedPrompt));
+    }
+
+    [Test]
+    [Category("Instructions")]
+    public async Task InstructionsDialog_ResetThenCancel_SavesNothing()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-instructions']").ClickAsync();
+        await Task.Delay(200);
+
+        var dialog = Page.Locator("#instructions-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#instructions-dialog .modal-body')?.children.length > 0");
+
+        await dialog.Locator("textarea[data-field='prompt']").FillAsync("my custom text");
+        await dialog.Locator(".tab-reset-btn").ClickAsync();
+
+        await dialog.Locator("#instructions-dialog-cancel").ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        var payload = await Page.EvaluateAsync<string>("() => window.__lastSavedInstructions ?? null");
+        Assert.That(payload, Is.Null, "Cancel must not persist the reset");
+    }
 }

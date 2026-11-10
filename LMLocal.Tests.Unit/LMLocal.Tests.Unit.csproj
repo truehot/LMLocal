@@ -52,6 +52,9 @@
       <HintPath>..\packages\Microsoft.VisualStudio.Interop.17.14.40260\lib\net472\Microsoft.VisualStudio.Interop.dll</HintPath>
     </Reference>
     <Reference Include="netstandard" />
+    <Reference Include="System.Collections.Immutable, Version=10.0.0.8, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Collections.Immutable.10.0.8\lib\net462\System.Collections.Immutable.dll</HintPath>
+    </Reference>
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed" />
     <Reference Include="System.Net.Http" />
     <Reference Include="Castle.Core, Version=5.0.0.0, Culture=neutral, PublicKeyToken=407dd0808d44fbdc, processorArchitecture=MSIL">
@@ -120,7 +123,12 @@
     <Compile Include="Infrastructure\FileEncodingDetectorTests.cs" />
     <Compile Include="Infrastructure\FileLockManagerTests.cs" />
     <Compile Include="Infrastructure\HttpClientHandlerFactoryTests.cs" />
+    <Compile Include="Infrastructure\ConnectionLimitsTests.cs" />
     <Compile Include="Infrastructure\HttpClientWrapperTests.cs" />
+    <Compile Include="Infrastructure\InlineCompletion\SuggestionAcceptPreviewTests.cs" />
+    <Compile Include="Infrastructure\InlineCompletion\SuggestionPostProcessMultilineTests.cs" />
+    <Compile Include="Infrastructure\InlineCompletion\SuggestionSharedHelpersTests.cs" />
+    <Compile Include="Infrastructure\InlineCompletion\SuggestionTypeThroughTests.cs" />
     <Compile Include="Infrastructure\InstructionsManagerTests.cs" />
     <Compile Include="Infrastructure\KnownModelContextsTests.cs" />
     <Compile Include="Infrastructure\LMStudioClientTests.cs" />
@@ -176,9 +184,11 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionInspectorTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParserTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolPaginationTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ChatHistoryScorerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileToolsReadReplaceRoundTripTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\PageResponseBuilderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLinesTotalLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ToolParameterOrderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiffTests.cs" />
@@ -201,6 +211,7 @@
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\ToolRouterTests.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
+    <Compile Include="Infrastructure\Vs\SearchScopeResolverTests.cs" />
     <Compile Include="Infrastructure\WebView\SerializingMessageSinkTests.cs" />
     <Compile Include="Infrastructure\WebView\ToolActivityForwarderTests.cs" />
     <Compile Include="Infrastructure\WebView\WebView2NavigationGuardTests.cs" />

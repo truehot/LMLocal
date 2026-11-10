@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using LMLocal.Application.Abstractions.Ports;
@@ -14,7 +14,7 @@ using ToolCall = LMLocal.Infrastructure.LlmApi.Requests.ToolCall;
 namespace LMLocal.Tests.Unit
 {
     /// <summary>
-    /// Covers §1.6: where the summary sits after a forced compaction. The prompt is pinned, the past goes in front of
+    /// Summary sits after a forced compaction. The prompt is pinned, the past goes in front of
     /// it, and in a history that is nothing but the current cycle the summary rides on the first protected assistant
     /// message, because two assistant messages in a row are rejected by strict llama.cpp templates.
     /// </summary>

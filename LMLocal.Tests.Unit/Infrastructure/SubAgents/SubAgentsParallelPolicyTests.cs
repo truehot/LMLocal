@@ -209,6 +209,37 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
         }
 
         [Test]
+        public void ResolveMaxParallel_AgentAboveLimit_IsClampedToLimit()
+        {
+            var agent = Agent("researcher", parallel: true);
+            agent.MaxParallel = SubAgentsConfig.MaxParallelLimit + 4;
+            SetAgents(agent);
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(new SubAgentsConfig());
+
+            Assert.That(_policy.ResolveMaxParallel("researcher"), Is.EqualTo(SubAgentsConfig.MaxParallelLimit));
+        }
+
+        [Test]
+        public void ResolveMaxParallel_TopLevelAboveLimit_IsClampedToLimit()
+        {
+            SetAgents(Agent("researcher", parallel: true));
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(new SubAgentsConfig { MaxParallel = 20 });
+
+            Assert.That(_policy.ResolveMaxParallel("researcher"), Is.EqualTo(SubAgentsConfig.MaxParallelLimit));
+        }
+
+        [Test]
+        public void ResolveMaxParallel_ExactlyLimit_IsKept()
+        {
+            var agent = Agent("researcher", parallel: true);
+            agent.MaxParallel = SubAgentsConfig.MaxParallelLimit;
+            SetAgents(agent);
+            _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(new SubAgentsConfig());
+
+            Assert.That(_policy.ResolveMaxParallel("researcher"), Is.EqualTo(SubAgentsConfig.MaxParallelLimit));
+        }
+
+        [Test]
         public void ResolveMaxParallel_UnknownAgent_UsesDefault()
         {
             _catalogMock.Setup(c => c.TryGetSnapshot()).Returns(new SubAgentsConfig());

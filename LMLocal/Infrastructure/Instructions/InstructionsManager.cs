@@ -314,20 +314,32 @@ namespace LMLocal.Infrastructure.Instructions
             return result;
         }
 
+        /// <summary>
+        /// Keeps the selection on an enabled tab. A disabled tab is not offered in the chat bar dropdown (it shows the
+        /// first enabled tab instead), so keeping it selected would display one mode while sending none.
+        /// </summary>
         private static int NormalizeSelectedTabId(JToken token, List<JObject> tabs, IReadOnlyList<InstructionDefaultTab> defaults)
         {
-            int fallback = defaults.Count > 0
+            bool hasSelected = TryGetInt(token, out int selectedId);
+            JObject selected = hasSelected ? tabs.FirstOrDefault(t => TryGetInt(t["id"], out int id) && id == selectedId) : null;
+            if (selected != null && IsEnabled(selected))
+                return selectedId;
+
+            JObject firstEnabled = tabs.FirstOrDefault(IsEnabled);
+            if (firstEnabled != null && TryGetInt(firstEnabled["id"], out int firstEnabledId))
+                return firstEnabledId;
+
+            // Nothing is enabled: no mode is used at all, so the selection only has to stay valid.
+            if (selected != null)
+                return selectedId;
+
+            return defaults.Count > 0
                 ? defaults[0].Id
                 : (tabs.Count > 0 && TryGetInt(tabs[0]["id"], out int firstId) ? firstId : 0);
-
-            if (TryGetInt(token, out int selectedId) &&
-                tabs.Any(t => TryGetInt(t["id"], out int id) && id == selectedId))
-            {
-                return selectedId;
-            }
-
-            return fallback;
         }
+
+        private static bool IsEnabled(JObject tab)
+            => tab["enabled"] == null || tab["enabled"].Type != JTokenType.Boolean || tab["enabled"].Value<bool>();
 
         private static bool TryNormalize(JObject doc, IReadOnlyList<InstructionDefaultTab> defaults, out JObject normalized, out string error)
         {
@@ -419,12 +431,14 @@ namespace LMLocal.Infrastructure.Instructions
                     return false;
                 }
 
-                string prompt = tab["prompt"] != null ? tab["prompt"].ToString() : string.Empty;
+                bool promptProvided = tab["prompt"] != null;
+                string prompt = promptProvided ? tab["prompt"].ToString() : string.Empty;
 
                 InstructionDefaultTab fallbackDefault = defaults.FirstOrDefault(d => d.Id == id);
 
+                bool temperatureProvided = tab["temperature"] != null;
                 double temperature = fallbackDefault?.Temperature ?? DefaultTemperature;
-                if (tab["temperature"] != null)
+                if (temperatureProvided)
                 {
                     if (!TryGetDouble(tab["temperature"], out temperature) ||
                         double.IsNaN(temperature) || double.IsInfinity(temperature))
@@ -455,8 +469,25 @@ namespace LMLocal.Infrastructure.Instructions
                 var normalizedTab = (JObject)tab.DeepClone();
                 normalizedTab["id"] = id;
                 normalizedTab["displayName"] = displayName;
-                normalizedTab["prompt"] = prompt;
-                normalizedTab["temperature"] = temperature;
+
+                if (isDefault && fallbackDefault != null)
+                {
+                    if (promptProvided && !IsSamePrompt(prompt, fallbackDefault.Prompt))
+                        normalizedTab["prompt"] = prompt;
+                    else
+                        normalizedTab.Remove("prompt");
+
+                    if (temperatureProvided && !IsSameTemperature(temperature, fallbackDefault.Temperature))
+                        normalizedTab["temperature"] = temperature;
+                    else
+                        normalizedTab.Remove("temperature");
+                }
+                else
+                {
+                    normalizedTab["prompt"] = prompt;
+                    normalizedTab["temperature"] = temperature;
+                }
+
                 normalizedTab["enabled"] = enabled;
                 normalizedTabs.Add(normalizedTab);
             }
@@ -554,6 +585,29 @@ namespace LMLocal.Infrastructure.Instructions
                 return double.TryParse(token.Value<string>(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
 
             return false;
+        }
+
+        /// <summary>
+        /// Compares two prompt texts ignoring the line-ending style only: a <c>textarea</c> always hands out <c>\n</c>, while a hand-edited file may still contain <c>\r\n</c>.
+        /// </summary>
+        private static bool IsSamePrompt(string left, string right)
+        {
+            return string.Equals(NormalizeLineEndings(left), NormalizeLineEndings(right), StringComparison.Ordinal);
+        }
+
+        private static string NormalizeLineEndings(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            return value.IndexOf('\r') < 0
+                ? value
+                : value.Replace("\r\n", "\n").Replace('\r', '\n');
+        }
+
+        private static bool IsSameTemperature(double left, double right)
+        {
+            return Math.Abs(left - right) < 0.0000001;
         }
     }
 }

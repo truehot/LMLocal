@@ -263,7 +263,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             return true;
         }
 
-        private static HashSet<string> ParseExtensions(string extensionFilter)
+        internal static HashSet<string> ParseExtensions(string extensionFilter)
         {
             if (string.IsNullOrWhiteSpace(extensionFilter))
                 return null;

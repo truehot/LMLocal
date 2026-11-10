@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Autocompletions;
@@ -158,7 +157,6 @@ namespace LMLocal.Application.Autocompletions
         {
             /// <summary>
             /// Returns the appropriate FIM tokens (prefix, suffix, middle) based on the model ID.
-            /// CodeLlama (<PRE>,<SUF>,<MID>) and Codestral ([PREFIX],[SUFFIX],[MIDDLE]) FIM tokens didn't work in my LM Studio properly
             /// </summary>
             public static (string Prefix, string Suffix, string Middle) GetTokens(string modelId)
             {
@@ -191,13 +189,16 @@ namespace LMLocal.Application.Autocompletions
 
                 if (modelLower.Contains("qwen") || modelLower.Contains("codegemma"))
                 {
-                    var idx = output.IndexOf("<|file_separator|>", StringComparison.Ordinal);
-                    if (idx >= 0)
-                        return output.Substring(0, idx);
+                    var match = SpecialMarker.Match(output);
+                    if (match.Success)
+                        return output.Substring(0, match.Index);
                 }
 
                 return output;
             }
+
+            private static readonly System.Text.RegularExpressions.Regex SpecialMarker =
+                new System.Text.RegularExpressions.Regex(@"<\|[A-Za-z0-9_]+\|>", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
             private static (string Prefix, string Suffix, string Middle) GetDefaultTokens() => (string.Empty, string.Empty, string.Empty);
         }

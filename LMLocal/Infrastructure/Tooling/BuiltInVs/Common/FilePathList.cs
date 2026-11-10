@@ -146,6 +146,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
 
+        /// <summary>One note for the whole call (not repeated per file).</summary>
+        [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+        public string Warning { get; set; }
+
         [JsonProperty("total_files")]
         public int TotalFiles { get; set; }
 

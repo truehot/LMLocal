@@ -126,6 +126,11 @@
     <Compile Include="Core\Models\ModelProfileLookup.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\GhostLinesTagger.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineCompletionBackend.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionManagerProvider.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionSource.cs" />
+    <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionSourceProvider.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
     <Compile Include="Infrastructure\Persistence\FileEncodingDetector.cs" />
     <Compile Include="Infrastructure\SubAgents\ISubAgentFailureLogger.cs" />
@@ -134,6 +139,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PrunedContentGuard.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\IToolFileOpenResult.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ToolPagination.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
@@ -184,6 +190,7 @@
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTagger.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\SuggestionTextViewCreationListener.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\TabCommandHandler.cs" />
+    <Compile Include="Infrastructure\HttpWrapper\ConnectionLimits.cs" />
     <Compile Include="Infrastructure\HttpWrapper\HttpClientHandlerFactory.cs" />
     <Compile Include="Infrastructure\HttpWrapper\TemporaryHttpClientFactory.cs" />
     <Compile Include="Infrastructure\Instructions\FileInstructionDefaultsProvider.cs" />
@@ -249,6 +256,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultGrouper.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultModels.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchResultPaginator.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchScopeResolver.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\DotnetProcessRunner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilder.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParser.cs" />

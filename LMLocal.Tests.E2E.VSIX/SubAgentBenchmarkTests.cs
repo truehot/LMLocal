@@ -296,13 +296,13 @@ line six - foxtrot";
             a111.MustNotContain = new[] { @"\`", "@LMLocal" };
             list.Add(a111);
 
-            // Folder project_filter (whole path components) + marker expansion; the sibling ChatSession folder
+            // Folder path scope + marker expansion; the sibling ChatSession folder
             // also contains the identifier and must not leak in.
             // The line number is read from the file at run time, so edits above the enum do not break the scenario.
             const string a112File = @"LMLocal\Application\Chat\HistoryCompactor.cs";
             const string a112Text = "internal enum CompactionOutcome";
             var a112 = Sc("A1.12", Explorer,
-                @"Search for the exact text CompactionOutcome with project filter LMLocal\Application\Chat and report every matched line with its text.",
+                @"Search for the exact text CompactionOutcome in the folder LMLocal\Application\Chat and report every matched line with its text.",
                 a112File + ":" + LineOf(a112File, a112Text) + ": `" + a112Text + "`");
             a112.MustNotContain = new[] { "ChatSession", "@LMLocal" };
             list.Add(a112);
@@ -428,7 +428,7 @@ line six - foxtrot";
             list.Add(a37);
 
             var a38 = Sc("A3.8", Analyzer,
-                "Inspect ConsolidateLastExchangeAsync and determine whether ToolCalls is copied by reference or reconstructed. Read the actual source before answering.",
+                "Inspect ConsolidateLastExchangeAsync and determine whether the ToolCalls of the final assistant message in the consolidated fragment are copied by reference or reconstructed. Read the actual source before answering.",
                 "ConsolidateLastExchangeAsync", "ToolCalls");
             a38.MustContainAny = new[] { new[] { "reference", "same instance", "reused", "not reconstructed" } };
             list.Add(a38);
@@ -443,6 +443,8 @@ line six - foxtrot";
                 "Status:");
             a41.MustContainAny = new[] { new[] { "COMPLETE", "PARTIAL" } };
             a41.MustNotContain = new[] { "Status: REJECTED" };
+            // A reviewer legitimately writes "I cannot verify ..." about evidence it does not have; that is not a refusal.
+            a41.CheckRefusal = false;
             list.Add(a41);
 
             var a42 = Sc("A4.2", Reviewer,
@@ -631,12 +633,24 @@ EDIT 2 - delete one line (approximate line 4):
             list.Add(a510);
 
             // A5.11 - GATE 1 is the only gate that was never exercised. Three targeted files must
-            // stop the run before any tool call, so nothing on disk may change.
+            // stop the run before any tool call, so nothing on disk may change. Every edit carries literal
+            // old_lines/new_lines, so only GATE 1 applies (a free-text task also trips the exact-code gate).
             var a511 = ScEdit("A5.11",
-                @"Apply these three edits:
-1. Temp\AgentProbe\Probe.cs line 7: replace 'public const int MaxRetries = 3;' with 'public const int MaxRetries = 5;'
-2. Temp\AgentProbe\notes.txt line 2: replace 'line two - bravo' with 'line two - BRAVO'
-3. Temp\AgentProbe\Other.cs line 4: replace 'alpha' with 'beta'");
+                @"EDIT 1 - replace one line (approximate line 7):
+  file_path: Temp\AgentProbe\Probe.cs
+  start_line: 7
+  old_lines:        public const int MaxRetries = 3;
+  new_lines:        public const int MaxRetries = 5;
+EDIT 2 - replace one line (approximate line 2):
+  file_path: Temp\AgentProbe\notes.txt
+  start_line: 2
+  old_lines: line two - bravo
+  new_lines: line two - BRAVO
+EDIT 3 - replace one line (approximate line 4):
+  file_path: Temp\AgentProbe\Other.cs
+  start_line: 4
+  old_lines: alpha
+  new_lines: beta");
             a511.CheckRefusal = false;
             a511.MustContain = new[] { "NEEDS_SPLIT" };
             a511.SoftMustNotContain = new[] { "APPLIED" };
@@ -690,7 +704,7 @@ Choose the architecture for this change.",
         public static IEnumerable<object[]> GetIterations()
         {
             const int from = 1;
-            const int to = 1;
+            const int to = 5;
             return Enumerable.Range(from, to - from + 1).Select(i => new object[] { i }).ToList();
         }
 

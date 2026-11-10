@@ -428,15 +428,16 @@ namespace LMLocal.Application.ChatSession
                 {
                     var names = string.Join(", ", currentTools.Select(t => t.FunctionName));
 
+                    int identicalRounds = context.ConsecutiveDuplicateToolRounds + 1;
+
                     InternalLogger.Error(
                         $"ChatSessionOrchestrator: Tool call loop detected. " +
-                        $"Tool(s) [{names}] called with identical arguments " +
-                        $"{context.ConsecutiveDuplicateToolRounds} times in a row. Halting.");
+                        $"{identicalRounds} identical tool rounds in a row [{names}]. Halting.");
 
                     context.LastException = new InvalidOperationException(
-                        $"Execution halted: tool(s) [{names}] called with identical arguments " +
-                        $"{context.ConsecutiveDuplicateToolRounds} times in a row. " +
-                        "The model appears to be stuck in a loop.");
+                        $"Execution halted: the model repeated its previous tool round with identical arguments " +
+                        $"({identicalRounds} identical rounds in a row: {names}). " +
+                        "It appears to be stuck in a loop; change the request or the arguments to continue.");
 
                     return ChatSessionState.Error;
                 }

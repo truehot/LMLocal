@@ -1,7 +1,6 @@
 using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
@@ -9,6 +8,7 @@ using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
@@ -21,6 +21,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
     internal class SetFileProjectStatus : ISetFileProjectStatus
     {
+        private const string DiscardedChangesWarning =
+            "The project had unsaved changes in Visual Studio; they were discarded because the project was reloaded from disk before this change.";
+
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly ISnapshotManager _snapshotManager;
@@ -77,16 +80,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (dte == null)
                 return ErrorResponse("DTE service not available.");
 
-            Project targetProject = null;
-            foreach (Project proj in dte.Solution.Projects)
-            {
-                string projFile = proj.FullName;
-                if (string.Equals(projFile, absoluteProjectPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetProject = proj;
-                    break;
-                }
-            }
+            Project targetProject = TryFindProject(dte, absoluteProjectPath);
             if (targetProject == null)
                 return ErrorResponse($"Project not found in solution: {absoluteProjectPath}");
 
@@ -99,7 +93,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     results[i] = ErrorResponse($"Cannot resolve file path: {filePath}", filePath);
                 else if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
                     results[i] = ErrorResponse($"File '{filePath}' is outside the solution directory '{solutionDir}'.", filePath);
-                else if (!_fileSystem.FileExists(absolutePath))
+                else if (include && !_fileSystem.FileExists(absolutePath))
                     results[i] = ErrorResponse($"File not found: {absolutePath}", filePath);
                 else
                     absolutePaths[i] = absolutePath;
@@ -122,17 +116,33 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return ErrorResponse($"Operation failed: {ex.Message}");
             }
 
+            bool hadUnsavedChanges = IsProjectDirty(targetProject);
+            if (!TryReloadProject(targetProject))
+                return ErrorResponse($"The project could not be reloaded from disk, so nothing was changed: {absoluteProjectPath}");
+
+            string reloadWarning = hadUnsavedChanges ? DiscardedChangesWarning : null;
+
+            targetProject = TryFindProject(dte, absoluteProjectPath);
+            if (targetProject == null)
+            {
+                var notFound = ErrorResponse($"Project not found in solution after reload: {absoluteProjectPath}");
+                notFound.Warning = reloadWarning;
+                return notFound;
+            }
+
             var changed = new List<int>();
             for (int i = 0; i < absolutePaths.Length; i++)
             {
                 if (absolutePaths[i] == null)
                     continue;
 
+                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
                 try
                 {
                     results[i] = include
                         ? IncludeOne(targetProject, absolutePaths[i], changed, i)
-                        : ExcludeOne(targetProject, absolutePaths[i], changed, i);
+                        : await ExcludeOneAsync(targetProject, absolutePaths[i], changed, i, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -140,21 +150,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
             }
 
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync();
+
             if (changed.Count > 0)
             {
                 try
                 {
                     targetProject.Save();
-                    ReloadProjectQuietly(targetProject);
+
+                    TryReloadProject(targetProject);
                 }
                 catch (Exception ex)
                 {
                     foreach (int i in changed)
-                        results[i] = ErrorResponse($"Operation failed: project could not be saved: {ex.Message}", absolutePaths[i]);
+                        results[i] = ErrorResponse($"The change was applied in Visual Studio but the project could not be saved to disk: {ex.Message}", absolutePaths[i]);
                 }
             }
 
-            return Combine(results);
+            return Combine(results, reloadWarning);
         }
 
         /// <summary>
@@ -195,13 +208,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private IncludeExcludeResponse ExcludeOne(Project project, string absolutePath, List<int> changed, int index)
+        /// <summary>
+        /// Removes the file from the project.
+        /// </summary>
+        private async Task<IncludeExcludeResponse> ExcludeOneAsync(Project project, string absolutePath, List<int> changed, int index, CancellationToken cancellationToken)
         {
-            ThreadHelper.ThrowIfNotOnUIThread();
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             ProjectItem item = FindProjectItem(project, absolutePath);
             if (item == null)
                 return ErrorResponse("File is not part of the project.", absolutePath);
+
+            bool existedOnDisk = _fileSystem.FileExists(absolutePath);
+            try
+            {
+                await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeDelete, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                return ErrorResponse($"File was not removed from the project because it could not be snapshotted: {ex.Message}", absolutePath);
+            }
+
+            await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             item.Delete();
             changed.Add(index);
@@ -210,19 +238,23 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 Success = true,
                 FilePath = absolutePath,
-                Message = "File deleted from disk."
+                Message = existedOnDisk ? "File deleted from disk." : "File removed from the project; it was already missing on disk."
             };
         }
 
         /// <summary>
         /// One file keeps the single-file response shape; several files are reported per file.
         /// </summary>
-        private static object Combine(IncludeExcludeResponse[] results)
+        private static object Combine(IncludeExcludeResponse[] results, string warning = null)
         {
             if (results.Length == 1)
+            {
+                if (warning != null)
+                    results[0].Warning = warning;
                 return results[0];
+            }
 
-            var batch = new FileBatchResponse<IncludeExcludeResponse> { TotalFiles = results.Length };
+            var batch = new FileBatchResponse<IncludeExcludeResponse> { TotalFiles = results.Length, Warning = warning };
             foreach (var result in results)
             {
                 batch.Files.Add(result);
@@ -244,15 +276,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             try
             {
-                return FindProjectItemRecursive(project.ProjectItems, Path.GetFileName(filePath), filePath);
+                return FindProjectItemRecursive(project.ProjectItems, filePath);
             }
-            catch
+            catch (Exception ex)
             {
+                InternalLogger.Warn($"SetFileProjectStatus: could not search '{filePath}' in the project: {ex.Message}");
                 return null;
             }
         }
 
-        private ProjectItem FindProjectItemRecursive(ProjectItems items, string fileName, string fullPath)
+        /// <summary>
+        /// Depth-first search by full path through folders and through the child items of files.
+        /// </summary>
+        private ProjectItem FindProjectItemRecursive(ProjectItems items, string fullPath)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (items == null) return null;
@@ -261,46 +297,100 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 try
                 {
-                    if (item.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile)
-                    {
-                        string itemPath = item.FileNames[1];
-                        if (string.Equals(itemPath, fullPath, StringComparison.OrdinalIgnoreCase))
-                            return item;
-                    }
-                    else if (item.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFolder || item.Kind == EnvDTE.Constants.vsProjectItemKindVirtualFolder)
-                    {
-                        var found = FindProjectItemRecursive(item.ProjectItems, fileName, fullPath);
-                        if (found != null) return found;
-                    }
+                    if (item.Kind == EnvDTE.Constants.vsProjectItemKindPhysicalFile
+                        && string.Equals(item.FileNames[1], fullPath, StringComparison.OrdinalIgnoreCase))
+                        return item;
+
+                    var found = FindProjectItemRecursive(item.ProjectItems, fullPath);
+                    if (found != null) return found;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    InternalLogger.Warn($"SetFileProjectStatus: could not inspect a project item while looking for '{fullPath}': {ex.Message}");
+                }
             }
+
             return null;
         }
 
-        private void ReloadProjectQuietly(Project project)
+        /// <summary>
+        /// Reloads the project from disk, so that a later <see cref="Project.Save"/> writes the disk version plus this change
+        /// instead of a stale in-memory copy that would revert edits made outside Visual Studio.
+        /// </summary>
+        private bool TryReloadProject(Project project)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
             if (project == null)
-                return;
+                return false;
 
+            string projectPath = ProjectFinder.SafeName(project, ProjectField.FullName) ?? "?";
             try
             {
                 var solution = _vsDependencies.GetSolution();
                 if (!(solution is IVsSolution4 solution4))
-                    return;
+                {
+                    InternalLogger.Warn("SetFileProjectStatus: IVsSolution4 is not available, the project was not reloaded from disk.");
+                    return false;
+                }
 
                 if (solution.GetProjectOfUniqueName(project.UniqueName, out IVsHierarchy hierarchy) != VSConstants.S_OK || hierarchy == null)
-                    return;
+                {
+                    InternalLogger.Warn($"SetFileProjectStatus: project '{projectPath}' is not part of the open solution, it was not reloaded from disk.");
+                    return false;
+                }
 
                 if (solution.GetGuidOfProject(hierarchy, out Guid projectGuid) != VSConstants.S_OK)
-                    return;
+                {
+                    InternalLogger.Warn($"SetFileProjectStatus: the project GUID of '{projectPath}' is not available, the project was not reloaded from disk.");
+                    return false;
+                }
 
-                solution4.ReloadProject(projectGuid);
+                int hr = solution4.ReloadProject(projectGuid);
+                if (ErrorHandler.Failed(hr))
+                {
+                    InternalLogger.Warn($"SetFileProjectStatus: reloading '{projectPath}' from disk failed with HRESULT 0x{hr:X8}.");
+                    return false;
+                }
+
+                return true;
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SetFileProjectStatus: failed to reload project '{project.FullName}' after save: {ex.Message}");
+                InternalLogger.Warn($"SetFileProjectStatus: failed to reload project '{projectPath}' from disk: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>Unsaved project changes in Visual Studio; a project system that does not report it counts as saved.</summary>
+        private static bool IsProjectDirty(Project project)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            try
+            {
+                return project.IsDirty;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SetFileProjectStatus: IsDirty is not available for '{ProjectFinder.SafeName(project, ProjectField.FullName)}': {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="ProjectFinder.FindByPath"/> with a last line of defence: a project whose name is not a usable file
+        /// path must not take the whole call down.
+        /// </summary>
+        private static Project TryFindProject(EnvDTE80.DTE2 dte, string absoluteProjectPath)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            try
+            {
+                return ProjectFinder.FindByPath(dte.Solution, absoluteProjectPath);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SetFileProjectStatus: could not search the solution for project '{absoluteProjectPath}': {ex.Message}");
+                return null;
             }
         }
 
@@ -350,7 +440,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Adds an existing file to the specified .csproj or .vcxproj project. REQUIRED when a file must be registered in a project. If the task requires adding a new .cs file to a project, first use create_file if the file does not exist, then MUST use this tool to add it to the project. Do NOT manually edit the .csproj or .vcxproj XML, ItemGroup, Compile Include, or project file entries to accomplish this. This rule applies especially to legacy .csproj projects that use explicit <Compile Include=\"...\" /> entries. Use include=false only when removing the file from the project and deleting it from disk. Both file_path and project_path are required, and both files must exist. Several files for the same project: one call with comma-separated paths in file_path.",
+                Description = "Adds an existing file to the specified .csproj or .vcxproj project. REQUIRED when a file must be registered in a project. If the task requires adding a new .cs file to a project, first use create_file if the file does not exist, then MUST use this tool to add it to the project. Do NOT manually edit the .csproj or .vcxproj XML, ItemGroup, Compile Include, or project file entries to accomplish this. This rule applies especially for legacy .csproj projects that use explicit <Compile Include=\"...\" /> entries. Use include=false only when removing the file from the project and deleting it from disk. Both file_path and project_path are required; the project file must exist. Several files for the same project: one call with comma-separated paths in file_path.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -397,5 +487,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("message", NullValueHandling = NullValueHandling.Ignore)]
         public string Message { get; set; }
+
+        [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+        public string Warning { get; set; }
     }
 }

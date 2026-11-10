@@ -1,5 +1,5 @@
 ﻿/* ====== Tool button styles ====== */
-.tool-status, .tool-status-error, .tool-status-completed {
+.tool-status, .tool-status-error, .tool-status-completed, .tool-status-stopped {
     display: inline-flex;
     align-items: center;
     gap: 12px;
@@ -28,6 +28,12 @@
         content: "✖";
         color: var(--error-color);
         font-size: 10px;
+    }
+
+    .tool-status-stopped::before {
+        content: "■";
+        font-size: 10px;
+        opacity: 0.7;
     }
 
 @keyframes spin {
@@ -60,7 +66,8 @@
 
     .collapsible-block .tool-status,
     .collapsible-block .tool-status-error,
-    .collapsible-block .tool-status-completed {
+    .collapsible-block .tool-status-completed,
+    .collapsible-block .tool-status-stopped {
         border-left: none;
     }
 

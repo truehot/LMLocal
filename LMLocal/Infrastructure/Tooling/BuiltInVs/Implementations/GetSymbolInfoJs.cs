@@ -1,4 +1,3 @@
-using LMLocal.Core.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -7,10 +6,12 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
 using Newtonsoft.Json;
@@ -72,7 +73,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Retrieves navigation information for a JavaScript symbol: direct declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Use when the symbol is known. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50). Lines are 1-indexed. An empty definitions array does not establish that the symbol has no definition. When definitions is empty but definition_chain contains files, those files identify locations that may contain the definition and should be inspected to resolve the definition. Safe to call several times in parallel.",
+                Description = "Retrieves navigation information for a JavaScript symbol: direct declarations (file, line, column, declaration type), calls/references (file, line, line text, context), the definition chain (forward through imports) and importers (backward references). Results are grouped by file. Supports only .js, .mjs, .cjs. Use when the symbol is known. Symbol_name must be at least 3 characters. References limited to 5000, paginated by page size (default 50). Lines are 1-indexed. An empty definitions array does not establish that the symbol has no definition. When definitions is empty but definition_chain contains files, those files identify locations that may contain the definition and should be inspected to resolve the definition. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -154,20 +155,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string configHash = config?.ConfigHash ?? "";
                 string configFilePath = config?.ConfigFilePath ?? "";
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
+                int skip = ToolPagination.ParseOffset(pageToken, pageSize);
 
-                int maxSafePage = (int.MaxValue - pageSize) / pageSize;
-                if (pageNumber > maxSafePage)
-                    pageNumber = maxSafePage;
-                int skip = pageNumber * pageSize;
-
-                string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences, pageSize, configHash, configFilePath);
+                string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences, configHash, configFilePath);
                 if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<JsSymbolInfoResponse> cached))
                 {
                     var cachedInfo = cached.AllResults.FirstOrDefault();
                     if (cachedInfo != null)
                     {
-                        return BuildResponse(cachedInfo, skip, pageSize, pageNumber);
+                        return BuildResponse(cachedInfo, skip, pageSize);
                     }
                 }
 
@@ -182,7 +178,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 };
                 _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
-                return BuildResponse(fullResult, skip, pageSize, pageNumber);
+                return BuildResponse(fullResult, skip, pageSize);
             }
             catch (OperationCanceledException)
             {
@@ -195,10 +191,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private JsSymbolInfoResponse BuildResponse(JsSymbolInfoResponse fullResult, int skip, int pageSize, int pageNumber)
+        private JsSymbolInfoResponse BuildResponse(JsSymbolInfoResponse fullResult, int skip, int pageSize)
         {
             var pagedRefs = fullResult.References?.Skip(skip).Take(pageSize).ToList() ?? new List<JsReferenceItem>();
-            string nextToken = (skip + pageSize) < (fullResult.References?.Count ?? 0) ? (pageNumber + 1).ToString() : null;
+            string nextToken = ToolPagination.NextToken(skip + pagedRefs.Count, fullResult.References?.Count ?? 0);
 
             return new JsSymbolInfoResponse
             {
@@ -612,9 +608,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return absolutePath;
         }
 
-        private string BuildCacheKey(string symbolName, string filePath, bool includeReferences, int pageSize, string configHash, string configFilePath)
+        private string BuildCacheKey(string symbolName, string filePath, bool includeReferences, string configHash, string configFilePath)
         {
-            return $"get_symbol_info_js:{symbolName}:{filePath ?? ""}:{includeReferences}:{pageSize}:{configHash}:{configFilePath ?? ""}";
+            return $"get_symbol_info_js:{symbolName}:{filePath ?? ""}:{includeReferences}:{configHash}:{configFilePath ?? ""}";
         }
 
         internal static (string symbolName, string filePath, bool includeReferences, int pageSize, string pageToken, string error) ExtractAndValidateParameters(Dictionary<string, object> parameters)
@@ -645,7 +641,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters.TryGetValue("max_references", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
                 pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
 
-            string pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
+            string pageToken = ToolPagination.ReadToken(parameters);
 
             return (symbolName, filePath, includeReferences, pageSize, pageToken, null);
         }

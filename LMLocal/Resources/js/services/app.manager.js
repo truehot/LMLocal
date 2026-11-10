@@ -132,6 +132,7 @@ class AppManager {
             accumulatedText: "",
             accumulatedThoughtText: "",
             error: null,
+            stoppedByUser: false,
             roundNumber: 0,
             toolCount: 0
         });
@@ -255,6 +256,7 @@ class AppManager {
             appStore.setState({
                 status: AppStatus.ERROR,
                 error: "Failed to clear chat history",
+                stoppedByUser: false,
                 accumulatedText: "", accumulatedThoughtText: "",
                 roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0
             });
@@ -297,6 +299,7 @@ class AppManager {
             appStore.setState({
                 status: AppStatus.ERROR,
                 error: "Failed to load chat session",
+                stoppedByUser: false,
                 accumulatedText: "", accumulatedThoughtText: "",
                 roundTokens: 0, lastAnswerTokens: 0, tokenSpeed: 0
             });

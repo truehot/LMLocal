@@ -130,24 +130,4 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
     }
-
-    /// <summary>
-    /// A single page of file-grouped results (used for caching).
-    /// </summary>
-    public class FileSearchPage
-    {
-        public List<SearchResult> Results { get; set; }
-        public int TotalMatches { get; set; }
-        public int TotalFiles { get; set; }
-    }
-
-    /// <summary>
-    /// A single page of text-grouped results (used for caching).
-    /// </summary>
-    public class TextSearchPage
-    {
-        public List<SearchTextGroupResult> Results { get; set; }
-        public int TotalMatches { get; set; }
-        public int TotalFiles { get; set; }
-    }
 }

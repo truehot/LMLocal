@@ -11,7 +11,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
     /// <code>
     /// marker      ::= "@" ( quoted-path | bare-path ) ":" ranges
     /// quoted-path ::= '"' path-no-quote '"'
-    /// bare-path   ::= [^":\s]+
+    /// bare-path   ::= [ drive ] [^":\s]+     (drive ::= LETTER ":" followed by '\' or '/')
     /// ranges      ::= range ("," range)*
     /// range       ::= NUMBER | NUMBER "-" NUMBER
     /// </code>
@@ -142,6 +142,11 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             else
             {
                 int pathStart = p;
+
+                // Absolute Windows path ("D:\..." or "D:/..."): the drive colon is part of the path, not the range separator.
+                if (p + 2 < text.Length && char.IsLetter(text[p]) && text[p + 1] == ':' && (text[p + 2] == '\\' || text[p + 2] == '/'))
+                    p += 2;
+
                 while (p < text.Length && text[p] != ':' && text[p] != '"' && !char.IsWhiteSpace(text[p]))
                     p++;
 

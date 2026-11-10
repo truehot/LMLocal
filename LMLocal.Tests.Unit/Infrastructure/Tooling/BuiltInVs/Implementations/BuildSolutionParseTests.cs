@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using NUnit.Framework;
@@ -177,39 +179,270 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public void TrimToLastBuildSection_CutsPreviousBuildAndSummary()
+        public void ParseBuildOutput_FourNumberLocation_ParsesFileLineAndColumn()
+        {
+            var result = BuildSolution.ParseBuildOutput(@"1>D:\S\A.cs(86,62,86,68): error CS0103: text");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].File, Is.EqualTo(@"D:\S\A.cs"));
+            Assert.That(result[0].Line, Is.EqualTo(86));
+            Assert.That(result[0].Column, Is.EqualTo(62));
+            Assert.That(result[0].Message, Is.EqualTo("text"));
+        }
+
+        [Test]
+        public void ParseBuildOutput_FourNumberLocationInPathWithParentheses_ParsesFileWithoutCoordinates()
+        {
+            var result = BuildSolution.ParseBuildOutput(@"C:\Program Files (x86)\MyApp\S.cs(86,62,86,68): error CS0103: text");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].File, Is.EqualTo(@"C:\Program Files (x86)\MyApp\S.cs"));
+            Assert.That(result[0].Line, Is.EqualTo(86));
+            Assert.That(result[0].Column, Is.EqualTo(62));
+        }
+
+        [Test]
+        public void ParseBuildOutput_CompilerCode_IsReportedSeparately()
+        {
+            var result = BuildSolution.ParseBuildOutput(@"D:\S\A.cs(86,62,86,68): error CS0103: text");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Code, Is.EqualTo("CS0103"));
+            Assert.That(result[0].Message, Is.EqualTo("text"));
+        }
+
+        [Test]
+        public void ParseBuildOutput_MsbCode_IsReportedAndProjectSuffixRemoved()
+        {
+            var result = BuildSolution.ParseBuildOutput(@"error MSB3027: Could not copy ""a.dll"" [C:\p\App.csproj]");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Code, Is.EqualTo("MSB3027"));
+            Assert.That(result[0].Message, Is.EqualTo(@"Could not copy ""a.dll"""));
+        }
+
+        [Test]
+        public void ParseBuildOutput_ErrorWithoutCode_CodeIsNull()
+        {
+            var result = BuildSolution.ParseBuildOutput("error : The output path is not set for project 'X'");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Code, Is.Null);
+        }
+
+        [Test]
+        public void ParseBuildOutput_BracketsInsideMessage_AreKept()
+        {
+            // The fragment " []" is part of the C# error text, not a project suffix.
+            var result = BuildSolution.ParseBuildOutput(
+                "P.cs(1,2): error CS0021: Cannot apply indexing with [] to an expression of type 'int'");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Code, Is.EqualTo("CS0021"));
+            Assert.That(result[0].Message,
+                Is.EqualTo("Cannot apply indexing with [] to an expression of type 'int'"));
+        }
+
+        [Test]
+        public void ParseBuildOutput_BracketedTextAtEndWithoutPath_IsKept()
+        {
+            var result = BuildSolution.ParseBuildOutput("P.cs(1,2): error CS1002: expected [x]");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Message, Is.EqualTo("expected [x]"));
+        }
+
+        [Test]
+        public void ParseBuildOutput_ToolNameAsFile_KeepsToolNameAndCode()
+        {
+            // "CSC" is a tool name, not a path: it cannot be matched to a project directory.
+            var result = BuildSolution.ParseBuildOutput("1>CSC : error CS2001: Source file 'Foo.cs' could not be found.");
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].File, Is.EqualTo("CSC"));
+            Assert.That(result[0].Code, Is.EqualTo("CS2001"));
+            Assert.That(result[0].Message, Is.EqualTo("Source file 'Foo.cs' could not be found."));
+        }
+
+        [TestCase(@"text [C:\src\App\App.csproj]", "text")]
+        [TestCase(@"text [C:\src\Native\Native.vcxproj]", "text")]
+        [TestCase("text [App.csproj]", "text")]
+        [TestCase("text [x]", "text [x]")]
+        [TestCase("text [docs/readme]", "text [docs/readme]")]
+        [TestCase(@"text [C:\src\file.cs]", @"text [C:\src\file.cs]")]
+        [TestCase("expected [x]", "expected [x]")]
+        [TestCase("Cannot apply indexing with [] to an expression", "Cannot apply indexing with [] to an expression")]
+        [TestCase("no suffix", "no suffix")]
+        [TestCase(@"unbalanced [C:\src\App.csproj", @"unbalanced [C:\src\App.csproj")]
+        public void StripProjectSuffix_RemovesOnlyProjectSuffix(string message, string expected)
+        {
+            Assert.That(BuildSolution.StripProjectSuffix(message), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void StripProjectSuffix_NullOrEmpty_ReturnsInput()
+        {
+            Assert.That(BuildSolution.StripProjectSuffix(null), Is.Null);
+            Assert.That(BuildSolution.StripProjectSuffix(string.Empty), Is.Empty);
+        }
+
+        [Test]
+        public void ParseBuildOutput_RealTwoProjectOutputWithBuildCompletedLine_ParsesBothErrors()
         {
             var output =
-                "1>old.cs(1,1): error CS1002: old\n" +
-                "========== Build: 0 succeeded, 1 failed ==========\n" +
-                "1>------ Build started: Project: A ------\n" +
-                "1>a.cs(5,2): error CS0103: new\n" +
-                "========== Build: 0 succeeded, 1 failed, 0 up-to-date, 0 skipped ==========";
+                "1>------ Build started: Project: Lib, Configuration: Debug Any CPU ------\n" +
+                "1>D:\\S\\Lib\\L.cs(3,4,3,10): error CS0103: in lib\n" +
+                "2>------ Build started: Project: App, Configuration: Debug Any CPU ------\n" +
+                "2>D:\\S\\App\\A.cs(1,1,1,2): error CS0246: in app\n" +
+                "========== Build: 0 succeeded, 2 failed, 0 up-to-date, 0 skipped ==========\n" +
+                "========== Build completed at 22:15 and took 02,901 seconds ==========";
 
-            var result = BuildSolution.TrimToLastBuildSection(output);
+            var messages = BuildSolution.ParseBuildOutput(output);
 
-            // Only the current build's body survives: previous build and both anchors are cut.
-            Assert.That(result, Is.EqualTo("1>a.cs(5,2): error CS0103: new"));
+            Assert.That(messages, Has.Count.EqualTo(2));
+            Assert.That(messages.Select(m => m.Message), Is.EqualTo(new[] { "in lib", "in app" }));
+            Assert.That(messages[0].File, Is.EqualTo(@"D:\S\Lib\L.cs"));
+            Assert.That(messages[1].File, Is.EqualTo(@"D:\S\App\A.cs"));
         }
 
         [Test]
-        public void TrimToLastBuildSection_NoAnchors_ReturnsInput()
+        public void OrderByFailedProjects_EarlierFailedProjectComesFirstAndOwnsItsErrors()
         {
-            Assert.That(BuildSolution.TrimToLastBuildSection("just text"), Is.EqualTo("just text"));
-            Assert.That(BuildSolution.TrimToLastBuildSection(null), Is.Null);
-            Assert.That(BuildSolution.TrimToLastBuildSection(string.Empty), Is.Empty);
+            var messages = new List<BuildMessage>
+            {
+                new BuildMessage { File = @"D:\S\App\A.cs", Message = "dependent" },
+                new BuildMessage { File = @"D:\S\Lib\L.cs", Message = "dependency" }
+            };
+
+            var result = BuildSolution.OrderByFailedProjects(
+                messages, new[] { @"Lib\Lib.csproj", @"App\App.csproj" }, @"D:\S");
+
+            Assert.That(result.Select(m => m.Message), Is.EqualTo(new[] { "dependency", "dependent" }));
+            Assert.That(result[0].Project, Is.EqualTo(@"Lib\Lib.csproj"));
+            Assert.That(result[1].Project, Is.EqualTo(@"App\App.csproj"));
         }
 
         [Test]
-        public void TrimToLastBuildSection_NoStartAnchor_KeepsPreSummaryContent()
+        public void OrderByFailedProjects_LongestDirectoryPrefixWins()
         {
-            // Tail window cut off the "Build started" header: keep everything before the summary.
-            var result = BuildSolution.TrimToLastBuildSection(
-                "1>a.cs(1,1): error CS1002: x\n" +
-                "========== Build: 0 succeeded, 1 failed ==========");
+            var messages = new List<BuildMessage> { new BuildMessage { File = @"D:\S\Lib\Sub\S.cs" } };
 
-            Assert.That(result, Does.Contain("a.cs"));
-            Assert.That(result, Does.Not.Contain("========== Build:"));
+            var result = BuildSolution.OrderByFailedProjects(
+                messages, new[] { @"Lib\Lib.csproj", @"Lib\Sub\Sub.csproj" }, @"D:\S");
+
+            Assert.That(result[0].Project, Is.EqualTo(@"Lib\Sub\Sub.csproj"));
+        }
+
+        [Test]
+        public void OrderByFailedProjects_SingleFailedProject_OwnsUnmatchedMessages()
+        {
+            var messages = new List<BuildMessage>
+            {
+                new BuildMessage { File = null },
+                new BuildMessage { File = @"D:\Elsewhere\Shared.cs" }
+            };
+
+            var result = BuildSolution.OrderByFailedProjects(messages, new[] { @"Lib\Lib.csproj" }, @"D:\S");
+
+            Assert.That(result.Select(m => m.Project), Is.EqualTo(new[] { @"Lib\Lib.csproj", @"Lib\Lib.csproj" }));
+        }
+
+        [Test]
+        public void OrderByFailedProjects_MessageOutsideEveryFailedProject_HasNoProject()
+        {
+            var messages = new List<BuildMessage> { new BuildMessage { File = @"D:\S\App\A.cs" } };
+
+            var result = BuildSolution.OrderByFailedProjects(
+                messages, new[] { @"Lib\Lib.csproj", @"Other\Other.csproj" }, @"D:\S");
+
+            Assert.That(result[0].Project, Is.Null);
+        }
+
+        [Test]
+        public void OrderByFailedProjects_InvalidUniqueName_IsIgnoredInsteadOfFailing()
+        {
+            var messages = new List<BuildMessage> { new BuildMessage { File = @"D:\S\Other\O.cs" } };
+
+            List<BuildMessage> result = null;
+            Assert.DoesNotThrow(() => result = BuildSolution.OrderByFailedProjects(
+                messages, new[] { "bad|name\\Bad.csproj", @"Other\Other.csproj" }, @"D:\S"));
+
+            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That(result[0].Project, Is.EqualTo(@"Other\Other.csproj"),
+                "the name that cannot be turned into a path must not break attribution of the other projects");
+        }
+
+        [Test]
+        public void OrderByFailedProjects_NoFailedProjects_KeepsMessagesUntouched()
+        {
+            var messages = new List<BuildMessage> { new BuildMessage { File = @"D:\S\Lib\L.cs" } };
+
+            var result = BuildSolution.OrderByFailedProjects(messages, new List<string>(), @"D:\S");
+
+            Assert.That(result, Is.EqualTo(messages));
+            Assert.That(result[0].Project, Is.Null);
+        }
+
+        [Test]
+        public void OrderByFailedProjects_RootProject_OwnsSolutionRootFiles()
+        {
+            var messages = new List<BuildMessage> { new BuildMessage { File = @"D:\S\A.cs" } };
+
+            var result = BuildSolution.OrderByFailedProjects(messages, new[] { "App.csproj" }, @"D:\S");
+
+            Assert.That(result[0].Project, Is.EqualTo("App.csproj"));
+        }
+
+        [Test]
+        public void OrderByFailedProjects_RootAndNestedProject_NestedWinsForNestedFiles()
+        {
+            var messages = new List<BuildMessage>
+            {
+                new BuildMessage { File = @"D:\S\A.cs" },
+                new BuildMessage { File = @"D:\S\Lib\L.cs" }
+            };
+
+            var result = BuildSolution.OrderByFailedProjects(
+                messages, new[] { "App.csproj", @"Lib\Lib.csproj" }, @"D:\S");
+
+            Assert.That(result[0].Project, Is.EqualTo("App.csproj"));
+            Assert.That(result[0].File, Is.EqualTo(@"D:\S\A.cs"));
+            Assert.That(result[1].Project, Is.EqualTo(@"Lib\Lib.csproj"));
+            Assert.That(result[1].File, Is.EqualTo(@"D:\S\Lib\L.cs"));
+        }
+
+        [Test]
+        public void OrderByFailedProjects_SingleProjectWithUnusableName_DoesNotOwnUnmatchedMessages()
+        {
+            var messages = new List<BuildMessage> { new BuildMessage { File = null } };
+
+            var result = BuildSolution.OrderByFailedProjects(messages, new[] { "bad|name\\Bad.csproj" }, @"D:\S");
+
+            Assert.That(result[0].Project, Is.Null);
+        }
+
+        [Test]
+        public void FailureSummary_FailedProjectsAndCut()
+        {
+            Assert.That(
+                BuildSolution.FailureSummary(new[] { @"A\A.csproj", @"B\B.csproj" }, 25, 80),
+                Is.EqualTo(@"Failed projects: A\A.csproj, B\B.csproj. Showing 25 of 80 errors."));
+        }
+
+        [Test]
+        public void FailureSummary_CompleteList_OmitsTheCut()
+        {
+            Assert.That(
+                BuildSolution.FailureSummary(new[] { @"A\A.csproj" }, 3, 3),
+                Is.EqualTo(@"Failed projects: A\A.csproj."));
+        }
+
+        [Test]
+        public void FailureSummary_NoFailedProject_KeepsThePreviousWording()
+        {
+            Assert.That(
+                BuildSolution.FailureSummary(new List<string>(), 0, 0),
+                Is.EqualTo("Build failed."));
         }
 
         [Test]

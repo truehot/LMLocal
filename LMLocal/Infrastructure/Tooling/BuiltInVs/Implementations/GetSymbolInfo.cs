@@ -1,4 +1,3 @@
-using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -6,9 +5,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.VisualStudio.ComponentModelHost;
@@ -53,7 +54,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns navigation info for a C# symbol. Definitions: declaration sites of every matching symbol (file, line, column, full signature with parameters, modifiers, namespace), deduplicated, up to 100; not paginated. References (default included): usages of ONE symbol (file, line, line text, symbol kind), up to 5000 total, paginated (page size default 50, max 200) via page_token. Reference target: if file_path is set, the first symbol declared in that file; otherwise the first exact case-sensitive name match, else the first case-insensitive match. For overloads/partials, definitions include all declarations, but references cover only the selected symbol. Name matching prefers exact case-sensitive matches and falls back to case-insensitive only if no exact match exists. file_path restricts only the returned definitions to that file; references are still searched across the whole solution. Does NOT return method bodies, fields, properties, base classes, or dependencies. Lines are 1-indexed. Safe to call several times in parallel.",
+                Description = "Returns navigation info for a C# symbol. Definitions: declaration sites of every matching symbol (file, line, column, full signature with parameters, modifiers, namespace), deduplicated, up to 100; not paginated. References (default included): usages of ONE symbol (file, line, line text, symbol kind), up to 5000 total, paginated (page size default 50, max 200) via page_token. Reference target: if file_path is set, the first symbol declared in that file; otherwise the first exact case-sensitive name match, else the first case-insensitive match. For overloads/partials, definitions include all declarations, but references cover only the selected symbol. Name matching prefers exact case-sensitive matches and falls back to case-insensitive only if no exact match exists. file_path restricts only the returned definitions to that file; references are still searched across the whole solution. Does NOT return method bodies, fields, properties, base classes, or dependencies. Lines are 1-indexed. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -78,21 +79,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!string.IsNullOrEmpty(error))
                     return Error(error, symbolName);
 
-                int pageNumber = string.IsNullOrEmpty(pageToken) || !int.TryParse(pageToken, out var pn) ? 0 : Math.Max(0, pn);
+                int skip = ToolPagination.ParseOffset(pageToken, pageSize);
 
-                int maxSafePage = (int.MaxValue - pageSize) / pageSize;
-                if (pageNumber > maxSafePage)
-                    pageNumber = maxSafePage;
-                int skip = pageNumber * pageSize;
-
-                string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences, pageSize);
+                string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences);
                 if (_searchCache.TryGet(cacheKey, "", out CachedToolResults<SymbolInfo> cached))
                 {
                     var cachedInfo = cached.AllResults.FirstOrDefault();
                     if (cachedInfo != null)
                     {
                         var pagedRefs = cachedInfo.References?.Skip(skip).Take(pageSize).ToList() ?? new List<ReferenceItem>();
-                        string nextToken = (skip + pageSize) < (cachedInfo.References?.Count ?? 0) ? (pageNumber + 1).ToString() : null;
+                        string nextToken = ToolPagination.NextToken(skip + pagedRefs.Count, cachedInfo.References?.Count ?? 0);
                         return new SymbolInfoResponse
                         {
                             Success = true,
@@ -124,7 +120,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 _searchCache.Set(cacheKey, "", cacheEntry);
 
                 var pagedRefsResult = fullResult.References?.Skip(skip).Take(pageSize).ToList() ?? new List<ReferenceItem>();
-                string nextTokenResult = (skip + pageSize) < (fullResult.References?.Count ?? 0) ? (pageNumber + 1).ToString() : null;
+                string nextTokenResult = ToolPagination.NextToken(skip + pagedRefsResult.Count, fullResult.References?.Count ?? 0);
 
                 return new SymbolInfoResponse
                 {
@@ -406,7 +402,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 case Accessibility.Private: modifiers.Add("private"); break;
                 case Accessibility.Protected: modifiers.Add("protected"); break;
                 case Accessibility.Internal: modifiers.Add("internal"); break;
-                case Accessibility.ProtectedAndInternal: modifiers.Add("protected internal"); break;
+                case Accessibility.ProtectedAndInternal: modifiers.Add("private protected"); break;
                 case Accessibility.ProtectedOrInternal: modifiers.Add("protected internal"); break;
             }
             return string.Join(" ", modifiers);
@@ -427,9 +423,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private string BuildCacheKey(string symbolName, string filePath, bool includeReferences, int pageSize)
+        private string BuildCacheKey(string symbolName, string filePath, bool includeReferences)
         {
-            return $"{symbolName}||{filePath ?? ""}||{includeReferences}||{pageSize}";
+            return $"{symbolName}||{filePath ?? ""}||{includeReferences}";
         }
 
         private (string symbolName, string filePath, bool includeReferences, int pageSize, string pageToken, string error) ExtractAndValidateParameters(
@@ -456,7 +452,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters.TryGetValue("max_references", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
                 pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
 
-            string pageToken = parameters.TryGetValue("page_token", out object tokenObj) ? tokenObj as string : null;
+            string pageToken = ToolPagination.ReadToken(parameters);
 
             return (symbolName, filePath, includeReferences, pageSize, pageToken, null);
         }

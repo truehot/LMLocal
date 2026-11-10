@@ -56,6 +56,57 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(result.Content, Does.Contain("````csharp"));
         }
 
+        [TestCase(@"@C:\sol\src\Program.cs:2-4")]
+        [TestCase("@C:/sol/src/Program.cs:2-4")]
+        [TestCase(@"`@c:\SOL\src\Program.cs:2-4`")]
+        public async Task Expand_AbsolutePathMarker_IsResolvedLikeRelative(string marker)
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 10);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 10, AbsolutePath));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync("Before\n" + marker + "\nAfter", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(result.MalformedRefCount, Is.EqualTo(0));
+            Assert.That(result.Content, Does.Contain("File: src\\Program.cs, lines 2-4"), "header uses the solution-relative path");
+            Assert.That(result.Content, Does.Contain("line 2\nline 3\nline 4\n"));
+        }
+
+        [Test]
+        public async Task Expand_AbsolutePathOfAnotherFile_StaysUnresolved()
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 10);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 10, AbsolutePath));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync(@"@D:\other\src\Program.cs:2-4", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(0));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(1));
+            Assert.That(result.Content, Is.EqualTo(@"@D:\other\src\Program.cs:2-4"));
+        }
+
+        [Test]
+        public async Task Expand_AbsolutePathMarker_BeyondReadRange_StaysUnresolved()
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 200);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 50, AbsolutePath));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync(@"@C:\sol\src\Program.cs:1-120", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(0));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(1));
+        }
+
         [Test]
         public async Task Expand_SubRangeOfRecordedRead_IsResolved()
         {

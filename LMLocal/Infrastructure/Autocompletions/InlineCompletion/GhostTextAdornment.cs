@@ -25,18 +25,34 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             _layer = view.GetAdornmentLayer("GhostTextLayer");
         }
 
-        public void Show(string text, SnapshotPoint caretPoint)
+        /// <summary>
+        /// Shows <paramref name="text"/> after the caret. Returns true when the text was added to the layer.
+        /// </summary>
+        public bool Show(string text, SnapshotPoint caretPoint)
         {
             if (string.IsNullOrEmpty(text))
             {
                 Hide();
-                return;
+                return false;
             }
 
             RemoveCurrent();
 
+            if (_view.IsClosed || _view.InLayout)
+            {
+                return false;
+            }
+
+            if (caretPoint.Snapshot != _view.TextSnapshot)
+            {
+                return false;
+            }
+
             var line = _view.GetTextViewLineContainingBufferPosition(caretPoint);
-            if (line == null) return;
+            if (line == null)
+            {
+                return false;
+            }
 
             if (caretPoint.Position < line.End.Position)
             {
@@ -44,14 +60,17 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                 if (!string.IsNullOrWhiteSpace(textAfter))
                 {
                     Hide();
-                    return;
+                    return false;
                 }
             }
 
             if (_textBlock == null)
             {
                 var props = _view.FormattedLineSource?.DefaultTextProperties;
-                if (props == null) return;
+                if (props == null)
+                {
+                    return false;
+                }
 
                 _textBlock = new TextBlock
                 {
@@ -70,16 +89,22 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
 
             var charBounds = line.GetCharacterBounds(caretPoint);
 
-            Canvas.SetLeft(_textBlock, charBounds.Left);
+            double left = charBounds.Left;
+            var caret = _view.Caret;
+            if (caret.InVirtualSpace && caret.Position.BufferPosition == caretPoint)
+                left = line.GetCharacterBounds(caret.Position.VirtualBufferPosition).Left;
+
+            Canvas.SetLeft(_textBlock, left);
             Canvas.SetTop(_textBlock, charBounds.TextTop);
 
-
-            _layer.AddAdornment(
+            bool added = _layer.AddAdornment(
                 AdornmentPositioningBehavior.TextRelative,
                 new SnapshotSpan(caretPoint, 0),
                 null,
                 _textBlock,
                 null);
+
+            return added;
         }
 
         /// <summary>
@@ -111,9 +136,12 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
         }
 
-        private Brush GetGhostBrush()
+        private Brush GetGhostBrush() => GetGhostBrush(_view);
+
+        /// <summary>Ghost text color for the view background (shared with the lines 2..N block).</summary>
+        internal static Brush GetGhostBrush(IWpfTextView view)
         {
-            var bg = _view.Background;
+            var bg = view.Background;
             if (bg is SolidColorBrush solidBg)
             {
                 var c = solidBg.Color;

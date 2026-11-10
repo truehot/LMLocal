@@ -47,6 +47,8 @@ namespace LMLocal.Infrastructure.HttpWrapper
         {
             ThrowIfDisposed();
 
+            ConnectionLimits.EnsureForHost(request?.RequestUri);
+
             HttpClient client = _serverCertificateTrust.RequiresCustomCertificate()
                 ? _customHttpClient
                 : _sharedHttpClient;

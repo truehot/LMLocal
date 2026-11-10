@@ -8,6 +8,7 @@ using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.LanguageServices;
 using Microsoft.VisualStudio.Shell;
@@ -17,7 +18,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
     /// Inspects a fully qualified type (from source or any referenced assembly) and returns its
-    /// full metadata: constructors, properties, methods, fields, attributes, base types, interfaces
+    /// full metadata: constructors, properties, methods, events, fields, attributes, base types, interfaces
     /// and generic parameters.
     /// Supports exact lookup via metadata name, and partial case-insensitive search (including NuGet packages).
     /// </summary>
@@ -30,6 +31,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly ISearchResultCache _searchCache;
         private const int MaxMembersPerCategory = 100;
         private const int MaxTypeSearchMatches = 50;
+        internal const int MaxCandidates = 5;
 
         public string ToolName => "inspect_type";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -53,7 +55,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                "Generic types use arity for exact lookup (e.g., 'System.Collections.Generic.List`1'). " +
                                "Member lists are capped at 100 per category; totals and a 'has_more_results' flag are included. " +
                                "Partial search results are capped at 50 matches. " +
-                               "Safe to call several times in parallel.",
+                               "If nothing passes the 'namespace'/'assembly_name' filters, success=false and 'candidates' lists up to 5 types that match by name only, with their actual namespace and assembly. " +
+                               "Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -78,26 +81,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!string.IsNullOrEmpty(error))
                     return ErrorResponse(null, error);
 
-                string cacheKey = $"inspect_type||{typeName}||{projectName ?? ""}||{nsFilter ?? ""}||{assemblyFilter ?? ""}||{searchMode}";
-                if (_searchCache.TryGet(cacheKey, "", out CachedToolResults<TypeInspectionResult> cached))
-                {
-                    var cachedResult = cached.AllResults?.FirstOrDefault();
-                    if (cachedResult != null)
-                        return SuccessResponse(typeName, cachedResult);
-                }
-
-                var (result, matches, coreError) = await ExecuteCoreAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken);
+                var (result, matches, candidates, matchTotal, coreError) = await ExecuteCoreAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken);
                 if (!string.IsNullOrEmpty(coreError))
-                    return ErrorResponse(typeName, coreError);
+                    return ErrorResponse(typeName, coreError, candidates);
 
                 if (result == null)
-                    return MatchResponse(typeName, matches);
-
-                _searchCache.Set(cacheKey, "", new CachedToolResults<TypeInspectionResult>
-                {
-                    AllResults = new List<TypeInspectionResult> { result },
-                    ItemsScanned = 1
-                });
+                    return MatchResponse(typeName, matches, matchTotal);
 
                 return SuccessResponse(typeName, result);
             }
@@ -111,7 +100,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private async Task<(TypeInspectionResult result, List<TypeSearchMatch> matches, string error)> ExecuteCoreAsync(
+        private async Task<(TypeInspectionResult result, List<TypeSearchMatch> matches, List<TypeSearchMatch> candidates, int matchTotal, string error)> ExecuteCoreAsync(
             string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, CancellationToken cancellationToken)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
@@ -124,7 +113,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 projects = projects.Where(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (projects.Count == 0)
-                return (null, null, $"Project '{projectName}' was not found in the current solution.");
+                return (null, null, null, 0, $"Project '{projectName}' was not found in the current solution.");
 
             return await Task.Run(async () =>
             {
@@ -144,47 +133,55 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         var typeSymbol = compilation.GetTypeByMetadataName(typeName);
                         if (typeSymbol == null) continue;
 
-                        if (!MatchesNamespace(typeSymbol.ContainingNamespace?.ToString(), nsFilter)
+                        if (!MatchesNamespace(GetNamespaceName(typeSymbol.ContainingNamespace), nsFilter)
                             || !MatchesAssembly(typeSymbol.ContainingAssembly?.Name, assemblyFilter))
                         {
                             exactFilteredOut = true;
                             continue;
                         }
 
-                        return (InspectSymbol(typeSymbol, project.Name), (List<TypeSearchMatch>)null, (string)null);
+                        return (InspectSymbol(typeSymbol, project.Name), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
                     }
                 }
 
                 // 2. Partial search over an indexed snapshot of source + referenced assemblies.
-                var matches = await FindTypeMatchesAsync(projects, typeName, nsFilter, assemblyFilter, cancellationToken);
+                var search = await FindTypeMatchesAsync(projects, typeName, nsFilter, assemblyFilter, cancellationToken);
 
-                if (matches.Count == 0)
+                if (search.Matches.Count == 0)
                 {
-                    if (!searchMode && exactFilteredOut)
+                    if (search.Candidates.Count > 0)
                     {
                         return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null,
-                            BuildFilteredOutMessage(typeName, nsFilter, assemblyFilter));
+                            search.Candidates.Select(ToTypeSearchMatch).ToList(), 0,
+                            BuildCandidatesMessage(typeName, search.CandidateTotal, search.Candidates.Count));
                     }
 
-                    string notFound = searchMode
-                        ? BuildSearchNotFound(typeName, nsFilter, assemblyFilter)
-                        : $"Type '{typeName}' not found in any project or referenced assembly.";
-                    return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null, notFound);
+                    string notFound = !searchMode && exactFilteredOut
+                        ? BuildFilteredOutMessage(typeName, nsFilter, assemblyFilter)
+                        : BuildNotFoundMessage(typeName, searchMode, nsFilter, assemblyFilter);
+                    return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, notFound);
                 }
 
-                if (matches.Count == 1)
-                    return (InspectSymbol(matches[0].Symbol, matches[0].ProjectName), (List<TypeSearchMatch>)null, (string)null);
+                if (search.Matches.Count == 1)
+                    return (InspectSymbol(search.Matches[0].Symbol, search.Matches[0].ProjectName), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
 
-                return ((TypeInspectionResult)null, matches.Select(ToTypeSearchMatch).ToList(), (string)null);
+                return ((TypeInspectionResult)null, search.Matches.Select(ToTypeSearchMatch).ToList(), (List<TypeSearchMatch>)null, search.MatchTotal, (string)null);
             }, cancellationToken);
         }
 
-        private async Task<List<(INamedTypeSymbol Symbol, string ProjectName)>> FindTypeMatchesAsync(
+        private async Task<SearchOutcome> FindTypeMatchesAsync(
             List<Project> projects, string typeName, string nsFilter, string assemblyFilter, CancellationToken cancellationToken)
         {
-            var matches = new List<(INamedTypeSymbol Symbol, string ProjectName)>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
             var query = TypeSearchQuery.Create(typeName);
+            int comparison(MatchedType a, MatchedType b) => CompareMatches(a, b, query);
+            var outcome = new SearchOutcome
+            {
+                Matches = new List<MatchedType>(),
+                Candidates = new List<MatchedType>()
+            };
+
+            var seenMatches = new HashSet<string>(StringComparer.Ordinal);
+            var seenCandidates = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var project in projects)
             {
@@ -197,7 +194,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var index = GetOrBuildTypeIndex(project, compilation, cancellationToken);
                 if (index == null || index.Types == null) continue;
 
-                int before = matches.Count;
                 foreach (var indexed in index.Types)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -208,24 +204,101 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (!MatchesQuery(indexed, query))
                         continue;
 
-                    if (!MatchesNamespace(indexed.Symbol.ContainingNamespace?.ToString(), nsFilter))
-                        continue;
+                    if (!MatchesNamespace(GetNamespaceName(indexed.Symbol.ContainingNamespace), nsFilter)
+                        || !MatchesAssembly(indexed.Symbol.ContainingAssembly?.Name, assemblyFilter))
+                    {
+                        if (seenCandidates.Add(indexed.MatchKey))
+                        {
+                            outcome.CandidateTotal++;
+                            AddTopMatch(outcome.Candidates, ToMatchedType(indexed, project.Name), MaxCandidates, comparison);
+                        }
 
-                    if (!MatchesAssembly(indexed.Symbol.ContainingAssembly?.Name, assemblyFilter))
                         continue;
+                    }
 
-                    if (!seen.Add(indexed.MatchKey))
-                        continue;
-
-                    matches.Add((indexed.Symbol, project.Name));
-                    if (matches.Count >= MaxTypeSearchMatches)
-                        return OrderMatches(matches);
+                    if (seenMatches.Add(indexed.MatchKey))
+                        AddTopMatch(outcome.Matches, ToMatchedType(indexed, project.Name), MaxTypeSearchMatches, comparison);
                 }
 
-                InternalLogger.Info($"[InspectType] project '{project.Name}': search '{typeName}' added {matches.Count - before} match(es) from cached index ({index.Types.Count} type(s)).");
+                InternalLogger.Info($"[InspectType] project '{project.Name}': search '{typeName}' over {index.Types.Count} type(s) from cached index; keeping {outcome.Matches.Count} best match(es) and {outcome.CandidateTotal} candidate(s).");
             }
 
-            return OrderMatches(matches);
+            outcome.MatchTotal = seenMatches.Count;
+            return outcome;
+        }
+
+        /// <summary>
+        /// Inserts <paramref name="item"/> into the ascending <paramref name="top"/> list and trims it to
+        /// <paramref name="limit"/>, so a full scan never has to materialize all matches.
+        /// </summary>
+        internal static void AddTopMatch<T>(List<T> top, T item, int limit, Comparison<T> comparison)
+        {
+            if (top == null || comparison == null || limit <= 0)
+                return;
+
+            if (top.Count >= limit && comparison(top[top.Count - 1], item) <= 0)
+                return;
+
+            int position = 0;
+            while (position < top.Count && comparison(top[position], item) <= 0)
+                position++;
+
+            if (position >= limit)
+                return;
+
+            top.Insert(position, item);
+            if (top.Count > limit)
+                top.RemoveAt(top.Count - 1);
+        }
+
+        /// <summary>Orders by rank, then by normalized full name so the output is stable.</summary>
+        internal static int CompareMatches(MatchedType a, MatchedType b, TypeSearchQuery query)
+        {
+            int byRank = ComputeMatchRank(a, query).CompareTo(ComputeMatchRank(b, query));
+            if (byRank != 0)
+                return byRank;
+
+            return string.Compare(a?.FullName ?? "", b?.FullName ?? "", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Lower is better: exact name (4) before declaration in source (2) before a name that starts with the query (1).
+        /// </summary>
+        internal static int ComputeMatchRank(MatchedType match, TypeSearchQuery query)
+        {
+            if (match == null || query == null)
+                return int.MaxValue;
+
+            bool exact;
+            bool startsWith;
+            if (query.HasNamespace)
+            {
+                exact = string.Equals(match.FullName, query.FullNameQuery, StringComparison.OrdinalIgnoreCase);
+                startsWith = (match.FullName ?? "").StartsWith(query.FullNameQuery ?? "", StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                exact = string.Equals(match.ShortName, query.ShortName, StringComparison.OrdinalIgnoreCase);
+                startsWith = (match.ShortName ?? "").StartsWith(query.ShortName ?? "", StringComparison.OrdinalIgnoreCase);
+            }
+
+            int rank = 0;
+            if (!exact) rank += 4;
+            if (!match.IsFromSource) rank += 2;
+            if (!startsWith) rank += 1;
+            return rank;
+        }
+
+        private static MatchedType ToMatchedType(IndexedType indexed, string projectName)
+        {
+            return new MatchedType
+            {
+                Symbol = indexed.Symbol,
+                ProjectName = projectName,
+                ShortName = indexed.ShortName,
+                FullName = indexed.FullName,
+                IsFromSource = !indexed.Symbol.DeclaringSyntaxReferences.IsEmpty
+            };
         }
 
         private ProjectTypeIndex GetOrBuildTypeIndex(Project project, Compilation compilation, CancellationToken cancellationToken)
@@ -266,6 +339,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             foreach (var reference in compilation.References)
             {
+                if (reference.Properties.Aliases.IsEmpty)
+                    continue;
+
+                bool hasGlobalAlias = false;
+                foreach (var alias in reference.Properties.Aliases)
+                {
+                    if (string.Equals(alias, "global", StringComparison.Ordinal))
+                    {
+                        hasGlobalAlias = true;
+                        break;
+                    }
+                }
+
+                if (hasGlobalAlias)
+                    continue;
+
                 var symbol = compilation.GetAssemblyOrModuleSymbol(reference);
                 var global = (symbol as IAssemblySymbol)?.GlobalNamespace
                              ?? (symbol as IModuleSymbol)?.GlobalNamespace;
@@ -333,8 +422,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 parts.Insert(0, type.Name);
 
             string body = string.Join(".", parts);
-            string ns = symbol.ContainingNamespace?.ToString();
+            string ns = GetNamespaceName(symbol.ContainingNamespace);
             return string.IsNullOrEmpty(ns) ? body : ns + "." + body;
+        }
+
+        /// <summary>
+        /// Namespace name for the response; the global namespace renders as an empty string instead of
+        /// '&lt;global namespace&gt;', which would also break exact matching of 'Outer.Inner'.
+        /// </summary>
+        internal static string GetNamespaceName(INamespaceSymbol ns)
+        {
+            if (ns == null || ns.IsGlobalNamespace)
+                return "";
+
+            return ns.ToDisplayString();
         }
 
         internal static bool MatchesQuery(IndexedType indexed, TypeSearchQuery query)
@@ -406,12 +507,34 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public List<IndexedType> Types;
         }
 
+        private sealed class SearchOutcome
+        {
+            /// <summary>Best matches after ranking, capped at <see cref="MaxTypeSearchMatches"/>.</summary>
+            public List<MatchedType> Matches;
+            /// <summary>Best candidates rejected by the filters, capped at <see cref="MaxCandidates"/>.</summary>
+            public List<MatchedType> Candidates;
+            /// <summary>Distinct candidates seen by name, including the ones not shown.</summary>
+            public int CandidateTotal;
+            /// <summary>Distinct matches seen, including the ones cut by the cap.</summary>
+            public int MatchTotal;
+        }
+
         internal class IndexedType
         {
             public INamedTypeSymbol Symbol;
             public string ShortName;
             public string FullName;
             public string MatchKey;
+        }
+
+        /// <summary>One type found by name, with the project it was found in and the inputs of the ranking.</summary>
+        internal sealed class MatchedType
+        {
+            public INamedTypeSymbol Symbol;
+            public string ProjectName;
+            public string ShortName;
+            public string FullName;
+            public bool IsFromSource;
         }
 
         internal static bool MatchesNamespace(string ns, string nsFilter)
@@ -430,18 +553,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return !string.IsNullOrEmpty(assemblyName) && assemblyName.IndexOf(assemblyFilter, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        private static string BuildSearchNotFound(string typeName, string nsFilter, string assemblyFilter)
+        internal static string BuildNotFoundMessage(string typeName, bool searchMode, string nsFilter, string assemblyFilter)
         {
-            var filters = new List<string>();
-            if (!string.IsNullOrEmpty(nsFilter))
-                filters.Add($"namespace '{nsFilter}'");
-            if (!string.IsNullOrEmpty(assemblyFilter))
-                filters.Add($"assembly '{assemblyFilter}'");
+            if (!string.IsNullOrEmpty(nsFilter) || !string.IsNullOrEmpty(assemblyFilter))
+                return $"Type '{typeName}' not found with the given parameters.";
 
-            if (filters.Count == 0)
-                return $"No types matching '{typeName}' were found in the current solution.";
+            return searchMode
+                ? $"No types matching '{typeName}' were found in the current solution."
+                : $"Type '{typeName}' not found in any project or referenced assembly.";
+        }
 
-            return $"No types matching '{typeName}' were found in {string.Join(" and ", filters)}.";
+        internal static string BuildCandidatesMessage(string typeName, int totalCount, int shownCount)
+        {
+            string countText = totalCount == 1
+                ? "1 candidate matches"
+                : $"{totalCount} candidates match";
+
+            string message = $"Type '{typeName}' not found with the given parameters. {countText} by name but not by namespace/assembly_name";
+
+            if (totalCount > shownCount)
+                message += $"; showing the first {shownCount}";
+
+            return message + ".";
         }
 
         private static string BuildFilteredOutMessage(string typeName, string nsFilter, string assemblyFilter)
@@ -455,15 +588,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return $"Type '{typeName}' was found but did not match {string.Join(" and ", filters)}.";
         }
 
-        private static List<(INamedTypeSymbol Symbol, string ProjectName)> OrderMatches(
-            List<(INamedTypeSymbol Symbol, string ProjectName)> matches)
-        {
-            return matches
-                .OrderBy(m => m.Symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), StringComparer.Ordinal)
-                .ToList();
-        }
-
-        private static TypeSearchMatch ToTypeSearchMatch((INamedTypeSymbol Symbol, string ProjectName) match)
+        private static TypeSearchMatch ToTypeSearchMatch(MatchedType match)
         {
             var symbol = match.Symbol;
             return new TypeSearchMatch
@@ -472,7 +597,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 MetadataName = symbol.MetadataName,
                 Kind = symbol.TypeKind.ToString(),
                 Accessibility = symbol.DeclaredAccessibility.ToString(),
-                ContainingNamespace = symbol.ContainingNamespace?.ToString() ?? "",
+                ContainingNamespace = GetNamespaceName(symbol.ContainingNamespace),
                 AssemblyName = symbol.ContainingAssembly?.Name ?? "Unknown",
                 ProjectName = match.ProjectName,
                 IsGeneric = symbol.IsGenericType,
@@ -480,7 +605,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private static TypeInspectionResult InspectSymbol(INamedTypeSymbol symbol, string projectName)
+        internal static TypeInspectionResult InspectSymbol(INamedTypeSymbol symbol, string projectName)
         {
             var result = new TypeInspectionResult
             {
@@ -488,7 +613,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 MetadataName = symbol.MetadataName,
                 Kind = symbol.TypeKind.ToString(),
                 Accessibility = symbol.DeclaredAccessibility.ToString(),
-                ContainingNamespace = symbol.ContainingNamespace?.ToString() ?? "",
+                ContainingNamespace = GetNamespaceName(symbol.ContainingNamespace),
                 AssemblyName = symbol.ContainingAssembly?.Name ?? "Unknown",
                 ProjectName = projectName,
                 IsAbstract = symbol.IsAbstract,
@@ -506,19 +631,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     .Select(a => new AttributeInfo
                     {
                         Name = a.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "Unknown",
-                        ConstructorArguments = a.ConstructorArguments.Select(c => c.Value?.ToString()).ToList()
+                        ConstructorArguments = a.ConstructorArguments.Select(c => c.ToCSharpString()).ToList()
                     })
                     .ToList()
             };
 
             var members = symbol.GetMembers();
 
-            // Constructors (public + internal).
             var constructors = symbol.InstanceConstructors
-                .Where(c => c.DeclaredAccessibility == Accessibility.Public || c.DeclaredAccessibility == Accessibility.Internal)
+                .Where(c => IsVisibleMember(c))
                 .ToList();
             result.TotalConstructors = constructors.Count;
             result.Constructors = constructors
+                .OrderBy(c => ComputeAccessibilityRank(c.DeclaredAccessibility))
                 .Take(MaxMembersPerCategory)
                 .Select(c => new MethodInfo
                 {
@@ -533,35 +658,37 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 })
                 .ToList();
 
-            // Properties (public).
             var properties = members.OfType<IPropertySymbol>()
-                .Where(p => p.DeclaredAccessibility == Accessibility.Public)
+                .Where(p => IsVisibleMember(p))
                 .ToList();
             result.TotalProperties = properties.Count;
             result.Properties = properties
+                .OrderBy(p => ComputeAccessibilityRank(p.DeclaredAccessibility))
                 .Take(MaxMembersPerCategory)
-                .Select(p => new PropertyInfo
+                .Select(p =>
                 {
-                    Name = p.Name,
-                    Type = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    IsStatic = p.IsStatic,
-                    IsReadOnly = p.IsReadOnly,
-                    IsWriteOnly = p.IsWriteOnly,
-                    HasGetter = p.GetMethod != null,
-                    HasSetter = p.SetMethod != null,
-                    Accessibility = p.DeclaredAccessibility.ToString()
+                    bool hasGetter = IsVisibleMember(p.GetMethod);
+                    bool hasSetter = IsVisibleMember(p.SetMethod);
+                    return new PropertyInfo
+                    {
+                        Name = p.Name,
+                        Type = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        IsStatic = p.IsStatic,
+                        IsReadOnly = hasGetter && !hasSetter,
+                        IsWriteOnly = hasSetter && !hasGetter,
+                        HasGetter = hasGetter,
+                        HasSetter = hasSetter,
+                        Accessibility = p.DeclaredAccessibility.ToString()
+                    };
                 })
                 .ToList();
 
-            // Methods (public, excluding constructors and property accessors).
             var methods = members.OfType<IMethodSymbol>()
-                .Where(m => m.DeclaredAccessibility == Accessibility.Public
-                            && m.MethodKind != MethodKind.Constructor
-                            && m.MethodKind != MethodKind.PropertyGet
-                            && m.MethodKind != MethodKind.PropertySet)
+                .Where(m => IsVisibleMember(m) && IsReportableMethod(m))
                 .ToList();
             result.TotalMethods = methods.Count;
             result.Methods = methods
+                .OrderBy(m => ComputeAccessibilityRank(m.DeclaredAccessibility))
                 .Take(MaxMembersPerCategory)
                 .Select(m => new MethodInfo
                 {
@@ -571,7 +698,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     IsExtension = m.IsExtensionMethod,
                     IsGeneric = m.IsGenericMethod,
                     ReturnType = m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    TypeParameters = m.TypeParameters.Select(tp => tp.Name).ToList(),
+                    TypeParameters = m.TypeParameters.Length > 0
+                        ? m.TypeParameters.Select(tp => tp.Name).ToList()
+                        : null,
                     Parameters = m.Parameters.Select(p => new ParamInfo
                     {
                         Name = p.Name,
@@ -580,12 +709,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 })
                 .ToList();
 
-            // Fields (public).
+            var events = members.OfType<IEventSymbol>()
+                .Where(e => IsVisibleMember(e))
+                .ToList();
+            result.TotalEvents = events.Count;
+            result.Events = events
+                .OrderBy(e => ComputeAccessibilityRank(e.DeclaredAccessibility))
+                .Take(MaxMembersPerCategory)
+                .Select(e => new EventInfo
+                {
+                    Name = e.Name,
+                    Type = e.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    IsStatic = e.IsStatic,
+                    Accessibility = e.DeclaredAccessibility.ToString()
+                })
+                .ToList();
+
             var fields = members.OfType<IFieldSymbol>()
-                .Where(f => f.DeclaredAccessibility == Accessibility.Public)
+                .Where(f => IsVisibleMember(f))
                 .ToList();
             result.TotalFields = fields.Count;
             result.Fields = fields
+                .OrderBy(f => ComputeAccessibilityRank(f.DeclaredAccessibility))
                 .Take(MaxMembersPerCategory)
                 .Select(f => new FieldInfo
                 {
@@ -594,6 +739,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     IsStatic = f.IsStatic,
                     IsReadOnly = f.IsReadOnly,
                     IsConst = f.IsConst,
+                    ConstantValue = f.HasConstantValue ? FormatConstantValue(f.ConstantValue) : null,
                     Accessibility = f.DeclaredAccessibility.ToString()
                 })
                 .ToList();
@@ -602,9 +748,76 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 result.TotalConstructors > MaxMembersPerCategory ||
                 result.TotalProperties > MaxMembersPerCategory ||
                 result.TotalMethods > MaxMembersPerCategory ||
+                result.TotalEvents > MaxMembersPerCategory ||
                 result.TotalFields > MaxMembersPerCategory;
 
             return result;
+        }
+
+        /// <summary>
+        /// Members worth reporting: public, protected and internal.
+        /// </summary>
+        internal static bool IsVisibleMember(ISymbol member)
+        {
+            if (member == null)
+                return false;
+
+            switch (member.DeclaredAccessibility)
+            {
+                case Accessibility.Public:
+                case Accessibility.Internal:
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
+                case Accessibility.ProtectedAndInternal:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Order of member lists before the per-category cap: public, internal, protected internal,
+        /// protected, private protected. <see cref="Enumerable.OrderBy{T}"/> is stable, so members of one
+        /// group keep their declaration order.
+        /// </summary>
+        internal static int ComputeAccessibilityRank(Accessibility accessibility)
+        {
+            switch (accessibility)
+            {
+                case Accessibility.Public: return 0;
+                case Accessibility.Internal: return 1;
+                case Accessibility.ProtectedOrInternal: return 2;
+                case Accessibility.Protected: return 3;
+                case Accessibility.ProtectedAndInternal: return 4;
+                default: return 5;
+            }
+        }
+
+        /// <summary>
+        /// Ordinary methods, operators and conversions.
+        /// </summary>
+        internal static bool IsReportableMethod(IMethodSymbol method)
+        {
+            switch (method.MethodKind)
+            {
+                case MethodKind.Constructor:
+                case MethodKind.StaticConstructor:
+                case MethodKind.Destructor:
+                case MethodKind.PropertyGet:
+                case MethodKind.PropertySet:
+                case MethodKind.EventAdd:
+                case MethodKind.EventRemove:
+                case MethodKind.EventRaise:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>Formats a compile-time constant culture-invariantly and quotes strings; null for an unrepresentable value.</summary>
+        internal static string FormatConstantValue(object value)
+        {
+            return SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false);
         }
 
         internal static (string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, string error) ExtractAndValidateParameters(
@@ -624,17 +837,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (typeName.Length == 0)
                 return (null, null, null, null, false, "Parameter 'type_name' cannot be empty.");
 
+            if (typeName == ".")
+                return (null, null, null, null, false, "Parameter 'type_name' cannot be '.'.");
+
             string projectName = null;
             if (parameters.TryGetValue("project_name", out object projObj) && projObj is string projStr && !string.IsNullOrWhiteSpace(projStr))
-                projectName = projStr;
+                projectName = projStr.Trim();
 
             string nsFilter = null;
             if (parameters.TryGetValue("namespace", out object nsObj) && nsObj is string nsStr && !string.IsNullOrWhiteSpace(nsStr))
-                nsFilter = nsStr;
+                nsFilter = nsStr.Trim();
 
             string assemblyFilter = null;
             if (parameters.TryGetValue("assembly_name", out object asmObj) && asmObj is string asmStr && !string.IsNullOrWhiteSpace(asmStr))
-                assemblyFilter = asmStr;
+                assemblyFilter = asmStr.Trim();
 
             bool searchMode = false;
             if (parameters.TryGetValue("search_mode", out object searchObj) && searchObj is bool searchBool)
@@ -643,13 +859,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (typeName, projectName, nsFilter, assemblyFilter, searchMode, null);
         }
 
-        private static TypeInspectionResponse ErrorResponse(string typeName, string message)
+        private static TypeInspectionResponse ErrorResponse(string typeName, string message, List<TypeSearchMatch> candidates = null)
         {
             return new TypeInspectionResponse
             {
                 Success = false,
                 ErrorMessage = message,
-                TypeName = typeName
+                TypeName = typeName,
+                Candidates = candidates
             };
         }
 
@@ -663,13 +880,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private static TypeInspectionResponse MatchResponse(string typeName, List<TypeSearchMatch> matches)
+        private static TypeInspectionResponse MatchResponse(string typeName, List<TypeSearchMatch> matches, int matchTotal)
         {
             return new TypeInspectionResponse
             {
                 Success = true,
                 TypeName = typeName,
-                Matches = matches
+                Matches = matches,
+                TotalMatches = matchTotal > (matches?.Count ?? 0) ? (int?)matchTotal : null
             };
         }
 
@@ -705,8 +923,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     if (resp.Matches != null && resp.Matches.Count > 0)
                     {
-                        string matchMessage = $"Found {resp.Matches.Count} {Pluralizer.Pluralize(resp.Matches.Count, "type", "types")} matching '{resp.TypeName}'";
-                        if (resp.Matches.Count >= MaxTypeSearchMatches)
+                        int foundCount = resp.TotalMatches ?? resp.Matches.Count;
+                        string matchMessage = $"Found {foundCount} {Pluralizer.Pluralize(foundCount, "type", "types")} matching '{resp.TypeName}'";
+                        if (resp.TotalMatches.HasValue)
                             matchMessage += $" (capped at {MaxTypeSearchMatches})";
                         return matchMessage + ".";
                     }
@@ -721,6 +940,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     memberCounts.Add($"{data.TotalProperties} {Pluralizer.Pluralize(data.TotalProperties, "property", "properties")}");
                 if (data.TotalMethods > 0)
                     memberCounts.Add($"{data.TotalMethods} {Pluralizer.Pluralize(data.TotalMethods, "method", "methods")}");
+                if (data.TotalEvents > 0)
+                    memberCounts.Add($"{data.TotalEvents} {Pluralizer.Pluralize(data.TotalEvents, "event", "events")}");
                 if (data.TotalFields > 0)
                     memberCounts.Add($"{data.TotalFields} {Pluralizer.Pluralize(data.TotalFields, "field", "fields")}");
 
@@ -748,11 +969,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string Name { get; set; }
             [JsonProperty("accessibility")]
             public string Accessibility { get; set; }
-            [JsonProperty("is_static")]
+            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsStatic { get; set; }
-            [JsonProperty("is_extension", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonProperty("is_extension", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsExtension { get; set; }
-            [JsonProperty("is_generic", NullValueHandling = NullValueHandling.Ignore)]
+            [JsonProperty("is_generic", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsGeneric { get; set; }
             [JsonProperty("return_type", NullValueHandling = NullValueHandling.Ignore)]
             public string ReturnType { get; set; }
@@ -770,16 +991,28 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string Type { get; set; }
             [JsonProperty("accessibility")]
             public string Accessibility { get; set; }
-            [JsonProperty("is_static")]
+            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsStatic { get; set; }
-            [JsonProperty("is_read_only")]
+            [JsonProperty("is_read_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsReadOnly { get; set; }
-            [JsonProperty("is_write_only")]
+            [JsonProperty("is_write_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsWriteOnly { get; set; }
             [JsonProperty("has_getter")]
             public bool HasGetter { get; set; }
             [JsonProperty("has_setter")]
             public bool HasSetter { get; set; }
+        }
+
+        public class EventInfo
+        {
+            [JsonProperty("name")]
+            public string Name { get; set; }
+            [JsonProperty("type")]
+            public string Type { get; set; }
+            [JsonProperty("accessibility")]
+            public string Accessibility { get; set; }
+            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public bool IsStatic { get; set; }
         }
 
         public class FieldInfo
@@ -790,12 +1023,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string Type { get; set; }
             [JsonProperty("accessibility")]
             public string Accessibility { get; set; }
-            [JsonProperty("is_static")]
+            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsStatic { get; set; }
-            [JsonProperty("is_read_only")]
+            [JsonProperty("is_read_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsReadOnly { get; set; }
-            [JsonProperty("is_const")]
+            [JsonProperty("is_const", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsConst { get; set; }
+            [JsonProperty("constant_value", NullValueHandling = NullValueHandling.Ignore)]
+            public string ConstantValue { get; set; }
         }
 
         public class AttributeInfo
@@ -822,7 +1057,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string AssemblyName { get; set; }
             [JsonProperty("project_name")]
             public string ProjectName { get; set; }
-            [JsonProperty("is_generic")]
+            [JsonProperty("is_generic", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsGeneric { get; set; }
             [JsonProperty("arity")]
             public int Arity { get; set; }
@@ -874,6 +1109,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public List<MethodInfo> Methods { get; set; }
             [JsonProperty("total_methods")]
             public int TotalMethods { get; set; }
+            [JsonProperty("events")]
+            public List<EventInfo> Events { get; set; }
+            [JsonProperty("total_events")]
+            public int TotalEvents { get; set; }
             [JsonProperty("fields")]
             public List<FieldInfo> Fields { get; set; }
             [JsonProperty("total_fields")]
@@ -894,6 +1133,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public TypeInspectionResult Data { get; set; }
             [JsonProperty("matches", NullValueHandling = NullValueHandling.Ignore)]
             public List<TypeSearchMatch> Matches { get; set; }
+            [JsonProperty("total_matches", NullValueHandling = NullValueHandling.Ignore)]
+            public int? TotalMatches { get; set; }
+            [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
+            public List<TypeSearchMatch> Candidates { get; set; }
         }
 
         #endregion

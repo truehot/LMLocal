@@ -64,6 +64,30 @@ export function finishTooling(toolContainer, callId, withError, message) {
 }
 
 /**
+ * Closes every tool that is still running.
+ */
+export function stopRunningTools(toolContainer, message) {
+    if (!toolContainer) return;
+
+    toolContainer.querySelectorAll('.tool-status').forEach(toolDiv => {
+        toolDiv.className = 'tool-status-stopped';
+        const stepSpan = toolDiv._stepSpan;
+        if (stepSpan) {
+            stepSpan.textContent = ' ' + (message || 'Stopped.');
+            stepSpan.style.opacity = '1';
+        }
+    });
+
+    toolContainer.querySelectorAll('.tool-group-status:not(.tool-group-status-completed)').forEach(groupDiv => {
+        groupDiv.classList.add('tool-group-status-stopped');
+        const header = groupDiv.querySelector('.tool-group-status-message');
+        if (header && !header.textContent.endsWith('(stopped)')) {
+            header.textContent += ' (stopped)';
+        }
+    });
+}
+
+/**
  * Renders/updates the "N/M done" header for a parallel SubAgent fan-out group.
  */
 export function updateToolGroup(toolContainer, groupId, completed, total) {

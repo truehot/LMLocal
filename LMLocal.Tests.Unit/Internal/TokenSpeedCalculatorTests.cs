@@ -20,7 +20,7 @@ namespace LMLocal.Tests.Unit
         {
             var calculator = new TokenSpeedCalculator(windowSeconds: 5);
 
-            calculator.Update(0);
+            calculator.Update(1);
             Thread.Sleep(100);
             calculator.Update(10);
 

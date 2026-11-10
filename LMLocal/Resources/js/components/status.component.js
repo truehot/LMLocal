@@ -124,15 +124,20 @@ class StatusComponent {
     }
 
     _updateStatusText(appState, prevAppState) {
-        if (prevAppState && appState.status === prevAppState.status && appState.error === prevAppState.error) return;
+        if (prevAppState && appState.status === prevAppState.status && appState.error === prevAppState.error
+            && appState.stoppedByUser === prevAppState.stoppedByUser) return;
         if (!this.elements.statusText) return;
 
         const status = appState.status;
         this.elements.statusText.classList.remove('error', 'offline');
         switch (status) {
             case AppStatus.ERROR:
-                this.elements.statusText.textContent = UIText.STATUS_ERROR;
-                this.elements.statusText.classList.add('error');
+                if (appState.stoppedByUser) {
+                    this.elements.statusText.textContent = UIText.STATUS_STOPPED;
+                } else {
+                    this.elements.statusText.textContent = UIText.STATUS_ERROR;
+                    this.elements.statusText.classList.add('error');
+                }
                 break;
             case AppStatus.OFFLINE:
                 {

@@ -39,7 +39,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Lists files and subdirectories within a given path. Generated and dependency directories (bin, obj, node_modules, .git, etc.) are automatically excluded from results. Returns up to 200 entries; if has_more_results is true, the directory has more entries not shown. Only works inside the solution directory — paths outside the solution are rejected. Use '.' for the solution root. Safe to call several times in parallel.",
+                Description = "Lists files and subdirectories within a given path. Generated and dependency directories (bin, obj, node_modules, .git, etc.) are automatically excluded from results. Returns up to 200 entries; if has_more_results is true, the directory has more entries not shown. Only works inside the solution directory — paths outside the solution are rejected. Use '.' for the solution root. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",

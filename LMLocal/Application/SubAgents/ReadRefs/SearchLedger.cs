@@ -25,11 +25,11 @@ namespace LMLocal.Application.SubAgents.ReadRefs
 
     /// <summary>
     /// Per-run ledger of the search_file_content matches that were actually returned to the model.
-    /// A ref marker resolves against it only for lines that were returned, so a fabricated location is never expanded.
     /// </summary>
     internal sealed class SearchLedger
     {
         private readonly Dictionary<string, SearchRecord> _records = new Dictionary<string, SearchRecord>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _relativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         public int Count => _records.Count;
 
@@ -39,6 +39,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 return;
 
             _records[Key(record.RelativePath, record.LineNumber)] = record;
+            _relativePaths.Add(ReadLedger.Normalize(record.RelativePath));
         }
 
         /// <summary>
@@ -50,6 +51,8 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             if (string.IsNullOrEmpty(path) || !range.IsValid)
                 return false;
 
+            path = ToRecordedPath(ReadLedger.Normalize(path));
+
             var list = new List<SearchRecord>(range.End - range.Start + 1);
             for (int line = range.Start; line <= range.End; line++)
             {
@@ -60,6 +63,28 @@ namespace LMLocal.Application.SubAgents.ReadRefs
 
             records = list;
             return true;
+        }
+
+        /// <summary>
+        /// Maps an absolute marker path (subagents copy the full path from their task) to the recorded solution-relative path it ends with; the longest match wins.
+        /// </summary>
+        private string ToRecordedPath(string normalizedPath)
+        {
+            bool rooted = (normalizedPath.Length > 2 && normalizedPath[1] == ':') || normalizedPath.StartsWith("\\", StringComparison.Ordinal);
+            if (!rooted || _relativePaths.Contains(normalizedPath))
+                return normalizedPath;
+
+            string best = null;
+            foreach (string relative in _relativePaths)
+            {
+                if (normalizedPath.Length > relative.Length
+                    && normalizedPath[normalizedPath.Length - relative.Length - 1] == '\\'
+                    && normalizedPath.EndsWith(relative, StringComparison.OrdinalIgnoreCase)
+                    && (best == null || relative.Length > best.Length))
+                    best = relative;
+            }
+
+            return best ?? normalizedPath;
         }
 
         private static string Key(string path, int line) => ReadLedger.Normalize(path) + "|" + line;

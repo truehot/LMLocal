@@ -127,6 +127,23 @@ namespace LMLocal.Tests.Unit.Services
             Assert.That(result, Does.Not.Contain("<|file_separator|>"));
         }
 
+        [TestCase("{<|cursor|>", "{")]
+        [TestCase("return x;<|endoftext|>", "return x;")]
+        [TestCase("a\n<|file_sep|>path/other.cs\ncode", "a\n")]
+        [TestCase("a<|fim_pad|><|fim_pad|>", "a")]
+        public void TrimFimArtifacts_Qwen_CutsAtAnyMarker(string output, string expected)
+        {
+            var result = AutocompletionsService.FimTemplate.TrimFimArtifacts(output, "qwen2.5-coder-0.5b");
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void TrimFimArtifacts_Qwen_CodeWithPipesButNoMarker_Unchanged()
+        {
+            var output = "if (a || b) x = y | z; // <| not a marker";
+            Assert.That(AutocompletionsService.FimTemplate.TrimFimArtifacts(output, "qwen2.5-coder-0.5b"), Is.EqualTo(output));
+        }
+
         [TestCase("qwen-2.5-coder")]
         [TestCase("codegemma-7b")]
         public void TrimFimArtifacts_QwenCodeGemmaWithoutArtifact_ReturnsUnchanged(string modelId)

@@ -1,144 +1,92 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
 {
     /// <summary>
-    /// Splits already-ranked search results into pages for both grouping modes.
-    /// file mode ranks in SearchFileContent (score, then match_count, then file_path);
-    /// text mode ranks in SearchResultGrouper (occurrence_count, then text).
+    /// Selects one page of already-ranked search results for both grouping modes.
     /// </summary>
     internal static class SearchResultPaginator
     {
         /// <summary>
-        /// File mode: splits ranked SearchResult entries by the number of matches per page.
+        /// File mode: the page that starts at match <paramref name="offset"/> and holds at most
+        /// <paramref name="matchesPerPage"/> matches.
         /// </summary>
-        public static List<FileSearchPage> PaginateByMatches(IReadOnlyList<SearchResult> allResults, int matchesPerPage)
+        public static List<SearchResult> SliceByMatches(IReadOnlyList<SearchResult> allResults, int offset, int matchesPerPage)
         {
-            var pages = new List<FileSearchPage>();
+            var page = new List<SearchResult>();
             if (allResults == null || allResults.Count == 0)
-                return pages;
+                return page;
+
             if (matchesPerPage <= 0)
                 matchesPerPage = 1;
+            if (offset < 0)
+                offset = 0;
 
-            var currentPage = new List<SearchResult>();
-            int matchCount = 0;
-            int totalMatches = allResults.Sum(r => r.MatchCount);
-            int totalFiles = allResults.Count;
+            int skipped = 0;
+            int filled = 0;
 
             foreach (var result in allResults)
             {
-                int remainingSpaceOnPage = matchesPerPage - matchCount;
+                int available = result?.Matches?.Count ?? 0;
+                int startIndex = 0;
 
-                if (result.MatchCount <= remainingSpaceOnPage)
+                if (skipped < offset)
                 {
-                    currentPage.Add(result);
-                    matchCount += result.MatchCount;
+                    int toSkip = Math.Min(offset - skipped, available);
+                    skipped += toSkip;
+                    startIndex = toSkip;
+                }
 
-                    if (matchCount == matchesPerPage)
-                    {
-                        pages.Add(new FileSearchPage
-                        {
-                            Results = currentPage,
-                            TotalMatches = totalMatches,
-                            TotalFiles = totalFiles
-                        });
-                        currentPage = new List<SearchResult>();
-                        matchCount = 0;
-                    }
+                int remainingInFile = available - startIndex;
+                if (remainingInFile <= 0)
+                    continue;
+
+                int take = Math.Min(remainingInFile, matchesPerPage - filled);
+                if (take <= 0)
+                    break;
+
+                if (take == available)
+                {
+                    page.Add(result);
                 }
                 else
                 {
-                    int matchOffset = 0;
-
-                    while (matchOffset < result.Matches.Count)
+                    page.Add(new SearchResult
                     {
-                        int spaceAvailableOnPage = matchesPerPage - matchCount;
-                        int chunkSize = Math.Min(spaceAvailableOnPage, result.Matches.Count - matchOffset);
-
-                        var chunk = new SearchResult
-                        {
-                            FilePath = result.FilePath,
-                            Matches = result.Matches.GetRange(matchOffset, chunkSize),
-                            MatchCount = chunkSize,
-                            Score = result.Score
-                        };
-
-                        currentPage.Add(chunk);
-                        matchCount += chunkSize;
-                        matchOffset += chunkSize;
-
-                        if (matchCount == matchesPerPage)
-                        {
-                            pages.Add(new FileSearchPage
-                            {
-                                Results = currentPage,
-                                TotalMatches = totalMatches,
-                                TotalFiles = totalFiles
-                            });
-                            currentPage = new List<SearchResult>();
-                            matchCount = 0;
-                        }
-                    }
+                        FilePath = result.FilePath,
+                        Matches = result.Matches.GetRange(startIndex, take),
+                        MatchCount = take,
+                        Score = result.Score
+                    });
                 }
+
+                filled += take;
+                if (filled >= matchesPerPage)
+                    break;
             }
 
-            if (currentPage.Count > 0)
-            {
-                pages.Add(new FileSearchPage
-                {
-                    Results = currentPage,
-                    TotalMatches = totalMatches,
-                    TotalFiles = totalFiles
-                });
-            }
-
-            return pages;
+            return page;
         }
 
         /// <summary>
-        /// Text mode: splits ranked SearchTextGroupResult entries by the number of groups per page.
+        /// Text mode: the page of groups that starts at group <paramref name="offset"/>.
         /// </summary>
-        public static List<TextSearchPage> PaginateByGroups(IReadOnlyList<SearchTextGroupResult> groups, int groupsPerPage)
+        public static List<SearchTextGroupResult> SliceByGroups(IReadOnlyList<SearchTextGroupResult> groups, int offset, int groupsPerPage)
         {
-            var pages = new List<TextSearchPage>();
+            var page = new List<SearchTextGroupResult>();
             if (groups == null || groups.Count == 0)
-                return pages;
+                return page;
+
             if (groupsPerPage <= 0)
                 groupsPerPage = 1;
+            if (offset < 0)
+                offset = 0;
 
-            int totalMatches = SearchResultGrouper.CountOccurrences(groups);
-            int totalFiles = SearchResultGrouper.CountDistinctFiles(groups);
+            for (int i = offset; i < groups.Count && page.Count < groupsPerPage; i++)
+                page.Add(groups[i]);
 
-            var currentPage = new List<SearchTextGroupResult>();
-            foreach (var group in groups)
-            {
-                currentPage.Add(group);
-
-                if (currentPage.Count == groupsPerPage)
-                {
-                    pages.Add(new TextSearchPage
-                    {
-                        Results = currentPage,
-                        TotalMatches = totalMatches,
-                        TotalFiles = totalFiles
-                    });
-                    currentPage = new List<SearchTextGroupResult>();
-                }
-            }
-
-            if (currentPage.Count > 0)
-            {
-                pages.Add(new TextSearchPage
-                {
-                    Results = currentPage,
-                    TotalMatches = totalMatches,
-                    TotalFiles = totalFiles
-                });
-            }
-
-            return pages;
+            return page;
         }
     }
 }

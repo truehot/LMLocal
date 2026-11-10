@@ -189,15 +189,12 @@ namespace LMLocal.Infrastructure.Streaming
                         chunks.Add(new TextStreamChunk(arguments, ChunkKind.ToolCallArguments, index));
                     }
                 }
-
-                return chunks;
             }
 
             var reasoning = delta["reasoning_content"]?.ToString();
             if (!string.IsNullOrEmpty(reasoning))
             {
                 chunks.Add(new TextStreamChunk(reasoning, ChunkKind.Reasoning));
-                return chunks;
             }
 
             var refusal = delta["refusal"]?.ToString();

@@ -35,7 +35,7 @@ namespace LMLocal.Infrastructure.Settings
         private const string DefaultChatHistoryLabel = "log";
         private const string DefaultHtmlResourcePath = "Resources/app.html";
         private const string DefaultVirtualHostName = "app.local";
-        private const string DefaultSystemPrompt = "You are an expert Senior Software Engineer and Architect. You are integrated as a plugin into Visual Studio. When calling tools, you MUST extract relevant values from the user's input and fill all 'required' parameters.";
+        private const string DefaultSystemPrompt = "You are an expert Senior Software Engineer and Architect. You are integrated as a plugin into Visual Studio. Calls in a single response execute sequentially in the order written. Always batch every call with known arguments into a single response — multiple reads/searches, bottom-up edits to the same file from one read, and edits followed by the build that checks them. Wait for a new turn only when a call needs the output of an earlier one.";
         private const string DefaultAssistantPlacehoder = "The previous response was interrupted.";
         private const string DefaultUserAgent = "LMLocalChat/1.0";
         private const int DefaultBatchIntervalMs = 100;
@@ -80,19 +80,6 @@ namespace LMLocal.Infrastructure.Settings
                 if (!_isLoaded)
                     throw new InvalidOperationException("Settings not loaded. Call LoadAsync first.");
                 return _cachedSettings;
-            }
-        }
-
-        /// <summary>
-        /// Gets the cached settings without throwing, or <c>null</c> when they have not been loaded yet.
-        /// Use this for defensive reads outside the dialog flow (e.g. background or UI message handlers).
-        /// </summary>
-        internal AppSettings TryGetCurrent()
-        {
-            if (_disposed) return null;
-            lock (_lock)
-            {
-                return _isLoaded ? _cachedSettings : null;
             }
         }
 

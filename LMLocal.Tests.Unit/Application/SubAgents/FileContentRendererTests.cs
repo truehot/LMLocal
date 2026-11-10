@@ -7,7 +7,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
 {
     /// <summary>
     /// Direct coverage for the single rendering source of truth: numbered blocks (tool markdown in chat history)
-    /// and verbatim fenced blocks with a header (ref expansion, §14.1).
+    /// and verbatim fenced blocks with a header.
     /// </summary>
     [TestFixture]
     public class FileContentRendererTests
@@ -108,7 +108,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         // ---------------------------------------------------------------------
-        // AppendRefContentBlock (ref expansion, §14.1): File: header + verbatim fence, no trailing newline
+        // AppendRefContentBlock: File: header + verbatim fence, no trailing newline
         // ---------------------------------------------------------------------
 
         [Test]

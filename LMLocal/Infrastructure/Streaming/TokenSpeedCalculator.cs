@@ -5,20 +5,20 @@ using LMLocal.Infrastructure.Time;
 namespace LMLocal.Infrastructure.Streaming
 {
     /// <summary>
-    /// Calculates token generation speed using a sliding time window.
+    /// Streaming speed in deltas per second (equals tokens/s on per-token servers) over a sliding window that starts at the first delta.
     /// </summary>
     internal interface ITokenSpeedCalculator
     {
-        void Update(int totalTokens);
+        void Update(int totalDeltas);
         double GetTokensPerSecond();
         double GetAverageTokensPerSecond();
     }
 
     internal sealed class TokenSpeedCalculator : ITokenSpeedCalculator
     {
-        private readonly Queue<(long ticksUtc, int tokens)> _window = new Queue<(long, int)>();
+        private readonly Queue<(long ticksUtc, int deltas)> _window = new Queue<(long, int)>();
         private readonly long _windowTicks;
-        private int _currentTokens;
+        private int _currentDeltas;
         private readonly ITimeProvider _timeProvider;
         private double _speedSum;
         private int _speedCount;
@@ -27,42 +27,42 @@ namespace LMLocal.Infrastructure.Streaming
         {
             _timeProvider = timeProvider ?? new SystemTimeProvider();
             _windowTicks = TimeSpan.FromSeconds(windowSeconds).Ticks;
-            _window.Enqueue((_timeProvider.UtcNowTicks(), 0));
         }
 
         /// <summary>
-        /// Updates the speed calculator with the current total tokens count.
+        /// Records the running count of received deltas; the first call starts the window, so the wait for the first delta is not counted.
         /// </summary>
-        public void Update(int totalTokens)
+        public void Update(int totalDeltas)
         {
-            if (totalTokens != _currentTokens)
+            if (totalDeltas != _currentDeltas)
             {
-                _currentTokens = totalTokens;
-                _window.Enqueue((_timeProvider.UtcNowTicks(), totalTokens));
+                _currentDeltas = totalDeltas;
+                _window.Enqueue((_timeProvider.UtcNowTicks(), totalDeltas));
             }
         }
 
         /// <summary>
-        /// Gets the generation speed in tokens per second over the sliding window.
+        /// Gets the deltas per second over the sliding window; 0 until a second delta arrives.
         /// </summary>
         public double GetTokensPerSecond()
         {
+            if (_window.Count == 0) return 0.0;
+
             long now = _timeProvider.UtcNowTicks();
             long cutoff = now - _windowTicks;
 
-            // Remove outdated entries but keep at least one for delta calculation
+            // Keep at least one entry as the baseline for the delta.
             while (_window.Count > 1 && _window.Peek().ticksUtc < cutoff)
             {
                 _window.Dequeue();
             }
 
-            var (ticksUtc, tokens) = _window.Peek();
+            var (ticksUtc, deltas) = _window.Peek();
             double spanSeconds = TimeSpan.FromTicks(now - ticksUtc).TotalSeconds;
 
             if (spanSeconds <= 0) return 0.0;
 
-            int tokensInWindow = _currentTokens - tokens;
-            double speed = tokensInWindow / spanSeconds;
+            double speed = (_currentDeltas - deltas) / spanSeconds;
 
             if (speed > 0)
             {
@@ -74,7 +74,7 @@ namespace LMLocal.Infrastructure.Streaming
         }
 
         /// <summary>
-        /// Gets the average generation speed in tokens per second across all sampled windows with positive speed.
+        /// Gets the average of the positive samples taken by GetTokensPerSecond during this stream.
         /// </summary>
         public double GetAverageTokensPerSecond()
         {

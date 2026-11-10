@@ -1,5 +1,5 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
-import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus } from '@app/chat/tool.status.js';
+import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus, stopRunningTools } from '@app/chat/tool.status.js';
 import { createGenerationStopped } from '@app/chat/generation.stopped.js';
 
 /**
@@ -214,6 +214,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             }
             stopLoadingIndicator();
             stopThoughts();
+            stopRunningTools(elements.toolContainer);
 
             if (finalResponseEl) {
                 finalResponseEl.style.display = 'block';

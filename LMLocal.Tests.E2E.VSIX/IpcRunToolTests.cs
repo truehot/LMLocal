@@ -558,7 +558,7 @@ namespace LMLocal.Tests.E2E.VSIX
             }
         }
 
-        // ---- search_file_content: project_filter with a path, OR / quote fallback ---------------
+        // ---- search_file_content: path (file / folder / project), OR / quote fallback ------------
         // Terms are assembled at runtime so this source file never contains the full search text
         // literally (the VSIX test project is part of the solution and is searched too).
         private const string TermA = "CompactForced" + "Async";
@@ -566,15 +566,20 @@ namespace LMLocal.Tests.E2E.VSIX
 
         /// <summary>
         /// Positional RunTool order for search_file_content: text, group_by, extension_filter,
-        /// project_filter, page_token, max_results.
+        /// path, page_token, max_results.
         /// </summary>
-        private async Task<JObject> SearchAsync(IpcClient client, string text, string projectFilter, CancellationToken ct)
+        private async Task<JObject> SearchRawAsync(IpcClient client, string text, string path, CancellationToken ct, string extensionFilter = "")
         {
             var resp = await SendAsync(client,
-                $"RunTool|search_file_content|{UriEnc(text)}|file||{UriEnc(projectFilter)}||500", ct);
+                $"RunTool|search_file_content|{UriEnc(text)}|file|{UriEnc(extensionFilter)}|{UriEnc(path)}||500", ct);
             Assert.StartsWith("{", resp, "search_file_content should return JSON: " + resp);
-            var obj = JObject.Parse(resp);
-            Assert.IsTrue((bool)obj["success"], "search_file_content should succeed: " + resp);
+            return JObject.Parse(resp);
+        }
+
+        private async Task<JObject> SearchAsync(IpcClient client, string text, string path, CancellationToken ct, string extensionFilter = "")
+        {
+            var obj = await SearchRawAsync(client, text, path, ct, extensionFilter);
+            Assert.IsTrue((bool)obj["success"], "search_file_content should succeed: " + obj);
             return obj;
         }
 
@@ -584,7 +589,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 .ToList();
 
         [TestMethod]
-        public async Task RunTool_SearchFileContent_PathProjectFilter_LimitsToFolderAsync()
+        public async Task RunTool_SearchFileContent_PathFolder_LimitsToFolderAsync()
         {
             using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
             {
@@ -604,27 +609,127 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.Contains(p => p.StartsWith(@"LMLocal\Application\ChatSession\", StringComparison.OrdinalIgnoreCase), all,
                             "baseline should include LMLocal\\Application\\ChatSession: " + string.Join(", ", all));
 
-                        foreach (var filter in new[] { @"LMLocal\Application\Chat", "LMLocal/Application/Chat", @"LMLocal\\Application\\Chat", @"Application\Chat\" })
+                        foreach (var path in new[] { @"LMLocal\Application\Chat", "LMLocal/Application/Chat", @"LMLocal\\Application\\Chat", @"LMLocal\Application\Chat\" })
                         {
-                            var obj = await SearchAsync(client, TermA, filter, cts.Token);
+                            var obj = await SearchAsync(client, TermA, path, cts.Token);
                             var paths = FilePaths(obj);
-                            Assert.IsGreaterThan(0, paths.Count, $"filter '{filter}' should find matches: {obj}");
+                            Assert.IsGreaterThan(0, paths.Count, $"path '{path}' should find matches: {obj}");
                             Assert.IsTrue(paths.All(p => p.StartsWith(@"LMLocal\Application\Chat\", StringComparison.OrdinalIgnoreCase)),
-                                $"filter '{filter}' should keep only the LMLocal\\Application\\Chat folder (not ChatSession): " + string.Join(", ", paths));
+                                $"path '{path}' should keep only the LMLocal\\Application\\Chat folder (not ChatSession): " + string.Join(", ", paths));
                             Assert.Contains(p => p.EndsWith("HistoryCompactor.cs", StringComparison.OrdinalIgnoreCase), paths,
-                                $"filter '{filter}' should include HistoryCompactor.cs: " + string.Join(", ", paths));
-                            Assert.IsNull(obj["note"], "a literal search with hits must not carry a fallback note");
+                                $"path '{path}' should include HistoryCompactor.cs: " + string.Join(", ", paths));
+                            Assert.IsNull(obj["note"], "a literal search with hits must not carry a note");
                         }
 
-                        // A trailing separator means the folder itself: 'LMLocal\' must not pull in LMLocal.Tests.*.
-                        var lmLocalOnly = FilePaths(await SearchAsync(client, TermA, @"LMLocal\", cts.Token));
+                        // 'LMLocal' is the folder itself, not a substring: it must not pull in LMLocal.Tests.*.
+                        var lmLocalOnly = FilePaths(await SearchAsync(client, TermA, "LMLocal", cts.Token));
                         Assert.IsTrue(lmLocalOnly.Count > 0 && lmLocalOnly.All(p => p.StartsWith(@"LMLocal\", StringComparison.OrdinalIgnoreCase)),
-                            "'LMLocal\\' should keep only the LMLocal folder: " + string.Join(", ", lmLocalOnly));
+                            "'LMLocal' should keep only the LMLocal folder: " + string.Join(", ", lmLocalOnly));
 
-                        // A separator-free filter keeps the original per-component semantics.
+                        // A project name (here also a root folder) searches that project's folder.
                         var byProject = FilePaths(await SearchAsync(client, TermA, "LMLocal.Tests.Unit", cts.Token));
                         Assert.IsTrue(byProject.Count > 0 && byProject.All(p => p.StartsWith(@"LMLocal.Tests.Unit\", StringComparison.OrdinalIgnoreCase)),
-                            "project-name filter should keep only LMLocal.Tests.Unit: " + string.Join(", ", byProject));
+                            "project path should keep only LMLocal.Tests.Unit: " + string.Join(", ", byProject));
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_PathFile_SearchesOnlyThatFileAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        const string file = @"LMLocal\Application\Chat\HistoryCompactor.cs";
+                        var obj = await SearchAsync(client, TermA, file, cts.Token);
+                        var paths = FilePaths(obj);
+                        CollectionAssert.AreEqual(new[] { file }, paths, "a file path should search only that file: " + obj);
+                        Assert.IsGreaterThan(0, obj["total_matches"].Value<int>(), "the file contains the term: " + obj);
+
+                        // The extension filter does not apply to a file and is reported in 'note'.
+                        var withExt = await SearchAsync(client, TermA, file, cts.Token, ".js");
+                        CollectionAssert.AreEqual(new[] { file }, FilePaths(withExt), "extension_filter must not drop the file: " + withExt);
+                        StringAssert.Contains(withExt["note"]?.Value<string>() ?? "", "extension_filter was ignored");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_PathFolder_IncludesFilesNotInProjectAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        // Docs\ is not part of the solution: without path it is never searched.
+                        var all = FilePaths(await SearchAsync(client, TermA, "", cts.Token));
+                        Assert.IsFalse(all.Any(p => p.StartsWith(@"Docs\", StringComparison.OrdinalIgnoreCase)),
+                            "a solution search must not include Docs\\: " + string.Join(", ", all));
+
+                        var docs = FilePaths(await SearchAsync(client, TermA, "Docs", cts.Token));
+                        Assert.IsTrue(docs.Count > 0 && docs.All(p => p.StartsWith(@"Docs\", StringComparison.OrdinalIgnoreCase)),
+                            "path 'Docs' should search the files under Docs\\ on disk: " + string.Join(", ", docs));
+
+                        var docFile = FilePaths(await SearchAsync(client, TermA, @"Docs\context-overflow-auto-compaction.md", cts.Token));
+                        CollectionAssert.AreEqual(new[] { @"Docs\context-overflow-auto-compaction.md" }, docFile,
+                            "a file outside any project can be searched by path");
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task RunTool_SearchFileContent_Path_InvalidValues_FailAsync()
+        {
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(1), cts.Token);
+                    using (client)
+                    {
+                        Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
+
+                        // Not a path and not an exact project name: substrings and bare file names are rejected.
+                        foreach (var path in new[] { "Tests", "HistoryCompactor.cs", @"Application\Chat", @"LMLocal\NoSuchFolder" })
+                        {
+                            var obj = await SearchRawAsync(client, TermA, path, cts.Token);
+                            Assert.IsFalse((bool)obj["success"], $"path '{path}' should fail: {obj}");
+                            StringAssert.Contains(obj["error_message"].Value<string>(), "Path not found");
+                        }
+
+                        string outside = Path.GetTempPath();
+                        var outsideObj = await SearchRawAsync(client, TermA, outside, cts.Token);
+                        Assert.IsFalse((bool)outsideObj["success"], "a folder outside the solution must be rejected: " + outsideObj);
+                        StringAssert.Contains(outsideObj["error_message"].Value<string>(), "outside the solution directory");
                     }
                 }
                 finally

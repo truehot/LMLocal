@@ -377,7 +377,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
-        public async Task ExecutePromptAsync_ParentCancellation_ReportsStoppedBeforeCompletion()
+        public async Task ExecutePromptAsync_ParentCancellation_ReportsStoppedByUser()
         {
             _roundServiceMock
                 .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
@@ -390,12 +390,64 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 var response = await CreateService()
                     .ExecutePromptAsync(BuildRequest(timeoutSeconds: 360), cts.Token);
 
-                Assert.That(response.Success, Is.False);
-                Assert.That(response.Error, Does.StartWith("SubAgent did not finish: stopped before completion (360s"));
-                Assert.That(response.Error, Does.Not.Contain("timed out"));
-                Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
-                Assert.That(response.Error, Does.Not.Contain(".."));
+                AssertReadsAsUserStop(response);
             }
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_ParentCancellationMidRound_ReportsRoundAndNoTimeoutSeconds()
+        {
+            using (var cts = new CancellationTokenSource())
+            {
+                _roundServiceMock
+                    .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                    .Returns((StreamRoundRequest req, CancellationToken ct) =>
+                    {
+                        cts.Cancel(); // user presses Stop while the round is streaming
+                        return Task.FromResult(new StreamRoundResult
+                        {
+                            Outcome = StreamRoundOutcome.Cancelled,
+                            Stream = new StreamCompletionResult { WasCancelled = true }
+                        });
+                    });
+
+                var response = await CreateService()
+                    .ExecutePromptAsync(BuildRequest(timeoutSeconds: 360, maxRounds: 20), cts.Token);
+
+                AssertReadsAsUserStop(response);
+                Assert.That(response.Error, Does.Contain("(round 1/20)"));
+            }
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_CancelledOutcomeWithoutStop_ReportsOutcomeAndRound()
+        {
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StreamRoundResult
+                {
+                    Outcome = StreamRoundOutcome.Cancelled,
+                    Stream = new StreamCompletionResult { WasCancelled = true }
+                });
+
+            var response = await CreateService()
+                .ExecutePromptAsync(BuildRequest(timeoutSeconds: 360, maxRounds: 20), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.StartWith("SubAgent stream ended as cancelled without a stop request"));
+            Assert.That(response.Error, Does.Contain("(round 1/20)"));
+            Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+        }
+
+        private static void AssertReadsAsUserStop(SubAgentsRunResponse response)
+        {
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.StartWith("SubAgent stopped: the request was stopped by the user"));
+            Assert.That(response.Error, Does.Not.Contain("timed out"));
+            Assert.That(response.Error, Does.Not.Contain("360"),
+                "A user stop must not show the timeout seconds, or it reads like a timeout.");
+            Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+            Assert.That(response.Error, Does.Not.Contain(".."));
         }
 
         private static Task<StreamRoundResult> RoundThatNeverCompletes(CancellationToken ct)

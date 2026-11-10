@@ -1,7 +1,7 @@
-﻿namespace LMLocal.Tests.E2E.AppTests;
+namespace LMLocal.Tests.E2E.AppTests;
 
 /// <summary>
-/// Startup model-selection priority chain (§6.4 of docs/recentmodels.md):
+/// Startup model-selection priority chain:
 /// active → recent among loaded → first loaded → recent from list → dialog.
 /// </summary>
 [TestFixture]

@@ -46,6 +46,33 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public void Ledger_ResolvesAbsolutePath_ByRecordedRelativeSuffix()
+        {
+            var ledger = LedgerWith((FilePath, 19, "internal enum CompactionOutcome"), (@"Chat\HistoryCompactor.cs", 19, "other"));
+
+            Assert.That(ledger.TryResolve(@"D:\Work\lmlocal\LMLocal\Application\Chat\HistoryCompactor.cs", new LineRange(19, 19), out var a), Is.True);
+            Assert.That(a[0].RelativePath, Is.EqualTo(FilePath), "the longest recorded suffix wins");
+            Assert.That(ledger.TryResolve("D:/Work/lmlocal/LMLocal/Application/Chat/HistoryCompactor.cs", new LineRange(19, 19), out _), Is.True);
+            Assert.That(ledger.TryResolve(@"D:\Work\lmlocal\LMLocal\Application\Chat\XHistoryCompactor.cs", new LineRange(19, 19), out _), Is.False,
+                "suffix must start at a path separator");
+            Assert.That(ledger.TryResolve(@"D:\Work\lmlocal\LMLocal\Application\Chat\HistoryCompactor.cs", new LineRange(20, 20), out _), Is.False);
+        }
+
+        [Test]
+        public async Task Expand_AbsolutePathSearchMarker_RendersRelativeLocations()
+        {
+            var ledger = LedgerWith((FilePath, 19, "internal enum CompactionOutcome"), (FilePath, 52, "return CompactionOutcome.None;"));
+
+            var result = await ExpandAsync(ledger, @"- @D:\Work\lmlocal\LMLocal\Application\Chat\HistoryCompactor.cs:19,52");
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(result.Content, Does.Contain(FilePath + ":19:"));
+            Assert.That(result.Content, Does.Contain(FilePath + ":52:"));
+            Assert.That(result.Content, Does.Not.Contain(@"D:\Work"));
+        }
+
+        [Test]
         public void Ledger_Range_RequiresEveryLineToBeRecorded()
         {
             var ledger = LedgerWith((FilePath, 10, "a"), (FilePath, 11, "b"), (FilePath, 13, "d"));

@@ -52,7 +52,7 @@
 ## ⚡ Core Features
 
 - **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, and manual rollback via the Changes panel.
-- **🤖 Local Subagents** – Delegate code search, reading, symbol analysis, planning, builds/tests, and review to specialised [subagents](#content--subagents) running on a small, fast local model (default: `google_gemma-4-e4b-it`). The main model gets compact results instead of raw tool output, which keeps its context lean and cuts token costs.
+- **🤖 Subagents** – Specialised [subagents](#content--subagents) for code search, reading, symbol analysis, planning, builds/tests, and review, each with its own prompt, toolset, and model — so the work can be split across models (default subagent model: a small local `google_gemma-4-e4b-it`). The main model gets compact results instead of raw tool output, which keeps its context lean and usually reduces its token usage.
 - **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, Unsloth, and any OpenAI‑compatible API.
 - **🔌 MCP Extensibility** – Add external tools via Model Context Protocol (stdio/http).
 - **📂 Flexible Workspace Context** – Quickly pass code to the AI: use the **`+`** button to attach the active file in the background, or right-click to send specific text selections.
@@ -67,7 +67,7 @@
 ## 🛠 Requirements
 
 To use LM Local, you need:
-- [x] **Visual Studio 2022 or 2026**
+- [x] **Visual Studio 2022 (17.8 or later) or 2026**
 - [x] Microsoft Edge WebView2 (included in Windows 10/11 by default; corporate users should ensure it is not disabled via Group Policy)
 - [x] **An AI Backend / Provider** (choose one):
   * **Cloud Providers:** Any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Google AI Studio, etc. — requires an API key).
@@ -122,9 +122,9 @@ To use LM Local, you need:
 
 ### Part 2. How to Use the Chat
 
-5. **Select an Instruction Preset (Optional):** Open the **AI Instructions...** window from the menu to select from pre-defined AI presets.
+5. **Select an Instruction Preset (Optional):** Open the **AI Instructions...** window from the menu, pick a preset and click **Save**. After that, switch presets from the dropdown in the chat bar.
    * Each preset has its own pre-configured system prompt and temperature.
-   * You can toggle individual presets or parameters on/off.
+   * You can toggle individual presets on/off.
 6. **Quick Tool Mode Switch (Optional):** Use the dropdown next to the message input to instantly switch between No tools (AI cannot read or write), Read only (AI can read files but not modify them), and Read & Write (full tool access). 
 7. **Context (Optional):** Click the **`+`** button to include the entire content of the active document into the conversation.
 8. **Chat:** Type your message and click **Send** or hit `Enter` ⌨️.
@@ -170,12 +170,12 @@ To use LM Local, you need:
 - 📋 **Quick Copy** – A button above code blocks that copies the code to your clipboard.
 - ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
-- ⌨️ **AI Inline Autocompletions (Beta)** – AI‑powered line completion. When your cursor is at the end of a line, the AI analyzes the current context and suggests a continuation. Press Tab to accept. Completions are available only at line endings.
+- ⌨️ **AI Inline Autocompletions (Beta)** – AI‑powered multiline completion. When your cursor is at the end of a line, a local FIM model suggests a continuation of up to 10 lines as grey ghost text. Keep typing to follow the suggestion, press Tab to accept the whole block, Esc to dismiss. Completions are available only at line endings.
 - 📄 **Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
 - 🖼️ **Image Attachments** – Paste (`Ctrl+V`) or drag-and-drop images into the chat input for vision-capable models (JPEG/PNG, up to 3 per message, ~4 MB each). Images are **not** compressed and are **not** saved to history.
 - ↕️ **Resizable Panels** – Drag the grip above the input or above the Changes panel to adjust their height.
 - 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
-- 🛡️ **Protect Running AI Requests (Beta)** - Prevents accidental loss of work: if you close Visual Studio (close button or Alt+F4) or end your Windows session while an AI request is still running, a confirmation dialog offers to **continue working**, **cancel the request and stay open**, or **exit now**. Closing the dialog itself keeps Visual Studio open. Can be turned off in Settings under **Protect running AI requests**.
+- 🛡️ **Protect Running AI Requests** - Prevents accidental loss of work: if you close Visual Studio (close button, Alt+F4 or File → Exit) or sign out / shut down Windows while an AI request is still running, a confirmation dialog in the current Visual Studio theme offers **Keep working**, **Stop request** (stops the request, Visual Studio stays open) or **Stop and exit**. Closing the dialog (Esc or ✕) keeps Visual Studio open. A forced Windows shutdown or ending the process from Task Manager is not intercepted. Can be turned off in Settings under **Protect running AI requests**.
 
 ### Context & Solution Awareness
 - 🛠️ **Advanced AI Tool Integration** – Allows the AI to analyze your open solution, read file contents, and execute actions like building the solution, formatting documents, or running unit tests.
@@ -292,7 +292,7 @@ The **Models** dialog (menu `… → Models…`) manages model settings in the `
 
 The **Adjust Current** button automatically finds or prepares a record for the currently active model.
 
-Additionally, you can configure the optional **Instructions** (`instructions`) parameter for any model. If set, switching to this model will automatically select its assigned instruction preset (system prompt) in the chat.
+You can also pick an **Auto-apply instruction** for a model: when you switch to this model, that instruction mode is selected in the chat (if the mode is enabled). "Not set" keeps the current mode.
 
 <a id="content--builtin-ai-tools"></a>
 ## Built‑in AI Tools
@@ -374,12 +374,17 @@ The panel lets you:
 
 **Subagents** are specialised AI "workers" that the main chat can invoke as tools. Each agent runs in an isolated loop with its own provider, model, system prompt, and toolset, returning a summary to the main conversation.
 
-Use subagents to:
+Use subagents when you need:
 
-- **Boost speed** – run them on smaller, faster models for quick retrieval or narrow-scope tasks.
-- **Cut costs** – use a cheaper (or local) model for extensive searching and reading, avoiding expensive token usage on the main model.
+- **Specialised roles** – dedicated workflows with their own prompt and toolset, such as reviewing the pending diff, making an architectural decision, or planning a task.
+- **Work split across models** – each kind of work runs on the model that suits it: for example, a small local model for searching and reading code, and a stronger model in the main chat for decisions and edits.
 
-> **Note:** if a subagent uses the same model as the main chat, it will be **slower** and **consume more total tokens** (since it generates extra output). The speed/cost benefits only come from using a different, lighter model.
+Side benefits:
+
+- **Leaner main context** – raw search results and file contents stay in the subagent; the main model receives only a compact result.
+- **Fewer main-model tokens** – the work done on a cheaper or local model is not paid for by the expensive main model. How much you save depends on the task.
+
+> **Note:** subagents do not make answers faster. The main model waits for their results, so a request with subagents often takes **longer** overall. If a subagent uses the same model as the main chat, there is no saving at all: it **consumes more total tokens** (since it generates extra output).
 
 
 ---
@@ -472,6 +477,18 @@ llama-server.exe ^
 
 > **Note for Parallel Execution:** In `llama.cpp`, total context (`-c`) is divided across parallel slots (`--parallel`). If you plan to run 2 subagents concurrently, change `--parallel 1` to `--parallel 2` and double the context to `-c 80000` (so each agent still gets 40k context).
 
+#### Choosing `maxParallel`
+
+`maxParallel` is how many SubAgents LM Local runs **at the same time** (1–8).
+Pick the smallest value your server can actually handle in parallel:
+
+| Your server | Set `maxParallel` to |
+|---|---|
+| Local (LM Studio, llama.cpp, Ollama, …) | the number of parallel slots you configured on the server (LM Studio *Max Concurrent Predictions*, llama.cpp `--parallel`), but not more than 8 |
+| Cloud provider | 2–8, depending on your plan's rate limits; start with 3 and raise it if you see no rate-limit errors |
+
+If `maxParallel` is higher than your server can serve, the extra agents simply wait — slower, and they may hit `timeoutSeconds` before they start.
+
 
 ### Configuration
 
@@ -530,7 +547,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 | `maxTokens` | int `>=1` | | root default | output cap |
 | `reasoningEffort` | string | | root default | `none`/`low`/`medium`/`high` |
 | `parallel` | bool | | `false` | enable parallel grouping |
-| `maxParallel` | int `>=1` | | root default | parallel width |
+| `maxParallel` | int `1..8` | | root default | how many SubAgents may run at the same time (values above 8 are treated as 8) |
 | `enabled` | bool | | `true` | runtime gate |
 | `allowedTools[]` | string[] | | `[]` | built-in tool names; an unknown name or another subagent's `id` (no recursion) → save rejected |
 
@@ -571,12 +588,14 @@ Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable S
 <a id="content--ai-instructions--modes"></a>
 ## 🎭 AI Instructions & Modes
 
-The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Review**, **Plan**, **Bugfix**, **Explain**, **Tests** and allows you to create up to **50 custom modes**
+The **"AI Instructions..."** window allows you to define specialized **System Prompts (roles)** and creativity levels (temperature) for different development tasks. The extension comes with pre-configured behavior templates like **Default**, **Improve**, **Write**, **Review**, **Plan**, **Bugfix**, **Explain**, **Tests**, **Plan & Execute** and allows you to create up to **50 custom modes**
 
 > [!TIP]
 > **Prompt Caching Optimization:** Select your desired mode (e.g., Bugfix, Review, Explain) before sending your message. Changing the mode mid-conversation modifies the system prompt, which invalidates the server's prompt cache, increasing token costs and latency.
 
 Once configured, you can instantly switch between these system roles using the dropdown menu directly in the main chat bar. Selecting a preset updates the AI's system prompt and temperature for that conversation.
+
+Modes are optional: until you save the **"AI Instructions..."** window once, there is no mode dropdown in the chat bar and LM Local uses its built-in system prompt. The built-in prompt is also used if the selected mode's system prompt is empty or all modes are unchecked.
 
 ### How to Customize Modes:
 1. Click the menu icon (**`…`**) and select **"AI Instructions..."**.
@@ -584,10 +603,15 @@ Once configured, you can instantly switch between these system roles using the d
 3. Configure its behavior in the right panel:
    * **Mode Toggle Checkbox:** Check or uncheck this box to show or hide this specific mode in your main chat bar dropdown.
    * **Delete Custom Mode (✕):** For custom modes, click the ✕ icon next to the toggle checkbox to remove the mode.
+   * **Reset Built-in Mode (↺):** For built-in modes, click the ↺ icon next to the toggle checkbox to restore the shipped system prompt and temperature. Only the text and the temperature are restored — the mode's enabled state stays as you set it.
    * **System Prompt:** Enter the base instructions that define the AI's role, processing rules, and operational constraints (e.g., telling the `Tests` mode to act as a QA Engineer and strictly generate xUnit tests in C#).
    * **Temperature:** Set the randomness/creativity threshold. Use values closer to `0` (e.g., `0.1` or `0.2`) for rigid, deterministic tasks like compiling and bug fixing, and closer to `1` for architectural planning or brainstorming.
    > 💡 **Note:** Always check your specific model's official documentation for recommended temperature settings, as some local models require strict defaults or a value of `0` to function properly without breaking formatting or structure.
-4. Click **Save** to apply the changes to your chat environment.
+4. Click **Save** to apply the changes. The mode open in the window becomes the active mode in the chat (if it is unchecked, the first checked mode is used).
+
+> [!NOTE]
+> Built-in modes you never edited are not copied into `instructions.json`, so their texts are refreshed automatically when a new version of the extension ships updated defaults. Restoring a built-in mode with the ↺ button (and clicking **Save**) makes it follow those updates again.
+> If you saved the instructions with an older version, that save stored the then-current texts of all built-in modes, so they count as edited and do not update by themselves. Your own texts are kept as they are; if you want the current shipped text for a mode, open it and click ↺ (the button is active only when the mode differs from the shipped one).
 
 
 <a id="content--chat-history-dialog"></a>
@@ -688,7 +712,7 @@ Context window accumulation can lead to high API costs or local performance drop
 * **Choose Providers with Prompt Caching:** When working in the cloud, pick providers that natively support **Prompt Caching** (like *DeepSeek* or *OpenRouter*). Because LM Local continuously appends conversation history with each turn, prompt caching can slash your recurring token costs.
 * **Offload Context via RAG MCP Servers:** Instead of attaching whole codebases or giant documents directly to the prompt, hook up an external **RAG (Retrieval-Augmented Generation) MCP server**. This allows LM Local to fetch only the highly relevant code snippets or documentation chunks dynamically when needed. You get full project awareness while keeping your active context window lean and cheap.
 * **Use a lightweight project map (no RAG):** Create a context.md file (manually or ask the model to generate it) describing your project structure, main classes, and patterns. Attach it to the first message to give the model a "project map" without attaching the whole codebase. This saves tokens and reduces context size.
-* **Delegate tasks to Subagents:** When performing extensive codebase searches or complex multi-step operations, enable **Subagents**. Instead of letting the main chat accumulate long chains of tool calls and raw file outputs (which quickly drains your context window), a subagent handles the task in its own isolated loop. It does the work in the background and returns only a concise summary to your main conversation, keeping your primary session lean and significantly reducing token costs.
+* **Delegate tasks to Subagents:** When performing extensive codebase searches or complex multi-step operations, enable **Subagents**. Instead of letting the main chat accumulate long chains of tool calls and raw file outputs (which quickly drains your context window), a subagent handles the task in its own isolated loop. It does the work in the background and returns only a concise summary to your main conversation, keeping your primary session lean and usually reducing token costs (the request may take longer, though).
 * **Disable Unused Tools (Built-in & MCP):** Each active tool adds its JSON schema and prompt definitions to every API request. Turn off MCP servers or built-in tools you don't need for your current task to instantly shave off input tokens from every turn.
 
 ### ⚡ How do I maximize model speed (even with a quality drop)?
@@ -707,12 +731,24 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
 <a id="content--auto-completions"></a>
 ## Auto-Completions (Beta)
 
-Provides fast, **single-line ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
+Provides **multiline ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
 
 **How to Enable:**
 Click the **`...`** menu in the extension panel and select **Autocompletions...** to open the configuration window. From there, check the enable box, select your provider, and assign a model.
 
-> ⚠️ **Conflict Warning:** If you have **another autocompletion extension active** (e.g., GitHub Copilot), its suggestions may visually **overlap** with LM Local’s ghost text. To avoid a confusing double‑suggestion experience, **it is recommended enabling only one autocompletion provider at a time** – either the built‑in LM Local one or your external tool, but not both simultaneously.
+### How It Works
+
+* **Multiline suggestions.** The first line appears right after the cursor; the following lines (up to 10) appear below it, and the code underneath moves down to make room.
+* **Type through.** Typing characters that match the suggestion consumes them – the rest of the suggestion stays visible. Pressing **Enter** where the suggestion continues on the next line keeps it going; the editor's own indentation is used.
+* **Tab** inserts the whole remaining block using the file's line endings. **Esc**, moving the cursor, or typing something different dismisses it.
+* **Clean output.** Lines that only repeat the code right after the cursor (e.g. a closing `}` that is already there) are dropped, and model control markers such as `<|endoftext|>` or `<|cursor|>` are removed.
+
+### Working Alongside IntelliSense, IntelliCode and Copilot
+
+* **IntelliSense completion list:** while the list is open, Tab belongs to it, so LM Local hides its suggestion and asks again after the list closes.
+* **IntelliCode / GitHub Copilot inline suggestions:** whichever suggestion is shown first stays. If a Visual Studio suggestion is already on screen, LM Local does not replace it; if LM Local's suggestion is already shown, the later one is dismissed, so the two never overlap.
+
+> 💡 If you prefer to see only LM Local suggestions, turn off IntelliCode whole-line completions / Copilot completions in Visual Studio options.
 
 ### Supported Providers & Models
 
@@ -753,6 +789,8 @@ and in the **Solution Explorer** context menu. All commands open the LM Local ch
 | **LM Local Commands → Explain Code** | Auto-sends the selected code with a detailed explanation prompt. Selects the **Explain** instruction tab. |
 
 All editor commands are **disabled** while a chat session is running. If no text is selected, the entire document content is used.
+
+If the command's instruction mode is unchecked, or the **"AI Instructions..."** window was never saved, the command keeps the current mode.
 
 
 ### Solution Explorer Context Menu (right-click any node)
@@ -904,7 +942,7 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | **Connection Error** | Check if the LM Studio Server is **ON** at `http://127.0.0.1:1234`. Click **`↻`** to retry. |
 | **UI Lag** | Restart the tool window or check your local machine resources (CPU/GPU). |
 | **MCP server not detected** | Verify that MCP is enabled in **MCP Extensions…** dialog, check your JSON configuration syntax, and ensure the server process or URL is accessible. |
-| **Autocompletions not showing** | Make sure autocompletions are enabled in **Autocompletions…** dialog, and that you have selected a model that supports Fill‑in‑the‑Middle (FIM) – see the list of verified models in the Auto‑Completions section. |
+| **Autocompletions not showing** | Make sure autocompletions are enabled in **Autocompletions…** dialog, and that you have selected a model that supports Fill‑in‑the‑Middle (FIM) – see the list of verified models in the Auto‑Completions section. Suggestions appear only at the end of a line, and not while the IntelliSense list or an IntelliCode/Copilot suggestion is already shown. |
 | **Built‑in tools not being invoked** | Check that the global **Enable built‑in AI tools (read‑only)** and/or **Enable built‑in AI tools (write/modify)** checkboxes are ticked in Settings. Also verify that the specific tool is not disabled in the **Built‑in Tools…** dialog. |
 | **Response blocked by content filter** | Rephrase the request. |
 | **Response truncated - token limit reached** | Increase Context Length in LM Studio model settings or split the task into smaller parts. |

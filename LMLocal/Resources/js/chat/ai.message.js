@@ -1,5 +1,5 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
-import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus } from '@app/chat/tool.status.js';
+import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus, stopRunningTools } from '@app/chat/tool.status.js';
 import { createGenerationStopped } from '@app/chat/generation.stopped.js';
 
 /**
@@ -153,6 +153,7 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
             }
             stopLoadingIndicator();
             stopThoughts();
+            stopRunningTools(elements.toolContainer);
             if (elements.responseContainer) {
                 elements.responseContainer.classList.remove('is-generating');
                 elements.responseContainer.style.display = 'block';

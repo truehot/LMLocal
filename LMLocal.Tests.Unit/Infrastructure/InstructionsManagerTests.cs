@@ -170,6 +170,67 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
+        public async Task GetAsync_MovesSelectionToFirstEnabledTab_WhenSelectedTabIsDisabled()
+        {
+            // The user unchecked the selected mode: the chat bar shows the first enabled mode, so that one is selected.
+            var fileDoc = new JObject
+            {
+                ["selectedTabId"] = 4,
+                ["tabs"] = new JArray
+                {
+                    new JObject { ["id"] = 1, ["displayName"] = "Default", ["enabled"] = false },
+                    new JObject { ["id"] = 4, ["displayName"] = "Review", ["enabled"] = false }
+                }
+            };
+            var manager = CreateManager(await CreateFsWithContentAsync(fileDoc.ToString()));
+
+            var doc = JObject.Parse(await manager.GetAsync());
+
+            Assert.That(doc.Value<int>("selectedTabId"), Is.EqualTo(2), "tabs 1 and 4 are disabled; 2 is the first enabled one");
+        }
+
+        [Test]
+        public async Task GetAsync_FallsBackToFirstEnabledTab_WhenSelectedTabIdInvalid_AndFirstDefaultIsDisabled()
+        {
+            var fileDoc = new JObject
+            {
+                ["selectedTabId"] = 9999,
+                ["tabs"] = new JArray { new JObject { ["id"] = 1, ["displayName"] = "Default", ["enabled"] = false } }
+            };
+            var manager = CreateManager(await CreateFsWithContentAsync(fileDoc.ToString()));
+
+            var doc = JObject.Parse(await manager.GetAsync());
+
+            Assert.That(doc.Value<int>("selectedTabId"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task GetAsync_KeepsSelection_WhenNoTabIsEnabled()
+        {
+            var tabs = new JArray();
+            foreach (InstructionDefaultTab d in TestDefaultsProvider.Tabs)
+                tabs.Add(new JObject { ["id"] = d.Id, ["displayName"] = d.DisplayName, ["enabled"] = false });
+            var manager = CreateManager(await CreateFsWithContentAsync(new JObject { ["selectedTabId"] = 4, ["tabs"] = tabs }.ToString()));
+
+            var doc = JObject.Parse(await manager.GetAsync());
+
+            Assert.That(doc.Value<int>("selectedTabId"), Is.EqualTo(4), "no mode is used at all; the selection only has to stay valid");
+        }
+
+        [Test]
+        public async Task UpdateAsync_DoesNotPersistSelection_OnDisabledTab()
+        {
+            var doc = FullDocument(selectedTabId: 4);
+            ((JArray)doc["tabs"]).First(t => t.Value<int>("id") == 4)["enabled"] = false;
+
+            var (result, fs) = await UpdateWithFsAsync(doc);
+
+            Assert.That(result.Success, Is.True);
+            var saved = JObject.Parse(fs.ReadAllText(FilePath()));
+            Assert.That(saved.Value<int>("selectedTabId"), Is.EqualTo(1));
+        }
+
+        [Test]
         public async Task GetAsync_ReturnsEmptyObject_OnCorruptedJson()
         {
             var fs = await CreateFsWithContentAsync("{ not valid json");
@@ -445,8 +506,181 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         // ---------------------------------------------------------------------
+        // Reset to default: a built-in tab persists only what the user changed
+        // ---------------------------------------------------------------------
+
+        [Test]
+        public async Task UpdateAsync_DoesNotPersist_BuiltInPromptAndTemperature_WhenTheyMatchDefaults()
+        {
+            JArray tabs = MakeDefaultTabs();
+            ((JObject)tabs[0])["prompt"] = "p1";        // untouched shipped text
+            ((JObject)tabs[0])["temperature"] = 0.2;    // untouched shipped temperature
+            ((JObject)tabs[1])["prompt"] = "edited";    // user-modified shipped text
+
+            var (result, fs) = await UpdateWithFsAsync(new JObject { ["tabs"] = tabs, ["selectedTabId"] = 1 });
+
+            Assert.That(result.Success, Is.True, result.Error);
+
+            var stored = (JArray)JObject.Parse(fs.ReadAllText(FilePath()))["tabs"];
+            JObject storedDefault = (JObject)stored.First(t => t.Value<int>("id") == 1);
+            JObject storedImprove = (JObject)stored.First(t => t.Value<int>("id") == 2);
+
+            Assert.That(storedDefault["prompt"], Is.Null, "an unchanged built-in prompt must not be persisted");
+            Assert.That(storedDefault["temperature"], Is.Null, "an unchanged built-in temperature must not be persisted");
+            Assert.That(storedDefault.Value<bool>("enabled"), Is.True, "'enabled' is always persisted");
+
+            Assert.That(storedImprove.Value<string>("prompt"), Is.EqualTo("edited"));
+        }
+
+        [Test]
+        public async Task GetAsync_ReturnsShippedPrompt_WhenNothingWasPersisted()
+        {
+            JArray tabs = MakeDefaultTabs();
+            foreach (JToken tab in tabs)
+                ((JObject)tab)["prompt"] = "p" + tab.Value<int>("id");
+
+            var (result, fs) = await UpdateWithFsAsync(new JObject { ["tabs"] = tabs, ["selectedTabId"] = 1 });
+            Assert.That(result.Success, Is.True, result.Error);
+
+            var storedTabs = (JArray)JObject.Parse(fs.ReadAllText(FilePath()))["tabs"];
+            Assert.That(storedTabs.All(t => t["prompt"] == null), Is.True, "no shipped prompt may reach the file");
+
+            var effective = (JArray)JObject.Parse(await CreateManager(fs).GetAsync())["tabs"];
+
+            Assert.That(effective.First(t => t.Value<int>("id") == 1).Value<string>("prompt"), Is.EqualTo("p1"));
+            Assert.That(effective.First(t => t.Value<int>("id") == 2).Value<string>("prompt"), Is.EqualTo("p2"));
+        }
+
+        [Test]
+        public async Task GetAsync_PicksUpUpdatedDefaultText_ForUnchangedTabsOnly()
+        {
+            JArray tabs = MakeDefaultTabs();
+            foreach (JToken tab in tabs)
+                ((JObject)tab)["prompt"] = "p" + tab.Value<int>("id");
+            ((JObject)tabs[1])["prompt"] = "my own text";    // tab 2 stays user-modified
+
+            var fs = CreateFs();
+            var first = new InstructionsManager(fs, new TestSettingsManager(), _defaults);
+            var saved = await first.UpdateAsync(new JObject { ["tabs"] = tabs, ["selectedTabId"] = 1 }.ToString());
+            Assert.That(saved.Success, Is.True, saved.Error);
+
+            // A later extension version ships different default texts.
+            var next = TestDefaultsProvider.Tabs
+                .Select(d => new InstructionDefaultTab(d.Id, d.DisplayName, d.Enabled, d.Temperature, d.Prompt + "-v2"))
+                .ToList();
+
+            var manager = new InstructionsManager(fs, new TestSettingsManager(), new MutableDefaultsProvider { Tabs = next });
+            var effective = (JArray)JObject.Parse(await manager.GetAsync())["tabs"];
+
+            Assert.That(effective.First(t => t.Value<int>("id") == 1).Value<string>("prompt"), Is.EqualTo("p1-v2"));
+            Assert.That(effective.First(t => t.Value<int>("id") == 2).Value<string>("prompt"), Is.EqualTo("my own text"));
+        }
+
+        [Test]
+        public async Task UpdateAsync_TreatsDifferentLineEndings_AsUnchangedText()
+        {
+            var provider = new MutableDefaultsProvider
+            {
+                Tabs = new List<InstructionDefaultTab>
+                {
+                    new InstructionDefaultTab(1, "Default", true, 0.2, "line1\nline2")
+                }
+            };
+
+            var fs = CreateFs();
+            var manager = new InstructionsManager(fs, new TestSettingsManager(), provider);
+
+            var doc = new JObject
+            {
+                ["selectedTabId"] = 1,
+                ["tabs"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["id"] = 1,
+                        ["displayName"] = "Default",
+                        ["enabled"] = true,
+                        ["temperature"] = 0.2,
+                        ["prompt"] = "line1\r\nline2"
+                    }
+                }
+            };
+
+            var result = await manager.UpdateAsync(doc.ToString());
+            Assert.That(result.Success, Is.True, result.Error);
+
+            var stored = (JArray)JObject.Parse(fs.ReadAllText(FilePath()))["tabs"];
+            Assert.That(stored[0]["prompt"], Is.Null, "CRLF and LF must be treated as the same text");
+        }
+
+        [Test]
+        public async Task UpdateAsync_TreatsMissingPromptAsDefault_InsteadOfEmptyText()
+        {
+            var provider = new MutableDefaultsProvider
+            {
+                Tabs = new List<InstructionDefaultTab>
+                {
+                    new InstructionDefaultTab(1, "Default", true, 0.2, "shipped")
+                }
+            };
+
+            var fs = CreateFs();
+            var manager = new InstructionsManager(fs, new TestSettingsManager(), provider);
+
+            var doc = new JObject
+            {
+                ["selectedTabId"] = 1,
+                ["tabs"] = new JArray
+                {
+                    new JObject { ["id"] = 1, ["displayName"] = "Default", ["enabled"] = true, ["temperature"] = 0.2 }
+                }
+            };
+
+            var result = await manager.UpdateAsync(doc.ToString());
+            Assert.That(result.Success, Is.True, result.Error);
+
+            var stored = (JArray)JObject.Parse(fs.ReadAllText(FilePath()))["tabs"];
+            Assert.That(stored[0]["prompt"], Is.Null, "an omitted prompt must inherit the shipped text");
+
+            var effective = (JArray)JObject.Parse(await manager.GetAsync())["tabs"];
+            Assert.That(effective[0].Value<string>("prompt"), Is.EqualTo("shipped"));
+        }
+
+        [Test]
+        public async Task UpdateAsync_AlwaysPersists_UserTabPromptAndTemperature()
+        {
+            JArray tabs = MakeDefaultTabs();
+            tabs.Add(new JObject
+            {
+                ["id"] = 50,
+                ["displayName"] = "Mine",
+                ["enabled"] = true,
+                ["temperature"] = 0.5,
+                ["prompt"] = ""
+            });
+
+            var (result, fs) = await UpdateWithFsAsync(new JObject { ["tabs"] = tabs, ["selectedTabId"] = 50 });
+            Assert.That(result.Success, Is.True, result.Error);
+
+            var stored = (JArray)JObject.Parse(fs.ReadAllText(FilePath()))["tabs"];
+            JObject userTab = (JObject)stored.First(t => t.Value<int>("id") == 50);
+
+            Assert.That(userTab["prompt"]?.Type, Is.EqualTo(JTokenType.String), "a user tab always keeps its own prompt");
+            Assert.That(userTab.Value<string>("prompt"), Is.EqualTo(string.Empty));
+            Assert.That(userTab.Value<double>("temperature"), Is.EqualTo(0.5).Within(0.0001));
+        }
+
+        // ---------------------------------------------------------------------
         // Test doubles
         // ---------------------------------------------------------------------
+
+        private sealed class MutableDefaultsProvider : IInstructionDefaultsProvider
+        {
+            public IReadOnlyList<InstructionDefaultTab> Tabs { get; set; } = new List<InstructionDefaultTab>();
+
+            public Task<IReadOnlyList<InstructionDefaultTab>> GetDefaultTabsAsync(CancellationToken cancellationToken = default)
+                => Task.FromResult(Tabs);
+        }
 
         private sealed class TestDefaultsProvider : IInstructionDefaultsProvider
         {

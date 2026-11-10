@@ -15,6 +15,11 @@ namespace LMLocal.Core.Models
         public const int DefaultMaxParallel = 2;
 
         /// <summary>
+        /// Upper bound for the effective maxParallel; larger configured values are treated as this value.
+        /// </summary>
+        public const int MaxParallelLimit = 8;
+
+        /// <summary>
         /// All defined SubAgents in file order.
         /// </summary>
         [JsonProperty("agents")]

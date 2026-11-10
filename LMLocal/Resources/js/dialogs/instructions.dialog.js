@@ -12,6 +12,13 @@ const NEW_TAB_NAME = 'New Tab';
 const DEFAULT_TEMPERATURE = 0.5;
 
 /**
+ * Returns the value when it is present, otherwise `undefined`, so a draft falls back to the built-in default for a field the saved document does not carry.
+ */
+function optionalValue(value) {
+    return value === undefined || value === null ? undefined : value;
+}
+
+/**
  * Loads the built-in instruction tabs.
  */
 async function loadDefaultTabs() {
@@ -49,6 +56,7 @@ export class InstructionsDialog {
 
         this._tabs = [];                 // draft model: full list of tabs
         this._defaultIds = new Set();    // ids of built-in tabs (read-only names, not deletable)
+        this._defaults = new Map();      // shipped values of built-in tabs, used by "Reset to default"
         this._activeId = null;
 
         this._abortController = null;
@@ -124,6 +132,11 @@ export class InstructionsDialog {
 
         this._defaultIds = new Set(defaults.map(t => t.id));
 
+        this._defaults = new Map();
+        for (const tab of defaults) {
+            this._defaults.set(tab.id, { prompt: tab.prompt, temperature: tab.temperature });
+        }
+
         const byId = new Map();
         for (const tab of defaults) {
             byId.set(tab.id, { ...tab });
@@ -176,8 +189,8 @@ export class InstructionsDialog {
                     id: String(t.id),
                     displayName: t.displayName || ('Custom ' + t.id),
                     enabled: t.enabled !== false,
-                    temperature: t.temperature !== undefined ? t.temperature : DEFAULT_TEMPERATURE,
-                    prompt: t.prompt || ''
+                    temperature: optionalValue(t.temperature),
+                    prompt: optionalValue(t.prompt)
                 })),
                 selectedTabId: document.selectedTabId
             };
@@ -259,6 +272,23 @@ export class InstructionsDialog {
         enabledCheckbox.id = `enabled-${tab.id}`;
         enabledCheckbox.checked = !!tab.enabled;
         actions.appendChild(enabledCheckbox);
+
+        let resetBtn = null;
+        if (!isUserTab) {
+            resetBtn = document.createElement('button');
+            resetBtn.type = 'button';
+            resetBtn.className = 'tab-reset-btn';
+            resetBtn.title = 'Reset to default';
+            resetBtn.setAttribute('aria-label', 'Reset to default');
+            resetBtn.innerHTML = Icons.RESTORE;
+            resetBtn.disabled = !this._isModifiedFromDefault(tab);
+            resetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._resetTabToDefault(tab.id);
+            }, { signal: this._abortController?.signal });
+            actions.appendChild(resetBtn);
+        }
 
         if (isUserTab) {
             const deleteBtn = document.createElement('button');
@@ -366,6 +396,23 @@ export class InstructionsDialog {
         tempGroup.appendChild(tempDesc);
         tempGroup.appendChild(tempInput);
         fieldsWrapper.appendChild(tempGroup);
+
+        const syncModifiedState = () => {
+            if (resetBtn) resetBtn.disabled = !this._isModifiedFromDefault(tab);
+        };
+
+        promptTextarea.addEventListener('input', () => {
+            tab.prompt = promptTextarea.value;
+            syncModifiedState();
+        }, { signal: this._abortController?.signal });
+
+        tempInput.addEventListener('input', () => {
+            const value = parseFloat(tempInput.value);
+            if (!Number.isNaN(value)) tab.temperature = value;
+            syncModifiedState();
+        }, { signal: this._abortController?.signal });
+
+        syncModifiedState();
 
         const applyEnabledState = (isEnabled) => {
             fieldsWrapper.style.opacity = isEnabled ? '1' : '0.5';
@@ -492,5 +539,45 @@ export class InstructionsDialog {
             this._errorEl.textContent = '';
             this._errorEl.style.display = 'none';
         }
+    }
+
+    /**
+     * True when the tab carries values that differ from the ones shipped with the extension.
+     */
+    _isModifiedFromDefault(tab) {
+        const defaults = this._defaults.get(tab.id);
+        if (!defaults) return false;
+
+        return this._normalizePrompt(tab.prompt) !== this._normalizePrompt(defaults.prompt) ||
+            !this._isSameTemperature(tab.temperature, defaults.temperature);
+    }
+
+    /**
+     * Normalizes line endings only: a textarea always re-emits newlines as "\n".
+     */
+    _normalizePrompt(value) {
+        return String(value ?? '').replace(/\r\n?/g, '\n');
+    }
+
+    _isSameTemperature(left, right) {
+        const first = Number(left);
+        const second = Number(right);
+        if (!Number.isFinite(first) || !Number.isFinite(second)) return String(left) === String(right);
+        return Math.abs(first - second) < 1e-9;
+    }
+
+    /**
+     * Restores the built-in text and temperature of a built-in tab.
+     */
+    _resetTabToDefault(tabId) {
+        const tab = this._tabs.find(t => t.id === tabId);
+        const defaults = this._defaults.get(tabId);
+        if (!tab || !defaults) return;
+
+        this._captureActiveFields();
+
+        tab.prompt = defaults.prompt;
+        tab.temperature = defaults.temperature;
+        this._render();
     }
 }

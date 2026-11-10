@@ -46,6 +46,8 @@ namespace LMLocal.Commands
 
         private void OnBeforeQueryStatus(object sender, EventArgs e)
         {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
             if (sender is OleMenuCommand menuCommand)
             {
                 bool isBusy = _sessionManager?.IsSessionRunning ?? false;

@@ -75,6 +75,66 @@ namespace LMLocal.Tests.Unit
             Assert.That(chunk.Text, Is.EqualTo("thinking"));
         }
 
+        // Real lines captured from GMI / deepseek-v4-flash (2026-11-07): the reasoning tail and the answer
+        // arrive in ONE delta. The content used to be dropped, so SubAgent answers came back empty or cut.
+
+        [Test]
+        public void ExtractDeltas_ReasoningAndContentInSameDelta_ReturnsBoth()
+        {
+            var line = "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"@LMLocal.Tests.E2E.VSIX\\\\IpcRunToolTests.cs:1-878\",\"reasoning_content\":\" file has been fully read. I need to emit the marker for the entire file.\"},\"finish_reason\":\"stop\",\"logprobs\":null}],\"model\":\"deepseek-v4-flash\",\"object\":\"chat.completion.chunk\"}";
+
+            var results = _parser.ExtractDeltas(line);
+            var text = results.OfType<TextStreamChunk>().ToList();
+
+            Assert.That(text.Where(c => c.Kind == ChunkKind.Reasoning).Select(c => c.Text),
+                Is.EqualTo(new[] { " file has been fully read. I need to emit the marker for the entire file." }));
+            Assert.That(text.Where(c => c.Kind == ChunkKind.Content).Select(c => c.Text),
+                Is.EqualTo(new[] { "@LMLocal.Tests.E2E.VSIX\\IpcRunToolTests.cs:1-878" }));
+            Assert.That(results.OfType<CompletionStreamChunk>().Single().FinishReason, Is.EqualTo("stop"));
+        }
+
+        [Test]
+        public void ExtractDeltas_AnswerSplitAcrossMixedAndPlainDeltas_IsReassembledInOrder()
+        {
+            var lines = new[]
+            {
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"The\"},\"finish_reason\":null}]}",
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"@LML\",\"reasoning_content\":\". I need to emit the marker for the entire file.\"},\"finish_reason\":null}]}",
+                "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ocal.Tests.E2E.VSIX\\\\IpcRunToolTests.cs:1-878\"},\"finish_reason\":\"stop\"}]}",
+            };
+
+            var content = string.Concat(lines
+                .SelectMany(l => _parser.ExtractDeltas(l))
+                .OfType<TextStreamChunk>()
+                .Where(c => c.Kind == ChunkKind.Content)
+                .Select(c => c.Text));
+
+            Assert.That(content, Is.EqualTo("@LMLocal.Tests.E2E.VSIX\\IpcRunToolTests.cs:1-878"));
+        }
+
+        [Test]
+        public void ExtractDeltas_ToolCallAndContentInSameDelta_ReturnsBoth()
+        {
+            var line = "data: {\"choices\":[{\"delta\":{\"content\":\"Reading the file.\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"read_file_lines\",\"arguments\":\"{}\"}}]}}]}";
+
+            var results = _parser.ExtractDeltas(line);
+
+            Assert.That(results.OfType<ToolCallMetadataChunk>().Single().FunctionName, Is.EqualTo("read_file_lines"));
+            Assert.That(results.OfType<TextStreamChunk>().Where(c => c.Kind == ChunkKind.Content).Select(c => c.Text),
+                Is.EqualTo(new[] { "Reading the file." }));
+        }
+
+        [Test]
+        public void ExtractDeltas_ToolCallOnly_StillReturnsNoContent()
+        {
+            var line = "data: {\"choices\":[{\"delta\":{\"content\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"read_file_lines\"}}]}}]}";
+
+            var results = _parser.ExtractDeltas(line);
+
+            Assert.That(results.Count, Is.EqualTo(1));
+            Assert.That(results[0], Is.InstanceOf<ToolCallMetadataChunk>());
+        }
+
         [Test]
         public void ExtractDeltas_HandlesOpenAiToolCall()
         {

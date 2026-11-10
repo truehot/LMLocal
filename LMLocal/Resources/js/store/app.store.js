@@ -13,6 +13,7 @@ class AppStoreClass extends BaseStoreClass {
             tokenSpeed: 0,
             cachedTokens: 0,
             error: null,
+            stoppedByUser: false,
             accumulatedText: "",
             accumulatedThoughtText: "",
             roundNumber: 0,

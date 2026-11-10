@@ -70,8 +70,7 @@ namespace LMLocal
 #endif
 
             // Initialize dependency injection container early so other components can resolve services.
-            await ServiceConfiguration.InitializeAsync().ConfigureAwait(false);
-            await JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+            await ServiceConfiguration.InitializeAsync();
 
             // Package-owned UI service (static singleton, mirrors ShowMainWindow.Instance).
             ChatInjectionService.Initialize(this);
@@ -84,8 +83,7 @@ namespace LMLocal
 
             // Ask before Visual Studio is closed while an AI request is still running.
             var closeGuard = ServiceConfiguration.GetService<ICloseWhileGeneratingGuard>();
-            closeGuard.Initialize();
-            DisposalToken.Register(() => closeGuard?.Dispose());
+            closeGuard.Initialize(); // owned and disposed by the DI container in ServiceConfiguration.Cleanup()
 
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
