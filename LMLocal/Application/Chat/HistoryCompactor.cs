@@ -117,14 +117,12 @@ namespace LMLocal.Application.Chat
             get { return ForcedSummarySystemPrompt; }
         }
 
-
         private readonly IChatHistoryManager _history;
         private readonly IOpenApiAdapter _openApiAdapter;
         private readonly ISettingsManager _settingsManager;
         private readonly IActiveModelContext _activeModelContext;
         private readonly IContextCalibration _calibration;
         private readonly IModelsConfigManager _modelsConfigManager;
-
 
         public HistoryCompactor(
             IChatHistoryManager history,
@@ -435,7 +433,8 @@ namespace LMLocal.Application.Chat
 
             return new ChatMessage(message.Role, combined, message.ToolCallId)
             {
-                ToolCalls = message.ToolCalls
+                ToolCalls = message.ToolCalls,
+                ModelId = message.ModelId
             };
         }
 

@@ -44,6 +44,18 @@ class BridgeClient {
         return host[method](...args);
     }
 
+    _getFileLinksHost() {
+        return window.__fileLinksOverride ?? window.chrome?.webview?.hostObjects?.fileLinks;
+    }
+
+    async _callFileLinks(method, ...args) {
+        const host = this._getFileLinksHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`FileLinks method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
     async setActiveModelAsync(modelId, contextLength) {
         return await this._callModels("SetActiveModelAsync", modelId, contextLength);
     }
@@ -299,6 +311,11 @@ class BridgeClient {
 
     async openAllFilesAsync(filePaths) {
         return await this._callHost("OpenAllFilesAsync", JSON.stringify(filePaths));
+    }
+
+    async openFileLinkAsync(link) {
+        const response = await this._callFileLinks("OpenAsync", JSON.stringify({ link }));
+        return response ? JSON.parse(response) : null;
     }
 
     async discardFileAsync(filePath) {

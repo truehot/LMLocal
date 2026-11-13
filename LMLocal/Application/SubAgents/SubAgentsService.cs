@@ -14,7 +14,6 @@ using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.SubAgents;
 
 namespace LMLocal.Application.SubAgents
 {
@@ -29,33 +28,11 @@ namespace LMLocal.Application.SubAgents
 
         // Told to the main model when a run hits maxRounds or the timeout: the limit itself is not actionable, the next step is.
         private const string LimitRetryHint = "Split the task into smaller pieces or narrow it and retry.";
-        private const int MaxDuplicateToolRounds = 2;
 
         /// <summary>
         /// Enables loop recovery: on an identical repeated tool call the run closes the turn and continues as a new user turn on the same history instead of failing.
         /// </summary>
         internal const bool DefaultLoopRecoveryEnabled = true;
-
-        /// <summary>
-        /// How many times a single run may recover from a repeated tool call before it fails.
-        /// </summary>
-        private const int LoopRecoveryMaxAttempts = 2;
-
-        /// <summary>
-        /// User-turn instruction injected after a repeated tool call.
-        /// </summary>
-
-        internal const string LoopRecoveryNudge = @"[AUTOMATED GUARD: DUPLICATE TOOL CALL BLOCKED]
-Your last call repeated an earlier one; its result is above.
-Answer the task now, or make one call with different arguments.
-Answer directly.";
-
-
-
-        /// <summary>
-        /// How many tool-call attempts are carried into a failure record (see <see cref="SubAgentRecentCall"/>).
-        /// </summary>
-        private const int MaxRecentCalls = 3;
 
         private readonly ISettingsManager _settingsManager;
         private readonly IFileSystem _fileSystem;
@@ -64,7 +41,6 @@ Answer directly.";
         private readonly IToolQueueProvider _queueProvider;
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly IChatPersistenceFactory _chatPersistenceFactory;
-        private readonly ISubAgentFailureLogger _failureLogger;
         private readonly string _logsFolder;
         private readonly bool _loopRecoveryEnabled;
 
@@ -76,7 +52,6 @@ Answer directly.";
             IToolQueueProvider queueProvider,
             IToolCallLoopDetector loopDetector,
             IChatPersistenceFactory chatPersistenceFactory,
-            ISubAgentFailureLogger failureLogger,
             bool loopRecoveryEnabled = DefaultLoopRecoveryEnabled)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
@@ -86,7 +61,6 @@ Answer directly.";
             _queueProvider = queueProvider ?? throw new ArgumentNullException(nameof(queueProvider));
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _chatPersistenceFactory = chatPersistenceFactory ?? throw new ArgumentNullException(nameof(chatPersistenceFactory));
-            _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
             _loopRecoveryEnabled = loopRecoveryEnabled;
 
             string appDataDir = Path.Combine(
@@ -117,48 +91,36 @@ Answer directly.";
             int? lastRound = null;
             Guid? chatSessionId = null;
 
-            var recentCalls = new List<SubAgentRecentCall>(MaxRecentCalls);
-
-            SubAgentRecentCall TrackCall(ToolCallRecord call, int round, int? step)
+            SubAgentsRunResponse FailRun(SubAgentsRunResponse failed, SubAgentRunRequest failedRequest, string error, int? round)
             {
-                var entry = new SubAgentRecentCall
-                {
-                    ToolName = call.FunctionName,
-                    CallId = call.CallId,
-                    Round = round,
-                    Step = step,
-                    ArgumentsJson = call.ArgumentsJson
-                };
+                InternalLogger.Warn(
+                    $"SubAgentsService: run '{failed.RunId}' of '{failedRequest?.AgentName}' failed"
+                    + (round.HasValue ? $" at round {round.Value + 1}" : string.Empty)
+                    + (chatSessionId.HasValue ? $" (session {chatSessionId.Value})" : string.Empty)
+                    + $": {error}");
 
-                recentCalls.Add(entry);
-                if (recentCalls.Count > MaxRecentCalls)
-                    recentCalls.RemoveAt(0);
-
-                return entry;
+                return Fail(failed, error);
             }
 
             try
             {
                 if (request == null)
                 {
-                    return await FailLoggedAsync(
-                        response, null, "SubAgent run request is required.",
-                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
+                    return FailRun(
+                        response, null, "SubAgent run request is required.", null);
                 }
 
                 if (string.IsNullOrWhiteSpace(request.Prompt))
                 {
-                    return await FailLoggedAsync(
-                        response, request, "Prompt is required.",
-                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
+                    return FailRun(
+                        response, request, "Prompt is required.", null);
                 }
 
                 var modelId = request.Model?.Trim();
                 if (string.IsNullOrWhiteSpace(modelId))
                 {
-                    return await FailLoggedAsync(
-                        response, request, "Model is required.",
-                        null, null, recentCalls: recentCalls).ConfigureAwait(false);
+                    return FailRun(
+                        response, request, "Model is required.", null);
                 }
 
                 response.Model = modelId;
@@ -183,19 +145,14 @@ Answer directly.";
                 await persistence.MarkNewSessionAsync(cancellationToken).ConfigureAwait(false);
                 chatSessionId = persistence.CurrentSessionId;
 
-                var usedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                IReadOnlyList<ToolCallRecord> previousToolCalls = null;
-                int consecutiveDuplicateRounds = 0;
                 List<ToolResultMessage> toolResultsForRound = null;
-
 
                 bool isToolRound = false;
                 string promptForRound = request.Prompt;
-                int reevaluationAttempts = 0;
-                int stepCounter = 0;
 
-                var ledger = new ReadLedger();
-                var searchLedger = new SearchLedger();
+                var recovery = new SubAgentRecoveryPolicy(_loopDetector, _loopRecoveryEnabled, maxRounds);
+                var evidence = new SubAgentRunEvidence();
+                var toolExecutor = new SubAgentToolRoundExecutor(_toolExecutionManagerResolver, toolQueue, request.Progress, evidence);
 
                 using (var overallCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
@@ -233,152 +190,74 @@ Answer directly.";
 
                         if (cancellationToken.IsCancellationRequested)
                         {
-                            return await FailLoggedAsync(
-                                response, request, DescribeCancellation(request, round, stepCounter),
-                                round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                            return FailRun(
+                                response, request, DescribeCancellation(request, round, toolExecutor.Steps), round);
                         }
 
                         if (overallCts.Token.IsCancellationRequested)
                         {
-                            return await FailLoggedAsync(
-                                response, request, DescribeTimeout(request, round),
-                                round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                            return FailRun(
+                                response, request, DescribeTimeout(request, round), round);
                         }
 
                         switch (roundResult.Outcome)
                         {
                             case StreamRoundOutcome.Error:
-                                return await FailLoggedAsync(
-                                    response, request, "Provider stream error: " + streamResult.ErrorMessage,
-                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                                return FailRun(
+                                    response, request, "Provider stream error: " + streamResult.ErrorMessage, round);
 
                             case StreamRoundOutcome.Cancelled:
-                                return await FailLoggedAsync(
-                                    response, request, DescribeUnexpectedCancel(request, round),
-                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                                return FailRun(
+                                    response, request, DescribeUnexpectedCancel(request, round), round);
 
                             case StreamRoundOutcome.Incomplete:
-                                return await FailLoggedAsync(
-                                    response, request, streamResult.ErrorMessage,
-                                    round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                                return FailRun(
+                                    response, request, streamResult.ErrorMessage, round);
 
                             case StreamRoundOutcome.ToolCalls:
-                                if (previousToolCalls != null && _loopDetector.AreSameToolCalls(streamResult.ToolCalls, previousToolCalls))
+                                var decision = recovery.Evaluate(streamResult, round);
+                                if (decision.Action == RecoveryAction.Fail)
                                 {
-                                    consecutiveDuplicateRounds++;
-                                    if (consecutiveDuplicateRounds >= MaxDuplicateToolRounds)
-                                    {
-                                        if (CanRecoverFromLoop(reevaluationAttempts, round, maxRounds))
-                                        {
-                                            ApplyLoopRecovery(history);
-
-                                            await _failureLogger
-                                                .LogFromRequestAsync(
-                                                    request,
-                                                    "Recovered",
-                                                    $"SubAgent recovered from a repeated tool call loop (attempt {reevaluationAttempts + 1} of {LoopRecoveryMaxAttempts}).",
-                                                    response.RunId,
-                                                    round,
-                                                    chatSessionId,
-                                                    cancellationToken: CancellationToken.None)
-                                                .ConfigureAwait(false);
-
-                                            reevaluationAttempts++;
-                                            previousToolCalls = null;
-                                            consecutiveDuplicateRounds = 0;
-                                            toolResultsForRound = null;
-
-                                            isToolRound = false;
-                                            promptForRound = LoopRecoveryNudge;
-                                            continue;
-                                        }
-
-                                        return await FailLoggedAsync(
-                                            response, request, "SubAgent detected a repeated tool call loop and stopped.",
-                                            round, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
-                                    }
-                                }
-                                else
-                                {
-                                    consecutiveDuplicateRounds = 0;
-                                }
-                                previousToolCalls = streamResult.ToolCalls;
-
-                                var toolResults = new List<ToolResultMessage>(streamResult.ToolCalls.Count);
-                                foreach (var toolCall in streamResult.ToolCalls)
-                                {
-                                    overallCts.Token.ThrowIfCancellationRequested();
-
-                                    if (!toolQueue.Allows(toolCall.FunctionName))
-                                    {
-                                        TrackCall(toolCall, round, null).Error =
-                                            $"Tool '{toolCall.FunctionName}' is not allowed in SubAgent context.";
-
-                                        toolResults.Add(new ToolResultMessage
-                                        {
-                                            ToolCallId = toolCall.CallId,
-                                            ToolName = toolCall.FunctionName,
-                                            Result = $"Error: tool '{toolCall.FunctionName}' is not allowed in SubAgent context."
-                                        });
-                                        continue;
-                                    }
-
-                                    usedTools.Add(toolCall.FunctionName);
-
-                                    request.Progress?.Report(new ToolActivityEvent
-                                    {
-                                        ToolName = toolCall.FunctionName,
-                                        Step = ++stepCounter
-                                    });
-
-                                    var trackedCall = TrackCall(toolCall, round, stepCounter);
-
-                                    var execResult = await _toolExecutionManagerResolver()
-                                        .ExecuteToolAsync(toolCall, overallCts.Token, toolQueue)
-                                        .ConfigureAwait(false);
-
-                                    object resultValue = string.IsNullOrEmpty(execResult.Error) ? execResult.Result : execResult.Error;
-
-                                    trackedCall.ResultText = SubAgentFailureLogger.StringifyResult(execResult.Result);
-                                    trackedCall.Error = toolCall.IsInvalid && string.IsNullOrEmpty(execResult.Error)
-                                        ? "Tool-call arguments were not valid JSON and were sanitized to '{}'."
-                                        : execResult.Error;
-
-                                    if (string.IsNullOrEmpty(execResult.Error)
-                                        && string.Equals(toolCall.FunctionName, ReadResultRecorder.ReadFileLinesToolName, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        ReadResultRecorder.TryRecord(ledger, execResult.Result);
-                                    }
-                                    else if (string.IsNullOrEmpty(execResult.Error)
-                                        && string.Equals(toolCall.FunctionName, SearchResultRecorder.SearchFileContentToolName, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        SearchResultRecorder.TryRecord(searchLedger, execResult.Result);
-                                    }
-
-                                    toolResults.Add(new ToolResultMessage
-                                    {
-                                        ToolCallId = toolCall.CallId,
-                                        ToolName = toolCall.FunctionName,
-                                        Result = resultValue,
-                                        Error = execResult.Error
-                                    });
+                                    return FailRun(response, request, decision.Error, round);
                                 }
 
-                                toolResultsForRound = toolResults;
+                                if (decision.Action == RecoveryAction.Recover)
+                                {
+                                    CloseTurnForRecovery(history);
+                                    AddRecovery(response, request, round, decision.Note);
+
+                                    toolResultsForRound = null;
+                                    isToolRound = false;
+                                    promptForRound = decision.Nudge;
+                                    continue;
+                                }
+
+                                toolResultsForRound = await toolExecutor.ExecuteAsync(streamResult.ToolCalls, overallCts.Token).ConfigureAwait(false);
                                 continue;
 
                             case StreamRoundOutcome.Completed:
+                                var expanded = await evidence.ExpandAsync(streamResult.ContentResponse, _fileSystem, overallCts.Token).ConfigureAwait(false);
+
+                                var answerDecision = recovery.EvaluateAnswer(expanded?.UnresolvedRefs, round);
+                                if (answerDecision.Action == RecoveryAction.Recover)
+                                {
+                                    AddRecovery(response, request, round, answerDecision.Note);
+
+                                    toolResultsForRound = null;
+                                    isToolRound = false;
+                                    promptForRound = answerDecision.Nudge;
+                                    continue;
+                                }
+
                                 response.Content = streamResult.ContentResponse;
                                 response.Success = true;
                                 response.Rounds = round + 1;
-                                response.ToolsUsed = new List<string>(usedTools);
+                                response.ToolsUsed = new List<string>(toolExecutor.UsedTools);
                                 CopyUsage(streamResult, response);
                                 response.TokensPerSecond = streamResult.TokensPerSecond;
 
-                                if ((ledger.Count > 0 || searchLedger.Count > 0) && !string.IsNullOrEmpty(response.Content))
+                                if (expanded != null)
                                 {
-                                    var expander = new ReadRefExpander(ledger, _fileSystem, searchLedger);
-                                    var expanded = await expander.ExpandAsync(response.Content, overallCts.Token).ConfigureAwait(false);
                                     response.Content = expanded.Content;
                                     response.ExpandedRefCount = expanded.ExpandedRefCount;
                                     response.UnresolvedRefCount = expanded.UnresolvedRefCount;
@@ -388,43 +267,37 @@ Answer directly.";
                         }
                     }
 
-                    return await FailLoggedAsync(
-                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {LimitRetryHint}",
-                        lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                    return FailRun(
+                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {LimitRetryHint}", lastRound);
                 }
             }
             catch (OperationCanceledException)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return await FailLoggedAsync(
-                        response, request, DescribeCancellation(request, lastRound, null),
-                        lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                    return FailRun(
+                        response, request, DescribeCancellation(request, lastRound, null), lastRound);
                 }
 
-                return await FailLoggedAsync(
-                    response, request, DescribeTimeout(request, lastRound),
-                    lastRound, chatSessionId, recentCalls: recentCalls).ConfigureAwait(false);
+                return FailRun(
+                    response, request, DescribeTimeout(request, lastRound), lastRound);
             }
             catch (ApiException ex)
             {
                 InternalLogger.Warn($"SubAgentsService: provider API error: {ex.Message}");
-                return await FailLoggedAsync(
-                    response, request, "Provider API error: " + ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
+                return FailRun(
+                    response, request, "Provider API error: " + ExceptionFormatter.Format(ex), lastRound);
             }
             catch (InvalidOperationException ex)
             {
-                return await FailLoggedAsync(
-                    response, request, ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
+                return FailRun(
+                    response, request, ExceptionFormatter.Format(ex), lastRound);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"SubAgentsService: unexpected error during run '{runId}'", ex);
-                return await FailLoggedAsync(
-                    response, request, ExceptionFormatter.Format(ex),
-                    lastRound, chatSessionId, ex, recentCalls).ConfigureAwait(false);
+                return FailRun(
+                    response, request, ExceptionFormatter.Format(ex), lastRound);
             }
             finally
             {
@@ -444,17 +317,20 @@ Answer directly.";
         }
 
         /// <summary>
-        /// Decides whether a repeated tool call may be recovered from instead of failing the run.
+        /// Adds the recovery note to the response and the internal log.
         /// </summary>
-        private bool CanRecoverFromLoop(int reevaluationAttempts, int round, int maxRounds)
-            => _loopRecoveryEnabled
-            && reevaluationAttempts < LoopRecoveryMaxAttempts
-            && round + 1 < maxRounds;
+        private static void AddRecovery(SubAgentsRunResponse response, SubAgentRunRequest request, int round, string note)
+        {
+            if (response.Recoveries == null)
+                response.Recoveries = new List<string>();
+            response.Recoveries.Add(note);
+            InternalLogger.Info($"SubAgentsService: run '{response.RunId}' of '{request.AgentName}' at round {round + 1}: {note}");
+        }
 
         /// <summary>
         /// Closes the current tool turn on the SAME history, so everything already collected stays in context.
         /// </summary>
-        private void ApplyLoopRecovery(IChatHistoryManager history)
+        private void CloseTurnForRecovery(IChatHistoryManager history)
         {
             history.DiscardPendingAssistant();
             history.AddAssistantMessage(_settingsManager.AssistantPlaceholder, null);
@@ -495,36 +371,6 @@ Answer directly.";
         {
             response.Success = false;
             response.Error = error;
-            return response;
-        }
-
-        /// <summary>
-        /// Marks the run as failed AND writes a replayable record, including the last tool-call attempts made before the failure (<paramref name="recentCalls"/>).
-        /// </summary>
-        private async Task<SubAgentsRunResponse> FailLoggedAsync(
-            SubAgentsRunResponse response,
-            SubAgentRunRequest request,
-            string error,
-            int? round,
-            Guid? chatSessionId,
-            Exception exception = null,
-            IReadOnlyList<SubAgentRecentCall> recentCalls = null)
-        {
-            Fail(response, error);
-
-            await _failureLogger
-                .LogFromRequestAsync(
-                    request,
-                    "Final",
-                    error,
-                    response.RunId,
-                    round,
-                    chatSessionId,
-                    exception,
-                    recentCalls,
-                    CancellationToken.None)
-                .ConfigureAwait(false);
-
             return response;
         }
     }

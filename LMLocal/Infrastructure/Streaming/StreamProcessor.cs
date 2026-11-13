@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -9,33 +7,30 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Streaming;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-namespace LMLocal.Application.ChatSessionStream
+namespace LMLocal.Infrastructure.Streaming
 {
     /// <summary>
-    /// Parses an SSE response stream.
+    /// Default <see cref="IStreamProcessor"/>: reads the SSE stream line by line and collects content, reasoning and tool calls.
     /// </summary>
-    internal interface IStreamProcessor
-    {
-        Task<StreamCompletionResult> ProcessStreamAsync(Stream stream, CancellationToken cancellationToken, Func<TextStreamChunk, TokenGenerationStats, Task> onChunk, int batchIntervalMs = 50);
-    }
-
     internal class StreamProcessor : IStreamProcessor
     {
+        /// <summary>Characters of the rejected arguments written to the log.</summary>
+        private const int AbortLogPreviewLength = 200;
+
         private readonly ITokenSpeedCalculator _tokenSpeedCalculator;
         private readonly ISettingsManager _settingsManager;
+        private readonly IToolCallArgumentsGuard _argumentsGuard;
 
-        private readonly Dictionary<int, (string CallId, string FunctionName, string ExtraContentJson)> _toolCallMetadata = new Dictionary<int, (string CallId, string FunctionName, string ExtraContentJson)>();
-
+        /// <param name="argumentsGuard">Optional; when it rejects the arguments of a tool call, reading stops and the call is marked invalid.</param>
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
-            ISettingsManager settingsManager)
+            ISettingsManager settingsManager,
+            IToolCallArgumentsGuard argumentsGuard = null)
         {
             _tokenSpeedCalculator = tokenSpeedCalculator ?? throw new ArgumentNullException(nameof(tokenSpeedCalculator));
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
+            _argumentsGuard = argumentsGuard;
         }
 
         public async Task<StreamCompletionResult> ProcessStreamAsync(
@@ -46,12 +41,10 @@ namespace LMLocal.Application.ChatSessionStream
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            _toolCallMetadata.Clear();
-
             var fullResponse = new StringBuilder();
             var contentBuffer = new StringBuilder();
             var reasoningBuffer = new StringBuilder();
-            var toolCallBuffers = new Dictionary<int, StringBuilder>();
+            var toolCalls = new ToolCallAccumulator(_argumentsGuard);
             var tokenEstimator = new StreamedTokenEstimator();
             var parser = new LlmSseParser();
             var syncLock = new object();
@@ -61,7 +54,6 @@ namespace LMLocal.Application.ChatSessionStream
                 TokenUsage = new TokenUsageMetadata()
             };
 
-            int deltaCount = 0;
             bool isReading = true;
 
             try
@@ -139,6 +131,7 @@ namespace LMLocal.Application.ChatSessionStream
                                     continue;
 
                                 var chunks = parser.ExtractDeltas(line);
+                                bool toolCallAborted = false;
 
                                 lock (syncLock)
                                 {
@@ -156,32 +149,23 @@ namespace LMLocal.Application.ChatSessionStream
                                                     fullResponse.Append(textChunk.Text);
                                                     break;
                                                 case ChunkKind.ToolCallArguments:
-
-                                                    int bufferIndex = textChunk.ToolCallIndex ?? 0;
-                                                    if (!toolCallBuffers.ContainsKey(bufferIndex))
-                                                        toolCallBuffers[bufferIndex] = new StringBuilder();
-                                                    toolCallBuffers[bufferIndex].Append(textChunk.Text);
+                                                    toolCallAborted = !toolCalls.AppendArguments(textChunk.ToolCallIndex ?? 0, textChunk.Text);
                                                     break;
                                             }
 
-                                            tokenEstimator.Add(textChunk.Text);
+                                            double estimatedTokens = tokenEstimator.Add(textChunk.Text);
 
-                                            deltaCount++;
-                                            _tokenSpeedCalculator.Update(deltaCount);
+                                            _tokenSpeedCalculator.Add(textChunk.Text.Length, estimatedTokens);
 
                                         }
                                         else if (chunk is ToolCallMetadataChunk metadata)
                                         {
-                                            _toolCallMetadata[metadata.Index] = (metadata.CallId, metadata.FunctionName, metadata.ExtraContentJson);
-
-                                            if (!toolCallBuffers.ContainsKey(metadata.Index))
-                                                toolCallBuffers[metadata.Index] = new StringBuilder();
+                                            toolCallAborted = !toolCalls.SetMetadata(metadata.Index, metadata.CallId, metadata.FunctionName, metadata.ExtraContentJson, metadata.InitialArguments);
 
                                             if (!string.IsNullOrEmpty(metadata.InitialArguments))
                                             {
-                                                toolCallBuffers[metadata.Index].Append(metadata.InitialArguments);
-
-                                                tokenEstimator.Add(metadata.InitialArguments);
+                                                double argumentsEstimate = tokenEstimator.Add(metadata.InitialArguments);
+                                                _tokenSpeedCalculator.Add(metadata.InitialArguments.Length, argumentsEstimate);
                                             }
                                         }
                                         else if (chunk is ErrorStreamChunk errChunk)
@@ -190,6 +174,7 @@ namespace LMLocal.Application.ChatSessionStream
                                             result.ErrorType = errChunk.ErrorType;
                                             result.ErrorCode = errChunk.ErrorCode;
                                             result.FinishReason = "error";
+                                            result.StopReason = StreamStopReason.Error;
                                             isReading = false;
                                         }
 
@@ -218,7 +203,18 @@ namespace LMLocal.Application.ChatSessionStream
                                             if (!string.IsNullOrEmpty(completion.SystemFingerprint))
                                                 result.SystemFingerprint = completion.SystemFingerprint;
                                         }
+
+                                        if (toolCallAborted)
+                                            break;
                                     }
+                                }
+
+                                if (toolCallAborted)
+                                {
+                                    int index = toolCalls.AbortedIndex ?? 0;
+                                    InternalLogger.Warn($"[StreamProcessor] Tool call '{toolCalls.GetFunctionName(index)}' (index {index}) aborted: {toolCalls.AbortReason}. Arguments: {toolCalls.GetArgumentsPreview(index, AbortLogPreviewLength)}");
+                                    result.StopReason = StreamStopReason.ToolCallAborted;
+                                    break;
                                 }
                             }
                         }
@@ -239,119 +235,42 @@ namespace LMLocal.Application.ChatSessionStream
             catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
             {
                 InternalLogger.Info($"Stream canceled by user: {ex.Message}");
-                result.WasCancelled = true;
+                result.StopReason = StreamStopReason.Cancelled;
             }
             catch (ObjectDisposedException ex) when (cancellationToken.IsCancellationRequested)
             {
                 InternalLogger.Info($"Stream closed by user cancellation: {ex.Message}");
-                result.WasCancelled = true;
+                result.StopReason = StreamStopReason.Cancelled;
             }
             catch (IOException ex) when (ex.InnerException is SocketException socketEx && socketEx.SocketErrorCode == SocketError.TimedOut)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     InternalLogger.Info("Stream canceled by user (timeout exception after cancellation)");
-                    result.WasCancelled = true;
+                    result.StopReason = StreamStopReason.Cancelled;
                 }
                 else
                 {
                     InternalLogger.Info($"Stream read timeout: {ex.Message}");
                     result.ErrorMessage = "Stream read timeout";
-                    result.WasCancelled = false;
+                    result.StopReason = StreamStopReason.Error;
                 }
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"Error in StreamProcessor: {ex.Message}", ex);
-                            result.ErrorMessage = ExceptionFormatter.Format(ex);
-                            result.WasCancelled = cancellationToken.IsCancellationRequested;
-                        }
-                        finally
-                        {
+                result.ErrorMessage = ExceptionFormatter.Format(ex);
+                result.StopReason = cancellationToken.IsCancellationRequested ? StreamStopReason.Cancelled : StreamStopReason.Error;
+            }
+            finally
+            {
                 stream?.Close();
             }
 
             result.ContentResponse = fullResponse.ToString();
-
-            var toolCalls = new List<ToolCallRecord>();
-            try
-            {
-                foreach (var bufferEntry in toolCallBuffers.OrderBy(kvp => kvp.Key))
-                {
-                    int index = bufferEntry.Key;
-                    string argumentsJson = bufferEntry.Value.ToString();
-
-                    if (_toolCallMetadata.TryGetValue(index, out var metadata))
-                    {
-                        bool isValid = IsValidJson(argumentsJson);
-
-                        if (!isValid)
-                        {
-                            InternalLogger.Warn($"[StreamProcessor] Invalid tool arguments for '{metadata.FunctionName}' (id: {metadata.CallId})");
-                        }
-
-                        toolCalls.Add(new ToolCallRecord
-                        {
-                            Index = index,
-                            CallId = metadata.CallId,
-                            FunctionName = metadata.FunctionName,
-                            ArgumentsJson = isValid ? argumentsJson : "{}",
-                            IsInvalid = !isValid,
-                            ExtraContentJson = metadata.ExtraContentJson
-                        });
-                    }
-                    else
-                    {
-                        InternalLogger.Warn($"Missing metadata for tool call at index {index}. Arguments: {argumentsJson}");
-                    }
-                }
-            }
-            finally
-            {
-                foreach (var buffer in toolCallBuffers.Values)
-                {
-                    buffer?.Clear();
-                }
-                toolCallBuffers.Clear();
-                _toolCallMetadata.Clear();
-            }
-
-            if (toolCalls.Count > 0)
-            {
-                result.ToolCalls = toolCalls.AsReadOnly();
-            }
-            else
-            {
-                result.ToolCalls = new List<ToolCallRecord>().AsReadOnly();
-            }
+            result.ToolCalls = toolCalls.Build();
 
             return result;
         }
-
-        /// <summary>
-        /// Validates that accumulated tool arguments are a JSON object. 
-        /// </summary>
-        private static bool IsValidJson(string argumentsJson)
-        {
-            if (string.IsNullOrWhiteSpace(argumentsJson))
-                return true;
-
-            try
-            {
-                JObject.Parse(argumentsJson);
-                return true;
-            }
-            catch (JsonException)
-            {
-                return false;
-            }
-        }
     }
 }
-
-
-
-
-
-
-

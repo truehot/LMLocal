@@ -661,7 +661,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         // The extension filter does not apply to a file and is reported in 'note'.
                         var withExt = await SearchAsync(client, TermA, file, cts.Token, ".js");
                         CollectionAssert.AreEqual(new[] { file }, FilePaths(withExt), "extension_filter must not drop the file: " + withExt);
-                        StringAssert.Contains(withExt["note"]?.Value<string>() ?? "", "extension_filter was ignored");
+                        Assert.Contains("extension_filter was ignored", withExt["note"]?.Value<string>() ?? "");
                     }
                 }
                 finally
@@ -686,7 +686,7 @@ namespace LMLocal.Tests.E2E.VSIX
 
                         // Docs\ is not part of the solution: without path it is never searched.
                         var all = FilePaths(await SearchAsync(client, TermA, "", cts.Token));
-                        Assert.IsFalse(all.Any(p => p.StartsWith(@"Docs\", StringComparison.OrdinalIgnoreCase)),
+                        Assert.DoesNotContain(p => p.StartsWith(@"Docs\", StringComparison.OrdinalIgnoreCase), all,
                             "a solution search must not include Docs\\: " + string.Join(", ", all));
 
                         var docs = FilePaths(await SearchAsync(client, TermA, "Docs", cts.Token));
@@ -723,13 +723,13 @@ namespace LMLocal.Tests.E2E.VSIX
                         {
                             var obj = await SearchRawAsync(client, TermA, path, cts.Token);
                             Assert.IsFalse((bool)obj["success"], $"path '{path}' should fail: {obj}");
-                            StringAssert.Contains(obj["error_message"].Value<string>(), "Path not found");
+                            Assert.Contains("Path not found", obj["error_message"].Value<string>());
                         }
 
                         string outside = Path.GetTempPath();
                         var outsideObj = await SearchRawAsync(client, TermA, outside, cts.Token);
                         Assert.IsFalse((bool)outsideObj["success"], "a folder outside the solution must be rejected: " + outsideObj);
-                        StringAssert.Contains(outsideObj["error_message"].Value<string>(), "outside the solution directory");
+                        Assert.Contains("outside the solution directory", outsideObj["error_message"].Value<string>());
                     }
                 }
                 finally

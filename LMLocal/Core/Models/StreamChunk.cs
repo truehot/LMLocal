@@ -11,7 +11,7 @@ namespace LMLocal.Core.Models
         Content,
 
         /// <summary>
-        /// Reasoning or internal monologue (reasoning_content field).
+        /// Reasoning or internal monologue (reasoning_content or reasoning field).
         /// </summary>
         Reasoning,
 

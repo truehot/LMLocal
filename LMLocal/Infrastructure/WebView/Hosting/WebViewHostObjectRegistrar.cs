@@ -5,7 +5,7 @@ using LMLocal.Infrastructure.WebView.Controllers;
 namespace LMLocal.Infrastructure.WebView.Hosting
 {
     /// <summary>
-    /// Registers the fixed set of host objects (bridge + 11 controllers) into the WebView2 page.
+    /// Registers the fixed set of host objects (bridge + 13 controllers) into the WebView2 page.
     /// </summary>
     internal sealed class WebViewHostObjectRegistrar : IWebViewHostObjectRegistrar
     {
@@ -22,6 +22,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
         public const string ChatSession = "chatSession";
         public const string SubAgents = "subAgents";
         public const string RecentModels = "recentModels";
+        public const string FileLinks = "fileLinks";
 
         private readonly IWebViewBridgeFactory _bridgeFactory;
         private readonly IWebViewHostController _hostController;
@@ -36,6 +37,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
         private readonly IChatSessionController _chatSessionController;
         private readonly ISubAgentsController _subAgentsController;
         private readonly IRecentModelsController _recentModelsController;
+        private readonly IFileLinksController _fileLinksController;
 
         public WebViewHostObjectRegistrar(
             IWebViewBridgeFactory bridgeFactory,
@@ -50,7 +52,8 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             IAutocompletionsController autocompletionsController,
             IChatSessionController chatSessionController,
             ISubAgentsController subAgentsController,
-            IRecentModelsController recentModelsController)
+            IRecentModelsController recentModelsController,
+            IFileLinksController fileLinksController)
         {
             _bridgeFactory = bridgeFactory ?? throw new ArgumentNullException(nameof(bridgeFactory));
             _hostController = hostController ?? throw new ArgumentNullException(nameof(hostController));
@@ -65,6 +68,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             _chatSessionController = chatSessionController ?? throw new ArgumentNullException(nameof(chatSessionController));
             _subAgentsController = subAgentsController ?? throw new ArgumentNullException(nameof(subAgentsController));
             _recentModelsController = recentModelsController ?? throw new ArgumentNullException(nameof(recentModelsController));
+            _fileLinksController = fileLinksController ?? throw new ArgumentNullException(nameof(fileLinksController));
         }
 
         public void Register(IWebViewHostObjectSink sink, Func<Task> focusAction)
@@ -91,6 +95,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             sink.AddHostObject(ChatSession, _chatSessionController);
             sink.AddHostObject(SubAgents, _subAgentsController);
             sink.AddHostObject(RecentModels, _recentModelsController);
+            sink.AddHostObject(FileLinks, _fileLinksController);
         }
     }
 }

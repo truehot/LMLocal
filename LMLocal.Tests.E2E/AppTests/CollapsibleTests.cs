@@ -224,12 +224,9 @@ public class CollapsibleTests : AppTestBase
         await Expect(Page.Locator("[data-element=\"collapsible-block\"]"))
             .ToBeVisibleAsync(new() { Timeout = 5000 });
 
-        // The header title should reflect multi-tool execution
+        // The header title should reflect multi-tool execution. It is set when the round
+        // transition arrives, so wait for it instead of reading whatever the title holds now.
         var title = Page.Locator(".collapsible-title");
-        await Expect(title).ToBeVisibleAsync(new() { Timeout = 2000 });
-
-        var titleText = await title.TextContentAsync();
-        Assert.That(titleText, Does.Contain("Multi-Tool"),
-            "Header should indicate multi-tool execution when toolCount > 1");
+        await Expect(title).ToContainTextAsync("Multi-Tool", new() { Timeout = 5000 });
     }
 }

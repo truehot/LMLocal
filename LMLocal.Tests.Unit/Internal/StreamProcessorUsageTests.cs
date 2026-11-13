@@ -1,9 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Streaming;
@@ -16,7 +16,9 @@ namespace LMLocal.Tests.Unit
     {
         private class MockTokenSpeedCalculator : ITokenSpeedCalculator
         {
-            public void Update(int totalTokens) { }
+            public List<(int Chars, double Tokens)> Added { get; } = new List<(int, double)>();
+
+            public void Add(int chars, double estimatedTokens) => Added.Add((chars, estimatedTokens));
             public double GetTokensPerSecond() => 0.0;
             public double GetAverageTokensPerSecond() => 42.0;
         }
@@ -94,20 +96,45 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task ProcessStreamAsync_ComputesAverageTokensPerSecond()
+        public async Task ProcessStreamAsync_ReportsAverageSpeed_IgnoringUsageCompletionTokens()
         {
             var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
 
             var sb = new StringBuilder();
             sb.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}");
-            sb.AppendLine("data: {\"choices\":[],\"usage\":{\"total_tokens\":10}}");
+            sb.AppendLine("data: {\"choices\":[],\"usage\":{\"total_tokens\":110,\"completion_tokens\":100}}");
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())))
             {
                 var result = await processor.ProcessStreamAsync(stream, CancellationToken.None,
                     async (chunk, stats) => { await Task.CompletedTask; });
 
+                // The round speed is the calculator's average of readings; provider usage does not override it.
                 Assert.That(result.TokensPerSecond, Is.EqualTo(42.0));
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_FeedsEveryDeltaToSpeedCalculator()
+        {
+            var speed = new MockTokenSpeedCalculator();
+            var processor = new StreamProcessor(speed, new MockSettingsManager());
+
+            var sb = new StringBuilder();
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}");
+            sb.AppendLine("data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}]}}]}");
+
+            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())))
+            {
+                await processor.ProcessStreamAsync(stream, CancellationToken.None,
+                    async (chunk, stats) => { await Task.CompletedTask; });
+
+                // Same chunks as the token counter: content and the initial tool-call arguments are both generation.
+                Assert.That(speed.Added.Count, Is.EqualTo(2));
+                Assert.That(speed.Added[0].Chars, Is.EqualTo(5));
+                Assert.That(speed.Added[0].Tokens, Is.EqualTo(1.25).Within(0.0001));
+                Assert.That(speed.Added[1].Chars, Is.EqualTo(16));
+                Assert.That(speed.Added[1].Tokens, Is.EqualTo(4.0).Within(0.0001));
             }
         }
     }

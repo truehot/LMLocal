@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using LMLocal.Application.Chat;
@@ -137,11 +137,14 @@ namespace LMLocal.Tests.Unit
         [Test]
         public void Prune_CompressesWriteArgumentsInEveryRound_IncludingTheNewest()
         {
-            var messages = new List<ChatMessage> { new ChatMessage("user", "do the work") };
-            messages.Add(WriteCall(1, "src/Old.cs", 50));
-            messages.Add(new ChatMessage("tool", "{\"success\":true}", "w1"));
-            messages.Add(WriteCall(2, "src/New.cs", 400));
-            messages.Add(new ChatMessage("tool", "{\"success\":true}", "w2"));
+            var messages = new List<ChatMessage>
+            {
+                new ChatMessage("user", "do the work"),
+                WriteCall(1, "src/Old.cs", 50),
+                new ChatMessage("tool", "{\"success\":true}", "w1"),
+                WriteCall(2, "src/New.cs", 400),
+                new ChatMessage("tool", "{\"success\":true}", "w2")
+            };
 
             var result = ToolHistoryPruner.Prune(messages, Options(), FlatCost, 0);
 
@@ -196,9 +199,8 @@ namespace LMLocal.Tests.Unit
                 Assert.That(result.Messages[i].Role, Is.EqualTo(history[i].Role));
                 Assert.That(result.Messages[i].ToolCallId, Is.EqualTo(history[i].ToolCallId));
 
-                var before = history[i].ToolCalls as List<ToolCall>;
                 var after = result.Messages[i].ToolCalls as List<ToolCall>;
-                if (before == null)
+                if (!(history[i].ToolCalls is List<ToolCall> before))
                 {
                     Assert.That(after, Is.Null);
                     continue;
@@ -253,6 +255,26 @@ namespace LMLocal.Tests.Unit
             var everything = ToolHistoryPruner.Prune(history, Options(), FlatCost, 0);
             Assert.That(result.PrunedCount, Is.LessThan(everything.PrunedCount),
                 "pruning must stop once the history fits instead of compressing everything");
+        }
+
+        [Test]
+        public void Prune_RebuiltAssistantMessage_PreservesModelId()
+        {
+            var write = WriteCall(1, "src/A.cs", 60);
+            write.ModelId = "qwen-7b";
+
+            var messages = new List<ChatMessage>
+            {
+                new ChatMessage("user", "do the work"),
+                write,
+                new ChatMessage("tool", "{\"success\":true}", "w1")
+            };
+
+            var result = ToolHistoryPruner.Prune(messages, Options(), FlatCost, 0);
+
+            var assistant = result.Messages.Single(m => m.Role == "assistant");
+            Assert.That(assistant.ModelId, Is.EqualTo("qwen-7b"),
+                "pruning tool-call arguments must not drop the assistant message's model id");
         }
     }
 }

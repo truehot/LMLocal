@@ -75,6 +75,41 @@ namespace LMLocal.Tests.Unit
             Assert.That(chunk.Text, Is.EqualTo("thinking"));
         }
 
+        // Issue #34: Ollama /v1/chat/completions streams thinking in "reasoning" (openai.go Delta.Reasoning), not "reasoning_content".
+        [Test]
+        public void ExtractDeltas_ReturnsReasoningChunk_ForOllamaReasoningField()
+        {
+            var line = "data: {\"id\":\"chatcmpl-883\",\"object\":\"chat.completion.chunk\",\"created\":1762934400,\"model\":\"ripple-preview:65b\",\"system_fingerprint\":\"fp_ollama\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"reasoning\":\"Name\"},\"finish_reason\":null}]}";
+
+            var text = _parser.ExtractDeltas(line).OfType<TextStreamChunk>().ToList();
+
+            Assert.That(text, Has.Count.EqualTo(1));
+            Assert.That(text[0].Kind, Is.EqualTo(ChunkKind.Reasoning));
+            Assert.That(text[0].Text, Is.EqualTo("Name"));
+        }
+
+        [Test]
+        public void ExtractDeltas_IgnoresNonStringReasoningField()
+        {
+            var line = "data: {\"choices\":[{\"delta\":{\"reasoning\":{\"effort\":\"high\"},\"content\":\"answer\"}}]}";
+
+            var text = _parser.ExtractDeltas(line).OfType<TextStreamChunk>().ToList();
+
+            Assert.That(text.Any(c => c.Kind == ChunkKind.Reasoning), Is.False);
+            Assert.That(text.Single(c => c.Kind == ChunkKind.Content).Text, Is.EqualTo("answer"));
+        }
+
+        [Test]
+        public void ExtractDeltas_BothReasoningFields_PrefersReasoningContentWithoutDuplication()
+        {
+            var line = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"primary\",\"reasoning\":\"primary\"}}]}";
+
+            var reasoning = _parser.ExtractDeltas(line).OfType<TextStreamChunk>()
+                .Where(c => c.Kind == ChunkKind.Reasoning).Select(c => c.Text).ToList();
+
+            Assert.That(reasoning, Is.EqualTo(new[] { "primary" }));
+        }
+
         // Real lines captured from GMI / deepseek-v4-flash (2026-11-07): the reasoning tail and the answer
         // arrive in ONE delta. The content used to be dropped, so SubAgent answers came back empty or cut.
 

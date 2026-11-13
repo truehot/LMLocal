@@ -14,13 +14,6 @@ namespace LMLocal.Infrastructure.SubAgents
     /// </summary>
     internal sealed class SubAgentsParallelRunner : ISubAgentsParallelRunner
     {
-        private readonly ISubAgentFailureLogger _failureLogger;
-
-        public SubAgentsParallelRunner(ISubAgentFailureLogger failureLogger)
-        {
-            _failureLogger = failureLogger ?? throw new ArgumentNullException(nameof(failureLogger));
-        }
-
         public async Task<SubAgentsParallelRunResult> RunAsync(
             IReadOnlyList<ToolCallRecord> calls,
             SubAgentsParallelWork work,
@@ -74,17 +67,11 @@ namespace LMLocal.Infrastructure.SubAgents
             }
             catch (OperationCanceledException)
             {
-                // Group cancellation: let it surface so the session can move to the cancelled state.
                 throw;
             }
             catch (Exception ex)
             {
-                // A single failing call must not fault the whole group.
                 InternalLogger.Error($"SubAgentsParallelRunner: call '{call?.FunctionName}' failed", ex);
-
-                await _failureLogger
-                    .LogFromToolCallAsync(call, "Parallel", ex.Message, ex, CancellationToken.None)
-                    .ConfigureAwait(false);
 
                 results[index] = new ToolExecutionResult
                 {

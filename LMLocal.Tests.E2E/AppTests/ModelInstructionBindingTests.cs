@@ -1,13 +1,17 @@
-﻿namespace LMLocal.Tests.E2E.AppTests;
+namespace LMLocal.Tests.E2E.AppTests;
+using System.Text.RegularExpressions;
 
 /// <summary>
 /// Covers binding a model to a single instruction (models.config.json -> instructionTabId):
 /// the auto-apply on model activation and the "Auto-apply instruction" field in the models dialog.
 /// </summary>
 [TestFixture]
-public class ModelInstructionBindingTests : AppTestBase
+public partial class ModelInstructionBindingTests : AppTestBase
 {
     private const string MockFile = "webview-mock-model-instruction.js";
+
+    [GeneratedRegex("^Provider type: openai")]
+    private static partial Regex ProviderTooltipRegex();
 
     private async Task GotoAndWaitConnectedAsync()
     {
@@ -51,9 +55,35 @@ public class ModelInstructionBindingTests : AppTestBase
         var status = Page.Locator("#tools-mode-status");
         await Expect(status).ToHaveTextAsync("Review", new() { Timeout = 5000 });
 
-        // The tooltip always exposes the full three-line state.
+        // The tooltip always exposes the full three-line state through the shared popover
+        // (a native title is dismissed by Chromium whenever the attribute changes).
         await Expect(status).ToHaveAttributeAsync(
-            "title", "Instructions: Review (t=0.5)\nTools: Disabled\nSubAgents: Disabled");
+            "data-tooltip", "Instructions: Review (t=0.5)\nTools: Disabled\nSubAgents: Disabled");
+    }
+
+    [Test]
+    [Category("ModelInstruction")]
+    public async Task StatusBar_ProviderLabelPublishesTooltipThroughPopover()
+    {
+        await GotoAndWaitConnectedAsync();
+
+        var connStatus = Page.Locator("#conn-status");
+
+        // The provider label used to carry a native title. It now publishes the same text through
+        // data-tooltip and the shared popover, like the token bar and the model name next to it.
+        Assert.That(await connStatus.GetAttributeAsync("title"), Is.Null,
+            "#conn-status must not use the native title");
+
+        await Expect(connStatus).ToHaveAttributeAsync(
+            "data-tooltip", ProviderTooltipRegex(), new() { Timeout = 3000 });
+
+        await connStatus.HoverAsync();
+        var tooltip = Page.Locator("#context-tooltip");
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+        await Expect(tooltip).ToContainTextAsync("Provider type: openai");
+
+        await Page.Locator("#userInput").HoverAsync();
+        await Expect(tooltip).ToBeHiddenAsync(new() { Timeout = 3000 });
     }
 
     [Test]

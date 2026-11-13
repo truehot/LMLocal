@@ -27,7 +27,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Adds an assistant message (optionally with tool calls) to history and persists it.
         /// </summary>
-        void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls);
+        void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls, string modelId = null);
 
         /// <summary>
         /// Clears all messages from history and marks a new session boundary.
@@ -82,7 +82,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Queues an assistant with tool calls to be committed together with the next AddToolExecutionResultMessages, ensuring tool call is saved before results.
         /// </summary>
-        void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls);
+        void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls, string modelId = null);
 
         /// <summary>
         /// Drops the queued assistant tool call without committing it, so the next AddToolExecutionResultMessages call cannot resurrect a tool call that was rejected (e.g. an identical repeated call detected as a loop).
@@ -129,6 +129,7 @@ namespace LMLocal.Application.Chat
 
         private string _pendingAssistantContent;
         private IReadOnlyList<ToolCallRecord> _pendingAssistantToolCalls;
+        private string _pendingAssistantModelId;
 
         /// <summary>
         /// Creates a chat history manager backed by the given persistence service.
@@ -206,7 +207,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Adds a single assistant message that may contain both text content and tool calls.
         /// </summary>
-        public void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls)
+        public void AddAssistantMessage(string content, IReadOnlyList<ToolCallRecord> toolCalls, string modelId = null)
         {
             bool hasContent = !string.IsNullOrWhiteSpace(content);
             bool hasToolCalls = toolCalls != null && toolCalls.Count > 0;
@@ -237,7 +238,8 @@ namespace LMLocal.Application.Chat
 
             var chatMessage = new ChatMessage("assistant", hasContent ? content : null)
             {
-                ToolCalls = toolCallObjects
+                ToolCalls = toolCallObjects,
+                ModelId = modelId
             };
 
             lock (_lock)
@@ -260,10 +262,11 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Queues an assistant message with tool calls to be committed with the next AddToolExecutionResultMessages call.
         /// </summary>
-        public void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls)
+        public void SetPendingAssistant(string content, IReadOnlyList<ToolCallRecord> toolCalls, string modelId = null)
         {
             _pendingAssistantContent = content;
             _pendingAssistantToolCalls = toolCalls;
+            _pendingAssistantModelId = modelId;
         }
 
         /// <summary>
@@ -273,6 +276,7 @@ namespace LMLocal.Application.Chat
         {
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
+            _pendingAssistantModelId = null;
         }
 
         /// <summary>
@@ -286,6 +290,7 @@ namespace LMLocal.Application.Chat
 
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
+            _pendingAssistantModelId = null;
 
             lock (_lock)
             {
@@ -326,9 +331,10 @@ namespace LMLocal.Application.Chat
         {
             if (_pendingAssistantToolCalls != null && _pendingAssistantToolCalls.Count > 0)
             {
-                AddAssistantMessage(_pendingAssistantContent, _pendingAssistantToolCalls);
+                AddAssistantMessage(_pendingAssistantContent, _pendingAssistantToolCalls, _pendingAssistantModelId);
                 _pendingAssistantContent = null;
                 _pendingAssistantToolCalls = null;
+                _pendingAssistantModelId = null;
             }
 
             if (messages == null) return;
@@ -370,6 +376,7 @@ namespace LMLocal.Application.Chat
         {
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
+            _pendingAssistantModelId = null;
 
             lock (_lock)
             {
@@ -439,7 +446,7 @@ namespace LMLocal.Application.Chat
         {
             var allowedTools = new HashSet<string>
             {
-                "read_file_lines", "get_solution_overview", "get_active_document"
+                "read_file_lines", "get_solution_overview", "get_active_document", "code_reader_subagent"
             };
 
             List<ChatMessage> consolidatedFragment = null;
@@ -589,6 +596,7 @@ namespace LMLocal.Application.Chat
 
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
+            _pendingAssistantModelId = null;
 
             lock (_lock)
             {
@@ -869,6 +877,7 @@ namespace LMLocal.Application.Chat
             {
                 _pendingAssistantContent = null;
                 _pendingAssistantToolCalls = null;
+                _pendingAssistantModelId = null;
 
                 lock (_lock)
                 {

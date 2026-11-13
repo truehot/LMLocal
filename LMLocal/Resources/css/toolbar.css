@@ -171,6 +171,8 @@
     line-height: 1.35;
     font-variant-numeric: tabular-nums;
     white-space: pre-line;
+    max-width: min(480px, calc(100vw - 16px));
+    overflow-wrap: anywhere;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.12s ease;

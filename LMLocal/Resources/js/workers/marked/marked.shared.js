@@ -35,9 +35,8 @@ function countLines(str) {
     return count;
 }
 
+const COPY_BUTTON_SVG = `<svg class="btn-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 3A1.5 1.5 0 0 1 6 1.5h5.5A1.5 1.5 0 0 1 13 3v7a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 10V3z" opacity=".55"/><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4H4v1h-.5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5H9a.5.5 0 0 0 .5-.5V12h1v.5A1.5 1.5 0 0 1 9 14H3.5A1.5 1.5 0 0 1 2 12.5v-7z"/></svg>`;
 
-const COPY_LABEL = 'Copy';
-const COPY_BUTTON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
 /**
  * Attaches a copy header to each code block.
  */
@@ -52,10 +51,7 @@ function renderCodeBlock(block) {
         <div class="code-block-container ${hasOverflowClass}">
             <div class="code-header">
                 <span class="code-lang">${escapeHtml(lang)}</span>
-                <button class="header-copy-btn">
-                    ${COPY_BUTTON_SVG}
-                    <span>${escapeHtml(COPY_LABEL)}</span>
-                </button>
+                <button type="button" class="header-copy-btn" title="Copy" aria-label="Copy">${COPY_BUTTON_SVG}</button>
             </div>
             <pre><code class="language-${escapeHtml(lang)}">${finalCode}</code></pre>
             <button class="code-toggle-btn">

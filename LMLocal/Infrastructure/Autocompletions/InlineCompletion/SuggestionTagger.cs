@@ -788,7 +788,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         /// <summary>Text to insert: the suggestion's '\n' converted to the buffer's line endings.</summary>
         internal static string PrepareInsertText(string suggestion, string newLine)
         {
-            return suggestion == null ? null : suggestion.Replace("\n", newLine);
+            return suggestion?.Replace("\n", newLine);
         }
 
         /// <summary>

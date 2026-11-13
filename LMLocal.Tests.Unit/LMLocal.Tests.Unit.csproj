@@ -92,6 +92,9 @@
     <Compile Include="Application\SubAgents\ReadLedgerTests.cs" />
     <Compile Include="Application\SubAgents\ReadRefExpanderTests.cs" />
     <Compile Include="Application\SubAgents\SearchRefExpansionTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentRecoveryPolicyTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentRunEvidenceTests.cs" />
+    <Compile Include="Application\SubAgents\SubAgentToolRoundExecutorTests.cs" />
     <Compile Include="Application\SubAgents\ReadResultRecorderTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsActiveModelDefaultsTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsConfigTests.cs" />
@@ -154,7 +157,6 @@
     <Compile Include="Infrastructure\SettingsManagerTests.cs" />
     <Compile Include="Infrastructure\SettingsThemeNormalizationTests.cs" />
     <Compile Include="Infrastructure\SubAgentsControllerTests.cs" />
-    <Compile Include="Infrastructure\SubAgents\SubAgentFailureLoggerTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsParallelPolicyTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsParallelRunnerTests.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsToolSourceTests.cs" />
@@ -208,10 +210,12 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileContentTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\ToolQueueProviderTests.cs" />
+    <Compile Include="Infrastructure\Vs\FileLinkResolverTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\ToolRouterTests.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
     <Compile Include="Infrastructure\Vs\SearchScopeResolverTests.cs" />
+    <Compile Include="Infrastructure\WebView\FileLinksControllerTests.cs" />
     <Compile Include="Infrastructure\WebView\SerializingMessageSinkTests.cs" />
     <Compile Include="Infrastructure\WebView\ToolActivityForwarderTests.cs" />
     <Compile Include="Infrastructure\WebView\WebView2NavigationGuardTests.cs" />
@@ -251,8 +255,11 @@
     <Compile Include="Internal\StreamProcessorTests.cs" />
     <Compile Include="Internal\StreamProcessorToolCallsTests.cs" />
     <Compile Include="Internal\StreamProcessorUsageTests.cs" />
+    <Compile Include="Internal\ToolCallAccumulatorTests.cs" />
+    <Compile Include="Internal\ArgumentsLengthGuardTests.cs" />
+    <Compile Include="Internal\GemmaToolCallArgumentsGuardTests.cs" />
+    <Compile Include="Internal\StreamProcessorReplayTests.cs" />
     <Compile Include="Internal\SummaryInputFormatterTests.cs" />
-    <Compile Include="Internal\TestHelpers\NullSubAgentFailureLogger.cs" />
     <Compile Include="Internal\TestHelpers\TestFileSystems.cs" />
     <Compile Include="Internal\ToolCallLoopDetectorTests.cs" />
     <Compile Include="Internal\ToolHistoryPrunerTests.cs" />
@@ -290,6 +297,7 @@
     <Folder Include="Application\SubAgent\" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Fixtures\gemma-broken-find-files-20261112.sse" />
     <Content Include="Fixtures\RoundTripContent.txt" />
   </ItemGroup>
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />

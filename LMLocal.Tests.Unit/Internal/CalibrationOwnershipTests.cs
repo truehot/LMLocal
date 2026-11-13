@@ -50,7 +50,7 @@ namespace LMLocal.Tests.Unit
             settings.Setup(s => s.BatchIntervalMs).Returns(100);
 
             var factory = new Mock<IStreamProcessorFactory>();
-            factory.Setup(f => f.Create(It.IsAny<CancellationTokenSource>())).Returns(_processor.Object);
+            factory.Setup(f => f.Create(It.IsAny<string>())).Returns(_processor.Object);
 
             return new StreamingRoundService(client.Object, settings.Object, factory.Object, _modelsConfig.Object);
         }

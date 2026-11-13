@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using Newtonsoft.Json;
@@ -57,27 +58,6 @@ namespace LMLocal.Application.Chat
         internal const string LinesKey = "_lines";
 
         private const string TraceMarker = Marker + "\u27E7 ";
-
-        /// <summary>
-        /// Content arguments removed per write tool. Everything else (file path, line numbers) is kept so the
-        /// model still knows what it already did.
-        /// </summary>
-        private static readonly Dictionary<string, string[]> WriteToolContentArguments =
-            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-            {
-                { "create_file", new[] { "content" } },
-                { "replace_file_content", new[] { "content" } },
-                { "replace_file_lines", new[] { "old_lines", "new_lines" } },
-                { "insert_file_lines", new[] { "new_lines" } }
-            };
-
-        /// <summary>
-        /// True when the tool writes content into a file and therefore carries its payload in the arguments.
-        /// </summary>
-        internal static bool IsWriteTool(string toolName)
-        {
-            return !string.IsNullOrEmpty(toolName) && WriteToolContentArguments.ContainsKey(toolName);
-        }
 
         /// <summary>
         /// Compresses history until it fits <paramref name="limit"/> or until nothing is left to compress.
@@ -215,17 +195,18 @@ namespace LMLocal.Application.Chat
 
             replaced = new ChatMessage(message.Role, message.Content, message.ToolCallId)
             {
-                ToolCalls = prunedCalls
+                ToolCalls = prunedCalls,
+                ModelId = message.ModelId
             };
             return true;
         }
 
         /// <summary>
-        /// Removes the content arguments of one write-tool call.
+        /// Removes the content arguments of one write-tool call. Everything else (file path, line numbers) is kept so the model still knows what it already did.
         /// </summary>
         private static ToolCall TryPruneSingleCall(ToolCall call)
         {
-            if (call?.Function == null || !IsWriteTool(call.Function.Name))
+            if (call?.Function == null || !WriteTools.IsWriteTool(call.Function.Name))
                 return null;
 
             JObject arguments;
@@ -244,7 +225,7 @@ namespace LMLocal.Application.Chat
             int removedLines = 0;
             bool removed = false;
 
-            foreach (var field in WriteToolContentArguments[call.Function.Name])
+            foreach (var field in WriteTools.GetContentArguments(call.Function.Name))
             {
                 var property = arguments.Property(field);
                 if (property == null)
@@ -432,7 +413,8 @@ namespace LMLocal.Application.Chat
         {
             return new ChatMessage(message.Role, content, message.ToolCallId)
             {
-                ToolCalls = message.ToolCalls
+                ToolCalls = message.ToolCalls,
+                ModelId = message.ModelId
             };
         }
 

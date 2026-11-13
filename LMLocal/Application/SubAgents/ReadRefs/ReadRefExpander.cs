@@ -22,6 +22,9 @@ namespace LMLocal.Application.SubAgents.ReadRefs
         /// <summary>Ref markers that were not covered by the ledger and were left as-is.</summary>
         public int UnresolvedRefCount { get; set; }
 
+        /// <summary>Text of each unresolved marker, in answer order (one entry per <see cref="UnresolvedRefCount"/>).</summary>
+        public List<string> UnresolvedRefs { get; } = new List<string>();
+
         /// <summary>Marker-like tokens that could not be parsed (diagnostics only; not part of the public contract).</summary>
         public int MalformedRefCount { get; set; }
     }
@@ -92,8 +95,10 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 }
                 else
                 {
+                    string markerText = content.Substring(marker.StartIndex, marker.Length);
                     result.UnresolvedRefCount++;
-                    InternalLogger.Warn($"ReadRefExpander: unresolved ref '{content.Substring(marker.StartIndex, marker.Length)}'");
+                    result.UnresolvedRefs.Add(markerText);
+                    InternalLogger.Warn($"ReadRefExpander: unresolved ref '{markerText}'");
                     sb.Append(content, marker.StartIndex, marker.Length);
                 }
 

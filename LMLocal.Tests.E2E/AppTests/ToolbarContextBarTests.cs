@@ -1,4 +1,4 @@
-﻿namespace LMLocal.Tests.E2E.AppTests;
+namespace LMLocal.Tests.E2E.AppTests;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
@@ -324,6 +324,9 @@ public partial class ToolbarContextBarTests : AppTestBase
 
         var modelTitle = await Page.Locator("#model-name").GetAttributeAsync("title");
         Assert.That(modelTitle, Is.Null, "#model-name must not use the native title");
+
+        var connTitle = await Page.Locator("#conn-status").GetAttributeAsync("title");
+        Assert.That(connTitle, Is.Null, "#conn-status must not use the native title");
     }
 
     [Test]
@@ -364,5 +367,30 @@ public partial class ToolbarContextBarTests : AppTestBase
         // Move the pointer away from the bar.
         await Page.Locator("#userInput").HoverAsync();
         await Expect(tooltip).ToBeHiddenAsync(new() { Timeout = 3000 });
+    }
+
+    [Test]
+    [Category("TokenBar")]
+    public async Task ContextTooltip_DoesNotOverwriteStatusBarTooltipWhileStreaming()
+    {
+        await StartSessionAsync();
+
+        await EmitAsync(new { Type = "ChatSessionStart" });
+        await EmitContentAsync("Hello", 900);
+
+        // The status bar labels share the popover with the context bar. While the pointer rests on
+        // one of them, live context updates must not repaint the popover with the usage text.
+        await Page.Locator("#conn-status").HoverAsync();
+        var tooltip = Page.Locator("#context-tooltip");
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+        await Expect(tooltip).ToContainTextAsync("Provider type: openai");
+
+        await EmitContentAsync(" more", 1200);
+        await EmitContentAsync(" more", 1500);
+        await ExpectTooltipAsync(UsageTitle("9", "1,500"));
+
+        await Expect(tooltip).ToBeVisibleAsync(new() { Timeout = 3000 });
+        await Expect(tooltip).ToContainTextAsync("Provider type: openai");
+        await Expect(tooltip).Not.ToContainTextAsync("Context usage");
     }
 }

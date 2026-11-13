@@ -22,8 +22,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
             if (parameters == null || !parameters.TryGetValue(TokenParameter, out object value) || value == null)
                 return null;
 
-            string token = value as string;
-            if (token == null)
+            if (!(value is string token))
                 token = Convert.ToString(value, CultureInfo.InvariantCulture);
 
             token = token?.Trim();

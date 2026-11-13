@@ -13,8 +13,6 @@ namespace LMLocal.Application.SubAgents
 
         /// <summary>
         /// Effective max concurrent runs allowed for the agent behind <paramref name="toolName"/>.
-        /// Resolution order: the agent's <c>maxParallel</c>, then the top-level config, then the built-in default.
-        /// The fan-out group as a whole uses the minimum across its members.
         /// </summary>
         int ResolveMaxParallel(string toolName);
     }

@@ -190,7 +190,7 @@ To use LM Local, you need:
 
 ### Efficiency & Token Management
 - 📉 **Conversation Summarization** – Condenses older messages into a concise overview when the conversation grows long.
-- 📊 **Live Stats** – Status bar metrics during streaming: approximate speed (tokens/sec) and an approximate running token count. Both are estimated client-side (the count from the streamed text length, the speed from the rate of streamed chunks); exact totals reported by the provider appear in the Token Stats Badge after the response.
+- 📊 **Live Stats** – Status bar metrics during streaming: approximate speed (tokens/sec) and an approximate running token count. Both values are approximate.
 - 🏷️ **Token Stats Badge** – After each response, a compact summary shows the total tokens reported by the provider (reasoning tokens excluded), cached tokens (when available), and the approximate average generation speed (tokens/sec). Shown only when the provider returns token usage.
 
 ### Infrastructure & Settings
@@ -420,7 +420,7 @@ To bind subagents to a different provider (e.g., cloud API, custom endpoint) or 
 
 ### Predefined Subagents
 
-Out of the box, LMLocal includes **9 predefined subagents** (8 enabled, 1 disabled by default):
+Out of the box, LMLocal includes **8 predefined subagents**, all enabled by default:
 
 1. **Code explorer** (`code_explorer_subagent`) — Read-only code search agent for finding files by name or content, listing directories, and general path discovery. Returns verified locations (file path, line number, matched line); matched lines are reported through ref markers, so the line text comes verbatim from the search results.
 2. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to read specific files or code ranges verbatim (via ref markers that the runner replaces with the real file lines). At most 4 files per task.
@@ -430,7 +430,6 @@ Out of the box, LMLocal includes **9 predefined subagents** (8 enabled, 1 disabl
 6. **Architect** (`architect_subagent`) — Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
 7. **Task planner** (`task_planner_subagent`) — Planning agent without tools: decides whether a plan is needed (`needs_plan`, `persist`, `blocked`) and returns one consolidated Markdown plan that the main model presents, saves when required, and keeps up to date.
 8. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that inspects the actual pending diff and validates proposed plans and implementations before delivery, ending with `Status: COMPLETE`, `PARTIAL`, or `REJECTED`.
-9. **Edit** (`edit_subagent`) — *Disabled by default.* Mechanical line-level patcher that applies only exact `old_lines`/`new_lines` edits supplied by the main model to 1–2 files; it never designs code and answers `NEEDS_EXACT_CODE` when exact text is missing.
 
 **Typical order:** explorer / reader / symbol analyzer / context retriever gather evidence → architect (only when an architectural decision is needed) → task planner → edits → build & test → reviewer.
 
@@ -560,7 +559,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 Open the Sub Agents dialog from the main menu.
 
 - **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 9 built-in defaults into the dialog** (`edit_subagent` disabled).
+- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 8 built-in defaults into the dialog**.
 - **Save** behaves in two modes:
   - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the whole agent set is written, creating or replacing `subagents.json`.
   - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags and root-level changes are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
@@ -970,7 +969,7 @@ The following configuration files are stored there:
 | `subagents.json` | Subagent (worker agent) definitions. |
 | `mcp.json` | MCP server configuration. |
 | `ChatHistory\` | Chat session logs (history dialog, session restore). |
-| `SubAgentsLogs\` | Sub Agent session logs and `SubAgentsFailures.jsonl` (failed / recovered runs). |
+| `SubAgentsLogs\` | Sub Agent session logs. |
 | `Snapshots\` | Internal backups used by the Changes panel to revert edits. |
 | `WebViewData\` | WebView2 browser data of the chat window. |
 

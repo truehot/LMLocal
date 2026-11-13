@@ -23,34 +23,39 @@
     font-weight: 600;
 }
 
-.header-copy-btn {
+.header-copy-btn,
+.message-copy-btn {
     background: transparent;
     border: none;
     color: var(--btn-icon-color);
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 7px;
     padding: 2px 5px;
     border-radius: 3px;
     transition: background 0.2s, color 0.2s;
-    font-size: 11px;
-    font-family: inherit;
-    font-weight: 500;
 }
 
-    .header-copy-btn:hover {
+    .header-copy-btn:hover,
+    .message-copy-btn:hover {
         background: var(--input-bg);
         color: var(--btn-icon-hover);
     }
 
-    .header-copy-btn svg {
+    .header-copy-btn svg,
+    .message-copy-btn svg {
         opacity: 0.7;
         flex-shrink: 0;
     }
 
-    .header-copy-btn.success {
+    .header-copy-btn.success,
+    .message-copy-btn.success {
         color: var(--success-color) !important;
+    }
+
+    .header-copy-btn.error,
+    .message-copy-btn.error {
+        color: var(--danger-color) !important;
     }
 
 pre {

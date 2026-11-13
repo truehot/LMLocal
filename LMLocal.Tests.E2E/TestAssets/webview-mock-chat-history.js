@@ -83,9 +83,15 @@ const __MOCK_SESSIONS = [
 ];
 
 const __MOCK_SESSION_MESSAGES = {
+    // Two assistant answers, the second one preceded by a tool round, so the chat/copy tests can
+    // check that every answer gets its own copy button and that the "steps taken" note is not copied.
     "session-aaa-111": [
         { role: "user", content: "How do I refactor this class to use dependency injection?" },
-        { role: "assistant", content: "Here is how you refactor..." }
+        { role: "assistant", content: "**First answer** with `inline` code." },
+        { role: "user", content: "Now add unit tests for it." },
+        { role: "assistant", content: null, toolCalls: [{ id: "call_1", type: "function", function: { name: "read_file", arguments: "{}" } }] },
+        { role: "tool", content: "file contents", toolCallId: "call_1" },
+        { role: "assistant", content: "**Second answer** with a list:\n\n- one\n- two" }
     ],
     "session-bbb-222": [
         { role: "user", content: "What does the error CS1061 mean and how to fix it?" },

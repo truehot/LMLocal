@@ -150,4 +150,15 @@ public class StreamErrorAndStopTests : AppTestBase
         // The "stopped" flag must not stick to the next request.
         await Expect(Page.Locator("#status-text")).Not.ToHaveTextAsync("Stopped", new() { Timeout = 3000 });
     }
+
+    [Test]
+    [Category("Stop")]
+    public async Task Stop_StoppedMessage_HasNoCopyButton()
+    {
+        await StopDuringRunningSubAgentsAsync();
+
+        // A stopped answer never completed, so it must not offer a copy action.
+        await Expect(Page.Locator(".ai-message .message-copy-btn")).ToHaveCountAsync(0, new() { Timeout = 3000 });
+        await Expect(Page.Locator(".ai-message .message-actions")).ToHaveCountAsync(0);
+    }
 }

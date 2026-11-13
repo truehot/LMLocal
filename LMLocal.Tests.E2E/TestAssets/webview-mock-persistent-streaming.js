@@ -10,6 +10,10 @@ const _listeners = [];
 const _timers = [];
 window._listeners = _listeners;
 window._mock_timers = _timers;
+// Lets tests push extra bridge messages (e.g. more StreamContent) into the open stream.
+window.__emitBridgeMessage = (msg) => {
+    _listeners.forEach(fn => { try { fn({ data: msg }); } catch (e) { /* swallow */ } });
+};
 
 const __mockBridge = {
     __webview: {

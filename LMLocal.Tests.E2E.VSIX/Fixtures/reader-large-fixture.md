@@ -1,6 +1,6 @@
 ﻿# Reader-Start
 # Reader Large Fixture (English) — pagination target for code_reader_subagent.
-# Do NOT edit: scenario A2.12 asserts '# Reader-Start' on line 1 and '# Reader-End' on line 400.
+# Do NOT edit: scenario A2.8 asserts '# Reader-Start' on line 1 and '# Reader-End' on line 400.
 # Lines 6-399 are filler lines. read_file_lines returns at most 300 lines per range, so the
 # reader must call the tool again until has_more_results=false to retrieve the entire file.
 Filler-One: stable filler line inside the pagination block.

@@ -1,4 +1,5 @@
 ﻿import { Config } from '@app/constants/app.globals.js';
+import { attachCopyAction } from '@app/chat/message.actions.js';
 import { openImageInNewTab } from '@app/lib/image.utils.js';
 
 /**
@@ -70,6 +71,8 @@ export function createUserMessage(content, container, scrollManager, liveDataUrl
         btn.className = 'show-more-btn';
         div.appendChild(btn);
     }
+
+    attachCopyAction(div, textContent);
 
     container.appendChild(div);
 }

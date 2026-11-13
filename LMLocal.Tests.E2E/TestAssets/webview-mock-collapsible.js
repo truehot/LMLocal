@@ -30,18 +30,9 @@ const __mockBridge = {
     },
     ExecutePromptAsync: async (requestJson) => {
         // === Round 1: 2 tools ===
-        // ChatSessionIterating informs controller about round 1 (not final)
-        _timers.push(setTimeout(() => {
-            _listeners.forEach(fn => fn({
-                data: {
-                    Type: 'ChatSessionIterating',
-                    RoundNumber: 1,
-                    ToolCount: 2,
-                    IsFinalRound: false
-                }
-            }));
-        }, 10));
-
+        // The backend reports a round transition only AFTER a round's tools have run
+        // (ChatSessionOrchestrator sends ChatSessionIterating once tool results are ready for the
+        // next round), so nothing is emitted before the first tool.
         // Tool 1: SearchFiles
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
@@ -112,14 +103,15 @@ const __mockBridge = {
             }));
         }, 350));
 
-        // === Round 2 (final): 1 tool ===
+        // === Round 2: 1 tool ===
+        // Round transition, emitted after round 1 finished: the frontend starts a clean round.
         _timers.push(setTimeout(() => {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'ChatSessionIterating',
-                    RoundNumber: 2,
-                    ToolCount: 1,
-                    IsFinalRound: true
+                    RoundNumber: 1,
+                    ToolCount: 2,
+                    IsFinalRound: false
                 }
             }));
         }, 400));
@@ -168,6 +160,18 @@ const __mockBridge = {
                 data: { Type: 'StreamEnd' }
             }));
         }, 650));
+
+        // Final marker: the backend sends it once the last round is over.
+        _timers.push(setTimeout(() => {
+            _listeners.forEach(fn => fn({
+                data: {
+                    Type: 'ChatSessionIterating',
+                    RoundNumber: 2,
+                    ToolCount: 1,
+                    IsFinalRound: true
+                }
+            }));
+        }, 660));
 
         // Session complete
         _timers.push(setTimeout(() => {

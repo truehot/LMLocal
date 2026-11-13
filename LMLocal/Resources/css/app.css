@@ -426,15 +426,31 @@ body {
 
 #status-text {
     line-height: 1;
-    display: flex;
-    align-items: center;
-    height: 100%;
+    display: block;
+    flex: 0 1 auto;
+    min-width: 14ch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #live-token-count {
     line-height: 1;
     display: flex;
     align-items: center;
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+#token-number {
+    display: inline-block;
+    min-width: 9ch;
+}
+
+#tokens-speed {
+    display: inline-block;
+    min-width: 8ch;
 }
 
 #tools-mode-status {
@@ -945,6 +961,25 @@ body {
             opacity: .55;
             cursor: default;
         }
+
+/* ====== Message actions (copy button) ====== */
+.message-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    white-space: nowrap;
+}
+
+    .ai-message:hover .message-actions,
+    .ai-message:focus-within .message-actions,
+    .user-message:hover .message-actions,
+    .user-message:focus-within .message-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
 
 /* ====== Token stats badge ====== */
 .token-stats {

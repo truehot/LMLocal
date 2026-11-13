@@ -3,6 +3,7 @@ import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
 import { formatSpeed } from '@app/lib/formatting.js';
+import { toolbarComponent } from '@app/components/toolbar.component.js';
 
 /**
  * UI component that displays application connection and token usage status. The component wires DOM elements, updates visual state from the application store, and exposes an `onRetry` callback for retrying connections.
@@ -20,6 +21,7 @@ class StatusComponent {
         this._settingsState = null;
         this._currentInstructionsState = null;
         this._lastSignature = null;
+        this._tipAnchors = [];
     }
 
     _getElements() {
@@ -167,6 +169,12 @@ class StatusComponent {
                 }
             }
         }
+
+        toolbarComponent.setTipText(
+            this.elements.statusText,
+            this.elements.statusText.classList.contains('error')
+                ? (appState.error || this.elements.statusText.textContent)
+                : '');
     }
 
     _updateGeneratingAnimation(appState, prevAppState) {
@@ -232,11 +240,13 @@ class StatusComponent {
         this.reset();
         this.elements = this._getElements();
         this._attachEvents();
+        this._attachTooltips();
         return this;
     }
 
     reset() {
         this._detachEvents();
+        this._detachTooltips();
         if (this.retryTimeout) {
             clearTimeout(this.retryTimeout);
             this.retryTimeout = null;
@@ -286,6 +296,40 @@ class StatusComponent {
         const settings = this._settingsState;
         if (!settings || !settings.EnableAiTools) return null;
         return settings.EnableAiWriteTools ? UIText.STATUS_TOOLS_READ_WRITE : UIText.STATUS_TOOLS_READ;
+    }
+
+    /**
+     * Subscribes the status bar labels to the shared popover tooltip owned by the toolbar, so they
+     * render the same styled tooltip as the neighbouring token bar and model name.
+     */
+    _attachTooltips() {
+        this._tipAnchors = [this.elements.connStatus, this.elements.statusText, this.elements.toolsModeStatus]
+            .filter(Boolean);
+
+        for (const anchor of this._tipAnchors) {
+            toolbarComponent.registerTipAnchor(anchor);
+        }
+    }
+
+    _detachTooltips() {
+        for (const anchor of this._tipAnchors) {
+            toolbarComponent.unregisterTipAnchor(anchor);
+        }
+        this._tipAnchors = [];
+    }
+
+    /**
+     * Endpoint of the active provider. Recomputed from the live settings on every settings change,
+     * so a new base URL is reflected even when the provider type itself did not change.
+     */
+    _providerTooltip() {
+        const settings = this._settingsState;
+        if (!settings || !settings.Provider) return '';
+
+        return [
+            UIText.STATUS_TOOLTIP_PROVIDER.replace('{provider}', settings.Provider),
+            UIText.STATUS_TOOLTIP_BASE_URL.replace('{url}', settings.LmStudioBaseUrl ?? ''),
+        ].join('\n');
     }
 
     _composeTooltip() {
@@ -351,15 +395,13 @@ class StatusComponent {
             container.appendChild(segmentElement);
         });
 
-        container.title = this._composeTooltip();
+        toolbarComponent.setTipText(container, this._composeTooltip());
     }
 
     updateSettingsState(settingsState, prevSettingsState) {
         this._settingsState = settingsState;
         this._renderToolsMode();
-        if (settingsState.Provider && settingsState.Provider !== prevSettingsState?.Provider && this.elements.connStatus) {
-            this.elements.connStatus.title = `Provider type: ${settingsState.Provider}\nBase url: ${settingsState.LmStudioBaseUrl}`;
-        }
+        toolbarComponent.setTipText(this.elements.connStatus, this._providerTooltip());
     }
 
     updateInstructionsState(instructionsState, prevInstructionsState) {

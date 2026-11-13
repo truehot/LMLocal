@@ -5,7 +5,6 @@ using System.Threading;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Streaming;
@@ -57,7 +56,7 @@ namespace LMLocal.Tests.Unit
 
         private class MockTokenSpeedCalculator : ITokenSpeedCalculator
         {
-            public void Update(int totalTokens) { }
+            public void Add(int chars, double estimatedTokens) { }
             public double GetTokensPerSecond() => 0.0;
             public double GetAverageTokensPerSecond() => 0.0;
         }

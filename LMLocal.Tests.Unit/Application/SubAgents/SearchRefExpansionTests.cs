@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.SubAgents.ReadRefs;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Tests.Unit.Infrastructure;
 using NUnit.Framework;
 
@@ -157,6 +158,77 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(SearchResultRecorder.TryRecord(ledger, null), Is.EqualTo(0));
             Assert.That(SearchResultRecorder.TryRecord(null, new SearchResultsResponse { Success = true }), Is.EqualTo(0));
             Assert.That(ledger.Count, Is.EqualTo(0));
+        }
+
+        // ---- SymbolReferenceRecorder (symbol_analyzer) ---------------------------------------------
+
+        [Test]
+        public async Task SymbolRecorder_CSharpReferences_ExpandAsSearchMarkers()
+        {
+            var ledger = new SearchLedger();
+            var response = new GetSymbolInfo.SymbolInfoResponse
+            {
+                Success = true,
+                References = new List<GetSymbolInfo.ReferenceItem>
+                {
+                    new GetSymbolInfo.ReferenceItem { FilePath = FilePath, LineNumber = 52, LineText = "Task<CompactionOutcome> CompactForcedAsync(...);" },
+                    new GetSymbolInfo.ReferenceItem { FilePath = FilePath, LineNumber = 90, LineText = "return CompactionOutcome.Skipped;" }
+                }
+            };
+
+            Assert.That(SymbolReferenceRecorder.TryRecord(ledger, response), Is.EqualTo(2));
+
+            var result = await ExpandAsync(ledger, "@" + FilePath + ":52,90");
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.Content, Does.Contain("Task<CompactionOutcome> CompactForcedAsync(...);"));
+            Assert.That(result.Content, Does.Contain("return CompactionOutcome.Skipped;"));
+        }
+
+        [Test]
+        public void SymbolRecorder_JsReferences_TakePathFromFileGroup()
+        {
+            var ledger = new SearchLedger();
+            var response = new GetSymbolInfoJs.JsSymbolInfoResponse
+            {
+                Success = true,
+                Files = new List<GetSymbolInfoJs.JsFileGroup>
+                {
+                    new GetSymbolInfoJs.JsFileGroup
+                    {
+                        FilePath = @"LMLocal\Resources\js\app.js",
+                        References = new List<GetSymbolInfoJs.JsReferenceItem>
+                        {
+                            new GetSymbolInfoJs.JsReferenceItem { LineNumber = 16, LineText = "lmInit();" }
+                        }
+                    }
+                }
+            };
+
+            Assert.That(SymbolReferenceRecorder.TryRecord(ledger, response), Is.EqualTo(1));
+            Assert.That(ledger.TryResolve(@"LMLocal\Resources\js\app.js", new LineRange(16, 16), out var r), Is.True);
+            Assert.That(r[0].Text, Is.EqualTo("lmInit();"));
+        }
+
+        [Test]
+        public void SymbolRecorder_FailedOrForeignResult_RecordsNothing()
+        {
+            var ledger = new SearchLedger();
+
+            Assert.That(SymbolReferenceRecorder.TryRecord(ledger, new GetSymbolInfo.SymbolInfoResponse { Success = false, References = new List<GetSymbolInfo.ReferenceItem> { new GetSymbolInfo.ReferenceItem { FilePath = "a.cs", LineNumber = 1, LineText = "x" } } }), Is.EqualTo(0));
+            Assert.That(SymbolReferenceRecorder.TryRecord(ledger, new SearchResultsResponse { Success = true }), Is.EqualTo(0));
+            Assert.That(SymbolReferenceRecorder.TryRecord(ledger, "Error: boom"), Is.EqualTo(0));
+            Assert.That(SymbolReferenceRecorder.TryRecord(null, new GetSymbolInfo.SymbolInfoResponse { Success = true }), Is.EqualTo(0));
+            Assert.That(ledger.Count, Is.EqualTo(0));
+        }
+
+        [TestCase("get_symbol_info", true)]
+        [TestCase("GET_SYMBOL_INFO_JS", true)]
+        [TestCase("search_file_content", false)]
+        [TestCase(null, false)]
+        public void SymbolRecorder_IsSymbolTool(string toolName, bool expected)
+        {
+            Assert.That(SymbolReferenceRecorder.IsSymbolTool(toolName), Is.EqualTo(expected));
         }
 
         // ---- FileContentRenderer.AppendSearchLocation ----------------------------------------------

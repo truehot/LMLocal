@@ -184,9 +184,13 @@ class AppController {
 
         chatController.onOpenFile.on(async (path) => {
             try {
-                await appDataService.openFileAsync(path);
+                const result = await appDataService.openFileLinkAsync(path);
+                if (result?.status === 'opened') return true;
+                console.warn(`File link "${path}" was not opened: ${result?.status ?? 'unknown'}`, result?.candidates ?? '');
+                return false;
             } catch (err) {
                 console.error(`Failed to open file link "${path}":`, err);
+                return false;
             }
         });
 

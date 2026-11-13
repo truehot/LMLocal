@@ -22,7 +22,7 @@ class ToolbarComponent {
         this._lastRenderedSupportsMax = null;
         this._tipEl = null;
         this._tipAnchor = null;
-        this._tipAnchors = null;
+        this._tipAnchors = [];
     }
 
     _getElements() {
@@ -91,10 +91,8 @@ class ToolbarComponent {
         if (text === this._lastTooltipText) return;
         this._lastTooltipText = text;
 
-        if (this.elements.barInfoTooltip) this.elements.barInfoTooltip.dataset.tooltip = text;
-        if (this.elements.modelName) this.elements.modelName.dataset.tooltip = text;
-
-        this._paintTip(text);
+        this.setTipText(this.elements.barInfoTooltip, text);
+        this.setTipText(this.elements.modelName, text);
     }
 
     /**
@@ -149,7 +147,7 @@ class ToolbarComponent {
         if (!anchor) return;
 
         const text = anchor.dataset?.tooltip;
-        if (text == null) return;
+        if (!text) return;
 
         const el = this._ensureTip();
         el.textContent = text;
@@ -203,6 +201,54 @@ class ToolbarComponent {
         el.style.setProperty('left', `${Math.max(gap, left)}px`, 'important');
     }
 
+    /**
+     * Registers an anchor owned by another component for the shared tooltip. Idempotent, so the
+     * repeated setup cycles of the host do not stack listeners.
+     */
+    registerTipAnchor(anchor) {
+        if (!anchor) return;
+        if (!this._tipAnchors) this._tipAnchors = [];
+        if (this._tipAnchors.includes(anchor)) return;
+
+        anchor.addEventListener('mouseenter', this._onTipEnter);
+        anchor.addEventListener('mouseleave', this._onTipLeave);
+        this._tipAnchors.push(anchor);
+    }
+
+    /**
+     * Detaches an anchor again and closes the tooltip when it currently belongs to that anchor.
+     */
+    unregisterTipAnchor(anchor) {
+        if (!anchor) return;
+        if (this._tipAnchors) {
+            this._tipAnchors = this._tipAnchors.filter((registered) => registered !== anchor);
+        }
+
+        anchor.removeEventListener('mouseenter', this._onTipEnter);
+        anchor.removeEventListener('mouseleave', this._onTipLeave);
+
+        if (this._tipAnchor === anchor) this._hideTip();
+    }
+
+    /**
+     * Publishes the tooltip text of an anchor. An open tooltip is repainted in place instead of
+     * being closed and reopened, so the value stays readable while the pointer rests on it.
+     */
+    setTipText(anchor, text) {
+        if (!anchor) return;
+
+        const value = text || '';
+        anchor.dataset.tooltip = value;
+
+        if (this._tipAnchor !== anchor) return;
+
+        if (value) {
+            this._paintTip(value);
+        } else {
+            this._hideTip();
+        }
+    }
+
     _onTipEnter = (e) => {
         this._showTip(e.currentTarget);
     };
@@ -228,11 +274,8 @@ class ToolbarComponent {
             this.elements.modelName.style.cursor = 'pointer';
         }
 
-        this._tipAnchors = [this.elements.barInfoTooltip, this.elements.modelName].filter(Boolean);
-        for (const anchor of this._tipAnchors) {
-            anchor.addEventListener('mouseenter', this._onTipEnter);
-            anchor.addEventListener('mouseleave', this._onTipLeave);
-        }
+        this.registerTipAnchor(this.elements.barInfoTooltip);
+        this.registerTipAnchor(this.elements.modelName);
     }
 
     _detachEvents() {
@@ -240,13 +283,8 @@ class ToolbarComponent {
             this.elements.modelName.removeEventListener('click', this._onModelNameClick);
         }
 
-        if (this._tipAnchors) {
-            for (const anchor of this._tipAnchors) {
-                anchor.removeEventListener('mouseenter', this._onTipEnter);
-                anchor.removeEventListener('mouseleave', this._onTipLeave);
-            }
-            this._tipAnchors = null;
-        }
+        this.unregisterTipAnchor(this.elements.barInfoTooltip);
+        this.unregisterTipAnchor(this.elements.modelName);
 
         this._hideTip();
         clearTimeout(this.timeoutId);

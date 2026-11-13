@@ -84,6 +84,11 @@
     <Compile Include="Application\Changes\UnifiedDiffBuilder.cs" />
     <Compile Include="Application\ChatSessionStream\ContextOverflowDetector.cs" />
     <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
+    <Compile Include="Application\ChatSessionStream\ArgumentsLengthGuard.cs" />
+    <Compile Include="Application\ChatSessionStream\CompositeToolCallArgumentsGuard.cs" />
+    <Compile Include="Application\ChatSessionStream\GemmaControlTokens.cs" />
+    <Compile Include="Application\ChatSessionStream\GemmaToolCallArgumentsGuard.cs" />
+    <Compile Include="Application\ChatSessionStream\ToolCallArgumentsGuardFactory.cs" />
     <Compile Include="Application\Chat\ChatHistoryService.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
     <Compile Include="Application\Chat\ContextBudget.cs" />
@@ -105,7 +110,11 @@
     <Compile Include="Application\SubAgents\ReadRefs\ReadResultRecorder.cs" />
     <Compile Include="Application\SubAgents\ReadRefs\SearchLedger.cs" />
     <Compile Include="Application\SubAgents\ReadRefs\SearchResultRecorder.cs" />
+    <Compile Include="Application\SubAgents\ReadRefs\SubAgentRunEvidence.cs" />
+    <Compile Include="Application\SubAgents\ReadRefs\SymbolReferenceRecorder.cs" />
+    <Compile Include="Application\SubAgents\SubAgentRecoveryPolicy.cs" />
     <Compile Include="Application\SubAgents\SubAgentRunRequest.cs" />
+    <Compile Include="Application\SubAgents\SubAgentToolRoundExecutor.cs" />
     <Compile Include="Application\SubAgents\SubAgentsParallelRunResult.cs" />
     <Compile Include="Application\SubAgents\SubAgentsRunResponse.cs" />
     <Compile Include="Application\SubAgents\SubAgentsService.cs" />
@@ -133,16 +142,16 @@
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionSourceProvider.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
     <Compile Include="Infrastructure\Persistence\FileEncodingDetector.cs" />
-    <Compile Include="Infrastructure\SubAgents\ISubAgentFailureLogger.cs" />
-    <Compile Include="Infrastructure\SubAgents\SubAgentFailureLogger.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CanonicalWindowCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\FileLinkResolver.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PrunedContentGuard.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\IToolFileOpenResult.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ToolPagination.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\FileLinksController.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2CompactionEndMessage.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
     <Compile Include="UI\ChatInjectionService.cs" />
@@ -224,6 +233,9 @@
     <Compile Include="Infrastructure\Security\TestConnectionErrorClassifier.cs" />
     <Compile Include="Infrastructure\Security\X509CertificateLoader.cs" />
     <Compile Include="Application\Abstractions\Ports\ISettingsManager.cs" />
+    <Compile Include="Application\Abstractions\Ports\IStreamProcessor.cs" />
+    <Compile Include="Application\Abstractions\Ports\IStreamProcessorFactory.cs" />
+    <Compile Include="Application\Abstractions\Ports\IToolCallArgumentsGuard.cs" />
     <Compile Include="Infrastructure\Streaming\ActivityReportingStream.cs" />
     <Compile Include="Infrastructure\SubAgents\ISubAgentsCatalog.cs" />
     <Compile Include="Infrastructure\SubAgents\SubAgentsConfigManager.cs" />
@@ -301,6 +313,9 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\BuiltInVsToolProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionFileProvider.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PathResolver.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\InspectTypes\SymbolSourceLocation.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\InspectTypes\TypeInspectionModels.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\InspectTypes\TypeInspector.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SolutionInspector.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsSolutionFilesScanner.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\VsDependencies.cs" />
@@ -556,10 +571,11 @@
     <Compile Include="Infrastructure\LlmApi\OpenApiAdapter.cs" />
     <Compile Include="Core\Models\StreamCompletionResult.cs" />
     <Compile Include="Infrastructure\Streaming\StreamInactivityWatcher.cs" />
-    <Compile Include="Application\ChatSessionStream\StreamProcessor.cs" />
+    <Compile Include="Infrastructure\Streaming\StreamProcessor.cs" />
     <Compile Include="Infrastructure\Time\SystemTimeProvider.cs" />
     <Compile Include="Core\Models\TokenGenerationStats.cs" />
-    <Compile Include="Application\ChatSessionStream\StreamProcessorFactory.cs" />
+    <Compile Include="Infrastructure\Streaming\StreamProcessorFactory.cs" />
+    <Compile Include="Infrastructure\Streaming\ToolCallAccumulator.cs" />
     <Compile Include="Infrastructure\Streaming\TokenSpeedCalculator.cs" />
     <Compile Include="Infrastructure\WebView\Messaging\WebViewScriptExecutor.cs" />
     <Compile Include="UI\MainWindow.cs" />
@@ -717,6 +733,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\chat\message.actions.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\streaming\streaming.buffer.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -730,6 +750,8 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Compile Include="Application\Tool\ToolExecutionManager.cs" />
+    <Compile Include="Application\Tool\ToolArgumentLimits.cs" />
+    <Compile Include="Application\Tool\WriteTools.cs" />
     <Compile Include="Application\Tool\ToolExecutionResult.cs" />
     <Content Include="Resources\css\component.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

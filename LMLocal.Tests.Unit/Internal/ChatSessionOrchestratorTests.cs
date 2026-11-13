@@ -71,7 +71,7 @@ namespace LMLocal.Tests.Unit.Internal
                 // complete without sending chunks
                 if (onComplete != null)
                 {
-                    var result = new StreamCompletionResult { WasCancelled = false, ErrorMessage = null, FinishReason = "stop" };
+                    var result = new StreamCompletionResult { StopReason = StreamStopReason.Completed, ErrorMessage = null, FinishReason = "stop" };
                     await onComplete(result).ConfigureAwait(false);
                 }
             });
@@ -171,7 +171,7 @@ namespace LMLocal.Tests.Unit.Internal
             {
                 if (onComplete != null)
                 {
-                    var result = new StreamCompletionResult { WasCancelled = false, ErrorMessage = "LLM error" };
+                    var result = new StreamCompletionResult { StopReason = StreamStopReason.Completed, ErrorMessage = "LLM error" };
                     await onComplete(result).ConfigureAwait(false);
                 }
             });
@@ -211,7 +211,7 @@ namespace LMLocal.Tests.Unit.Internal
                 {
                     var result = new StreamCompletionResult
                     {
-                        WasCancelled = false,
+                        StopReason = StreamStopReason.Completed,
                         ErrorMessage = null,
                         FinishReason = "stop",
                         TokensPerSecond = 42.0,

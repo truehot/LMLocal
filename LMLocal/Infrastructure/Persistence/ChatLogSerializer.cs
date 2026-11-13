@@ -53,7 +53,8 @@ namespace LMLocal.Infrastructure.Persistence
                 { "role", message.Role },
                 { "content", content },
                 { "tool_call_id", message.ToolCallId },
-                { "tool_calls", message.ToolCalls }
+                { "tool_calls", message.ToolCalls },
+                { "model_id", message.ModelId }
             };
 
             return JsonConvert.SerializeObject(entry) + Environment.NewLine;
@@ -94,7 +95,8 @@ namespace LMLocal.Infrastructure.Persistence
 
                 return new ChatMessage(role ?? "unknown", content, toolCallId)
                 {
-                    ToolCalls = toolCalls
+                    ToolCalls = toolCalls,
+                    ModelId = obj.Value<string>("model_id")
                 };
             }
             catch (Exception ex)

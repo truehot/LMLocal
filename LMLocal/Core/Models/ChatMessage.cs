@@ -22,6 +22,11 @@ namespace LMLocal.Core.Models
         /// </summary>
         public object ToolCalls { get; set; }
 
+        /// <summary>
+        /// Id of the model that produced this assistant message.
+        /// </summary>
+        public string ModelId { get; set; }
+
         public ChatMessage(string role, object content, string toolCallId = null)
         {
             Role = role;

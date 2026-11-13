@@ -34,8 +34,8 @@ namespace LMLocal.Core.Models
         public string SystemFingerprint { get; set; }
 
         /// <summary>
-        /// Average generation speed in tokens per second across all sampled chunks.
-        /// 0 if no content chunks were generated.
+        /// Approximate generation speed of this round in tokens per second: the average of the windowed readings taken
+        /// during the stream (deltas or estimated tokens). 0 when no positive reading was taken.
         /// </summary>
         public double TokensPerSecond { get; set; }
 
@@ -47,10 +47,15 @@ namespace LMLocal.Core.Models
         public IReadOnlyList<ToolCallRecord> ToolCalls { get; set; }
 
         /// <summary>
+        /// Why reading the stream stopped.
+        /// </summary>
+        public StreamStopReason StopReason { get; set; }
+
+        /// <summary>
         /// Indicates whether stream was cancelled by user (via StopExecution).
         /// If true, generation was interrupted and result may be incomplete.
         /// </summary>
-        public bool WasCancelled { get; set; }
+        public bool WasCancelled => StopReason == StreamStopReason.Cancelled;
 
         /// <summary>
         /// Error message if stream processing encountered an error.
@@ -76,6 +81,24 @@ namespace LMLocal.Core.Models
         /// </summary>
         public int? HttpStatusCode { get; set; }
     }
+    /// <summary>
+    /// Why the stream processor stopped reading the response stream.
+    /// </summary>
+    internal enum StreamStopReason
+    {
+        /// <summary>The stream ended on its own.</summary>
+        Completed,
+
+        /// <summary>The user cancelled the generation.</summary>
+        Cancelled,
+
+        /// <summary>A server error, a read timeout or another failure; see ErrorMessage.</summary>
+        Error,
+
+        /// <summary>Reading was stopped because a tool call was broken while it streamed.</summary>
+        ToolCallAborted
+    }
+
     /// <summary>
     /// Token usage breakdown for a single generation request.
     /// </summary>

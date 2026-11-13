@@ -22,6 +22,14 @@
     <!-- Scratch files created by E2E RunTool tests must never compile into the test assembly. -->
     <Compile Remove="Scratch\**\*.cs" />
     <None Remove="Scratch\**" />
+    <!-- Build benchmark fixture: a separate solution opened by the benchmark, never part of this assembly. -->
+    <Compile Remove="Fixtures\BuildFixture\**" />
+    <None Remove="Fixtures\BuildFixture\**" />
+    <EmbeddedResource Remove="Fixtures\BuildFixture\**" />
+    <!-- Reader benchmark fixtures: frozen C# text read by code_reader_subagent, never compiled.
+         Kept as project items so find_files sees them (the SDK drops *.cs from None by default). -->
+    <Compile Remove="Fixtures\ReaderCode\**" />
+    <None Include="Fixtures\ReaderCode\**\*.cs" />
     <None Include="Fixtures\reader-ranges-fixture.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

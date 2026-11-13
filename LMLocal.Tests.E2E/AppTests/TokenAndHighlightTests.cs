@@ -62,7 +62,7 @@ public class TokenAndHighlightTests : AppTestBase
 
     [Test]
     [Category("CopyButton")]
-    public async Task CopyButton_ShowsCopiedLabelAfterClick()
+    public async Task CopyButton_ShowsSuccessIconAfterClick()
     {
         await GotoWithMockAsync("webview-mock-streaming.js");
         await Expect(Page.Locator("#conn-status"))
@@ -75,9 +75,17 @@ public class TokenAndHighlightTests : AppTestBase
         await Expect(Page.Locator(".ai-response-container")).ToBeVisibleAsync(new() { Timeout = 5000 });
         await Page.WaitForFunctionAsync("() => !document.querySelector('.ai-response-container')?.classList.contains('is-generating')");
 
-        await Page.Locator(".header-copy-btn").ClickAsync();
-        await Expect(Page.Locator(".header-copy-btn span"))
-            .ToHaveTextAsync(CopiedLabel, new() { Timeout = 3000 });
+        var headerCopy = Page.Locator(".header-copy-btn").First;
+        await Expect(headerCopy.Locator("svg")).ToBeVisibleAsync();
+
+        await headerCopy.ClickAsync();
+
+        // The result is reported by an icon swap plus a class, there is no label to change any more.
+        await Expect(headerCopy).ToHaveClassAsync(SuccessClass, new() { Timeout = 3000 });
+        await Expect(headerCopy.Locator("svg")).ToBeVisibleAsync();
+
+        // The result is temporary: the button goes back to the copy icon.
+        await Expect(headerCopy).Not.ToHaveClassAsync(SuccessClass, new() { Timeout = 5000 });
     }
 
     [Test]
@@ -126,21 +134,93 @@ public class TokenAndHighlightTests : AppTestBase
 
         await headerCopy.Nth(0).ClickAsync();
 
-        // Verify UI shows copied state
-        // Wait for the UI copy status label to change to a success label (e.g. "Copied" or "Done!").
-        var span = headerCopy.Nth(0).Locator("span");
-        var waitUntil = DateTime.UtcNow.AddMilliseconds(3000);
-        string spanText = await span.InnerTextAsync();
-        while (!CopiedLabel.IsMatch(spanText) && DateTime.UtcNow < waitUntil)
-        {
-            await Task.Delay(100);
-            spanText = await span.InnerTextAsync();
-        }
-        Assert.That(CopiedLabel.IsMatch(spanText), Is.True, $"Copy status label did not indicate success. Final value: '{spanText}'");
+        // Verify UI shows the copied state: the icon is swapped and the success class is set.
+        await Expect(headerCopy.Nth(0)).ToHaveClassAsync(SuccessClass, new() { Timeout = 3000 });
 
         // Verify backend received the exact displayed code
         var lastCopied = await Page.EvaluateAsync<string>("() => window.__lastCopied");
         Assert.That(lastCopied, Is.EqualTo(displayedCode), "Backend copy handler did not receive the expected streamed code text.");
+    }
+
+    [Test]
+    [Category("CopyButton")]
+    public async Task CopyButton_HasSameIconAsMessageCopy()
+    {
+        await GotoWithMockAsync("webview-mock-streaming.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        // The message copy button appears once the answer is finished.
+        await Expect(Page.Locator(".ai-message .message-copy-btn")).ToHaveCountAsync(1, new() { Timeout = 5000 });
+
+        // Both buttons share one icon, so the worker copy (single-line literal) and Icons.COPY must not
+        // drift apart. Compare normalized markup: the raw strings differ in line breaks only.
+        const string normalize = "el => el.outerHTML.replace(/\\s+/g, ' ').trim()";
+        var headerSvg = await Page.Locator(".header-copy-btn svg").First.EvaluateAsync<string>(normalize);
+        var messageSvg = await Page.Locator(".message-copy-btn svg").First.EvaluateAsync<string>(normalize);
+
+        Assert.That(headerSvg, Is.Not.Empty, "Code block copy button should render an icon");
+        Assert.That(headerSvg, Is.EqualTo(messageSvg),
+            "Code block copy button and message copy button must use the same icon");
+    }
+
+    [Test]
+    [Category("CopyButton")]
+    public async Task CopyButton_IsIconOnlyAndAccessible()
+    {
+        await GotoWithMockAsync("webview-mock-streaming.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        var headerCopy = Page.Locator(".header-copy-btn").First;
+        await Expect(headerCopy).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        // No label any more: the button is icon only, but keeps its tooltip and accessible name.
+        await Expect(headerCopy.Locator("span")).ToHaveCountAsync(0);
+        await Expect(headerCopy).ToHaveAttributeAsync("aria-label", "Copy");
+        await Expect(headerCopy).ToHaveAttributeAsync("title", "Copy");
+        await Expect(headerCopy).ToHaveAttributeAsync("type", "button");
+    }
+
+    [Test]
+    [Category("CopyButton")]
+    public async Task CopyButton_DoubleClick_CopiesOnce()
+    {
+        await GotoWithMockAsync("webview-mock-streaming.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#userInput").FillAsync("Hello");
+        await Page.Locator("#mainBtn").ClickAsync();
+
+        var headerCopy = Page.Locator(".header-copy-btn").First;
+        await Expect(headerCopy).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        await Page.EvaluateAsync<object>(@"() => {
+            window.__copyCount = 0;
+            const orig = window.__hostOverride?.CopyToClipboardAsync;
+            window.__hostOverride = window.__hostOverride || {};
+            window.__hostOverride.CopyToClipboardAsync = async (t) => {
+                window.__copyCount++;
+                return orig ? await orig(t) : true;
+            };
+        }");
+
+        await headerCopy.ClickAsync();
+        await headerCopy.ClickAsync();
+
+        await Page.WaitForFunctionAsync("() => window.__copyCount > 0");
+        // The second click lands while the result is still displayed and must be ignored.
+        await Task.Delay(500);
+
+        var copyCount = await Page.EvaluateAsync<int>("() => window.__copyCount");
+        Assert.That(copyCount, Is.EqualTo(1), "A second click on the copy button must not copy again");
     }
 
     [Test]

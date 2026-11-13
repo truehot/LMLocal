@@ -331,5 +331,39 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(restoredCalls[0].ExtraContent, Is.Not.Null);
             Assert.That(JToken.DeepEquals(restoredCalls[0].ExtraContent, JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")), Is.True);
         }
+
+        [Test]
+        public void BuildMessageLine_WritesModelId()
+        {
+            var message = new ChatMessage("assistant", "answer") { ModelId = "qwen-7b" };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj.Value<string>("model_id"), Is.EqualTo("qwen-7b"));
+        }
+
+        [Test]
+        public void SerializeThenParse_RoundTripsModelId()
+        {
+            var message = new ChatMessage("assistant", "answer") { ModelId = "qwen-7b" };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var restored = ChatLogSerializer.ParseChatMessage(JObject.Parse(line.Trim()));
+
+            Assert.That(restored.ModelId, Is.EqualTo("qwen-7b"));
+        }
+
+        [Test]
+        public void ParseChatMessage_WithoutModelId_LeavesItNull()
+        {
+            // Log line written before the field existed.
+            var obj = JObject.Parse("{\"type\":\"message\",\"session_id\":\"s\",\"role\":\"assistant\",\"content\":\"answer\"}");
+
+            var restored = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(restored, Is.Not.Null);
+            Assert.That(restored.ModelId, Is.Null);
+        }
     }
 }

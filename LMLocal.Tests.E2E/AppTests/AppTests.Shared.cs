@@ -22,13 +22,13 @@ public partial class AppTestBase : PageTest
     private static partial Regex TokensPerSecondRegex();
     protected static Regex TokensPerSecond => TokensPerSecondRegex();
 
-    [GeneratedRegex("(Copied|Done)")]
-    private static partial Regex CopiedLabelRegex();
-    protected static Regex CopiedLabel => CopiedLabelRegex();
-
     [GeneratedRegex(@"^792 tokens · cached 100 · 42\.0 t/s · \d+\.\d+\s?s$")]
     private static partial Regex TokenStatsBadgeWithTimeRegex();
     protected static Regex TokenStatsBadgeWithTime => TokenStatsBadgeWithTimeRegex();
+
+    [GeneratedRegex(@"\bsuccess\b")]
+    private static partial Regex SuccessClassRegex();
+    protected static Regex SuccessClass => SuccessClassRegex();
 
     protected static string ReadMock(string fileName) =>
         File.ReadAllText(Path.GetFullPath($"TestAssets/{fileName}"));

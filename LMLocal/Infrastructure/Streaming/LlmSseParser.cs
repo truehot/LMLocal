@@ -191,7 +191,12 @@ namespace LMLocal.Infrastructure.Streaming
                 }
             }
 
-            var reasoning = delta["reasoning_content"]?.ToString();
+            var reasoning = GetStringField(delta, "reasoning_content");
+            if (string.IsNullOrEmpty(reasoning))
+            {
+                reasoning = GetStringField(delta, "reasoning");
+            }
+
             if (!string.IsNullOrEmpty(reasoning))
             {
                 chunks.Add(new TextStreamChunk(reasoning, ChunkKind.Reasoning));
@@ -210,6 +215,12 @@ namespace LMLocal.Infrastructure.Streaming
             }
 
             return chunks;
+        }
+
+        private static string GetStringField(JToken token, string name)
+        {
+            var value = token[name];
+            return value != null && value.Type == JTokenType.String ? value.Value<string>() : null;
         }
     }
 }

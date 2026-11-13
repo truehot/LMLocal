@@ -73,7 +73,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // First generation produces one tool call
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "tool_calls",
                                 ToolCalls = new[] { new ToolCallRecord { CallId = "call1", FunctionName = "tool1", ArgumentsJson = "{\"a\":1}" } }
@@ -87,7 +87,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // Second generation (after tool results) completes normally with no tool calls
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "stop",
                                 ToolCalls = new ToolCallRecord[0]
@@ -153,7 +153,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // First generation produces tool call
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "tool_calls",
                                 ToolCalls = new[] { new ToolCallRecord { CallId = "call2", FunctionName = "toolErr", ArgumentsJson = "{}" } }
@@ -167,7 +167,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // Second generation should finish normally
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "stop",
                                 ToolCalls = new ToolCallRecord[0]
@@ -231,7 +231,7 @@ namespace LMLocal.Tests.Unit.Internal
                         // Each generation returns the exact same tool call
                         var result = new StreamCompletionResult
                         {
-                            WasCancelled = false,
+                            StopReason = StreamStopReason.Completed,
                             ErrorMessage = null,
                             FinishReason = "tool_calls",
                             ToolCalls = new[]
@@ -313,7 +313,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // First 3 generations produce tool calls (different each time)
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "tool_calls",
                                 ToolCalls = new[]
@@ -334,7 +334,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // 4th generation finishes without tool calls
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "stop",
                                 ToolCalls = Array.Empty<ToolCallRecord>()
@@ -406,7 +406,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // 1: {"file":"a.txt"} -> 2: {"file":"b.txt"} -> 3: {"file":"a.txt"}
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "tool_calls",
                                 ToolCalls = new[]
@@ -429,7 +429,7 @@ namespace LMLocal.Tests.Unit.Internal
                             // 4th generation finishes without tools
                             var result = new StreamCompletionResult
                             {
-                                WasCancelled = false,
+                                StopReason = StreamStopReason.Completed,
                                 ErrorMessage = null,
                                 FinishReason = "stop",
                                 ToolCalls = Array.Empty<ToolCallRecord>()

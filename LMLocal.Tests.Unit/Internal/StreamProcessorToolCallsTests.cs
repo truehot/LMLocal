@@ -21,7 +21,7 @@ namespace LMLocal.Tests.Unit
 
         private class MockTokenSpeedCalculator : ITokenSpeedCalculator
         {
-            public void Update(int totalTokens) { }
+            public void Add(int chars, double estimatedTokens) { }
             public double GetTokensPerSecond() => 0.0;
             public double GetAverageTokensPerSecond() => 0.0;
         }
@@ -275,6 +275,103 @@ namespace LMLocal.Tests.Unit
             Assert.That(second.ToolCalls, Is.Not.Null);
             Assert.That(second.ToolCalls.Count, Is.EqualTo(0));
             Assert.That(second.ContentResponse, Is.EqualTo("plain"));
+        }
+
+        // ================ Arguments guard (broken Gemma tool calls) ================
+
+        private static string ContentLine(string text)
+        {
+            var delta = new JObject(new JProperty("content", text));
+            var root = new JObject(new JProperty("choices", new JArray(new JObject(new JProperty("delta", delta)))));
+            return "data: " + root.ToString(Formatting.None);
+        }
+
+        /// <summary>
+        /// The 2026-11-12 find_files case: content, the call, broken arguments, then more output that must not be read.
+        /// </summary>
+        private static string[] BrokenFindFilesLines()
+        {
+            return new[]
+            {
+                ContentLine("Before"),
+                DeltaLine(MetaCall(0, "call0", "find_files")),
+                DeltaLine(ArgsCall(0, "{\"file_name=\\\"*StreamErrorClassifier*\\\", max_results=500")),
+                DeltaLine(ArgsCall(0, "<|\\\"|>")),
+                ContentLine("AFTER"),
+                DeltaLine(ArgsCall(0, "\\n<|channel>thought"))
+            };
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_GuardRejectsArguments_StopsReadingAndMarksCallInvalid()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager(), GemmaToolCallArgumentsGuard.Instance);
+
+            var result = await RunAsync(processor, BrokenFindFilesLines());
+
+            Assert.That(result.StopReason, Is.EqualTo(StreamStopReason.ToolCallAborted));
+            Assert.That(result.WasCancelled, Is.False);
+            Assert.That(result.ErrorMessage, Is.Null);
+            Assert.That(result.FinishReason, Is.Null);
+            Assert.That(result.ContentResponse, Is.EqualTo("Before"), "lines after the abort are not read");
+            Assert.That(result.ToolCalls.Count, Is.EqualTo(1));
+            Assert.That(result.ToolCalls[0].FunctionName, Is.EqualTo("find_files"));
+            Assert.That(result.ToolCalls[0].IsInvalid, Is.True);
+            Assert.That(result.ToolCalls[0].ArgumentsJson, Is.EqualTo("{}"));
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_NoGuard_SameStream_ReadToTheEnd()
+        {
+            // Models without a guard keep the old behavior: the whole stream is read, the broken JSON is caught at the end.
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+
+            var result = await RunAsync(processor, BrokenFindFilesLines());
+
+            Assert.That(result.StopReason, Is.EqualTo(StreamStopReason.Completed));
+            Assert.That(result.ContentResponse, Is.EqualTo("BeforeAFTER"));
+            Assert.That(result.ToolCalls[0].IsInvalid, Is.True);
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_GuardWithValidArguments_NoAbort()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager(), GemmaToolCallArgumentsGuard.Instance);
+
+            var result = await RunAsync(processor, new[]
+            {
+                DeltaLine(MetaCall(0, "call0", "search_file_content")),
+                DeltaLine(ArgsCall(0, "{\"text\":\"x => x > 0\",")),
+                DeltaLine(ArgsCall(0, "\"path\":\"a.cs\"}")),
+                ContentLine("AFTER")
+            });
+
+            Assert.That(result.StopReason, Is.EqualTo(StreamStopReason.Completed));
+            Assert.That(result.ContentResponse, Is.EqualTo("AFTER"));
+            Assert.That(result.ToolCalls[0].IsInvalid, Is.False);
+            Assert.That(result.ToolCalls[0].ArgumentsJson, Is.EqualTo("{\"text\":\"x => x > 0\",\"path\":\"a.cs\"}"));
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_SecondCallRejected_FirstCallStaysValid()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager(), GemmaToolCallArgumentsGuard.Instance);
+
+            var result = await RunAsync(processor, new[]
+            {
+                DeltaLine(MetaCall(0, "call0", "read_file_lines")),
+                DeltaLine(ArgsCall(0, "{\"file_path\":\"a.cs\"}")),
+                DeltaLine(MetaCall(1, "call1", "search_file_content")),
+                DeltaLine(ArgsCall(1, "{\"text\":\"}")),
+                DeltaLine(ArgsCall(1, "<tool_call|>")),
+                DeltaLine(ArgsCall(1, "<|tool_call>call:search_file_content{"))
+            });
+
+            Assert.That(result.StopReason, Is.EqualTo(StreamStopReason.ToolCallAborted));
+            Assert.That(result.ToolCalls.Count, Is.EqualTo(2));
+            Assert.That(result.ToolCalls[0].IsInvalid, Is.False);
+            Assert.That(result.ToolCalls[0].ArgumentsJson, Is.EqualTo("{\"file_path\":\"a.cs\"}"));
+            Assert.That(result.ToolCalls[1].IsInvalid, Is.True);
         }
     }
 }

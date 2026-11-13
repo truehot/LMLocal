@@ -41,7 +41,7 @@ public class ExpandableTests : AppTestBase
             .ToBeVisibleAsync(new() { Timeout = 3000 });
 
         var userMessage = Page.Locator(".user-message.expandable").Nth(0);
-        var toggle = userMessage.Locator(".show-more-btn, button.toggle-collapse, button");
+        var toggle = userMessage.Locator(".show-more-btn");
         await Expect(toggle).ToBeVisibleAsync(new() { Timeout = 3000 });
         await toggle.ClickAsync();
 
@@ -69,7 +69,7 @@ public class ExpandableTests : AppTestBase
         Assert.That(maxHeightBefore, Is.Not.EqualTo("none"), "Message should be truncated initially (max-height != 'none')");
 
         var userMessage = Page.Locator(".user-message.expandable").Nth(0);
-        var toggle = userMessage.Locator(".show-more-btn, button.toggle-collapse, button");
+        var toggle = userMessage.Locator(".show-more-btn");
         await toggle.ClickAsync();
 
         var maxHeightAfter = await messageContent.EvaluateAsync<string>("el => window.getComputedStyle(el).maxHeight");
@@ -94,7 +94,7 @@ public class ExpandableTests : AppTestBase
         var userMessage = Page.Locator(".user-message.expandable").Nth(0);
         var messageContent = userMessage.Locator(".message-content");
 
-        var toggle = userMessage.Locator(".show-more-btn, button.toggle-collapse, button");
+        var toggle = userMessage.Locator(".show-more-btn");
         await toggle.ClickAsync();
 
         await toggle.ClickAsync();

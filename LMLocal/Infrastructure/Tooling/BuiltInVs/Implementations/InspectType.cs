@@ -1,12 +1,14 @@
 using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.VisualStudio.ComponentModelHost;
@@ -29,16 +31,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
     internal class InspectType : IInspectType
     {
         private readonly ISearchResultCache _searchCache;
-        private const int MaxMembersPerCategory = 100;
+        private readonly IPathResolver _pathResolver;
         private const int MaxTypeSearchMatches = 50;
         internal const int MaxCandidates = 5;
 
         public string ToolName => "inspect_type";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public InspectType(ISearchResultCache searchCache)
+        public InspectType(ISearchResultCache searchCache, IPathResolver pathResolver)
         {
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
+            _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
         }
 
         public ToolDefinition GetToolInfo()
@@ -53,6 +56,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                "a namespace-qualified name (e.g. 'Microsoft.VisualStudio.Language.Proposals' or 'System.Collections.Generic.List') is matched against the fully qualified name by dot-separated segments. " +
                                "Optionally filter by 'project_name', 'namespace' and/or 'assembly_name' (NuGet package id usually matches the assembly name). " +
                                "Generic types use arity for exact lookup (e.g., 'System.Collections.Generic.List`1'). " +
+                               "For a type declared in the solution, 'file_path' is its file and every member has 'line', the 1-based line with its name " +
+                               "(a member declared in another file of a partial type also has its own 'file_path'). " +
                                "Member lists are capped at 100 per category; totals and a 'has_more_results' flag are included. " +
                                "Partial search results are capped at 50 matches. " +
                                "If nothing passes the 'namespace'/'assembly_name' filters, success=false and 'candidates' lists up to 5 types that match by name only, with their actual namespace and assembly. " +
@@ -115,6 +120,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (projects.Count == 0)
                 return (null, null, null, 0, $"Project '{projectName}' was not found in the current solution.");
 
+            string solutionDir = string.IsNullOrEmpty(solution.FilePath) ? null : Path.GetDirectoryName(solution.FilePath);
+            Func<string, string> toRelativePath = path => _pathResolver.TryGetRelativePath(path, solutionDir, out var rel) ? rel : path;
+
             return await Task.Run(async () =>
             {
                 bool exactFilteredOut = false;
@@ -133,14 +141,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         var typeSymbol = compilation.GetTypeByMetadataName(typeName);
                         if (typeSymbol == null) continue;
 
-                        if (!MatchesNamespace(GetNamespaceName(typeSymbol.ContainingNamespace), nsFilter)
+                        if (!MatchesNamespace(TypeInspector.GetNamespaceName(typeSymbol.ContainingNamespace), nsFilter)
                             || !MatchesAssembly(typeSymbol.ContainingAssembly?.Name, assemblyFilter))
                         {
                             exactFilteredOut = true;
                             continue;
                         }
 
-                        return (InspectSymbol(typeSymbol, project.Name), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
+                        return (TypeInspector.Inspect(typeSymbol, project.Name, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
                     }
                 }
 
@@ -163,7 +171,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
 
                 if (search.Matches.Count == 1)
-                    return (InspectSymbol(search.Matches[0].Symbol, search.Matches[0].ProjectName), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
+                    return (TypeInspector.Inspect(search.Matches[0].Symbol, search.Matches[0].ProjectName, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
 
                 return ((TypeInspectionResult)null, search.Matches.Select(ToTypeSearchMatch).ToList(), (List<TypeSearchMatch>)null, search.MatchTotal, (string)null);
             }, cancellationToken);
@@ -204,7 +212,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (!MatchesQuery(indexed, query))
                         continue;
 
-                    if (!MatchesNamespace(GetNamespaceName(indexed.Symbol.ContainingNamespace), nsFilter)
+                    if (!MatchesNamespace(TypeInspector.GetNamespaceName(indexed.Symbol.ContainingNamespace), nsFilter)
                         || !MatchesAssembly(indexed.Symbol.ContainingAssembly?.Name, assemblyFilter))
                     {
                         if (seenCandidates.Add(indexed.MatchKey))
@@ -422,20 +430,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 parts.Insert(0, type.Name);
 
             string body = string.Join(".", parts);
-            string ns = GetNamespaceName(symbol.ContainingNamespace);
+            string ns = TypeInspector.GetNamespaceName(symbol.ContainingNamespace);
             return string.IsNullOrEmpty(ns) ? body : ns + "." + body;
-        }
-
-        /// <summary>
-        /// Namespace name for the response; the global namespace renders as an empty string instead of
-        /// '&lt;global namespace&gt;', which would also break exact matching of 'Outer.Inner'.
-        /// </summary>
-        internal static string GetNamespaceName(INamespaceSymbol ns)
-        {
-            if (ns == null || ns.IsGlobalNamespace)
-                return "";
-
-            return ns.ToDisplayString();
         }
 
         internal static bool MatchesQuery(IndexedType indexed, TypeSearchQuery query)
@@ -597,227 +593,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 MetadataName = symbol.MetadataName,
                 Kind = symbol.TypeKind.ToString(),
                 Accessibility = symbol.DeclaredAccessibility.ToString(),
-                ContainingNamespace = GetNamespaceName(symbol.ContainingNamespace),
+                ContainingNamespace = TypeInspector.GetNamespaceName(symbol.ContainingNamespace),
                 AssemblyName = symbol.ContainingAssembly?.Name ?? "Unknown",
                 ProjectName = match.ProjectName,
                 IsGeneric = symbol.IsGenericType,
                 Arity = symbol.Arity
             };
-        }
-
-        internal static TypeInspectionResult InspectSymbol(INamedTypeSymbol symbol, string projectName)
-        {
-            var result = new TypeInspectionResult
-            {
-                FullName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                MetadataName = symbol.MetadataName,
-                Kind = symbol.TypeKind.ToString(),
-                Accessibility = symbol.DeclaredAccessibility.ToString(),
-                ContainingNamespace = GetNamespaceName(symbol.ContainingNamespace),
-                AssemblyName = symbol.ContainingAssembly?.Name ?? "Unknown",
-                ProjectName = projectName,
-                IsAbstract = symbol.IsAbstract,
-                IsSealed = symbol.IsSealed,
-                IsStatic = symbol.IsStatic,
-                IsGenericType = symbol.IsGenericType,
-                Arity = symbol.Arity,
-                TypeParameters = symbol.TypeParameters.Select(tp => tp.Name).ToList(),
-                BaseType = symbol.BaseType?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                Interfaces = symbol.AllInterfaces
-                    .Select(i => i.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                    .Distinct()
-                    .ToList(),
-                Attributes = symbol.GetAttributes()
-                    .Select(a => new AttributeInfo
-                    {
-                        Name = a.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) ?? "Unknown",
-                        ConstructorArguments = a.ConstructorArguments.Select(c => c.ToCSharpString()).ToList()
-                    })
-                    .ToList()
-            };
-
-            var members = symbol.GetMembers();
-
-            var constructors = symbol.InstanceConstructors
-                .Where(c => IsVisibleMember(c))
-                .ToList();
-            result.TotalConstructors = constructors.Count;
-            result.Constructors = constructors
-                .OrderBy(c => ComputeAccessibilityRank(c.DeclaredAccessibility))
-                .Take(MaxMembersPerCategory)
-                .Select(c => new MethodInfo
-                {
-                    Name = c.Name,
-                    Accessibility = c.DeclaredAccessibility.ToString(),
-                    IsStatic = c.IsStatic,
-                    Parameters = c.Parameters.Select(p => new ParamInfo
-                    {
-                        Name = p.Name,
-                        Type = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                    }).ToList()
-                })
-                .ToList();
-
-            var properties = members.OfType<IPropertySymbol>()
-                .Where(p => IsVisibleMember(p))
-                .ToList();
-            result.TotalProperties = properties.Count;
-            result.Properties = properties
-                .OrderBy(p => ComputeAccessibilityRank(p.DeclaredAccessibility))
-                .Take(MaxMembersPerCategory)
-                .Select(p =>
-                {
-                    bool hasGetter = IsVisibleMember(p.GetMethod);
-                    bool hasSetter = IsVisibleMember(p.SetMethod);
-                    return new PropertyInfo
-                    {
-                        Name = p.Name,
-                        Type = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                        IsStatic = p.IsStatic,
-                        IsReadOnly = hasGetter && !hasSetter,
-                        IsWriteOnly = hasSetter && !hasGetter,
-                        HasGetter = hasGetter,
-                        HasSetter = hasSetter,
-                        Accessibility = p.DeclaredAccessibility.ToString()
-                    };
-                })
-                .ToList();
-
-            var methods = members.OfType<IMethodSymbol>()
-                .Where(m => IsVisibleMember(m) && IsReportableMethod(m))
-                .ToList();
-            result.TotalMethods = methods.Count;
-            result.Methods = methods
-                .OrderBy(m => ComputeAccessibilityRank(m.DeclaredAccessibility))
-                .Take(MaxMembersPerCategory)
-                .Select(m => new MethodInfo
-                {
-                    Name = m.Name,
-                    Accessibility = m.DeclaredAccessibility.ToString(),
-                    IsStatic = m.IsStatic,
-                    IsExtension = m.IsExtensionMethod,
-                    IsGeneric = m.IsGenericMethod,
-                    ReturnType = m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    TypeParameters = m.TypeParameters.Length > 0
-                        ? m.TypeParameters.Select(tp => tp.Name).ToList()
-                        : null,
-                    Parameters = m.Parameters.Select(p => new ParamInfo
-                    {
-                        Name = p.Name,
-                        Type = p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                    }).ToList()
-                })
-                .ToList();
-
-            var events = members.OfType<IEventSymbol>()
-                .Where(e => IsVisibleMember(e))
-                .ToList();
-            result.TotalEvents = events.Count;
-            result.Events = events
-                .OrderBy(e => ComputeAccessibilityRank(e.DeclaredAccessibility))
-                .Take(MaxMembersPerCategory)
-                .Select(e => new EventInfo
-                {
-                    Name = e.Name,
-                    Type = e.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    IsStatic = e.IsStatic,
-                    Accessibility = e.DeclaredAccessibility.ToString()
-                })
-                .ToList();
-
-            var fields = members.OfType<IFieldSymbol>()
-                .Where(f => IsVisibleMember(f))
-                .ToList();
-            result.TotalFields = fields.Count;
-            result.Fields = fields
-                .OrderBy(f => ComputeAccessibilityRank(f.DeclaredAccessibility))
-                .Take(MaxMembersPerCategory)
-                .Select(f => new FieldInfo
-                {
-                    Name = f.Name,
-                    Type = f.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    IsStatic = f.IsStatic,
-                    IsReadOnly = f.IsReadOnly,
-                    IsConst = f.IsConst,
-                    ConstantValue = f.HasConstantValue ? FormatConstantValue(f.ConstantValue) : null,
-                    Accessibility = f.DeclaredAccessibility.ToString()
-                })
-                .ToList();
-
-            result.HasMoreResults =
-                result.TotalConstructors > MaxMembersPerCategory ||
-                result.TotalProperties > MaxMembersPerCategory ||
-                result.TotalMethods > MaxMembersPerCategory ||
-                result.TotalEvents > MaxMembersPerCategory ||
-                result.TotalFields > MaxMembersPerCategory;
-
-            return result;
-        }
-
-        /// <summary>
-        /// Members worth reporting: public, protected and internal.
-        /// </summary>
-        internal static bool IsVisibleMember(ISymbol member)
-        {
-            if (member == null)
-                return false;
-
-            switch (member.DeclaredAccessibility)
-            {
-                case Accessibility.Public:
-                case Accessibility.Internal:
-                case Accessibility.Protected:
-                case Accessibility.ProtectedOrInternal:
-                case Accessibility.ProtectedAndInternal:
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        /// <summary>
-        /// Order of member lists before the per-category cap: public, internal, protected internal,
-        /// protected, private protected. <see cref="Enumerable.OrderBy{T}"/> is stable, so members of one
-        /// group keep their declaration order.
-        /// </summary>
-        internal static int ComputeAccessibilityRank(Accessibility accessibility)
-        {
-            switch (accessibility)
-            {
-                case Accessibility.Public: return 0;
-                case Accessibility.Internal: return 1;
-                case Accessibility.ProtectedOrInternal: return 2;
-                case Accessibility.Protected: return 3;
-                case Accessibility.ProtectedAndInternal: return 4;
-                default: return 5;
-            }
-        }
-
-        /// <summary>
-        /// Ordinary methods, operators and conversions.
-        /// </summary>
-        internal static bool IsReportableMethod(IMethodSymbol method)
-        {
-            switch (method.MethodKind)
-            {
-                case MethodKind.Constructor:
-                case MethodKind.StaticConstructor:
-                case MethodKind.Destructor:
-                case MethodKind.PropertyGet:
-                case MethodKind.PropertySet:
-                case MethodKind.EventAdd:
-                case MethodKind.EventRemove:
-                case MethodKind.EventRaise:
-                    return false;
-                default:
-                    return true;
-            }
-        }
-
-        /// <summary>Formats a compile-time constant culture-invariantly and quotes strings; null for an unrepresentable value.</summary>
-        internal static string FormatConstantValue(object value)
-        {
-            return SymbolDisplay.FormatPrimitive(value, quoteStrings: true, useHexadecimalNumbers: false);
         }
 
         internal static (string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, string error) ExtractAndValidateParameters(
@@ -955,92 +736,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         #region DTOs
 
-        public class ParamInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("type")]
-            public string Type { get; set; }
-        }
-
-        public class MethodInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("accessibility")]
-            public string Accessibility { get; set; }
-            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsStatic { get; set; }
-            [JsonProperty("is_extension", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsExtension { get; set; }
-            [JsonProperty("is_generic", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsGeneric { get; set; }
-            [JsonProperty("return_type", NullValueHandling = NullValueHandling.Ignore)]
-            public string ReturnType { get; set; }
-            [JsonProperty("type_parameters", NullValueHandling = NullValueHandling.Ignore)]
-            public List<string> TypeParameters { get; set; }
-            [JsonProperty("parameters")]
-            public List<ParamInfo> Parameters { get; set; }
-        }
-
-        public class PropertyInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("type")]
-            public string Type { get; set; }
-            [JsonProperty("accessibility")]
-            public string Accessibility { get; set; }
-            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsStatic { get; set; }
-            [JsonProperty("is_read_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsReadOnly { get; set; }
-            [JsonProperty("is_write_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsWriteOnly { get; set; }
-            [JsonProperty("has_getter")]
-            public bool HasGetter { get; set; }
-            [JsonProperty("has_setter")]
-            public bool HasSetter { get; set; }
-        }
-
-        public class EventInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("type")]
-            public string Type { get; set; }
-            [JsonProperty("accessibility")]
-            public string Accessibility { get; set; }
-            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsStatic { get; set; }
-        }
-
-        public class FieldInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("type")]
-            public string Type { get; set; }
-            [JsonProperty("accessibility")]
-            public string Accessibility { get; set; }
-            [JsonProperty("is_static", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsStatic { get; set; }
-            [JsonProperty("is_read_only", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsReadOnly { get; set; }
-            [JsonProperty("is_const", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public bool IsConst { get; set; }
-            [JsonProperty("constant_value", NullValueHandling = NullValueHandling.Ignore)]
-            public string ConstantValue { get; set; }
-        }
-
-        public class AttributeInfo
-        {
-            [JsonProperty("name")]
-            public string Name { get; set; }
-            [JsonProperty("constructor_arguments")]
-            public List<string> ConstructorArguments { get; set; }
-        }
-
         public class TypeSearchMatch
         {
             [JsonProperty("full_name")]
@@ -1061,64 +756,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public bool IsGeneric { get; set; }
             [JsonProperty("arity")]
             public int Arity { get; set; }
-        }
-
-        public class TypeInspectionResult
-        {
-            [JsonProperty("full_name")]
-            public string FullName { get; set; }
-            [JsonProperty("metadata_name")]
-            public string MetadataName { get; set; }
-            [JsonProperty("kind")]
-            public string Kind { get; set; }
-            [JsonProperty("accessibility")]
-            public string Accessibility { get; set; }
-            [JsonProperty("containing_namespace")]
-            public string ContainingNamespace { get; set; }
-            [JsonProperty("assembly_name")]
-            public string AssemblyName { get; set; }
-            [JsonProperty("project_name")]
-            public string ProjectName { get; set; }
-            [JsonProperty("is_abstract")]
-            public bool IsAbstract { get; set; }
-            [JsonProperty("is_sealed")]
-            public bool IsSealed { get; set; }
-            [JsonProperty("is_static")]
-            public bool IsStatic { get; set; }
-            [JsonProperty("is_generic")]
-            public bool IsGenericType { get; set; }
-            [JsonProperty("arity")]
-            public int Arity { get; set; }
-            [JsonProperty("type_parameters")]
-            public List<string> TypeParameters { get; set; }
-            [JsonProperty("base_type")]
-            public string BaseType { get; set; }
-            [JsonProperty("interfaces")]
-            public List<string> Interfaces { get; set; }
-            [JsonProperty("attributes")]
-            public List<AttributeInfo> Attributes { get; set; }
-            [JsonProperty("constructors")]
-            public List<MethodInfo> Constructors { get; set; }
-            [JsonProperty("total_constructors")]
-            public int TotalConstructors { get; set; }
-            [JsonProperty("properties")]
-            public List<PropertyInfo> Properties { get; set; }
-            [JsonProperty("total_properties")]
-            public int TotalProperties { get; set; }
-            [JsonProperty("methods")]
-            public List<MethodInfo> Methods { get; set; }
-            [JsonProperty("total_methods")]
-            public int TotalMethods { get; set; }
-            [JsonProperty("events")]
-            public List<EventInfo> Events { get; set; }
-            [JsonProperty("total_events")]
-            public int TotalEvents { get; set; }
-            [JsonProperty("fields")]
-            public List<FieldInfo> Fields { get; set; }
-            [JsonProperty("total_fields")]
-            public int TotalFields { get; set; }
-            [JsonProperty("has_more_results")]
-            public bool HasMoreResults { get; set; }
         }
 
         public class TypeInspectionResponse

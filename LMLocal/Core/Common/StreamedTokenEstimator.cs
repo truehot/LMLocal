@@ -37,20 +37,21 @@ namespace LMLocal.Core.Common
         }
 
         /// <summary>
-        /// Adds a piece of streamed text (content, reasoning or tool-call arguments) to the estimate.
+        /// Adds a piece of streamed text (content, reasoning or tool-call arguments) to the estimate and returns the raw
+        /// (unrounded, unclamped) estimate of that very piece, so a caller measuring speed reuses this single pass over
+        /// the text instead of re-estimating it.
         /// </summary>
-        public void Add(string text)
+        public double Add(string text)
         {
             if (string.IsNullOrEmpty(text))
-                return;
+                return 0.0;
 
-            foreach (var ch in text)
-            {
-                if (ch <= 0x7F)
-                    _asciiChars++;
-                else
-                    _nonAsciiChars++;
-            }
+            CountChars(text, out int asciiChars, out int nonAsciiChars);
+
+            _asciiChars += asciiChars;
+            _nonAsciiChars += nonAsciiChars;
+
+            return (double)asciiChars / _asciiCharsPerToken + (double)nonAsciiChars / _nonAsciiCharsPerToken;
         }
 
         /// <summary>
@@ -67,6 +68,23 @@ namespace LMLocal.Core.Common
                                 + (double)_nonAsciiChars / _nonAsciiCharsPerToken;
 
                 return Math.Max(1, (int)Math.Round(tokens));
+            }
+        }
+
+        /// <summary>
+        /// Splits text into ASCII and non-ASCII character counts (ASCII packs more characters per token).
+        /// </summary>
+        private static void CountChars(string text, out int asciiChars, out int nonAsciiChars)
+        {
+            asciiChars = 0;
+            nonAsciiChars = 0;
+
+            foreach (var ch in text)
+            {
+                if (ch <= 0x7F)
+                    asciiChars++;
+                else
+                    nonAsciiChars++;
             }
         }
     }

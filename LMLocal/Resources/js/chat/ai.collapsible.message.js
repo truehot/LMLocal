@@ -121,6 +121,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
 
     const api = {
         isCollapsible: true,
+        root: element,
 
         markAsFinalRound: () => {
             _isFinalRound = true;

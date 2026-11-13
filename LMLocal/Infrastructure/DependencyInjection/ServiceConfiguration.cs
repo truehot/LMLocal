@@ -19,6 +19,7 @@ using LMLocal.Infrastructure.Providers;
 using LMLocal.Infrastructure.RecentModels;
 using LMLocal.Infrastructure.Security;
 using LMLocal.Infrastructure.Settings;
+using LMLocal.Infrastructure.Streaming;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling;
@@ -158,6 +159,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IChatPersistenceFactory, ChatPersistenceServiceFactory>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
             services.AddSingleton<IChatHistoryService, ChatHistoryService>();
+            services.AddSingleton<IToolCallArgumentsGuardFactory, ToolCallArgumentsGuardFactory>();
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
             services.AddSingleton<IBuiltInVsToolProvider, BuiltInVsToolProvider>();
@@ -174,7 +176,6 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IApiRequestBuilder, ApiRequestBuilder>();
             services.AddSingleton<IOpenApiAdapter, OpenApiAdapter>();
             services.AddSingleton<ISubAgentsConfigManager, SubAgentsConfigManager>();
-            services.AddSingleton<ISubAgentFailureLogger, SubAgentFailureLogger>();
             services.AddSingleton<ISubAgentsService>(sp => new SubAgentsService(
                 sp.GetRequiredService<ISettingsManager>(),
                 sp.GetRequiredService<IFileSystem>(),
@@ -182,8 +183,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
                 () => sp.GetRequiredService<IToolExecutionManager>(),
                 sp.GetRequiredService<IToolQueueProvider>(),
                 sp.GetRequiredService<IToolCallLoopDetector>(),
-                sp.GetRequiredService<IChatPersistenceFactory>(),
-                sp.GetRequiredService<ISubAgentFailureLogger>()));
+                sp.GetRequiredService<IChatPersistenceFactory>()));
             services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
@@ -220,6 +220,8 @@ namespace LMLocal.Infrastructure.DependencyInjection
 
             services.AddSingleton<IModelsController>(sp => new ModelsController(sp.GetRequiredService<ISettingsManager>(), sp.GetRequiredService<IModelsListService>(), sp.GetRequiredService<IActiveModelContext>()));
             services.AddSingleton<IRecentModelsController>(sp => new RecentModelsController(sp.GetRequiredService<IRecentModelsManager>()));
+            services.AddSingleton<IFileLinkResolver, FileLinkResolver>();
+            services.AddSingleton<IFileLinksController>(sp => new FileLinksController(sp.GetRequiredService<IFileLinkResolver>()));
             services.AddSingleton<IAutocompletionsController>(sp => new AutocompletionsController(sp.GetRequiredService<IAutocompletionsConfigManager>(), sp.GetRequiredService<IAutocompletionsService>(), sp.GetRequiredService<IModelsListService>()));
             services.AddSingleton<IChatSessionController>(sp => new ChatSessionController(sp.GetRequiredService<IChatHistoryManager>()));
             services.AddSingleton<IWebViewHostController, WebViewHostController>();

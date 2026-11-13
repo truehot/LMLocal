@@ -31,6 +31,12 @@ namespace LMLocal.Application.SubAgents
         /// </summary>
         public int UnresolvedRefCount { get; set; }
 
+        /// <summary>
+        /// One note per automated recovery during the run (a repeated tool call, a malformed tool call aborted while streaming);
+        /// null when the run never recovered.
+        /// </summary>
+        public List<string> Recoveries { get; set; }
+
         object IToolExecutionOutcome.Result => Content;
     }
 }

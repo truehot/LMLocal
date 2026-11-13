@@ -168,7 +168,7 @@ namespace LMLocal.Application.ChatSessionStream
 
                 var messages = history.BuildUserMessagesWithHistory(request.SystemPrompt);
 
-                var processor = _streamProcessorFactory.Create(linkedCts);
+                var processor = _streamProcessorFactory.Create(request.ModelId);
 
                 var messageContext = new MessageContext(messages);
                 var modelProfile = await GetModelProfileAsync(request.ModelId, linkedCts.Token).ConfigureAwait(false);
@@ -209,7 +209,7 @@ namespace LMLocal.Application.ChatSessionStream
 
                 request.Calibration?.RecordSuccessfulRound(result?.TokenUsage?.PromptTokens, envelopeEstimate);
 
-                var classified = ClassifyAndCommit(history, result);
+                var classified = ClassifyAndCommit(history, result, request.ModelId);
                 classified.EnvelopeEstimate = envelopeEstimate;
                 return classified;
             }
@@ -246,6 +246,7 @@ namespace LMLocal.Application.ChatSessionStream
                 ErrorCode = !string.IsNullOrEmpty(errorInfo?.RawCode) ? errorInfo.RawCode : errorInfo?.Code?.ToString(),
                 ErrorType = errorInfo?.Type,
                 FinishReason = "error",
+                StopReason = StreamStopReason.Error,
                 HttpStatusCode = ex.HttpStatusCode
             };
         }
@@ -313,7 +314,7 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>
         /// Classifies the stream result and commits the assistant message to history.
         /// </summary>
-        private static StreamRoundResult ClassifyAndCommit(IChatHistoryManager history, StreamCompletionResult result)
+        private static StreamRoundResult ClassifyAndCommit(IChatHistoryManager history, StreamCompletionResult result, string modelId)
         {
             if (result.WasCancelled)
             {
@@ -332,18 +333,18 @@ namespace LMLocal.Application.ChatSessionStream
                     ? "\n\nResponse blocked by content filter."
                     : "\n\nResponse truncated — token limit reached.";
 
-                history.AddAssistantMessage(result.ContentResponse, null);
+                history.AddAssistantMessage(result.ContentResponse, null, modelId);
                 return new StreamRoundResult { Outcome = StreamRoundOutcome.Incomplete, Stream = result };
             }
 
             bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
             if (hasToolCalls)
             {
-                history.SetPendingAssistant(result.ContentResponse, result.ToolCalls);
+                history.SetPendingAssistant(result.ContentResponse, result.ToolCalls, modelId);
                 return new StreamRoundResult { Outcome = StreamRoundOutcome.ToolCalls, Stream = result };
             }
 
-            history.AddAssistantMessage(result.ContentResponse, result.ToolCalls);
+            history.AddAssistantMessage(result.ContentResponse, result.ToolCalls, modelId);
             return new StreamRoundResult { Outcome = StreamRoundOutcome.Completed, Stream = result };
         }
 

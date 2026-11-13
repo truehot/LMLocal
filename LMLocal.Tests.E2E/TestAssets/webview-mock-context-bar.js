@@ -25,7 +25,7 @@ const __mockBridge = {
     CopyToClipboardAsync: async (text) => true,
     GetInstructionsAsync: async () => JSON.stringify({ tabs: [] }),
     UpdateInstructionsAsync: async (json) => true,
-    GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),
+    GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, Provider: 'openai', LmStudioBaseUrl: 'http://localhost:1234' }),
     UpdateSettingsAsync: async (json) => true,
     GetSnapshotAsync: async () => '{}'
 };
@@ -95,7 +95,7 @@ function __startMock() {
             FocusAsync: async () => { },
         };
         window.__settingsOverride = {
-            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true }),
+            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, Provider: 'openai', LmStudioBaseUrl: 'http://localhost:1234' }),
             UpdateSettingsAsync: async (json) => true,
             TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
         };

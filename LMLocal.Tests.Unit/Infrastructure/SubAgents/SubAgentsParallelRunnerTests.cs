@@ -7,7 +7,6 @@ using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
-using LMLocal.Tests.Unit.Internal.TestHelpers;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
@@ -18,7 +17,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
         private SubAgentsParallelRunner _runner;
 
         [SetUp]
-        public void SetUp() => _runner = new SubAgentsParallelRunner(NullSubAgentFailureLogger.Instance);
+        public void SetUp() => _runner = new SubAgentsParallelRunner();
 
         private static ToolCallRecord Call(string name, string callId = null)
             => new ToolCallRecord { FunctionName = name, CallId = callId ?? name, ArgumentsJson = "{}" };

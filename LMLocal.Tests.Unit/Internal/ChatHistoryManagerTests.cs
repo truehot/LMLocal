@@ -1813,6 +1813,95 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public async Task ConsolidateLastExchange_CodeReaderSubagent_ContentCarried()
+        {
+            var persistence = CreatePersistenceMock();
+            var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
+
+            const string SubagentMarkdown = "File: src/Program.cs, lines 1-2\nusing System;";
+
+            manager.AddUserMessage("read the file");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_reader_subagent")));
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", SubagentMarkdown, "c1")
+            });
+            manager.AddAssistantMessage("The file starts with using System.");
+
+            await manager.ConsolidateLastExchangeAsync();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Role, Is.EqualTo("user"));
+            Assert.That(history[1].Role, Is.EqualTo("assistant"));
+            Assert.That(history[1].Content, Is.EqualTo("The file starts with using System."));
+
+            var userContent = history[0].Content as string;
+            var expectedUserContent = "read the file"
+                + "\n\n---\n\n"
+                + "## Tool Results\n\n"
+                + "**code_reader_subagent**\n\n"
+                + SubagentMarkdown;
+
+            // The formatter builds its lines with StringBuilder.AppendLine (Environment.NewLine), so normalize before comparing.
+            var normalizedUserContent = userContent?.Replace("\r\n", "\n");
+
+            Assert.That(normalizedUserContent, Is.EqualTo(expectedUserContent),
+                "The code reader subagent output must be carried verbatim under its own header.");
+            Assert.That(userContent, Does.Contain("**code_reader_subagent**"));
+            Assert.That(userContent, Does.Contain("using System;"));
+        }
+
+        [Test]
+        public async Task ConsolidateLastExchange_OtherSubagent_NotCarried()
+        {
+            var persistence = CreatePersistenceMock();
+            var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
+
+            manager.AddUserMessage("find the method");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_explorer_subagent")));
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", "src/Program.cs:12: void Foo()", "c1")
+            });
+            manager.AddAssistantMessage("It is in src/Program.cs.");
+
+            await manager.ConsolidateLastExchangeAsync();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[1].Content, Is.EqualTo("It is in src/Program.cs."));
+
+            var userContent = history[0].Content as string;
+            Assert.That(userContent, Is.EqualTo("find the method"));
+            Assert.That(userContent, Does.Not.Contain("Tool Results"),
+                "Only the code reader subagent output is carried over, other subagents are not.");
+        }
+
+        [Test]
+        public async Task ConsolidateLastExchange_CodeReaderSubagentEmpty_NotCarried()
+        {
+            var persistence = CreatePersistenceMock();
+            var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
+
+            manager.AddUserMessage("read the file");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_reader_subagent")));
+            manager.AddToolExecutionResultMessages(new[]
+            {
+                new ChatMessage("tool", string.Empty, "c1")
+            });
+            manager.AddAssistantMessage("Nothing was read.");
+
+            await manager.ConsolidateLastExchangeAsync();
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[1].Content, Is.EqualTo("Nothing was read."));
+            Assert.That(history[0].Content as string, Is.EqualTo("read the file"),
+                "An empty subagent result must not add a Tool Results block.");
+        }
+
+        [Test]
         public async Task MoveLastExchangeToNewSession_DoubleInvocation_IsIdempotent()
         {
             var persistence = CreatePersistenceMock();
@@ -1867,6 +1956,56 @@ namespace LMLocal.Tests.Unit
             Assert.That(saved.Count, Is.EqualTo(4));
             Assert.That(saved[0].Content, Is.EqualTo("do something"));
             Assert.That(saved[3].Content, Is.EqualTo("done"));
+        }
+
+        // ---------- ModelId ----------
+
+        [Test]
+        public void AddAssistantMessage_WithModelId_RecordsItInHistoryAndPersistence()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+
+            manager.AddAssistantMessage("answer", null, "qwen-7b");
+
+            Assert.That(manager.GetHistoryCopy()[0].ModelId, Is.EqualTo("qwen-7b"));
+
+            mockPersistence.Verify(
+                p => p.SaveLastMessageAsync(It.Is<ChatMessage>(m => m.ModelId == "qwen-7b"), It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        [Test]
+        public void AddAssistantMessage_WithoutModelId_LeavesModelIdNull()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddAssistantMessage("answer", new List<ToolCallRecord>());
+
+            Assert.That(manager.GetHistoryCopy()[0].ModelId, Is.Null);
+        }
+
+        [Test]
+        public void SetPendingAssistant_WithModelId_FlushKeepsModelId()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("find files");
+            manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            }, "qwen-7b");
+
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "result1", "c1") });
+
+            var assistant = manager.GetHistoryCopy().First(m => m.Role == "assistant");
+            Assert.That(assistant.ModelId, Is.EqualTo("qwen-7b"));
         }
 
     }

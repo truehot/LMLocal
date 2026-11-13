@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -514,17 +516,17 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void FormatConstantValue_Null_ReturnsNullLiteral()
         {
-            Assert.That(InspectType.FormatConstantValue(null), Is.EqualTo("null"));
+            Assert.That(TypeInspector.FormatConstantValue(null), Is.EqualTo("null"));
         }
 
         [Test]
         public void FormatConstantValue_IsCultureInvariantAndQuotesStrings()
         {
-            Assert.That(InspectType.FormatConstantValue(1.5), Is.EqualTo("1.5"));
-            Assert.That(InspectType.FormatConstantValue("a\"b"), Is.EqualTo("\"a\\\"b\""));
-            Assert.That(InspectType.FormatConstantValue('a'), Is.EqualTo("'a'"));
-            Assert.That(InspectType.FormatConstantValue(true), Is.EqualTo("true"));
-            Assert.That(InspectType.FormatConstantValue(5000000000L), Is.EqualTo("5000000000"));
+            Assert.That(TypeInspector.FormatConstantValue(1.5), Is.EqualTo("1.5"));
+            Assert.That(TypeInspector.FormatConstantValue("a\"b"), Is.EqualTo("\"a\\\"b\""));
+            Assert.That(TypeInspector.FormatConstantValue('a'), Is.EqualTo("'a'"));
+            Assert.That(TypeInspector.FormatConstantValue(true), Is.EqualTo("true"));
+            Assert.That(TypeInspector.FormatConstantValue(5000000000L), Is.EqualTo("5000000000"));
         }
 
         #endregion
@@ -553,18 +555,18 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void Members_FalseFlags_OmittedFromJson()
         {
-            var method = JObject.Parse(JsonConvert.SerializeObject(new InspectType.MethodInfo
+            var method = JObject.Parse(JsonConvert.SerializeObject(new MethodInfo
             {
                 Name = "M",
-                Parameters = new List<InspectType.ParamInfo>()
+                Parameters = new List<ParamInfo>()
             }));
-            var property = JObject.Parse(JsonConvert.SerializeObject(new InspectType.PropertyInfo
+            var property = JObject.Parse(JsonConvert.SerializeObject(new PropertyInfo
             {
                 Name = "P",
                 Type = "global::System.Int32",
                 Accessibility = "Public"
             }));
-            var field = JObject.Parse(JsonConvert.SerializeObject(new InspectType.FieldInfo
+            var field = JObject.Parse(JsonConvert.SerializeObject(new FieldInfo
             {
                 Name = "F",
                 Type = "global::System.Int32",
@@ -590,7 +592,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void Members_TrueFlagsAndConstantValue_AreSerialized()
         {
-            var field = JObject.Parse(JsonConvert.SerializeObject(new InspectType.FieldInfo
+            var field = JObject.Parse(JsonConvert.SerializeObject(new FieldInfo
             {
                 Name = "F",
                 Type = "global::System.Int32",
@@ -608,11 +610,11 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public void Result_Events_AreSerialized()
         {
-            var json = JObject.Parse(JsonConvert.SerializeObject(new InspectType.TypeInspectionResult
+            var json = JObject.Parse(JsonConvert.SerializeObject(new TypeInspectionResult
             {
-                Events = new List<InspectType.EventInfo>
+                Events = new List<EventInfo>
                 {
-                    new InspectType.EventInfo { Name = "Changed", Type = "global::System.EventHandler", Accessibility = "Public" }
+                    new EventInfo { Name = "Changed", Type = "global::System.EventHandler", Accessibility = "Public" }
                 },
                 TotalEvents = 1
             }));
@@ -623,12 +625,55 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public void MethodInfo_NullTypeParameters_OmittedFromJson()
+        public void Members_Location_SerializedLastAndOnlyWhenSet()
         {
-            var json = JObject.Parse(JsonConvert.SerializeObject(new InspectType.MethodInfo
+            var inSource = JObject.Parse(JsonConvert.SerializeObject(new PropertyInfo
+            {
+                Name = "P",
+                Type = "string",
+                Accessibility = "Public",
+                Line = 14
+            }));
+            var otherPartialFile = JObject.Parse(JsonConvert.SerializeObject(new MethodInfo
             {
                 Name = "M",
-                Parameters = new List<InspectType.ParamInfo>()
+                Parameters = new List<ParamInfo>(),
+                Line = 7,
+                FilePath = @"LMLocal\Foo.Part2.cs"
+            }));
+            var fromAssembly = JObject.Parse(JsonConvert.SerializeObject(new FieldInfo
+            {
+                Name = "F",
+                Type = "int",
+                Accessibility = "Public"
+            }));
+
+            Assert.That(inSource.Value<int>("line"), Is.EqualTo(14));
+            Assert.That(inSource.ContainsKey("file_path"), Is.False);
+            Assert.That(inSource.Properties().Last().Name, Is.EqualTo("line"));
+            Assert.That(otherPartialFile.Value<int>("line"), Is.EqualTo(7));
+            Assert.That(otherPartialFile.Value<string>("file_path"), Is.EqualTo(@"LMLocal\Foo.Part2.cs"));
+            Assert.That(fromAssembly.ContainsKey("line"), Is.False);
+            Assert.That(fromAssembly.ContainsKey("file_path"), Is.False);
+        }
+
+        [Test]
+        public void Result_FilePath_OmittedForAssemblyTypes()
+        {
+            var fromSource = JObject.Parse(JsonConvert.SerializeObject(new TypeInspectionResult { FilePath = @"LMLocal\Foo.cs" }));
+            var fromAssembly = JObject.Parse(JsonConvert.SerializeObject(new TypeInspectionResult()));
+
+            Assert.That(fromSource.Value<string>("file_path"), Is.EqualTo(@"LMLocal\Foo.cs"));
+            Assert.That(fromAssembly.ContainsKey("file_path"), Is.False);
+        }
+
+        [Test]
+        public void MethodInfo_NullTypeParameters_OmittedFromJson()
+        {
+            var json = JObject.Parse(JsonConvert.SerializeObject(new MethodInfo
+            {
+                Name = "M",
+                Parameters = new List<ParamInfo>()
             }));
 
             Assert.That(json.ContainsKey("type_parameters"), Is.False);
@@ -654,7 +699,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             for (int i = 0; i < shown; i++)
                 matches.Add(new InspectType.TypeSearchMatch());
 
-            return new InspectType(new SearchResultCache()).GetCompletionMessage(new InspectType.TypeInspectionResponse
+            return new InspectType(new SearchResultCache(), new PathResolver()).GetCompletionMessage(new InspectType.TypeInspectionResponse
             {
                 Success = true,
                 TypeName = "e",

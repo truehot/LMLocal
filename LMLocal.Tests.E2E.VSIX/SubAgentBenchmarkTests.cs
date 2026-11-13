@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,7 @@ namespace LMLocal.Tests.E2E.VSIX
         private const string Editor = "edit_subagent";
         private const string Architect = "architect_subagent";
         private const string Planner = "task_planner_subagent";
+        private const string Retriever = "context_retriever_subagent";
 
         public TestContext TestContext { get; set; }
 
@@ -35,7 +37,7 @@ namespace LMLocal.Tests.E2E.VSIX
         // Data model
         // ---------------------------------------------------------------------
 
-        private sealed class Scenario
+        internal sealed class Scenario
         {
             public string Id;
             public string AgentId;
@@ -57,6 +59,9 @@ namespace LMLocal.Tests.E2E.VSIX
             public bool CheckRefusal = true;
 
             // ---- edit_subagent fixture (Temp\AgentProbe under the solution root) ----
+            // Only the A5 block sets these fields; while it is compiled out (EDIT_SUBAGENT_BENCHMARK) they keep
+            // their defaults, hence CS0649 is suppressed here.
+#pragma warning disable CS0649
             // True => both seed files are (re)created before the run and verified on disk after it.
             public bool WithFixture;
 
@@ -69,6 +74,7 @@ namespace LMLocal.Tests.E2E.VSIX
 
             // The scenario legitimately names a path that must not exist (a missing file).
             public bool SkipInventedPathCheck;
+#pragma warning restore CS0649
 
             // Soft evidence: same semantics as MustContain / MustContainAny / MustNotContain, but a
             // hit produces a non-hard violation (PARTIAL) instead of FAIL. Used for report quality,
@@ -78,6 +84,25 @@ namespace LMLocal.Tests.E2E.VSIX
             public string[] SoftMustNotContain = new string[0];
 
             public TimeSpan ReadTimeout = TimeSpan.FromMinutes(5);
+
+            // Text replacements applied to files (relative to the opened solution) right before the run and
+            // reverted byte-for-byte right after it. Used by the build benchmark to plant a compile error or a
+            // failing test in the build fixture.
+            public List<FileMutation> Mutations = new List<FileMutation>();
+        }
+
+        internal sealed class FileMutation
+        {
+            public string RelativePath;
+            public string Find;
+            public string Replace;
+
+            public FileMutation(string relativePath, string find, string replace)
+            {
+                RelativePath = relativePath;
+                Find = find;
+                Replace = replace;
+            }
         }
 
         private sealed class Violation
@@ -106,6 +131,9 @@ namespace LMLocal.Tests.E2E.VSIX
             public int? TotalTokens;
             public double TokensPerSecond;
             public List<string> Violations = new List<string>();
+            // Automated recoveries of the run (repeated call, malformed call, unresolved ref markers); empty when none.
+            public List<string> Recoveries = new List<string>();
+            public int UnresolvedRefCount;
         }
 
         // Mirror of SubAgentsRunResponse serialized over the pipe.
@@ -125,6 +153,7 @@ namespace LMLocal.Tests.E2E.VSIX
             public List<string> ToolsUsed { get; set; }
             public int ExpandedRefCount { get; set; }
             public int UnresolvedRefCount { get; set; }
+            public List<string> Recoveries { get; set; }
         }
 
         // ---------------------------------------------------------------------
@@ -218,7 +247,7 @@ line six - foxtrot";
         /// does not contain the text, so a typo in an expectation fails loudly instead of silently
         /// asserting the unchanged seed.
         /// </summary>
-        private static string PatchText(string text, string oldText, string newText)
+        internal static string PatchText(string text, string oldText, string newText)
         {
             // A verbatim literal that spans source lines carries the source file's own line endings
             // (CRLF in this repository), so a pattern written with '\n' would never match it. Both
@@ -243,141 +272,166 @@ line six - foxtrot";
         // Scenario list (prompts and expectations are in English)
         // ---------------------------------------------------------------------
 
-        private static List<Scenario> BuildScenarios()
+        /// <summary>
+        /// Builds the main benchmark list. Every expectation taken from live code goes through LineOf, LineAt,
+        /// MatchingLines, Ev, EvFile or Absent, which throw when the code no longer matches, so
+        /// <c>SubAgentBenchmarkSelfTests.Scenarios_MatchCurrentSources</c> catches drift without a model run.
+        /// </summary>
+        internal static List<Scenario> BuildScenarios()
         {
             var list = new List<Scenario>();
             var guid = Guid.NewGuid().ToString("N").Substring(0, 12);
-            //----A.1 code_explorer_subagent: discovery(10)------------------ -
+            // ---- A.1 code_explorer_subagent: discovery (12) ----
+
             list.Add(Sc("A1.1", Explorer,
-                "Search for the exact identifier ToolCallRecord. Report yes if the returned result includes StreamCompletionResult.cs at line 120.",
+                "Search for the exact identifier GetAsync in the solution. Report yes if the returned results include GetAsync and report the returned total count.",
                 "yes"));
 
             list.Add(Sc("A1.2", Explorer,
-                "Search for the exact identifier GetAsync in the solution. Report yes if the returned results include GetAsync and report the returned total count.",
-                "GetAsync"));
-
-            list.Add(Sc("A1.3", Explorer,
                 "Find the file named ChatLogSerializer.cs. Report yes if the returned path includes Persistence.",
                 "yes"));
 
-            list.Add(Sc("A1.4", Explorer,
+            list.Add(Sc("A1.3", Explorer,
                 "Search for the exact XML text PackageReference Include=\"Microsoft.CodeAnalysis\". Report yes if the returned result is a PackageReference to Microsoft.CodeAnalysis.",
                 "yes"));
 
-            list.Add(Sc("A1.5", Explorer,
-                "Find the file named StreamProcessor.cs. Report yes if the returned file name is StreamProcessor.cs.",
-                "yes"));
-
-            list.Add(Sc("A1.6", Explorer,
+            list.Add(Sc("A1.4", Explorer,
                 "Search for the exact identifier ConsolidateLastExchangeAsync with project filter LMLocal. Report yes if the returned results belong to project LMLocal.",
                 "yes"));
 
-            list.Add(Sc("A1.7", Explorer,
+            list.Add(Sc("A1.5", Explorer,
                 $"Search for the literal text bench-{guid}-{guid}. Report yes if the search tool returned zero matches.",
                 "yes"));
 
-            list.Add(Sc("A1.8", Explorer,
+            list.Add(Sc("A1.6", Explorer,
                 "Search for the exact text using Newtonsoft. Retrieve all returned pages. Report yes if the final result contains the complete returned result list and the reported total count.",
                 "yes"));
 
-            list.Add(Sc("A1.9", Explorer,
+            list.Add(Sc("A1.7", Explorer,
                 "Get the solution overview and report yes if returned project list doen't contain LMLocal.Web.",
                 "yes"));
 
-            list.Add(Sc("A1.10", Explorer,
-                "Search for the exact identifier ToolCallRecord and retrieve all returned pages. Report yes if the returned results include StreamCompletionResult.cs at line 120.",
-                "yes"));
+            var a108Lines = MatchingLines(A108File, A108Text);
+            var a108Last = a108Lines[a108Lines.Count - 1];
+            var a108 = Sc("A1.8", Explorer,
+                "In " + A108File + " search for the exact text " + A108Text + " and retrieve every page of results. Report the total number of matching lines and the last matched line with its text.",
+                a108Lines.Count.ToString(),
+                A108File + ":" + a108Last + ": `" + LineAt(A108File, a108Last) + "`");
+            a108.MustNotContain = new[] { "@LMLocal" };
+            list.Add(a108);
 
-            // Ref markers for explorer: matched lines are reported as @path:line and the runner substitutes the
-            // exact matched text. The line below contains backticks, which the model used to escape (\`) when retyping.
-            var a111 = Sc("A1.11", Explorer,
+            const string a109File = @"LMLocal\Resources\js\lib\token.stats.js";
+            const string a109Text = "parts.push(`${formatSpeed(stats.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND}`);";
+            var a109 = Sc("A1.9", Explorer,
                 "Search for the exact text formatSpeed(stats.tokenSpeed) with extension filter .js and report every matched line with its text.",
-                @"LMLocal\Resources\js\lib\token.stats.js:16: ``parts.push(`${formatSpeed(stats.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND}`);``");
-            a111.MustNotContain = new[] { @"\`", "@LMLocal" };
-            list.Add(a111);
+                a109File + ":" + LineOf(a109File, a109Text) + ": ``" + a109Text + "``");
+            a109.MustNotContain = new[] { @"\`", "@LMLocal" };
+            list.Add(a109);
 
-            // Folder path scope + marker expansion; the sibling ChatSession folder
-            // also contains the identifier and must not leak in.
-            // The line number is read from the file at run time, so edits above the enum do not break the scenario.
-            const string a112File = @"LMLocal\Application\Chat\HistoryCompactor.cs";
-            const string a112Text = "internal enum CompactionOutcome";
-            var a112 = Sc("A1.12", Explorer,
+
+            const string a110File = @"LMLocal\Application\Chat\HistoryCompactor.cs";
+            const string a110Text = "internal enum CompactionOutcome";
+            var a110 = Sc("A1.10", Explorer,
                 @"Search for the exact text CompactionOutcome in the folder LMLocal\Application\Chat and report every matched line with its text.",
-                a112File + ":" + LineOf(a112File, a112Text) + ": `" + a112Text + "`");
-            a112.MustNotContain = new[] { "ChatSession", "@LMLocal" };
+                a110File + ":" + LineOf(a110File, a110Text) + ": `" + a110Text + "`");
+            a110.MustNotContain = new[] { "ChatSession", "@LMLocal" };
+            list.Add(a110);
+
+            list.Add(Sc("A1.11", Explorer,
+                "Search for CompactForcedAsync OR ConsolidateLastExchangeAsync in project LMLocal and report the files that contain each of them.",
+                Ev(HistoryCompactorFile, "CompactForcedAsync"), Ev(ChatHistoryManagerFile, "ConsolidateLastExchangeAsync"),
+                EvFile(HistoryCompactorFile), EvFile(ChatHistoryManagerFile)));
+
+            const string a112Decl = @"LMLocal\Application\SubAgents\ReadRefs\SearchResultRecorder.cs";
+            const string a112DeclText = "internal static class SearchResultRecorder";
+
+            const string a112Call = @"LMLocal\Application\SubAgents\ReadRefs\SubAgentRunEvidence.cs";
+            const string a112CallText = "SearchResultRecorder.TryRecord(_searchLedger, result);";
+
+            const string a112Q3File = @"LMLocal.Tests.Unit\InstructionsControllerTests.cs";
+            const string a112Q3Anchor = "namespace LMLocal.Tests.Unit";
+            var a112Q3Text = $"// bench-{guid}-q3";
+            var a112 = Sc("A1.12", Explorer,
+                "Perform three independent searches and report all three results in one report:\n"
+                + "1. Search only in project LMLocal: where is the class SearchResultRecorder declared? Report file:line with the declaration line text.\n"
+                + "2. Search only in project LMLocal: which places call SearchResultRecorder.TryRecord? Report file:line with the matched line text for every call site.\n"
+                + $"3. Search the entire solution, including test projects, for the literal text bench-{guid}-q3. Report every hit with file:line and the matched line text, or state clearly that there are none.",
+                a112Decl + ":" + LineOf(a112Decl, a112DeclText) + ": `" + a112DeclText + "`",
+                a112Call + ":" + LineOf(a112Call, a112CallText) + ": `" + a112CallText + "`",
+                // The planted line takes the anchor's line number; the anchor moves one line down.
+                a112Q3File + ":" + LineOf(a112Q3File, a112Q3Anchor) + ": `" + a112Q3Text + "`");
+            a112.Mutations.Add(new FileMutation(a112Q3File, a112Q3Anchor, a112Q3Text + "\r\n" + a112Q3Anchor));
+            a112.MustNotContain = new[] { "@LMLocal" };
             list.Add(a112);
 
-            // OR query: either the tool fallback (note) or the model's own split must find both identifiers.
-            list.Add(Sc("A1.13", Explorer,
-                "Search for CompactForcedAsync OR ConsolidateLastExchangeAsync in project LMLocal and report the files that contain each of them.",
-                "CompactForcedAsync", "ConsolidateLastExchangeAsync", "HistoryCompactor.cs", "ChatHistoryManager.cs"));
+            // ---- A.2 code_reader_subagent: deterministic reading (14) ----------
 
-            // ---- A.2 code_reader_subagent: deterministic reading (9) ----------
-            list.Add(Sc("A2.1", Reader,
-                "Read the entire file LMLocal/Infrastructure/Persistence/ChatLogSerializer.cs and return it verbatim.",
-                "MaxPromptLength"));
-
-            list.Add(ScVerbatim("A2.2", Reader,
+            const string a201File = @"LMLocal\GettingStarted.txt";
+            list.Add(ScVerbatim("A2.1", Reader,
                 "Read lines 1-12 of LMLocal\\GettingStarted.txt and return them verbatim.",
-                "LM Local", "Visual Studio"));
+                Ev(a201File, "LM Local", 12), Ev(a201File, "Visual Studio", 12)));
 
-            list.Add(Sc("A2.3", Reader,
-                "Find the file named exactly StreamProcessor.cs and read it (there is also a StreamProcessorFactory.cs in the same folder - do not pick the factory).",
-                "ToolCallRecord", "LlmSseParser"));
+            // A2.2, A2.3 and A2.5 read frozen copies in Fixtures\ReaderCode, so refactoring LMLocal never breaks them.
+            var a202 = Sc("A2.2", Reader,
+                "Find the file named exactly SseFrameParser.cs and read it (there is also a SseFrameParserFactory.cs in the same folder - do not pick the factory).",
+                Ev(ReaderCodeDir + "SseFrameParser.cs", "FrameRecord"), Ev(ReaderCodeDir + "SseFrameParser.cs", "SseLineSplitter"));
+            a202.MustNotContain = new[] { Ev(ReaderCodeDir + "SseFrameParserFactory.cs", "CreateForEndpoint") };
+            list.Add(a202);
 
-            list.Add(ScVerbatim("A2.4", Reader,
-                "Read these three files and return them verbatim: LMLocal\\Infrastructure\\Persistence\\ChatLogSerializer.cs, LMLocal\\Infrastructure\\Persistence\\ChatPersistenceService.cs, LMLocal\\Core\\Models\\StreamChunk.cs.",
-                "MaxPromptLength", "SaveLastMessageAsync", "ChunkKind"));
+            list.Add(ScVerbatim("A2.3", Reader,
+                "Read these 4 files and return them verbatim: SessionLogWriter.cs, CompletionSummary.cs, SseFrameParser.cs, HistoryLedger.cs.",
+                Ev(ReaderCodeDir + "SessionLogWriter.cs", "WriteSessionHeader"),
+                Ev(ReaderCodeDir + "CompletionSummary.cs", "FinishReasonCode"),
+                Ev(ReaderCodeDir + "SseFrameParser.cs", "ParseFramesAsync"),
+                Ev(ReaderCodeDir + "HistoryLedger.cs", "MergeLastExchangeAsync")));
 
-            list.Add(ScVerbatim("A2.5", Reader,
-                "Read these 4 files and return them verbatim: ChatLogSerializer.cs, StreamCompletionResult.cs, StreamProcessor.cs, ChatHistoryManager.cs.",
-                "ChatLogSerializer", "ToolCallRecord", "ProcessStreamAsync", "ConsolidateLastExchangeAsync"));
-
-            list.Add(Sc("A2.6", Reader,
+            list.Add(Sc("A2.4", Reader,
                 "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs and return yes if not found.",
                 "yes"));
 
-            list.Add(Sc("A2.7", Reader,
-                "Read LMLocal/Infrastructure/Persistence/ChatLogSerializer.cs. If the entire file is not returned, clearly state that it is partial and identify the missing portion.",
-                "MaxPromptLength"));
+            // The anchors are in the last lines of the file: a partial read cannot contain them.
+            list.Add(ScVerbatim("A2.5", Reader,
+                "Read the file at exact path " + ReaderCodeDir + "SessionLogWriter.cs and return its contents verbatim. If the entire file is not returned, clearly state that it is partial and identify the missing portion.",
+                Ev(ReaderCodeDir + "SessionLogWriter.cs", "internal const int MaxTitleLength = 120;"),
+                Ev(ReaderCodeDir + "SessionLogWriter.cs", "sb.Append(\"...\");")));
 
-            var a208 = ScVerbatim("A2.8", Reader,
+            var a206 = ScVerbatim("A2.6", Reader,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-truth-fixture.md and return it verbatim.",
                 "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "Tail-Anchor-Open");
-            a208.MustAppearExactlyOnce = new[] { "Seed-One-Anchor", "Ref-Anchor-Alpha", "Tail-Anchor-Open" };
-            list.Add(a208);
+            a206.MustAppearExactlyOnce = new[] { "Seed-One-Anchor", "Ref-Anchor-Alpha", "Tail-Anchor-Open" };
+            list.Add(a206);
 
-            var a209 = Sc("A2.9", Reader,
+            var a207 = Sc("A2.7", Reader,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-truth-fixture.md. Verify whether these headings appear in this exact order: \"## 1. First Section\", \"## 2. Second Section\", \"## 3. Third Section\", \"## Appendix A. References\". Use the actual file contents and line positions. Do not infer or assume any heading or position that is not present in the retrieved content.",
                 "## Appendix A. References");
-            a209.MustContainInOrder = new[] { "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "## 3. Third Section" };
-            list.Add(a209);
+            a207.MustContainInOrder = new[] { "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "## 3. Third Section" };
+            list.Add(a207);
 
-            list.Add(Sc("A2.10", Reader,
+            list.Add(Sc("A2.8", Reader,
                 "Read the entire file LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-large-fixture.md and return it verbatim. Continue reading until the entire file has been retrieved; do not stop while has_more_results is true.",
                 "Reader-Start", "Reader-End"));
 
-            var a211 = ScVerbatim("A2.11", Reader,
+            var a209 = ScVerbatim("A2.9", Reader,
                 "In LMLocal\\Infrastructure\\Security\\TestConnectionErrorClassifier.cs return VERBATIM only the single line that contains ExceptionFormatter.Format. Return no other line of the file and do not mark the file as missing.",
-                "return ExceptionFormatter.Format(ex);");
-            a211.MustNotContain = new[] { "Missing files" };
+                Ev(@"LMLocal\Infrastructure\Security\TestConnectionErrorClassifier.cs", "return ExceptionFormatter.Format(ex);"));
+            a209.MustNotContain = new[] { "Missing files" };
+            list.Add(a209);
+
+            var a210 = ScVerbatim("A2.10", Reader,
+                "In LMLocal\\Application\\ModelsList\\ModelsListService.cs return VERBATIM only the two lines that contain ExceptionFormatter.Format. Return no other line of the file and do not mark the file as missing.",
+                Ev(@"LMLocal\Application\ModelsList\ModelsListService.cs", "var errorResponse = new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };"),
+                Ev(@"LMLocal\Application\ModelsList\ModelsListService.cs", "return new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };"));
+            a210.MustNotContain = new[] { "Missing files" };
+            list.Add(a210);
+
+            var a211 = ScVerbatim("A2.11", Reader,
+                "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md and return ONLY lines 11-15 and lines 30-39 VERBATIM, with each line carrying its actual 1-based line number. Do not include any other line of the file, do not substitute different ranges, and do not mark the file as missing.",
+                "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN");
+            a211.MustContainInOrder = new[] { "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN" };
+            a211.MustNotContain = new[] { "RANGE-ANCHOR-A2-OPEN", "RANGE-ANCHOR-A2-CLOSE", "RANGE-ANCHOR-A3-OPEN", "RANGE-ANCHOR-APP-CLOSE", "RANGE-ANCHOR-TAIL-OPEN", "RANGE-ANCHOR-A1-OPEN-COPY", "RANGE-ANCHOR-A1-CLOSE-COPY", "# End of fixture" };
             list.Add(a211);
 
             var a212 = ScVerbatim("A2.12", Reader,
-                "In LMLocal\\Application\\ModelsList\\ModelsListService.cs return VERBATIM only the two lines that contain ExceptionFormatter.Format. Return no other line of the file and do not mark the file as missing.",
-                "var errorResponse = new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };",
-                "return new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };");
-            a212.MustNotContain = new[] { "Missing files" };
-            list.Add(a212);
-
-            var a213 = ScVerbatim("A2.13", Reader,
-                "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md and return ONLY lines 11-15 and lines 30-39 VERBATIM, with each line carrying its actual 1-based line number. Do not include any other line of the file, do not substitute different ranges, and do not mark the file as missing.",
-                "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN");
-            a213.MustContainInOrder = new[] { "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN" };
-            a213.MustNotContain = new[] { "RANGE-ANCHOR-A2-OPEN", "RANGE-ANCHOR-A2-CLOSE", "RANGE-ANCHOR-A3-OPEN", "RANGE-ANCHOR-APP-CLOSE", "RANGE-ANCHOR-TAIL-OPEN", "RANGE-ANCHOR-A1-OPEN-COPY", "RANGE-ANCHOR-A1-CLOSE-COPY", "# End of fixture" };
-            list.Add(a213);
-
-            var a214 = ScVerbatim("A2.14", Reader,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-symbols-fixture.md and return it verbatim, with each line carrying its 1-based line number. Preserve every character exactly — multiple spaces, tabs, single and double quotes, and every bracket. Do not normalize, drop, or rebalance any of them.",
                 "SYM-SPACE-MID: two  spaces  between  words",
                 "SYM-QUOTE-NESTED-SINGLE: 'outer \"inner\" value'",
@@ -388,62 +442,87 @@ line six - foxtrot";
                 "SYM-EMPTY-AFTER: this line follows the empty line above",
                 "SYM-END-TAIL: last line anchor");
 
-            a214.MustNotContain = new[]
+            a212.MustNotContain = new[]
             {
                 "SYM-EMPTY-UNWANTED",
                 "//SECTION-SKIP",
                 "///"
             };
+            list.Add(a212);
+
+            const string a213Cs = @"LMLocal\Core\Models\StreamChunk.cs";
+            var a213 = ScVerbatim("A2.13", Reader,
+                "Read verbatim with exact line numbers (I will use them for precise line-range replacements):\n"
+                + "1. LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md - lines 11-15\n"
+                + "2. " + a213Cs + " - lines 1-6",
+                "reader-ranges-fixture.md, lines 11-15",
+                "StreamChunk.cs, lines 1-6",
+                "RANGE-ANCHOR-A1-OPEN",
+                "RANGE-ANCHOR-A1-CLOSE",
+                LineAt(a213Cs, 6));
+            a213.MustNotContain = new[] { "// Line", "RANGE-ANCHOR-A2-OPEN", "Missing files" };
+            list.Add(a213);
+
+            var a214 = ScVerbatim("A2.14", Reader,
+                "In LMLocal\\Application\\SubAgents\\ReadRefs\\FileContentRenderer.cs return VERBATIM the whole method AppendSearchLocation, from its signature line to its closing brace. Return no other method of the file and do not mark the file as missing.",
+                Ev(@"LMLocal\Application\SubAgents\ReadRefs\FileContentRenderer.cs", "public static void AppendSearchLocation(StringBuilder sb, string filePath, int lineNumber, string text)"),
+                Ev(@"LMLocal\Application\SubAgents\ReadRefs\FileContentRenderer.cs", "sb.Append(fence);"));
+            a214.MustNotContain = new[] { "AppendRefContentBlock(StringBuilder", "AppendNumberedLines(sb, lines);", "Missing files" };
             list.Add(a214);
 
-            //----A.3 symbol_analyzer_subagent: symbols & references(9)------ -
+            // ---- A.3 symbol_analyzer_subagent: symbols & references (9) ----
+
+            const string a33File = @"LMLocal\Core\Models\StreamCompletionResult.cs";
             list.Add(Sc("A3.1", Analyzer,
                 "Find the C# symbol ToolCallRecord and report its declaration file and line.",
-                "StreamCompletionResult.cs", "120"));
+                EvFile(a33File), LineOf(a33File, "internal class ToolCallRecord").ToString()));
 
             list.Add(Sc("A3.2", Analyzer,
                 "Find all references to ChatLogSerializer. Report file:line coordinates.",
-                "ChatLogSerializer", "ChatPersistenceService.cs"));
+                "ChatLogSerializer", Ev(@"LMLocal\Infrastructure\Persistence\ChatPersistenceService.cs", "ChatLogSerializer", fileNameOnly: true)));
 
             list.Add(Sc("A3.3", Analyzer,
                 "Inspect the type StreamCompletionResult and list its public members with file:line locations.",
-                "ContentResponse", "ToolCalls"));
+                Ev(a33File, "ContentResponse"), Ev(a33File, "ToolCalls"),
+                "StreamCompletionResult.cs:" + LineOf(a33File, "public IReadOnlyList<ToolCallRecord> ToolCalls { get; set; }"),
+                "StreamCompletionResult.cs:" + LineOf(a33File, "public int? HttpStatusCode { get; set; }")));
 
             list.Add(Sc("A3.4", Analyzer,
                 "Find the JavaScript symbol lmInit and report its file and line. Use the semantic JavaScript tool.",
-                "app.js"));
+                Ev(@"LMLocal\Resources\js\app.js", "lmInit", fileNameOnly: true)));
 
             list.Add(NotFoundSc("A3.5", Analyzer,
                 "Find the symbol GeminiThoughtSignaturePolicyEnforcer.",
-                "GeminiThoughtSignaturePolicyEnforcer"));
+                Absent("LMLocal", "GeminiThoughtSignaturePolicyEnforcer")));
 
             list.Add(Sc("A3.6", Analyzer,
                 "Find the symbol ToolCallRecord, then read its declaration context.",
-                "ToolCallRecord", "StreamCompletionResult.cs"));
+                Ev(a33File, "ToolCallRecord"), EvFile(a33File)));
 
             var a37 = Sc("A3.7", Analyzer,
                 "Find all references to the ToolCalls property of the type ChatMessage (declared in LMLocal/Core/Models/ChatMessage.cs). Ignore the same-named ToolCalls property on other types such as Message and StreamCompletionResult. Retrieve ALL pages of references and state the total reference count.",
-                "ToolCalls", "ChatMessage.cs");
-            a37.MustContainAny = new[] { new[] { "ApiRequestBuilder.cs", "ApiRequestBuilder" } };
+                "ToolCalls", Ev(@"LMLocal\Core\Models\ChatMessage.cs", "ToolCalls", fileNameOnly: true));
+            a37.MustContainAny = new[] { new[] { Ev(@"LMLocal\Infrastructure\LlmApi\ApiRequestBuilder.cs", "ToolCalls", fileNameOnly: true), "ApiRequestBuilder" } };
             list.Add(a37);
 
             var a38 = Sc("A3.8", Analyzer,
                 "Inspect ConsolidateLastExchangeAsync and determine whether the ToolCalls of the final assistant message in the consolidated fragment are copied by reference or reconstructed. Read the actual source before answering.",
-                "ConsolidateLastExchangeAsync", "ToolCalls");
+                Ev(ChatHistoryManagerFile, "ConsolidateLastExchangeAsync"), "ToolCalls");
             a38.MustContainAny = new[] { new[] { "reference", "same instance", "reused", "not reconstructed" } };
             list.Add(a38);
 
             list.Add(Sc("A3.9", Analyzer,
                 "Find the C# method AddAssistantMessage in LMLocal/Application/Chat/ChatHistoryManager.cs. It has an interface declaration and two concrete overloads. Select the concrete implementation overload that accepts IReadOnlyList<ToolCallRecord> and return its declaration line together with its full implementation body.",
-                "AddAssistantMessage", "toolCallObjects", "normalizedArguments"));
+                "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "normalizedArguments")));
 
-            // ---- A.4 reviewer_subagent: structured status review (2) ----
+            // ---- A.4 reviewer_subagent: structured status review (3) ----
+
             var a41 = Sc("A4.1", Reviewer,
                 "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. The change is a small refactoring of ChatHistoryManager: the ToolCalls copying logic was extracted into a private helper. The build passes, all existing unit tests for the chat service pass, and a new unit test covers the copied-by-reference behavior. The user requested exactly this refactoring and it is complete; no further phases are planned. The change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect of the deliverable. Review it adversarially.",
                 "Status:");
             a41.MustContainAny = new[] { new[] { "COMPLETE", "PARTIAL" } };
             a41.MustNotContain = new[] { "Status: REJECTED" };
-            // A reviewer legitimately writes "I cannot verify ..." about evidence it does not have; that is not a refusal.
+
             a41.CheckRefusal = false;
             list.Add(a41);
 
@@ -454,246 +533,84 @@ line six - foxtrot";
             a42.MustNotContain = new[] { "Status: COMPLETE" };
             list.Add(a42);
 
-            // ---- A.5 edit_subagent: mechanical patching on a real file (10) ----
-            // Fixture: Docs\edit-subagent-prompt-testing-plan.md. Every scenario declares the exact
-            // expected file content, because the report alone is not evidence. Prompts quote code
-            // with single quotes on purpose: no doubled quotes means no way to break the literal.
-
-            // A5.1 = plan A, control scenario. Tightening the prompt (gates, bans) must never break
-            // normal work, so this one has to stay green on every run.
-            var a51 = ScEdit("A5.1",
-                @"Apply exactly two edits to the file Temp\AgentProbe\Probe.cs. Do not change anything else.
-
-EDIT 1 - replace one line (approximate line 11):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 11
-  old_lines:            return a + b;
-  new_lines:            return checked(a + b);
-
-EDIT 2 - replace one line (approximate line 7):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 7
-  old_lines:        public const int MaxRetries = 3;
-  new_lines:        public const int MaxRetries = 5;
-
-Apply the edits bottom-up (line 11 first, then line 7).");
-            a51.ExpectedProbe = PatchText(
-                PatchText(ProbeSeed, "return a + b;", "return checked(a + b);"),
-                "MaxRetries = 3;",
-                "MaxRetries = 5;");
-            a51.MustContain = new[] { "APPLIED" };
-            // Baseline for the ref-marker idea: printing the new line, the file body or a diff is
-            // what host-side expansion would replace, so it counts as PARTIAL here.
-            a51.SoftMustNotContain = new[] { "return checked(a + b);", "namespace AgentProbe", "internal static class Probe" };
-            list.Add(a51);
-
-            // A5.2 = plan B, the main invention test. Any helpful edit is a hard FAIL even if the
-            // resulting code looks reasonable: unrequested logic is exactly what ships bugs.
-            var a52 = ScEdit("A5.2",
-                @"In the file Temp\AgentProbe\Probe.cs, make the Add method safer by adding overflow protection. Choose a reasonable implementation yourself and apply it.
-Report the file path and the line numbers modified.");
-            a52.CheckRefusal = false;
-            a52.MustContainAny = new[] { new[] { "NEEDS_EXACT_CODE", "old_lines" } };
-            list.Add(a52);
-
-            // A5.3 = plan C. A mismatched old_lines means the caller aimed at the wrong line, so the
-            // only safe outcome is a refusal; guessing silently moves the change elsewhere.
-            var a53 = ScEdit("A5.3",
-                @"EDIT 1 - replace one line (approximate line 2):
-  file_path: Temp\AgentProbe\notes.txt
-  start_line: 2
-  old_lines: line two - bravoZ
-  new_lines: line two - BRAVO");
-            a53.MustContain = new[] { "FAILED" };
-            // Paraphrasing the tool error instead of quoting error_message was the recorded R3/R4
-            // defect: report quality only, so it is soft.
-            a53.SoftMustContainAny = new[] { new[] { "Old content not found", "error_message" } };
-            list.Add(a53);
-
-            // A5.4 = plan D. Helpfully creating the file via insert_file_lines is a FAIL: the fixture
-            // inventory reports any file that appeared during the run.
-            var a54 = ScEdit("A5.4",
-                @"EDIT 1 - replace one line (approximate line 7):
-  file_path: Temp\AgentProbe\Missing.cs
-  start_line: 7
-  old_lines:        public const int MaxRetries = 3;
-  new_lines:        public const int MaxRetries = 5;");
-            a54.CheckRefusal = false;
-            // The prompt itself names a path that must not exist.
-            a54.SkipInventedPathCheck = true;
-            a54.MustContain = new[] { "Missing.cs" };
-            a54.MustContainAny = new[] { new[] { "FAILED", "NOT FOUND" } };
-            list.Add(a54);
-
-            // A5.5 = plan E. start_line 13 points at the blank line before the block; the tool
-            // searches, so the edit must still land and the reported range must come from the tool
-            // result, not from the task text.
-            var a55 = ScEdit("A5.5",
-                @"EDIT 1 - replace a 4-line block (approximate start line 13):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 13
-  old_lines:
-        public static string Describe(int value)
-        {
-            return ""value="" + value;
-        }
-  new_lines:
-        public static string Describe(int value)
-        {
-            return ""value="" + value + ""|"" + MaxRetries;
-        }");
-            a55.ExpectedProbe = PatchText(
-                ProbeSeed,
-                @"return ""value="" + value;",
-                @"return ""value="" + value + ""|"" + MaxRetries;");
-            a55.MustContain = new[] { "APPLIED" };
-            a55.SoftMustContainAny = new[] { new[] { "14-17", "14 - 17", "lines 14" } };
-            list.Add(a55);
-
-            // A5.6 = plan F, with one doc fix: 'return a + b;' is line 11 (line 16 is the Describe
-            // return), so the third edit targets 11. Three edits across two files must not trip the
-            // 'at most two files' limit.
-            var a56 = ScEdit("A5.6",
-                @"Apply these three edits:
-1. Temp\AgentProbe\Probe.cs line 7: replace 'public const int MaxRetries = 3;' with 'public const int MaxRetries = 5;'
-2. Temp\AgentProbe\notes.txt line 2: replace 'line two - bravo' with 'line two - BRAVO'
-3. Temp\AgentProbe\Probe.cs line 11: replace 'return a + b;' with 'return a + b + 0;'");
-            a56.ExpectedProbe = PatchText(
-                PatchText(ProbeSeed, "return a + b;", "return a + b + 0;"),
-                "MaxRetries = 3;",
-                "MaxRetries = 5;");
-            a56.ExpectedNotes = PatchText(NotesSeed, "line two - bravo", "line two - BRAVO");
-            a56.MustContain = new[] { "APPLIED" };
-            a56.SoftMustNotContain = new[] { "NEEDS_SPLIT" };
-            list.Add(a56);
-
-            // A5.7 = plan G, the most dangerous shape: one precise edit plus one vague request. Zero
-            // edits is the only correct answer; a parameter rename without a body edit produces code
-            // that does not compile and that syntax_errors cannot see.
-            var a57 = ScEdit("A5.7",
-                @"EDIT 1 - replace one line (approximate line 7):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 7
-  old_lines:        public const int MaxRetries = 3;
-  new_lines:        public const int MaxRetries = 7;
-
-EDIT 2 - make the Add method clearer by using a better variable name for the parameters.
-Choose appropriate names yourself.");
-            a57.CheckRefusal = false;
-            a57.MustContainAny = new[] { new[] { "NEEDS_EXACT_CODE", "old_lines" } };
-            list.Add(a57);
-
-            // A5.8 = plan H. start_line 20 does not exist (the file has 19 lines), so a report that
-            // says 'lines 20-20' is copying the task instead of the tool result.
-            var a58 = ScEdit("A5.8",
-                @"EDIT 1 - replace one line (approximate line 20):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 20
-  old_lines:            return a + b;
-  new_lines:            return a + b + 1;");
-            a58.ExpectedProbe = PatchText(ProbeSeed, "return a + b;", "return a + b + 1;");
-            a58.MustContain = new[] { "APPLIED" };
-            a58.SoftMustContainAny = new[] { new[] { "11-11", "11 - 11", "lines 11" } };
-            a58.SoftMustNotContain = new[] { "20-20", "20 - 20", "lines 20" };
-            list.Add(a58);
-
-            // A5.9 = plan I.1. position 3 is wrong on purpose; expected_line is the real anchor.
-            var a59 = ScEdit("A5.9",
-                @"EDIT 1 - insert one new line (approximate position 3):
-  file_path: Temp\AgentProbe\notes.txt
-  position: 3
-  expected_line: line five - echo
-  new_lines: line five and a half - hotel");
-            a59.ExpectedNotes = PatchText(
-                NotesSeed,
-                "line five - echo",
-                "line five - echo\nline five and a half - hotel");
-            a59.MustContain = new[] { "APPLIED" };
-            list.Add(a59);
-
-            // A5.10 = plan I.2. Insert and delete in one file, applied bottom-up: an insert above the
-            // deleted line must not shift it out from under the delete.
-            var a510 = ScEdit("A5.10",
-                @"EDIT 1 - insert one new line (approximate position 6):
-  file_path: Temp\AgentProbe\notes.txt
-  position: 6
-  expected_line: line five - echo
-  new_lines: line five and a half - hotel
-
-EDIT 2 - delete one line (approximate line 4):
-  file_path: Temp\AgentProbe\notes.txt
-  start_line: 4
-  old_lines: line four - delta
-  new_lines:");
-            a510.ExpectedNotes = PatchText(
-                PatchText(NotesSeed, "line five - echo", "line five - echo\nline five and a half - hotel"),
-                "line four - delta\n",
-                string.Empty);
-            a510.MustContain = new[] { "APPLIED" };
-            list.Add(a510);
-
-            // A5.11 - GATE 1 is the only gate that was never exercised. Three targeted files must
-            // stop the run before any tool call, so nothing on disk may change. Every edit carries literal
-            // old_lines/new_lines, so only GATE 1 applies (a free-text task also trips the exact-code gate).
-            var a511 = ScEdit("A5.11",
-                @"EDIT 1 - replace one line (approximate line 7):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 7
-  old_lines:        public const int MaxRetries = 3;
-  new_lines:        public const int MaxRetries = 5;
-EDIT 2 - replace one line (approximate line 2):
-  file_path: Temp\AgentProbe\notes.txt
-  start_line: 2
-  old_lines: line two - bravo
-  new_lines: line two - BRAVO
-EDIT 3 - replace one line (approximate line 4):
-  file_path: Temp\AgentProbe\Other.cs
-  start_line: 4
-  old_lines: alpha
-  new_lines: beta");
-            a511.CheckRefusal = false;
-            a511.MustContain = new[] { "NEEDS_SPLIT" };
-            a511.SoftMustNotContain = new[] { "APPLIED" };
-            list.Add(a511);
-
-            // A5.12 - guards the 'only edited files count' rule: a file named in prose as something
-            // NOT to touch must not turn a single-file task into a false NEEDS_SPLIT.
-            var a512 = ScEdit("A5.12",
-                @"Apply this edit to Temp\AgentProbe\Probe.cs and do not touch any other file (for example LMLocal\Core\Models\StreamChunk.cs must stay unchanged):
-EDIT 1 - replace one line (approximate line 7):
-  file_path: Temp\AgentProbe\Probe.cs
-  start_line: 7
-  old_lines:        public const int MaxRetries = 3;
-  new_lines:        public const int MaxRetries = 9;");
-            a512.ExpectedProbe = PatchText(ProbeSeed, "MaxRetries = 3;", "MaxRetries = 9;");
-            a512.MustContain = new[] { "APPLIED" };
-            a512.SoftMustNotContain = new[] { "NEEDS_SPLIT" };
-            list.Add(a512);
+            var a43 = Sc("A4.3", Reviewer,
+                "Review a documentation-only deliverable. Nothing in it changes code, and the change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect.\n"
+                + "User request: \"add to the plan how symbol references from get_symbol_info reach the main chat as verified lines\".\n"
+                + "Verified facts (read from the code):\n"
+                + "- SearchLedger (LMLocal\\Application\\SubAgents\\ReadRefs\\SearchLedger.cs) stores (file, line, text) records. ReadRefExpander replaces an @path:line marker in a subagent's final answer with 'path:line: `text`' only for lines recorded in SearchLedger.\n"
+                + "- SubAgentRunEvidence (LMLocal\\Application\\SubAgents\\ReadRefs\\SubAgentRunEvidence.cs) records search_file_content results into SearchLedger through SearchResultRecorder.TryRecord. No other tool result is recorded there.\n"
+                + "- get_symbol_info and get_symbol_info_js results are not recorded anywhere.\n"
+                + "- The symbol_analyzer_subagent prompt contains no instructions about markers.\n"
+                + "Deliverable (plan text added to Docs\\explorer-search-quality-plan.md):\n"
+                + "Step 1. No code change is needed: references returned by get_symbol_info are already recorded in SearchLedger, so the analyzer's @path:line markers expand today.\n"
+                + "Step 2. Add a short section about markers to the symbol_analyzer_subagent prompt.\n"
+                + "Step 3. Measure the share of analyzer answers with expanded markers.\n"
+                + "Review the deliverable against the verified facts and produce your structured review ending with an exact final 'Status: ...' line.",
+                "Status:");
+            a43.MustContainAny = new[]
+            {
+                new[] { "PARTIAL", "REJECTED" },
+                new[] { "Step 1", "not recorded", "no code change" }
+            };
+            a43.MustNotContain = new[] { "Status: COMPLETE" };
+            a43.CheckRefusal = false;
+            list.Add(a43);
 
             // ---- A.6 architect_subagent: architecture decision (1) ----
 
-            // A6.1 - an in-process notification that an existing event already delivers. The architect must
-            // reuse it instead of introducing a bus/mediator; the context is real code, so it can be verified.
             var a61 = Sc("A6.1", Architect,
                 @"Requirement: show the number of pending (uncommitted) file changes in the Visual Studio status bar and keep it current whenever the snapshot changes. Single process, one consumer, no persistence or retries needed.
-Verified context:
-- ISnapshotManager (LMLocal\Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManager.cs) exposes event Func<IReadOnlyList<SnapshotFileChange>, Task> SnapshotChangedAsync, raised after every snapshot change, commit, rollback and reset.
-- WebViewBridge (LMLocal\Infrastructure\WebView\WebViewBridge.cs) already subscribes to it in its constructor: _snapshotManager.SnapshotChangedAsync += OnSnapshotChangedAsync.
-- ISnapshotManager is resolved from DI.
-Choose the architecture for this change.",
+            Verified context:
+            - ISnapshotManager (LMLocal\Infrastructure\Tooling\BuiltInVs\Snapshot\SnapshotManager.cs) exposes event Func<IReadOnlyList<SnapshotFileChange>, Task> SnapshotChangedAsync, raised after every snapshot change, commit, rollback and reset.
+            - WebViewBridge (LMLocal\Infrastructure\WebView\WebViewBridge.cs) already subscribes to it in its constructor: _snapshotManager.SnapshotChangedAsync += OnSnapshotChangedAsync.
+            - ISnapshotManager is resolved from DI.
+            Choose the architecture for this change.",
                 "SnapshotChangedAsync");
             a61.MustContainAny = new[] { new[] { "NO_ARCH_CHANGE", "DECIDED", "CONDITIONAL" } };
             list.Add(a61);
 
-            // ---- A.7 task_planner_subagent: planning decisions (1) ----
+            // ---- A.7 task_planner_subagent: planning decisions (2) ----
 
-            // A7.1 - a one-line change in a single file is below the planning threshold: the planner must not
-            // force a plan on it (needs_plan=false), otherwise every trivial edit pays for a planning round.
-            // The prompt fixes a plain three-line header, so the exact line is required (no format variants).
             var a71 = Sc("A7.1", Planner,
                 @"Task: in LMLocal\Application\Chat\HistoryCompactor.cs change the modifier of the private struct ChatStepRange from 'private struct' to 'private readonly struct'. All its fields are already readonly. One file, one line, no callers change.",
                 "needs_plan: false", "persist: false", "blocked: false");
             list.Add(a71);
+
+            list.Add(Sc("A7.2", Planner,
+                @"Task: add a recorder so that references returned by get_symbol_info and get_symbol_info_js are written into the per-run SearchLedger, so that symbol_analyzer_subagent can report @path:line markers that the runner expands.
+            Verified context:
+            - LMLocal\Application\SubAgents\ReadRefs\SearchResultRecorder.cs records search_file_content results into SearchLedger: internal static class with TryRecord(SearchLedger ledger, object result).
+            - LMLocal\Application\SubAgents\ReadRefs\SubAgentRunEvidence.cs calls SearchResultRecorder.TryRecord in Record(toolName, result), which the subagent tool loop calls after every successful tool call.
+            - LMLocal.Tests.Unit\Application\SubAgents\SearchRefExpansionTests.cs holds the NUnit tests for SearchResultRecorder and marker expansion.
+            - LMLocal\LMLocal.csproj is a legacy project with explicit Compile Include entries; C# 7.3, .NET Framework 4.7.2.
+            Files to change: a new LMLocal\Application\SubAgents\ReadRefs\SymbolReferenceRecorder.cs, SubAgentRunEvidence.cs, LMLocal.csproj, SearchRefExpansionTests.cs.",
+                "needs_plan: true", "SymbolReferenceRecorder", "SubAgentRunEvidence", "SearchRefExpansionTests"));
+
+
+
+            return list;
+        }
+
+        /// <summary>
+        /// context_retriever_subagent scenarios on Fixtures\KnowledgeFixture: its docs\ folder is the knowledge base.
+        /// Until 2026-11-11 A8.1 ran on LMLocal's own docs\, which change every day; the benchmark analysis of A8.1
+        /// itself, written to docs\, became the top search hit there.
+        /// </summary>
+        internal static List<Scenario> BuildKnowledgeScenarios()
+        {
+            var list = new List<Scenario>();
+
+            // The decision is in docs\set-file-project-status-reload.md; the two other docs mention the same
+            // tool or the same "unsaved changes" topic, but not this decision.
+            // The evidence is the first sentence of the decision section: search_solution_knowledge returns only
+            // ~150 characters on each side of the match (the section heading), and the retriever cannot read the
+            // file, so "discards" two lines further down never reaches it (run 2026-11-11 19:45).
+            // "reload" is not usable: both distractors contain it.
+            var a81 = Sc("A8.1", Retriever,
+                "Find the earlier documented decision on what set_file_project_status does when the project has unsaved changes in Visual Studio. Report the source document and the decision.",
+                "set-file-project-status-reload");
+            a81.MustContainAny = new[] { new[] { "from disk", "source of truth" } };
+            list.Add(a81);
 
             return list;
         }
@@ -722,6 +639,7 @@ Choose the architecture for this change.",
         /// </summary>
         private const string LoopProbePrompt =
             "You are being instrumented. Do exactly this:\n" +
+            "Make exactly one tool call per response and wait for its result before the next call.\n" +
             "1. Call search_file_content with query \"zzz_nonexistent_marker_zzz\" and max_results 25.\n" +
             "2. Call search_file_content a SECOND time with exactly the same arguments.\n" +
             "3. Call search_file_content a THIRD time with exactly the same arguments.\n" +
@@ -729,7 +647,7 @@ Choose the architecture for this change.",
             "Then answer with one line only: CALLS_MADE: <how many calls you actually made>";
 
         [TestMethod]
-
+        [Ignore("Disable to run benchmark")]
         public async Task Run_LoopRecovery_RepeatedToolCall_IsRecoveredNotFailed()
         {
             using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15)))
@@ -755,15 +673,15 @@ Choose the architecture for this change.",
                         TestContext.WriteLine("loop probe: success=" + run.Success
                             + " rounds=" + run.Rounds
                             + " runId=" + run.RunId
+                            + " recoveries=" + (run.Recoveries == null ? "<none>" : string.Join(" | ", run.Recoveries))
                             + " error=" + (run.Error ?? "<none>"));
 
-                        // The recovery branch is proven by its own log record, never by the answer
+                        // The recovery branch is proven by the run's own recovery notes, never by the answer
                         // text: the model can confidently answer without repeating a single call,
                         // so a content-only assertion would pass while the branch under test never ran.
-                        var logPath = ResolveSubAgentFailureLogPath();
                         Assert.IsTrue(
-                            FindRecoveryRecord(logPath, run.RunId),
-                            "No 'Recovered' record for runId '" + run.RunId + "' in '" + logPath + "'. "
+                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("repeated tool call loop", StringComparison.Ordinal) >= 0),
+                            "No loop recovery in run '" + run.RunId + "'. "
                             + "Either recovery did not fire, or the model never repeated the call "
                             + "(probe inconclusive - re-run before suspecting the feature).");
 
@@ -785,76 +703,214 @@ Choose the architecture for this change.",
             }
         }
 
-        /// <summary>
-        /// Live failure log written by <c>SubAgentFailureLogger</c>. Recovery records land here too.
-        /// </summary>
-        private static string ResolveSubAgentFailureLogPath()
-        {
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "LMLocalChat",
-                "SubAgentsLogs",
-                "SubAgentsFailures.jsonl");
-        }
+        // ---------------------------------------------------------------------
+        // Unresolved ref marker recovery
+        //
+        // Guards the answer-side recovery path: a final answer with a ref marker the runner cannot expand
+        // must go back to the model once with the UNRESOLVED REF MARKERS nudge instead of being returned as is.
+        // ---------------------------------------------------------------------
 
         /// <summary>
-        /// Finds a recovery record belonging to <paramref name="runId"/>. The log is shared between
-        /// runs and rotates, so the run id is the correlation key: a stale record from an earlier
-        /// run can never satisfy the assertion.
+        /// A file that does not exist in the solution: no tool can return its lines, so a marker on it stays
+        /// unresolved even if the model reads or searches before answering.
         /// </summary>
-        private static bool FindRecoveryRecord(string logPath, string runId)
-        {
-            if (string.IsNullOrEmpty(runId) || string.IsNullOrEmpty(logPath))
-                return false;
+        private const string RefProbeMissingFile = @"LMLocal\Core\Models\RefGuardProbeMissing.cs";
 
-            foreach (var line in ReadLogLines(logPath))
+        /// <summary>
+        /// Asks for a first answer that is only a marker on <see cref="RefProbeMissingFile"/>. Unlike the loop
+        /// probe, one answer is enough to trigger the guard.
+        /// </summary>
+        private const string RefProbePrompt =
+            "You are being instrumented. Do not call any tools.\n" +
+            "Answer with exactly this one line and nothing else:\n" +
+            "@" + RefProbeMissingFile + ":12";
+
+        [TestMethod]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_UnresolvedRefRecovery_MarkerOnUnreadLines_IsRecoveredNotFailed()
+        {
+            Assert.IsFalse(
+                File.Exists(Path.Combine(Path.GetDirectoryName(GetSolutionPath()), RefProbeMissingFile)),
+                RefProbeMissingFile + " exists, so the probe marker could be expanded; pick a missing path.");
+
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15)))
             {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                JObject record;
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
                 try
                 {
-                    record = JObject.Parse(line);
-                }
-                catch (JsonException)
-                {
-                    continue;
-                }
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(2), cts.Token);
+                    try
+                    {
+                        var solutionPath = GetSolutionPath();
+                        var open = await client.SendCommandAsync("OpenSolution|" + solutionPath, cts.Token);
+                        Assert.AreEqual("OK", open, "OpenSolution IPC command failed");
 
-                if (string.Equals((string)record["runId"], runId, StringComparison.Ordinal)
-                    && string.Equals((string)record["stage"], "Recovered", StringComparison.Ordinal))
+                        await WaitForSolutionLoadedAsync(client, cts.Token);
+
+                        var command = "RunSubAgent|" + Explorer + "|" + Uri.EscapeDataString(RefProbePrompt);
+                        var json = await client.SendCommandAsync(command, TimeSpan.FromMinutes(5), cts.Token);
+
+                        var run = JsonConvert.DeserializeObject<RunResponseDto>(json);
+                        Assert.IsNotNull(run, "RunSubAgent returned no parsable response: " + json);
+
+                        TestContext.WriteLine("ref probe: success=" + run.Success
+                            + " rounds=" + run.Rounds
+                            + " runId=" + run.RunId
+                            + " unresolvedRefCount=" + run.UnresolvedRefCount
+                            + " recoveries=" + (run.Recoveries == null ? "<none>" : string.Join(" | ", run.Recoveries))
+                            + " error=" + (run.Error ?? "<none>")
+                            + " content=" + (run.Content ?? "<none>"));
+
+                        // Proven by the run's recovery notes, not by the answer: the model may skip the marker
+                        // on its first answer, and then the guard never runs.
+                        Assert.IsTrue(
+                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("unresolved ref markers", StringComparison.Ordinal) >= 0),
+                            "No unresolved ref marker recovery in run '" + run.RunId + "'. "
+                            + "Either recovery did not fire, or the model's first answer had no marker "
+                            + "(probe inconclusive - re-run before suspecting the feature).");
+
+                        // The second answer may still carry the marker: there is one attempt, after it the answer
+                        // is returned as is, so UnresolvedRefCount is only logged.
+                        Assert.IsTrue(run.Success, "A recovered run must complete, not fail: " + (run.Error ?? "<no error>"));
+                        Assert.IsTrue(run.Rounds >= 2, "The nudge needs its own round; rounds=" + run.Rounds);
+                    }
+                    finally
+                    {
+                        client.Dispose();
+                    }
+                }
+                finally
                 {
-                    return true;
+                    TryKill(vs);
                 }
             }
+        }
 
-            return false;
+        // ---------------------------------------------------------------------
+        // Build benchmark (build_subagent) on the build fixture
+        //
+        // Building LMLocal.sln inside the experimental instance would rebuild the extension that runs in it,
+        // so build_subagent is benchmarked on Fixtures\BuildFixture\BuildFixture.sln instead.
+        // Plan: Docs\build-subagent-fixture-benchmark-plan.md.
+        // ---------------------------------------------------------------------
+
+        private const string Builder = "build_subagent";
+
+        internal static List<Scenario> BuildBuildScenarios()
+        {
+            var list = new List<Scenario>();
+
+            // B1.1 - the most common real build task (2026-11-04..10: 77% build + tests, 65% errors verbatim):
+            // clean fixture, everything compiles and all 3 tests pass. The answer format of build_subagent is not
+            // fixed, so the counts are matched in several common spellings.
+            var b11 = Sc("B1.1", Builder,
+                "Build the solution and run all unit tests in the project BuildFixture.Tests. Report total/passed/failed counts and any compiler error verbatim with file and line.");
+            b11.MustContainAny = new[]
+            {
+                new[] { "Total: 3", "Total tests: 3", "total 3", "3 total", "3 tests", "TotalTests: 3", "\"total_tests\": 3", "Total = 3", "Total:** 3", "Total Tests:** 3" },
+                // "Passed Tests: 3" added after run 2026-11-11-143210: a correct answer ("Passed Tests: 3") failed on the list.
+                new[] { "Passed: 3", "Passed Tests: 3", "3 passed", "passed 3", "PassedTests: 3", "\"passed_tests\": 3", "Passed = 3", "Passed:** 3", "Passed Tests:** 3", "all 3" }
+            };
+            b11.MustNotContain = new[] { "error CS" };
+            list.Add(b11);
+
+            return list;
+        }
+
+        [TestMethod]
+        //[Ignore("Disable to run benchmark")]
+        public async Task Run_Build_Benchmark()
+        {
+            AssertWriteToolsEnabled();
+
+            var fixturePath = GetBuildFixtureSolutionPath();
+
+            // Outputs of an earlier run must not let the first scenario pass without a real build.
+            CleanBuildFixtureOutputs(Path.GetDirectoryName(fixturePath));
+
+            await RunFixtureBenchmarkAsync(fixturePath, BuildBuildScenarios(), "build-benchmark-report-");
+        }
+
+        [TestMethod]
+        //[Ignore("Disable to run benchmark")]
+        public async Task Run_Knowledge_Benchmark()
+        {
+            var fixturePath = GetKnowledgeFixtureSolutionPath();
+            AssertKnowledgeBaseReachesFixtureDocs(Path.GetDirectoryName(fixturePath));
+
+            await RunFixtureBenchmarkAsync(fixturePath, BuildKnowledgeScenarios(), "knowledge-benchmark-report-");
         }
 
         /// <summary>
-        /// Yields the lines of the live log and all of its rotated siblings, so a rotation that
-        /// happens mid-run cannot hide the record being searched for.
+        /// Opens a fixture solution in a new Experimental VS instance and runs <paramref name="scenarios"/> on it.
+        /// Paths in the answers are checked against the fixture, not LMLocal.sln; the report is saved next to LMLocal.sln.
         /// </summary>
-        private static IEnumerable<string> ReadLogLines(string logPath)
+        private async Task RunFixtureBenchmarkAsync(string fixturePath, List<Scenario> scenarios, string reportPrefix)
         {
-            var directory = Path.GetDirectoryName(logPath);
-            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
-                yield break;
-
-            foreach (var file in Directory.GetFiles(directory, "SubAgentsFailures*.jsonl"))
+            // Requires a running LM Studio + an Experimental VS instance; never auto-run.
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(60)))
             {
-                // The add-in keeps the live file open for writing, so share both access modes.
-                using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var reader = new StreamReader(stream))
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                        yield return line;
+                    IpcClient client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(2), cts.Token);
+                    try
+                    {
+                        var fixtureRoot = Path.GetDirectoryName(fixturePath);
+
+                        var resp = await client.SendCommandAsync("OpenSolution|" + fixturePath, cts.Token);
+                        Assert.AreEqual("OK", resp, "OpenSolution IPC command failed for " + Path.GetFileName(fixturePath));
+
+                        await WaitForSolutionLoadedAsync(client, cts.Token);
+
+                        var results = new List<BenchmarkResult>();
+                        foreach (var scenario in scenarios)
+                        {
+                            if (cts.IsCancellationRequested) break;
+
+                            BenchmarkResult result;
+                            try
+                            {
+                                // Paths in the answer are checked against the fixture, not LMLocal.sln.
+                                result = await RunScenarioAsync(client, scenario, fixtureRoot, cts.Token);
+                            }
+                            catch (TimeoutException tex)
+                            {
+                                result = TimeoutResult(scenario, tex);
+                                client.Dispose();
+                                TestContext.WriteLine("[" + scenario.Id + "] read timeout, reconnecting...");
+                                client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(2), cts.Token);
+                            }
+
+                            results.Add(result);
+                            TestContext.WriteLine("[" + result.Id + "] " + result.Verdict
+                                + " (" + Math.Round(result.DurationMs / 1000.0, 1) + "s) "
+                                + string.Join("; ", result.Violations));
+
+                            await Task.Delay(1000, cts.Token);
+                        }
+
+                        SaveReport(results, Path.GetDirectoryName(GetSolutionPath()), reportPrefix);
+
+                        var failed = results.Where(r => r.Verdict == "FAIL").ToList();
+                        if (failed.Count > 0)
+                        {
+                            Assert.Fail("Critical FAILs: "
+                                + string.Join(" | ", failed.Select(r => r.Id + " -> " + string.Join("; ", r.Violations)))
+                                + ". Full report saved next to LMLocal.sln.");
+                        }
+                    }
+                    finally
+                    {
+                        client.Dispose();
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
                 }
             }
         }
-
 
         [TestMethod]
         [DynamicData(nameof(GetIterations))]
@@ -962,13 +1018,21 @@ Choose the architecture for this change.",
             // Reset the edit fixture before the run, so the on-disk result belongs to this scenario only.
             PrepareFixture(solutionRoot, scenario);
 
+            var originals = ApplyMutations(solutionRoot, scenario);
             var sw = Stopwatch.StartNew();
+            string json;
+            try
+            {
+                var escapedPrompt = Uri.EscapeDataString(scenario.Prompt);
+                var command = "RunSubAgent|" + scenario.AgentId + "|" + escapedPrompt;
 
-            var escapedPrompt = Uri.EscapeDataString(scenario.Prompt);
-            var command = "RunSubAgent|" + scenario.AgentId + "|" + escapedPrompt;
-
-            var json = await client.SendCommandAsync(command, scenario.ReadTimeout, ct);
-            sw.Stop();
+                json = await client.SendCommandAsync(command, scenario.ReadTimeout, ct);
+            }
+            finally
+            {
+                sw.Stop();
+                RevertMutations(originals);
+            }
 
             RunResponseDto response = null;
             string parseError = null;
@@ -1021,6 +1085,8 @@ Choose the architecture for this change.",
             result.CompletionTokens = r.CompletionTokens;
             result.TotalTokens = r.TotalTokens;
             result.TokensPerSecond = r.TokensPerSecond;
+            result.Recoveries = r.Recoveries ?? new List<string>();
+            result.UnresolvedRefCount = r.UnresolvedRefCount;
 
             if (!r.Success)
             {
@@ -1045,7 +1111,7 @@ Choose the architecture for this change.",
             bool notFoundMarker = false;
             if (s.ExpectNotFound)
             {
-                notFoundMarker = Regex.IsMatch(content, @"(?i)(\bnot_found\b|not found|does not exist|no (matches|results|references|instances|project|files?|explicit|such|direct|zero)|couldn't find|could not find|not exist|none of|i found no|found no|returned no|zero (matches|results)|did not find|no .* found)");
+                notFoundMarker = Regex.IsMatch(content, @"(?i)(\bnot_found\b|not found|(could not|cannot|can't|can not) be (found|located)|does not exist|no (matches|results|references|instances|project|files?|explicit|such|direct|zero)|couldn't find|could not find|not exist|none of|i found no|found no|returned no|zero (matches|results)|did not find|no .* found)");
                 if (!notFoundMarker)
                 {
                     violations.Add(new Violation("expected_not_found_marker_missing", true));
@@ -1282,7 +1348,130 @@ Choose the architecture for this change.",
             }
         }
 
-        private static string GetSolutionPath()
+        /// <summary>
+        /// Applies <see cref="Scenario.Mutations"/> and returns the original bytes of every touched file.
+        /// A Find text that is not in the file throws: a stale expectation must not turn into a scenario that
+        /// silently runs on the unmodified fixture and passes.
+        /// </summary>
+        internal static Dictionary<string, byte[]> ApplyMutations(string solutionRoot, Scenario s)
+        {
+            var originals = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+            if (s.Mutations == null || s.Mutations.Count == 0)
+                return originals;
+
+            try
+            {
+                foreach (var m in s.Mutations)
+                {
+                    var path = Path.Combine(solutionRoot, m.RelativePath);
+                    if (!originals.ContainsKey(path))
+                        originals[path] = File.ReadAllBytes(path);
+
+                    var text = File.ReadAllText(path);
+                    var index = text.IndexOf(m.Find, StringComparison.Ordinal);
+                    if (index < 0)
+                        throw new InvalidOperationException("Mutation text not found in " + m.RelativePath + " (fix the scenario, not the fixture): " + m.Find);
+
+                    File.WriteAllText(path, text.Substring(0, index) + m.Replace + text.Substring(index + m.Find.Length), new UTF8Encoding(false));
+                }
+            }
+            catch
+            {
+                RevertMutations(originals);
+                throw;
+            }
+
+            return originals;
+        }
+
+        internal static void RevertMutations(Dictionary<string, byte[]> originals)
+        {
+            foreach (var kv in originals)
+                File.WriteAllBytes(kv.Key, kv.Value);
+        }
+
+        internal static string GetBuildFixtureSolutionPath()
+        {
+            var path = Path.Combine(Path.GetDirectoryName(GetSolutionPath()),
+                "LMLocal.Tests.E2E.VSIX", "Fixtures", "BuildFixture", "BuildFixture.sln");
+            if (!File.Exists(path))
+                throw new InvalidOperationException("Build fixture not found at '" + path + "'");
+            return path;
+        }
+
+        internal static string GetKnowledgeFixtureSolutionPath()
+        {
+            var path = Path.Combine(Path.GetDirectoryName(GetSolutionPath()),
+                "LMLocal.Tests.E2E.VSIX", "Fixtures", "KnowledgeFixture", "KnowledgeFixture.sln");
+            if (!File.Exists(path))
+                throw new InvalidOperationException("Knowledge fixture not found at '" + path + "'");
+            return path;
+        }
+
+        /// <summary>
+        /// search_solution_knowledge reads the folders of KnowledgeBasePaths (user settings) relative to the open
+        /// solution. The knowledge benchmark needs one of them to be the fixture's docs\ folder, otherwise every
+        /// A8.x would fail on an empty knowledge base instead of on the agent.
+        /// </summary>
+        private static void AssertKnowledgeBaseReachesFixtureDocs(string fixtureRoot)
+        {
+            var paths = ReadKnowledgeBasePaths();
+            var docs = Path.Combine(fixtureRoot, "docs");
+            bool reachesDocs = paths
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => p.Length > 0 && !Path.IsPathRooted(p))
+                .Any(p => string.Equals(
+                    Path.GetFullPath(Path.Combine(fixtureRoot, p)).TrimEnd('\\', '/'),
+                    docs, StringComparison.OrdinalIgnoreCase));
+            if (!reachesDocs)
+                Assert.Inconclusive("KnowledgeBasePaths '" + paths + "' in LMLocalChat\\settings.json has no relative 'docs' folder; "
+                    + "the knowledge benchmark needs one (for example 'docs/').");
+        }
+
+        /// <summary>
+        /// build_solution and run_tests are Execution-level tools: in read-only mode (EnableAiWriteTools false, the
+        /// AppSettings default) ToolQueueProvider drops them from every queue, so build_subagent gets neither and loops
+        /// on get_solution_overview (2026-11-13 08:31). That is the mode, not the agent.
+        /// </summary>
+        private static void AssertWriteToolsEnabled()
+        {
+            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LMLocalChat", "settings.json");
+            var value = File.Exists(file) ? JObject.Parse(File.ReadAllText(file))["EnableAiWriteTools"] : null;
+            bool enabled = value != null && value.Type == JTokenType.Boolean && (bool)value;
+            if (!enabled)
+                Assert.Inconclusive("EnableAiWriteTools is off in LMLocalChat\\settings.json (read-only mode): build_solution and run_tests "
+                    + "are not offered to build_subagent. Switch LMLocal to a mode with write tools and re-run.");
+        }
+
+        /// <summary>KnowledgeBasePaths from %LOCALAPPDATA%\LMLocalChat\settings.json; the AppSettings default when absent.</summary>
+        private static string ReadKnowledgeBasePaths()
+        {
+            const string defaultPaths = "./; ./docs";
+            var file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LMLocalChat", "settings.json");
+            if (!File.Exists(file))
+                return defaultPaths;
+            var value = JObject.Parse(File.ReadAllText(file))["KnowledgeBasePaths"];
+            return value == null || value.Type == JTokenType.Null ? defaultPaths : (string)value;
+        }
+
+        /// <summary>
+        /// Deletes bin/obj of every fixture project, so the first scenario cannot pass on outputs of an earlier run.
+        /// </summary>
+        private static void CleanBuildFixtureOutputs(string fixtureRoot)
+        {
+            foreach (var projectDir in Directory.GetDirectories(fixtureRoot))
+            {
+                foreach (var name in new[] { "bin", "obj" })
+                {
+                    var dir = Path.Combine(projectDir, name);
+                    if (Directory.Exists(dir))
+                        Directory.Delete(dir, true);
+                }
+            }
+        }
+
+        internal static string GetSolutionPath()
         {
             var solutionPath = Path.GetFullPath(
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "LMLocal.sln"));
@@ -1306,6 +1495,99 @@ Choose the architecture for this change.",
                 if (lines[i].Trim() == trimmedLine) return i + 1;
             }
             throw new InvalidOperationException("'" + trimmedLine + "' not found in " + relativePath);
+        }
+
+        /// <summary>
+        /// Trimmed text of the 1-based line <paramref name="lineNumber"/> of a solution-relative file, read at run time.
+        /// </summary>
+        private static string LineAt(string relativePath, int lineNumber)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            var lines = File.ReadAllLines(Path.Combine(root, relativePath));
+            if (lineNumber < 1 || lineNumber > lines.Length || lines[lineNumber - 1].Trim().Length == 0)
+                throw new InvalidOperationException("Line " + lineNumber + " of " + relativePath + " is missing or empty");
+            return lines[lineNumber - 1].Trim();
+        }
+
+        // A frozen fixture, not LMLocal.csproj: the live project file grows with every new source file, and
+        // on 2026-11-13 a shift from 573 to 582 matching lines changed the model's answer.
+        internal const string A108File = @"LMLocal.Tests.E2E.VSIX\Fixtures\explorer-paging-fixture.xml";
+        internal const string A108Text = "Include";
+
+        internal const string ReaderCodeDir = @"LMLocal.Tests.E2E.VSIX\Fixtures\ReaderCode\";
+        private const string ChatHistoryManagerFile = @"LMLocal\Application\Chat\ChatHistoryManager.cs";
+        private const string HistoryCompactorFile = @"LMLocal\Application\Chat\HistoryCompactor.cs";
+
+        private static string ReadSolutionFile(string relativePath)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            return File.ReadAllText(Path.Combine(root, relativePath));
+        }
+
+        /// <summary>
+        /// Evidence taken from a solution file: returns <paramref name="text"/> (or the file name when
+        /// <paramref name="fileNameOnly"/> is set) after checking that the file contains the text, within the
+        /// first <paramref name="maxLine"/> lines when it is above 0. Throws when the code has drifted, so
+        /// the expectation is fixed before a model run instead of failing as a model error.
+        /// </summary>
+        internal static string Ev(string relativePath, string text, int maxLine = 0, bool fileNameOnly = false)
+        {
+            var content = ReadSolutionFile(relativePath);
+            if (maxLine > 0)
+                content = string.Join("\n", content.Replace("\r\n", "\n").Split('\n').Take(maxLine));
+
+            if (content.IndexOf(text, StringComparison.Ordinal) < 0)
+                throw new InvalidOperationException("Benchmark evidence '" + text + "' not found in " + relativePath
+                    + (maxLine > 0 ? " (lines 1-" + maxLine + ")" : ""));
+
+            return fileNameOnly ? Path.GetFileName(relativePath) : text;
+        }
+
+        /// <summary>File name of a solution file, after checking that the file exists.</summary>
+        internal static string EvFile(string relativePath)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            if (!File.Exists(Path.Combine(root, relativePath)))
+                throw new InvalidOperationException("Benchmark evidence file not found: " + relativePath);
+            return Path.GetFileName(relativePath);
+        }
+
+        /// <summary>
+        /// Returns <paramref name="text"/> after checking that no *.cs file under the solution-relative folder
+        /// contains it: a NOT FOUND scenario is wrong once the symbol appears in the code.
+        /// </summary>
+        internal static string Absent(string relativeDir, string text)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            foreach (var file in Directory.EnumerateFiles(Path.Combine(root, relativeDir), "*.cs", SearchOption.AllDirectories))
+            {
+                var sep = Path.DirectorySeparatorChar;
+                if (file.Contains(sep + "bin" + sep) || file.Contains(sep + "obj" + sep))
+                    continue;
+                if (File.ReadAllText(file).IndexOf(text, StringComparison.Ordinal) >= 0)
+                    throw new InvalidOperationException("NOT FOUND scenario: '" + text + "' now exists in " + file);
+            }
+
+            return text;
+        }
+
+        /// <summary>
+        /// 1-based numbers of the lines of a solution-relative file that contain <paramref name="text"/>
+        /// (case-insensitive substring, like search_file_content), read at run time.
+        /// </summary>
+        internal static List<int> MatchingLines(string relativePath, string text)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            var lines = File.ReadAllLines(Path.Combine(root, relativePath));
+            var result = new List<int>();
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0) result.Add(i + 1);
+            }
+
+            if (result.Count == 0)
+                throw new InvalidOperationException("'" + text + "' not found in " + relativePath);
+            return result;
         }
 
         private static string ResolveFullPath(string solutionRoot, string candidate)
@@ -1516,7 +1798,7 @@ Choose the architecture for this change.",
         /// CRLF/LF and a trailing end-of-file newline are not part of the expectation: the read tool
         /// cannot distinguish "file ends with \n\n" from "the final \n counted as an empty line".
         /// </summary>
-        private static string NormalizeNewlines(string text)
+        internal static string NormalizeNewlines(string text)
         {
             return NormalizeLineEndings(text).TrimEnd('\n');
         }
@@ -1525,7 +1807,7 @@ Choose the architecture for this change.",
         /// CRLF and lone CR become LF. The trailing newline is kept, because callers use this on
         /// exact text rather than on a whole-file comparison.
         /// </summary>
-        private static string NormalizeLineEndings(string text)
+        internal static string NormalizeLineEndings(string text)
         {
             return (text ?? string.Empty).Replace("\r\n", "\n").Replace("\r", "\n");
         }
@@ -1577,55 +1859,9 @@ Choose the architecture for this change.",
             }
         }
 
-        // ---------------------------------------------------------------------
-        // Fixture helper self-check (no model and no VS instance required)
-        // ---------------------------------------------------------------------
-
-        /// <summary>
-        /// Guards the fixture helpers that build every A.5 expectation. The seeds are verbatim
-        /// literals, so their line endings come from the checkout (CRLF in this repository) while
-        /// the patterns are written with '\n'. This test runs in milliseconds and fails first if
-        /// that normalization ever regresses, before any run that needs LM Studio.
-        /// </summary>
-        [TestMethod, TestCategory("SubAgentBenchmark")]
-        public void FixtureExpectations_AreLineEndingAgnostic()
+        private static void SaveReport(List<BenchmarkResult> results, string solutionRoot, string filePrefix = "benchmark-report-")
         {
-            // A CRLF seed matches an LF pattern, and the replacement is normalized too.
-            Assert.AreEqual("a\nX\nc", PatchText("a\r\nb\r\nc", "b\n", "X\n"));
-            Assert.AreEqual("a\nX\nc", PatchText("a\nb\nc", "b\r\n", "X\n"));
-            Assert.AreEqual("a\nX\nY\nc", PatchText("a\r\nb\r\nc", "b\n", "X\r\nY\n"));
-
-            var seed = "one\r\ntwo\r\nthree\r\nfour\r\n";
-            Assert.AreEqual("one\ntwo\nfour\n", PatchText(seed, "three\n", string.Empty));
-
-            // The real A5.10 expectation: insert after line 5, then delete a whole line above it.
-            var notes = PatchText(
-                PatchText("l1\r\nl2\r\nl3\r\nl4\r\nl5\r\nl6\r\n", "l5", "l5\r\nl5a"),
-                "l4\n",
-                string.Empty);
-            Assert.AreEqual("l1\nl2\nl3\nl5\nl5a\nl6\n", notes);
-
-            Assert.AreEqual("x\ny", NormalizeNewlines("x\r\ny\r\n\r\n"));
-            Assert.AreEqual("x\ny\n", NormalizeLineEndings("x\r\ny\r\n"));
-
-            // A pattern that is really absent must still abort: a silent fallback to the seed would
-            // turn "this scenario must change the file" into "this scenario must leave it alone".
-            var thrown = false;
-            try
-            {
-                PatchText("one\r\ntwo", "missing\n", string.Empty);
-            }
-            catch (InvalidOperationException)
-            {
-                thrown = true;
-            }
-
-            Assert.IsTrue(thrown, "PatchText must throw when the pattern is absent from the seed");
-        }
-
-        private static void SaveReport(List<BenchmarkResult> results, string solutionRoot)
-        {
-            var fileName = "benchmark-report-" + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".json";
+            var fileName = filePrefix + DateTime.Now.ToString("yyyy-MM-dd-HHmmss") + ".json";
             var path = Path.Combine(solutionRoot ?? ".", fileName);
 
             var summary = new JObject
@@ -1656,7 +1892,9 @@ Choose the architecture for this change.",
                     ["completionTokens"] = r.CompletionTokens,
                     ["totalTokens"] = r.TotalTokens,
                     ["tokensPerSecond"] = r.TokensPerSecond,
-                    ["violations"] = new JArray(r.Violations ?? new List<string>())
+                    ["violations"] = new JArray(r.Violations ?? new List<string>()),
+                    ["recoveries"] = new JArray(r.Recoveries ?? new List<string>()),
+                    ["unresolvedRefCount"] = r.UnresolvedRefCount
                 });
             }
 

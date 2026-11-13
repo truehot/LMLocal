@@ -65,6 +65,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters?.TryGetValue("filter", out var filterObj) == true && filterObj is string filterStr && !string.IsNullOrWhiteSpace(filterStr))
                 filter = TestArgumentsBuilder.SanitizeFilter(filterStr.Trim());
 
+            bool fullOutputIgnored = includeFullOutput && string.IsNullOrEmpty(filter);
+            if (fullOutputIgnored)
+                includeFullOutput = false;
+
             TimeSpan? customTimeout = null;
             if (parameters?.TryGetValue("timeout_seconds", out var timeoutObj) == true && timeoutObj is int timeoutSeconds && timeoutSeconds > 0)
             {
@@ -89,6 +93,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var (Success, Output, Total, Passed, Failed, Skipped) = isSdk
                 ? await RunSdkTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, customTimeout, cancellationToken).ConfigureAwait(false)
                 : await RunLegacyTestsAsync(absoluteProjectPath, solutionDir, filter, includeFullOutput, customTimeout, cancellationToken).ConfigureAwait(false);
+
+            if (fullOutputIgnored)
+                Output = "[NOTE] include_full_output was ignored because 'filter' is not set; summary returned. To get the full log, rerun with 'filter' matching the tests to diagnose.\n" + Output;
 
             string errorMessage = null;
             if (!Success)
@@ -248,7 +255,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             var timeout = parameters?.TryGetValue("timeout_seconds", out var t) == true && t is int ts ? ts : (int?)null;
 
             var msg = $"Running tests for '{proj}'";
-            if (fullOutput)
+            if (fullOutput && !string.IsNullOrWhiteSpace(filter))
                 msg += " (full output enabled)";
             if (!string.IsNullOrWhiteSpace(filter))
                 msg += $", filter: '{filter}'";
@@ -291,7 +298,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Runs the project's pre-built test assembly and returns summary statistics plus failure details (not the full log). It does not build the project; run build_solution first when you change code, otherwise the existing build is tested. Assumes a Debug build - build with a Debug configuration. Use 'include_full_output': true to get the complete console log, and 'filter' to run only tests whose name matches.",
+                Description = "Runs the project's pre-built test assembly and returns summary statistics plus failure details (not the full log). It does not build the project; run build_solution first when you change code, otherwise the existing build is tested. Assumes a Debug build - build with a Debug configuration. Use 'filter' to run only tests whose name matches; together with 'filter', 'include_full_output': true returns the complete console log.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -310,7 +317,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ["include_full_output"] = new ToolDetails
                         {
                             Type = "boolean",
-                            Description = "Defaults to false. If true, returns the full stdout/stderr log instead of just summary/failures."
+                            Description = "Defaults to false. Works only together with 'filter': if true, returns the full stdout/stderr log of the filtered run instead of just summary/failures. Without 'filter' it is ignored and the summary is returned."
                         },
                         ["timeout_seconds"] = new ToolDetails
                         {

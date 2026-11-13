@@ -7,7 +7,7 @@ namespace LMLocal.Infrastructure.WebView
     internal enum WebView2MessageType
     {
         /// <summary>
-        /// Extended thinking tokens (reasoning_content field).
+        /// Extended thinking tokens (reasoning_content or reasoning field).
         /// Streamed incrementally during model thinking phase.
         /// </summary>
         StreamThought,

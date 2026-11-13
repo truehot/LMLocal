@@ -64,7 +64,7 @@ namespace LMLocal.Tests.Unit
             return new HistoryCompactor(_history.Object, client.Object, _settings.Object, activeModelContext.Object);
         }
 
-        private (CompactionOutcome Outcome, List<ChatMessage> Messages) Run(int attempt = 0, CancellationToken ct = default(CancellationToken))
+        private (CompactionOutcome Outcome, List<ChatMessage> Messages) Run(int attempt = 0, CancellationToken ct = default)
         {
             var (outcome, messages) = CreateCompactor()
                 .CompactForcedAsync("m", attempt, ct)

@@ -63,7 +63,7 @@ namespace LMLocal.Tests.Unit
         /// <summary>
         /// Runs a forced compaction and keeps the returned messages for assertions.
         /// </summary>
-        private (CompactionOutcome Outcome, List<ChatMessage> Messages) Run(int attempt = 0, CancellationToken ct = default(CancellationToken))
+        private (CompactionOutcome Outcome, List<ChatMessage> Messages) Run(int attempt = 0, CancellationToken ct = default)
         {
             var (outcome, messages) = CreateCompactor().CompactForcedAsync("m", attempt, ct).GetAwaiter().GetResult();
             _captured = messages?.ToList();

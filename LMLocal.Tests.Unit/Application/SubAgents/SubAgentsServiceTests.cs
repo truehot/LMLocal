@@ -11,8 +11,6 @@ using LMLocal.Application.Tool;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
-using LMLocal.Infrastructure.SubAgents;
-using LMLocal.Tests.Unit.Internal.TestHelpers;
 using Moq;
 using NUnit.Framework;
 
@@ -71,9 +69,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         /// configuration, so the suite covers what actually ships; tests that pin the hard-stop behaviour
         /// pass <c>false</c> explicitly.
         /// </summary>
-        private SubAgentsService CreateService(
-            ISubAgentFailureLogger failureLogger = null,
-            bool loopRecoveryEnabled = SubAgentsService.DefaultLoopRecoveryEnabled)
+        private SubAgentsService CreateService(bool loopRecoveryEnabled = SubAgentsService.DefaultLoopRecoveryEnabled)
         {
             return new SubAgentsService(
                 _settingsManagerMock.Object,
@@ -83,7 +79,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 _queueProviderMock.Object,
                 _loopDetectorMock.Object,
                 _persistenceFactoryMock.Object,
-                failureLogger ?? NullSubAgentFailureLogger.Instance,
                 loopRecoveryEnabled);
         }
 
@@ -136,9 +131,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
-        public async Task ExecutePromptAsync_LoopDetected_LogsTheRepeatedCallsAsRecentCalls()
+        public async Task ExecutePromptAsync_LoopRecoveryDisabled_LoopFailsWithoutRecoveries()
         {
-            var logger = new RecordingFailureLogger();
             SetupRepeatedToolCalls("read_file_lines", "{\"path\":\"a.cs\"}");
             AllowTool("read_file_lines");
 
@@ -157,27 +151,17 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     Result = "file text"
                 });
 
-            var response = await CreateService(logger, loopRecoveryEnabled: false)
+            var response = await CreateService(loopRecoveryEnabled: false)
                 .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
             Assert.That(response.Error, Does.Contain("repeated tool call loop"));
-
-            Assert.That(logger.Stage, Is.EqualTo("Final"));
-            Assert.That(logger.RecentCalls, Is.Not.Null);
-            Assert.That(
-                logger.RecentCalls.Select(c => c.ToolName),
-                Is.EqualTo(new[] { "read_file_lines", "read_file_lines" }),
-                "The rounds that repeated the same call are the reason for the failure.");
-            Assert.That(logger.RecentCalls.Select(c => c.Round), Is.EqualTo(new[] { 0, 1 }));
-            Assert.That(logger.RecentCalls.Last().ArgumentsJson, Does.Contain("a.cs"));
-            Assert.That(logger.RecentCalls.Last().ResultText, Is.EqualTo("file text"));
+            Assert.That(response.Recoveries, Is.Null, "With loop recovery off the run fails on the first detected loop.");
         }
 
         [Test]
         public async Task ExecutePromptAsync_LoopRecoveryEnabled_ClosesTurnAndContinuesAsUserRound()
         {
-            var logger = new RecordingFailureLogger();
             _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
 
             var call = new ToolCallRecord
@@ -222,13 +206,13 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
 
-            var response = await CreateService(logger, loopRecoveryEnabled: true)
+            var response = await CreateService(loopRecoveryEnabled: true)
                 .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.True, response.Error);
             Assert.That(response.Content, Is.EqualTo("done"));
-            Assert.That(logger.Stages, Does.Contain("Recovered"));
-            Assert.That(logger.Stage, Is.Not.EqualTo("Final"), "A recovered run must not be logged as a failure.");
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+            Assert.That(response.Recoveries[0], Does.Contain("repeated tool call loop"));
 
             Assert.That(requests, Has.Count.EqualTo(4));
 
@@ -242,7 +226,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             // Round 3 is the recovered user turn: it carries the nudge as its prompt, and the original prompt
             // is not sent twice.
             Assert.That(requests[3].IsToolRound, Is.False);
-            Assert.That(requests[3].Prompt, Is.EqualTo(SubAgentsService.LoopRecoveryNudge),
+            Assert.That(requests[3].Prompt, Is.EqualTo(SubAgentRecoveryPolicy.LoopRecoveryNudge),
                 "The nudge must be delivered as the round prompt, otherwise the model never sees it.");
             Assert.That(requests[3].ToolResults, Is.Null);
 
@@ -257,7 +241,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         [Test]
         public async Task ExecutePromptAsync_LoopRecoveryEnabled_ExhaustedAttemptsStillFail()
         {
-            var logger = new RecordingFailureLogger();
             _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
 
             var call = new ToolCallRecord
@@ -287,42 +270,170 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
 
-            var response = await CreateService(logger, loopRecoveryEnabled: true)
+            var response = await CreateService(loopRecoveryEnabled: true)
                 .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
             Assert.That(response.Error, Does.Contain("repeated tool call loop"),
                 "Once the recovery budget is spent, the hard stop must remain the last line of defence.");
-            Assert.That(logger.Stages.Count(s => s == "Recovered"), Is.EqualTo(2),
+            Assert.That(response.Recoveries, Has.Count.EqualTo(2),
                 "The run recovers at most LoopRecoveryMaxAttempts times.");
-            Assert.That(logger.Stage, Is.EqualTo("Final"));
         }
 
         [Test]
-        public async Task ExecutePromptAsync_RejectedToolCall_IsLoggedWithErrorAndWithoutResult()
+        public async Task ExecutePromptAsync_RejectedToolCall_NeverExecuted()
         {
-            var logger = new RecordingFailureLogger();
             SetupRepeatedToolCalls("write_file", "{\"path\":\"a.cs\"}");
 
             // The queue has no definitions, so every call is rejected before execution.
-            // Recovery is pinned off: this test guards the logging of rejected attempts, not the recovery path.
-            var response = await CreateService(logger, loopRecoveryEnabled: false)
+            // Recovery is pinned off: this test guards the rejection, not the recovery path.
+            var response = await CreateService(loopRecoveryEnabled: false)
                 .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
             Assert.That(response.Error, Does.Contain("maximum rounds"));
 
-            Assert.That(logger.RecentCalls, Has.Count.EqualTo(3),
-                "Only the last three attempts are carried into the record.");
-            Assert.That(logger.RecentCalls.Select(c => c.ToolName), Is.All.EqualTo("write_file"));
-            Assert.That(logger.RecentCalls.Select(c => c.Error), Is.All.Contains("not allowed"),
-                "A rejected call is an attempt and must be visible with its error.");
-            Assert.That(logger.RecentCalls.Select(c => c.ResultText), Is.All.Null);
-
             _toolExecutionManagerMock.Verify(
                 t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()),
                 Times.Never,
                 "A tool that is not in the SubAgent queue must never be executed.");
+        }
+
+        // =====================================================================
+        // Recovery from a tool call aborted while streaming (malformed arguments)
+        // =====================================================================
+
+        /// <summary>
+        /// A round whose stream was stopped on broken arguments: the call is invalid and sanitized to "{}".
+        /// </summary>
+        private static StreamRoundResult AbortedToolRound()
+        {
+            return new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.ToolCalls,
+                Stream = new StreamCompletionResult
+                {
+                    StopReason = StreamStopReason.ToolCallAborted,
+                    ToolCalls = new[]
+                    {
+                        new ToolCallRecord { CallId = "call_1", FunctionName = "find_files", ArgumentsJson = "{}", IsInvalid = true }
+                    }
+                }
+            };
+        }
+
+        private static StreamRoundResult CompletedRound(string content)
+        {
+            return new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Completed,
+                Stream = new StreamCompletionResult { ContentResponse = content }
+            };
+        }
+
+        /// <summary>
+        /// Plays <paramref name="rounds"/> in order (then completes with "done") and records every round request.
+        /// </summary>
+        private List<StreamRoundRequest> SetupRounds(params StreamRoundResult[] rounds)
+        {
+            var requests = new List<StreamRoundRequest>();
+            var queue = new Queue<StreamRoundResult>(rounds);
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest req, CancellationToken ct) =>
+                {
+                    requests.Add(req);
+                    return Task.FromResult(queue.Count > 0 ? queue.Dequeue() : CompletedRound("done"));
+                });
+
+            return requests;
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_MalformedToolCall_NotExecutedAndRetriedAsUserTurn()
+        {
+            _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            AllowTool("find_files");
+
+            var requests = SetupRounds(AbortedToolRound(), CompletedRound("found"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("found"));
+
+            _toolExecutionManagerMock.Verify(
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()),
+                Times.Never,
+                "An aborted call must not run.");
+
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+            Assert.That(response.Recoveries[0], Does.Contain("malformed tool call"));
+
+            Assert.That(requests, Has.Count.EqualTo(2));
+            Assert.That(requests[1].IsToolRound, Is.False);
+            Assert.That(requests[1].Prompt, Is.EqualTo(SubAgentRecoveryPolicy.MalformedToolCallNudge),
+                "The nudge must be delivered as the round prompt, otherwise the model never sees it.");
+            Assert.That(requests[1].ToolResults, Is.Null);
+
+            var history = requests[1].History.GetHistoryCopy();
+            Assert.That(history.Select(m => m.Role), Is.EqualTo(new[] { "assistant" }),
+                "The aborted turn is closed by an assistant message, without the broken call.");
+            Assert.That(history[0].Content, Is.EqualTo("INTERRUPTED"));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_MalformedToolCallTwice_ThenAnswer_Succeeds()
+        {
+            AllowTool("find_files");
+            SetupRounds(AbortedToolRound(), AbortedToolRound(), CompletedRound("found"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Recoveries, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_MalformedToolCallExhaustedAttempts_FailsWithReason()
+        {
+            AllowTool("find_files");
+            SetupRounds(AbortedToolRound(), AbortedToolRound(), AbortedToolRound(), CompletedRound("never"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.Contain("malformed tool calls 3 times"));
+            Assert.That(response.Recoveries, Has.Count.EqualTo(2),
+                "The run recovers at most MalformedRecoveryMaxAttempts times.");
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_LoopRecoveryDisabled_MalformedToolCallStillRecovered()
+        {
+            AllowTool("find_files");
+            SetupRounds(AbortedToolRound(), CompletedRound("found"));
+
+            var response = await CreateService(loopRecoveryEnabled: false)
+                .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_MalformedToolCallOnLastRound_Fails()
+        {
+            // No round is left for the nudge, so recovering would only waste the last round.
+            AllowTool("find_files");
+            SetupRounds(AbortedToolRound());
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 1), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.Error, Does.Contain("malformed tool calls"));
+            Assert.That(response.Recoveries, Is.Null);
         }
 
         private void SetupRepeatedToolCalls(string toolName, string argumentsJson)
@@ -350,6 +461,72 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             _queueProviderMock
                 .Setup(q => q.GetSubAgentQueue(It.IsAny<SubAgentRunRequest>()))
                 .Returns(ToolQueue.ForSubAgent("agent", definitions));
+        }
+
+        // =====================================================================
+        // Recovery from a final answer with unresolved ref markers
+        // =====================================================================
+
+        [Test]
+        public async Task ExecutePromptAsync_UnresolvedMarker_AnswerSentBackOnce_WithNudge()
+        {
+            _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var requests = SetupRounds(CompletedRound("Body:\n@src\\Program.cs:210-247"), CompletedRound("Body was not read."));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("Body was not read."));
+            Assert.That(response.Rounds, Is.EqualTo(2));
+            Assert.That(response.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(response.Recoveries, Is.EqualTo(new[] { "SubAgent recovered from unresolved ref markers (attempt 1 of 1)." }));
+
+            Assert.That(requests, Has.Count.EqualTo(2));
+            Assert.That(requests[1].IsToolRound, Is.False);
+            Assert.That(requests[1].ToolResults, Is.Null);
+            Assert.That(requests[1].Prompt, Does.StartWith("[AUTOMATED GUARD: UNRESOLVED REF MARKERS]\n"));
+            Assert.That(requests[1].Prompt, Does.Contain("@src\\Program.cs:210-247"));
+            Assert.That(requests[1].History.GetHistoryCopy(), Is.Empty,
+                "a final answer is already a closed turn: no placeholder is added");
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_UnresolvedMarkerAgain_AnswerReturnedAsIs()
+        {
+            SetupRounds(CompletedRound("@src\\Program.cs:1-5"), CompletedRound("Still: @src\\Program.cs:1-5"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("Still: @src\\Program.cs:1-5"));
+            Assert.That(response.UnresolvedRefCount, Is.EqualTo(1));
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_UnresolvedMarkerInLastRound_AnswerReturnedAsIs()
+        {
+            var requests = SetupRounds(CompletedRound("@src\\Program.cs:1-5"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 1), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("@src\\Program.cs:1-5"));
+            Assert.That(response.Recoveries, Is.Null);
+            Assert.That(requests, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_PlainAnswer_IsNotSentBack()
+        {
+            var requests = SetupRounds(CompletedRound("Yes. 12 matches in src\\Program.cs."));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("Yes. 12 matches in src\\Program.cs."));
+            Assert.That(response.Recoveries, Is.Null);
+            Assert.That(requests, Has.Count.EqualTo(1));
         }
 
         // =====================================================================
@@ -407,7 +584,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                         return Task.FromResult(new StreamRoundResult
                         {
                             Outcome = StreamRoundOutcome.Cancelled,
-                            Stream = new StreamCompletionResult { WasCancelled = true }
+                            Stream = new StreamCompletionResult { StopReason = StreamStopReason.Cancelled }
                         });
                     });
 
@@ -427,7 +604,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .ReturnsAsync(new StreamRoundResult
                 {
                     Outcome = StreamRoundOutcome.Cancelled,
-                    Stream = new StreamCompletionResult { WasCancelled = true }
+                    Stream = new StreamCompletionResult { StopReason = StreamStopReason.Cancelled }
                 });
 
             var response = await CreateService()
@@ -455,47 +632,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             var tcs = new TaskCompletionSource<StreamRoundResult>();
             ct.Register(() => tcs.TrySetCanceled(ct));
             return tcs.Task;
-        }
-
-        /// <summary>
-        /// Captures what <see cref="SubAgentsService"/> hands to the failure logger.
-        /// </summary>
-        private sealed class RecordingFailureLogger : ISubAgentFailureLogger
-        {
-            public string Stage { get; private set; }
-
-            public List<string> Stages { get; } = new List<string>();
-
-            public List<SubAgentRecentCall> RecentCalls { get; private set; }
-
-            public Task LogAsync(SubAgentFailureRecord record, CancellationToken cancellationToken = default)
-                => Task.CompletedTask;
-
-            public Task LogFromRequestAsync(
-                SubAgentRunRequest request,
-                string stage,
-                string error,
-                string runId = null,
-                int? round = null,
-                Guid? chatSessionId = null,
-                Exception exception = null,
-                IReadOnlyList<SubAgentRecentCall> recentCalls = null,
-                CancellationToken cancellationToken = default)
-            {
-                Stage = stage;
-                Stages.Add(stage);
-                RecentCalls = recentCalls?.ToList();
-
-                return Task.CompletedTask;
-            }
-
-            public Task LogFromToolCallAsync(
-                ToolCallRecord call,
-                string stage,
-                string error,
-                Exception exception = null,
-                CancellationToken cancellationToken = default)
-                => Task.CompletedTask;
         }
     }
 }

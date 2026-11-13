@@ -9,6 +9,8 @@ namespace LMLocal.Infrastructure.Tooling
 
     internal class ToolResultMarkdownFormatter : IToolResultMarkdownFormatter
     {
+        private const string CodeReaderSubagentFunctionName = "code_reader_subagent";
+
         public string FormatToolResults(IEnumerable<(string FunctionName, string JsonContent)> toolResults)
         {
             var sb = new System.Text.StringBuilder();
@@ -17,8 +19,17 @@ namespace LMLocal.Infrastructure.Tooling
 
             foreach (var (functionName, json) in toolResults)
             {
-                if (string.IsNullOrEmpty(json))
+                if (string.IsNullOrWhiteSpace(json))
                     continue;
+
+                if (functionName == CodeReaderSubagentFunctionName)
+                {
+                    sb.AppendLine($"**{CodeReaderSubagentFunctionName}**");
+                    sb.AppendLine();
+                    sb.AppendLine(json);
+                    sb.AppendLine();
+                    continue;
+                }
 
                 try
                 {

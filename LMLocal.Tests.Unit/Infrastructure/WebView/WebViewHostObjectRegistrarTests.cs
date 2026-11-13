@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -39,6 +39,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             public Mock<IChatSessionController> ChatSession { get; } = new Mock<IChatSessionController>();
             public Mock<ISubAgentsController> SubAgents { get; } = new Mock<ISubAgentsController>();
             public Mock<IRecentModelsController> RecentModels { get; } = new Mock<IRecentModelsController>();
+            public Mock<IFileLinksController> FileLinks { get; } = new Mock<IFileLinksController>();
 
             public Fixture()
             {
@@ -62,7 +63,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                     Autocompletions.Object,
                     ChatSession.Object,
                     SubAgents.Object,
-                    RecentModels.Object);
+                    RecentModels.Object,
+                    FileLinks.Object);
             }
         }
 
@@ -81,7 +83,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                 Is.EqualTo(new[]
                 {
                     "bridge", "host", "instructions", "providers", "tools", "settings",
-                    "mcp", "models", "modelsConfig", "autocompletions", "chatSession", "subAgents", "recentModels"
+                    "mcp", "models", "modelsConfig", "autocompletions", "chatSession", "subAgents", "recentModels",
+                    "fileLinks"
                 }));
         }
 
@@ -177,7 +180,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                     fixture.Autocompletions.Object,
                     fixture.ChatSession.Object,
                     fixture.SubAgents.Object,
-                    fixture.RecentModels.Object),
+                    fixture.RecentModels.Object,
+                    fixture.FileLinks.Object),
                 Throws.TypeOf<ArgumentNullException>());
         }
 

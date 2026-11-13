@@ -1,5 +1,6 @@
-import { UIText, Config } from '@app/constants/app.globals.js';
+import { Config, Icons } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
+import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
 import { createScrollManager } from '@app/lib/scroll.manager.js';
 import { createUserMessage } from '@app/chat/user.message.js';
@@ -8,6 +9,7 @@ import { createAiCollapsibleMessage } from '@app/chat/ai.collapsible.message.js'
 import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
 import { PipelineBuilder } from '@app/chat/chat.pipeline.builder.js';
+import { attachCopyAction, getCopySource, COPY_ACTION_SELECTOR } from '@app/chat/message.actions.js';
 
 /**
  * ChatController — manages chat UI and message lifecycle.
@@ -73,38 +75,19 @@ class ChatController {
             return;
         }
 
+        const messageCopyBtn = e.target.closest(COPY_ACTION_SELECTOR);
+        if (messageCopyBtn) {
+            this._handleCopy(getCopySource(messageCopyBtn), messageCopyBtn);
+            return;
+        }
+
         const copyBtn = e.target.closest('.header-copy-btn');
         if (copyBtn) {
             const wrapper = copyBtn.closest('.code-block-container');
             if (!wrapper) return;
             const codeElement = wrapper.querySelector('pre code') || wrapper.querySelector('pre');
             if (!codeElement) return;
-            const textToCopy = codeElement.textContent;
-
-            const statusSpan = copyBtn.querySelector('span');
-            if (!statusSpan) return;
-
-            this.onCopyCode.emit(textToCopy).then(success => {
-                if (success) {
-                    statusSpan.textContent = UIText.COPY_SUCCESS;
-                    copyBtn.classList.add('success');
-                    const timeoutId = setTimeout(() => {
-                        statusSpan.textContent = UIText.COPY_LABEL;
-                        copyBtn.classList.remove('success');
-                        this._activeTimeouts = this._activeTimeouts.filter(id => id !== timeoutId);
-                    }, Config.COPY_STATUS_RESET_MS);
-                    this._activeTimeouts.push(timeoutId);
-                } else {
-                    statusSpan.textContent = UIText.COPY_ERROR;
-                    const timeoutId = setTimeout(() => {
-                        statusSpan.textContent = UIText.COPY_LABEL;
-                        this._activeTimeouts = this._activeTimeouts.filter(id => id !== timeoutId);
-                    }, Config.COPY_STATUS_RESET_MS);
-                    this._activeTimeouts.push(timeoutId);
-                }
-            }).catch(err => {
-                console.error('Copy failed', err);
-            });
+            this._handleCopy(codeElement.textContent, copyBtn);
             return;
         }
 
@@ -302,7 +285,8 @@ class ChatController {
                 break;
 
             case AppStatus.IDLE:
-                if (this.currentAi && prev.status !== AppStatus.IDLE) {
+                if (this.currentAi && appSelectors.isGenerating(prev.status)) {
+                    attachCopyAction(this.currentAi.root, state.accumulatedText);
                     this.currentAi.stopLoadingIndicator();
 
                     const awaitFinalize = () =>
@@ -322,6 +306,45 @@ class ChatController {
                 break;
 
         }
+    }
+
+    /**
+     * Copies text through the host clipboard and reflects the outcome on the button icon.
+     */
+    _handleCopy(text, btn) {
+        if (!btn) return Promise.resolve();
+
+        if (btn._copyBusy) return Promise.resolve();
+        btn._copyBusy = true;
+
+        const scheduleReset = () => {
+            const timeoutId = setTimeout(() => {
+                btn.innerHTML = Icons.COPY;
+                btn.classList.remove('success', 'error');
+                btn._copyBusy = false;
+                this._activeTimeouts = this._activeTimeouts.filter(id => id !== timeoutId);
+            }, Config.COPY_STATUS_RESET_MS);
+            this._activeTimeouts.push(timeoutId);
+        };
+
+        const showResult = (success) => {
+            btn.innerHTML = success ? Icons.SUCCESS : Icons.ERROR;
+            btn.classList.toggle('success', success);
+            btn.classList.toggle('error', !success);
+            scheduleReset();
+        };
+
+        if (!text) {
+            showResult(false);
+            return Promise.resolve();
+        }
+
+        return this.onCopyCode.emit(text)
+            .then(success => showResult(!!success))
+            .catch(err => {
+                console.error('Copy failed', err);
+                showResult(false);
+            });
     }
 
     _attachEvents() {
@@ -366,6 +389,7 @@ class ChatController {
 
         this.highlightParser = createHighlightParser();
         this.highlightParser.start();
+
         this.pipelineBuilder = new PipelineBuilder({
             scrollManager: this.scrollManager,
         });
@@ -451,7 +475,7 @@ class ChatController {
                         const stepsText = stepCount + ' step' + (stepCount !== 1 ? 's' : '') + ' taken (history)';
                         content = '`' + stepsText + '`\n\n' + content;
                     }
-                    pending.push(this._renderHistoryFinal(content));
+                    pending.push(this._renderHistoryFinal(content, msg.content || ''));
                     stepCount = 0;
                 }
             }
@@ -467,7 +491,10 @@ class ChatController {
         }
     }
 
-    _renderHistoryFinal(content) {
+    /**
+     * Renders a historical answer.
+     */
+    _renderHistoryFinal(content, rawContent) {
         var localAi = createAiMessage(
             this.container,
             this.highlightParser,
@@ -475,6 +502,7 @@ class ChatController {
             false
         );
         localAi.updateStreaming(content);
+        attachCopyAction(localAi.root, rawContent);
         return localAi.finishStreaming();
     }
 }

@@ -12,7 +12,6 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
-using LMLocal.Tests.Unit.Internal.TestHelpers;
 using Moq;
 using NUnit.Framework;
 
@@ -61,7 +60,7 @@ namespace LMLocal.Tests.Unit.Internal
                 _snapshotManagerMock.Object,
                 _loopDetectorMock.Object,
                 _parallelPolicyMock.Object,
-                new SubAgentsParallelRunner(NullSubAgentFailureLogger.Instance));
+                new SubAgentsParallelRunner());
         }
 
         private void TrackMax(ref int max, int value)

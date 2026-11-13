@@ -29,15 +29,18 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
         </div>`;
 
     let element;
+    let root;
+
     if (iterating) {
-        element = container.lastElementChild;
-        element.insertAdjacentHTML('beforeend', html);
-        element = element.lastElementChild;
+        root = container.lastElementChild;
+        root.insertAdjacentHTML('beforeend', html);
+        element = root.lastElementChild;
     } else {
         element = document.createElement('div');
         element.className = 'message ai-message';
         element.innerHTML = html;
         container.appendChild(element);
+        root = element;
     }
 
     let elements = {
@@ -68,6 +71,7 @@ export function createAiMessage(container, highlightWorkerClient, currentPipelin
 
     const api = {
         isCollapsible: false,
+        root,
 
         stopLoadingIndicator: () => {
             stopLoadingIndicator();
