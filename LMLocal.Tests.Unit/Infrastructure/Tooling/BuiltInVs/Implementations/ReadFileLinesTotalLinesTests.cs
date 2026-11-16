@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -12,7 +13,8 @@ using NUnit.Framework;
 namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// total_lines is reported only when the read reached the end of the file, where the line count costs nothing extra.
+    /// total_lines is reported with every read of a file up to ReadFileLines.MaxCountedLines lines (the rest of the file is
+    /// read only to count lines); a longer file reports it only when the read reached its end.
     /// </summary>
     [TestFixture]
     public class ReadFileLinesTotalLinesTests
@@ -56,13 +58,35 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public async Task RangeInsideTheFile_HasMore_NoTotalLines()
+        public async Task RangeInsideTheFile_HasMore_ReportsTotalLines()
         {
             var response = await ReadAsync("five.txt", 1, 2);
 
             Assert.That(response.HasMoreResults, Is.True);
+            Assert.That(response.Content.Count, Is.EqualTo(2));
+            Assert.That(response.TotalLines, Is.EqualTo(5));
+        }
+
+        [Test]
+        public async Task RangeInsideALongFile_OverTheCountLimit_NoTotalLines()
+        {
+            File.WriteAllLines(Path.Combine(_tempDir, "long.txt"), Enumerable.Range(1, ReadFileLines.MaxCountedLines + 1).Select(i => "l" + i));
+
+            var response = await ReadAsync("long.txt", 1, 2);
+
+            Assert.That(response.HasMoreResults, Is.True);
             Assert.That(response.TotalLines, Is.Null);
             Assert.That(JsonConvert.SerializeObject(response), Does.Not.Contain("total_lines"));
+        }
+
+        [Test]
+        public async Task RangeInsideAFileAtTheCountLimit_ReportsTotalLines()
+        {
+            File.WriteAllLines(Path.Combine(_tempDir, "limit.txt"), Enumerable.Range(1, ReadFileLines.MaxCountedLines).Select(i => "l" + i));
+
+            var response = await ReadAsync("limit.txt", 1, 2);
+
+            Assert.That(response.TotalLines, Is.EqualTo(ReadFileLines.MaxCountedLines));
         }
 
         [Test]

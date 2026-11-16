@@ -72,6 +72,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
             return nextOffset < total ? nextOffset.ToString(CultureInfo.InvariantCulture) : null;
         }
 
+        /// <summary>
+        /// Number of the page that starts at <paramref name="offset"/> and the total page count, both at
+        /// <paramref name="pageSize"/> items per page.
+        /// </summary>
+        public static void PageNumbers(int offset, int pageSize, int total, out int? page, out int? totalPages)
+        {
+            page = null;
+            totalPages = null;
+
+            if (pageSize <= 0 || offset < 0 || offset >= total || (offset == 0 && total <= pageSize))
+                return;
+
+            long before = ((long)offset + pageSize - 1) / pageSize;
+            long remaining = ((long)total - offset + pageSize - 1) / pageSize;
+            page = (int)(before + 1);
+            totalPages = (int)(before + remaining);
+        }
+
         private static bool IsAllDigits(string token)
         {
             if (string.IsNullOrEmpty(token))

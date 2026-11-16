@@ -149,6 +149,55 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public void Recorder_MultiTermResponse_RecordsEveryBlock()
+        {
+            var ledger = new SearchLedger();
+            var response = new SearchMultiTermResponse
+            {
+                Success = true,
+                Terms = new List<object>
+                {
+                    new SearchResultsResponse
+                    {
+                        Text = "CompactionOutcome",
+                        Success = true,
+                        Results = new List<SearchResult>
+                        {
+                            new SearchResult
+                            {
+                                FilePath = FilePath,
+                                Matches = new List<SearchMatch> { new SearchMatch { LineNumber = 19, LineText = "internal enum CompactionOutcome" } }
+                            }
+                        }
+                    },
+                    new SearchResultsResponse { Text = "Missing", Success = true, Results = new List<SearchResult>() },
+                    new SearchTextGroupResponse
+                    {
+                        Text = "return",
+                        Success = true,
+                        Results = new List<SearchTextGroupResult>
+                        {
+                            new SearchTextGroupResult
+                            {
+                                Text = "return x;",
+                                OccurrenceCount = 1,
+                                Files = new List<SearchTextGroupFileInfo> { new SearchTextGroupFileInfo { FilePath = @"A\One.cs", Lines = new List<int> { 3 } } }
+                            }
+                        }
+                    }
+                }
+            };
+
+            Assert.That(SearchResultRecorder.TryRecord(ledger, response), Is.EqualTo(2));
+            Assert.That(ledger.TryResolve(FilePath, new LineRange(19, 19), out var a), Is.True);
+            Assert.That(a[0].Text, Is.EqualTo("internal enum CompactionOutcome"));
+            Assert.That(ledger.TryResolve(@"A\One.cs", new LineRange(3, 3), out var b), Is.True);
+            Assert.That(b[0].Text, Is.EqualTo("return x;"));
+
+            Assert.That(SearchResultRecorder.TryRecord(new SearchLedger(), new SearchMultiTermResponse { Success = false, Terms = response.Terms }), Is.EqualTo(0));
+        }
+
+        [Test]
         public void Recorder_FailedOrForeignResult_RecordsNothing()
         {
             var ledger = new SearchLedger();

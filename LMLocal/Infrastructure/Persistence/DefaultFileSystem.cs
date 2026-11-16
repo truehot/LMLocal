@@ -41,9 +41,11 @@ namespace LMLocal.Infrastructure.Persistence
         Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Same read as <see cref="ReadLinesRangeAsync"/>, plus the file's line count when that read reached the end of the file (null when it stopped after <paramref name="endLine"/>).
+        /// Same read as <see cref="ReadLinesRangeAsync"/>, plus the file's line count: always when the range reaches the end of the file;
+        /// past <paramref name="endLine"/> the rest of the file is read only to count lines, up to <paramref name="countTotalUpTo"/>
+        /// (0 = do not read past the range). Null when the count was not reached.
         /// </summary>
-        Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default);
+        Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default, int countTotalUpTo = 0);
 
         Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default);
         void ReplaceOrCreate(string sourceFileName, string destinationFileName);
@@ -268,7 +270,7 @@ namespace LMLocal.Infrastructure.Persistence
 
         public async Task CopyFileAsync(string sourcePath, string destPath, CancellationToken cancellationToken = default)
         {
-            using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, 8192, useAsync: true))
+            using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 8192, useAsync: true))
             using (var destStream = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, useAsync: true))
             {
                 await sourceStream.CopyToAsync(destStream, 8192, cancellationToken).ConfigureAwait(false);
@@ -304,7 +306,7 @@ namespace LMLocal.Infrastructure.Persistence
             return lines;
         }
 
-        public async Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+        public async Task<(List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default, int countTotalUpTo = 0)
         {
             if (string.IsNullOrEmpty(path)) throw new ArgumentNullException(nameof(path));
             if (startLine < 1) throw new ArgumentOutOfRangeException(nameof(startLine), "startLine must be >= 1");
@@ -318,22 +320,28 @@ namespace LMLocal.Infrastructure.Persistence
                 {
                     var result = new List<string>();
                     int currentLine = 0;
-                    bool reachedEnd = true;
+                    bool counted = true;
                     string line;
                     while ((line = await sr.ReadLineAsync().ConfigureAwait(false)) != null)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         currentLine++;
                         if (currentLine < startLine) continue;
-                        if (currentLine > endLine)
+                        if (currentLine <= endLine)
                         {
-                            reachedEnd = false;
+                            result.Add(line);
+                            continue;
+                        }
+
+                        // Past the range: keep counting only while the file stays within countTotalUpTo lines.
+                        if (currentLine > countTotalUpTo)
+                        {
+                            counted = false;
                             break;
                         }
-                        result.Add(line);
                     }
 
-                    return (result, reachedEnd ? currentLine : (int?)null);
+                    return (result, counted ? currentLine : (int?)null);
                 }
             }
         }

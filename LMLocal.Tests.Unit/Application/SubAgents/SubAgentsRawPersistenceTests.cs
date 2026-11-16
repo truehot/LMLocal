@@ -244,6 +244,75 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         // ---------------------------------------------------------------------
+        // Use Active Model: empty key/url = clear, null = keep
+        // ---------------------------------------------------------------------
+
+        [Test]
+        public async Task UseActiveModel_EmptyApiKey_ClearsRootAndAgentKey()
+        {
+            var (manager, fs, path) = CreateManager();
+            WriteConfig(fs, path, @"{ ""providerType"": ""openai"", ""customBaseUrl"": ""https://api.openai.com"", ""customApiKey"": ""old-root-key"", ""model"": ""gpt-4o"", ""agents"": [
+                { ""id"": ""coder"", ""description"": ""A"", ""customApiKey"": ""old-agent-key"", ""enabled"": true },
+                { ""id"": ""tester"", ""description"": ""B"", ""enabled"": true }
+            ] }");
+
+            var errors = await manager.UpdateEnabledFlagsAsync(
+                new List<SubAgentEnabledFlag>(),
+                cancellationToken: CancellationToken.None,
+                defaults: new SubAgentDefaults
+                {
+                    ProviderType = "lmstudio",
+                    CustomBaseUrl = "http://localhost:1234",
+                    CustomApiKey = "",
+                    Model = "active-model"
+                });
+
+            Assert.That(errors, Is.Empty);
+
+            var fileText = ReadFileText(fs, path);
+            Assert.That(fileText, Does.Not.Contain("customApiKey"));
+            Assert.That(fileText, Does.Not.Contain("old-root-key"));
+            Assert.That(fileText, Does.Not.Contain("old-agent-key"));
+
+            var saved = fileText.FromJson<SubAgentsConfig>();
+            Assert.That(saved.ProviderType, Is.EqualTo("lmstudio"));
+            Assert.That(saved.CustomBaseUrl, Is.EqualTo("http://localhost:1234"));
+            Assert.That(saved.Model, Is.EqualTo("active-model"));
+
+            var snapshot = manager.TryGetSnapshot();
+            Assert.That(snapshot.Agents[0].CustomApiKey, Is.Null);
+            Assert.That(snapshot.Agents[1].CustomApiKey, Is.Null);
+        }
+
+        [Test]
+        public async Task UseActiveModel_NewApiKey_ReplacesRootAndAgentKey_NotAddedToOthers()
+        {
+            var (manager, fs, path) = CreateManager();
+            WriteConfig(fs, path, @"{ ""customBaseUrl"": ""https://api.a.com"", ""customApiKey"": ""old-root-key"", ""model"": ""m"", ""agents"": [
+                { ""id"": ""coder"", ""description"": ""A"", ""customApiKey"": ""old-agent-key"", ""enabled"": true },
+                { ""id"": ""tester"", ""description"": ""B"", ""enabled"": true }
+            ] }");
+
+            var errors = await manager.UpdateEnabledFlagsAsync(
+                new List<SubAgentEnabledFlag>(),
+                cancellationToken: CancellationToken.None,
+                defaults: new SubAgentDefaults
+                {
+                    ProviderType = "openai",
+                    CustomBaseUrl = "https://api.b.com",
+                    CustomApiKey = "new-key",
+                    Model = "active-model"
+                });
+
+            Assert.That(errors, Is.Empty);
+
+            var saved = ReadFileText(fs, path).FromJson<SubAgentsConfig>();
+            Assert.That(saved.CustomApiKey, Is.EqualTo("new-key"));
+            Assert.That(saved.Agents[0].CustomApiKey, Is.EqualTo("new-key"));
+            Assert.That(saved.Agents[1].CustomApiKey, Is.Null);
+        }
+
+        // ---------------------------------------------------------------------
         // Clone
         // ---------------------------------------------------------------------
 

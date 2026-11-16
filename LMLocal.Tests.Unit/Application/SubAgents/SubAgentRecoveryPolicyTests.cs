@@ -60,12 +60,50 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
-        public void Malformed_InLastRound_Fails()
+        public void Malformed_InLastRound_AsksForFinalAnswer()
         {
+            // No round is left for a retry: the round limit guard takes over and the run answers from what it has.
             var decision = Policy(maxRounds: 3).Evaluate(Aborted(), 2);
 
+            Assert.That(decision.Action, Is.EqualTo(RecoveryAction.Recover));
+            Assert.That(decision.DisableTools, Is.True);
+            Assert.That(decision.Nudge, Is.EqualTo(SubAgentRecoveryPolicy.RoundLimitNudge));
+        }
+
+        [Test]
+        public void ToolCalls_InLastRound_AskForFinalAnswerWithoutTools()
+        {
+            var policy = Policy(maxRounds: 3);
+
+            Assert.That(policy.Evaluate(Calls("{\"a\":1}"), 0).Action, Is.EqualTo(RecoveryAction.Proceed));
+            Assert.That(policy.Evaluate(Calls("{\"a\":2}"), 1).Action, Is.EqualTo(RecoveryAction.Proceed));
+            var decision = policy.Evaluate(Calls("{\"a\":3}"), 2);
+
+            Assert.That(decision.Action, Is.EqualTo(RecoveryAction.Recover));
+            Assert.That(decision.DisableTools, Is.True);
+            Assert.That(decision.Nudge, Is.EqualTo(SubAgentRecoveryPolicy.RoundLimitNudge));
+            Assert.That(decision.Note, Is.EqualTo("SubAgent reached the round limit (3) and answered from the results gathered so far."));
+        }
+
+        [Test]
+        public void ToolCalls_AfterFinalAnswerRequest_Fail()
+        {
+            // The final-answer round has no tools; if the model still produces calls, the run fails as before.
+            var policy = Policy(maxRounds: 1);
+
+            Assert.That(policy.Evaluate(Calls("{}"), 0).DisableTools, Is.True);
+            var decision = policy.Evaluate(Calls("{\"b\":1}"), 1);
+
             Assert.That(decision.Action, Is.EqualTo(RecoveryAction.Fail));
-            Assert.That(decision.Error, Is.EqualTo("SubAgent stopped: the model produced malformed tool calls 1 times."));
+            Assert.That(decision.Error, Is.EqualTo("SubAgent exceeded maximum rounds (1). " + SubAgentRecoveryPolicy.LimitRetryHint));
+        }
+
+        [Test]
+        public void OtherRecoveries_DoNotDisableTools()
+        {
+            var policy = Policy();
+
+            Assert.That(policy.Evaluate(Aborted(), 0).DisableTools, Is.False);
         }
 
         [Test]
@@ -96,14 +134,16 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
-        public void Repeat_InLastRound_Fails()
+        public void Repeat_InLastRound_AsksForFinalAnswer()
         {
             var policy = Policy(maxRounds: 3);
 
             policy.Evaluate(Calls("{}"), 0);
             policy.Evaluate(Calls("{}"), 1);
+            var decision = policy.Evaluate(Calls("{}"), 2);
 
-            Assert.That(policy.Evaluate(Calls("{}"), 2).Action, Is.EqualTo(RecoveryAction.Fail));
+            Assert.That(decision.Action, Is.EqualTo(RecoveryAction.Recover));
+            Assert.That(decision.DisableTools, Is.True);
         }
 
         [Test]

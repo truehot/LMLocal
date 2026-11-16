@@ -34,8 +34,6 @@ namespace LMLocal.Tests.Unit
         }
 
         [TestCase("code_explorer_subagent")]
-        [TestCase("code_reader_subagent")]
-        [TestCase("symbol_analyzer_subagent")]
         [TestCase("build_subagent")]
         [TestCase("context_retriever_subagent")]
         public void Limits_ShortTaskSubAgent_HasSubAgentLimit(string toolName)
@@ -48,7 +46,6 @@ namespace LMLocal.Tests.Unit
         [TestCase("replace_file_lines")]
         [TestCase("insert_file_lines")]
         [TestCase("reviewer_subagent")]
-        [TestCase("task_planner_subagent")]
         [TestCase("architect_subagent")]
         [TestCase("some_mcp_tool")]
         [TestCase("")]
@@ -87,8 +84,8 @@ namespace LMLocal.Tests.Unit
         [Test]
         public void Guard_ShortTaskSubAgent_StoppedOnlyOverItsLimit()
         {
-            Assert.That(Check(ArgumentsLengthGuard.Instance, "code_reader_subagent", Args(ToolArgumentLimits.ShortTaskSubAgentMaxLength)), Is.Null);
-            Assert.That(Check(ArgumentsLengthGuard.Instance, "code_reader_subagent", Args(ToolArgumentLimits.ShortTaskSubAgentMaxLength + 1)), Is.Not.Null);
+            Assert.That(Check(ArgumentsLengthGuard.Instance, "code_explorer_subagent", Args(ToolArgumentLimits.ShortTaskSubAgentMaxLength)), Is.Null);
+            Assert.That(Check(ArgumentsLengthGuard.Instance, "code_explorer_subagent", Args(ToolArgumentLimits.ShortTaskSubAgentMaxLength + 1)), Is.Not.Null);
         }
 
         [TestCase("replace_file_lines")]

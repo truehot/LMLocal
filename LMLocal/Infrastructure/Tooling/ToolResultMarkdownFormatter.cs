@@ -9,7 +9,7 @@ namespace LMLocal.Infrastructure.Tooling
 
     internal class ToolResultMarkdownFormatter : IToolResultMarkdownFormatter
     {
-        private const string CodeReaderSubagentFunctionName = "code_reader_subagent";
+        private const string CodeExplorerSubagentFunctionName = "code_explorer_subagent";
 
         public string FormatToolResults(IEnumerable<(string FunctionName, string JsonContent)> toolResults)
         {
@@ -22,9 +22,9 @@ namespace LMLocal.Infrastructure.Tooling
                 if (string.IsNullOrWhiteSpace(json))
                     continue;
 
-                if (functionName == CodeReaderSubagentFunctionName)
+                if (functionName == CodeExplorerSubagentFunctionName)
                 {
-                    sb.AppendLine($"**{CodeReaderSubagentFunctionName}**");
+                    sb.AppendLine($"**{CodeExplorerSubagentFunctionName}**");
                     sb.AppendLine();
                     sb.AppendLine(json);
                     sb.AppendLine();
@@ -42,7 +42,17 @@ namespace LMLocal.Infrastructure.Tooling
                     switch (functionName)
                     {
                         case "read_file_lines":
-                            FormatFileReadResult(sb, obj);
+                            if (obj["files"] is JArray blocks)
+                            {
+                                // Several ranges in one call: one block per range; failed blocks are skipped like failed reads.
+                                foreach (var block in blocks)
+                                    if (block is JObject blockObj && blockObj["success"]?.Value<bool>() != false)
+                                        FormatFileReadResult(sb, blockObj);
+                            }
+                            else
+                            {
+                                FormatFileReadResult(sb, obj);
+                            }
                             break;
                         case "get_solution_overview":
                             FormatSolutionOverviewResult(sb, obj);

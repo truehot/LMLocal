@@ -423,17 +423,86 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
-        public async Task ExecutePromptAsync_MalformedToolCallOnLastRound_Fails()
+        public async Task ExecutePromptAsync_MalformedToolCallOnLastRound_AnswersWithoutTools()
         {
-            // No round is left for the nudge, so recovering would only waste the last round.
+            // No round is left for a retry: the round limit guard asks for an answer in one extra round without tools.
             AllowTool("find_files");
-            SetupRounds(AbortedToolRound());
+            var requests = SetupRounds(AbortedToolRound(), CompletedRound("nothing was checked"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 1), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("nothing was checked"));
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+            Assert.That(response.Recoveries[0], Does.Contain("round limit (1)"));
+            Assert.That(requests, Has.Count.EqualTo(2));
+            Assert.That(requests[1].Tools, Is.Empty);
+        }
+
+        // =====================================================================
+        // Round limit: one extra round without tools instead of a failed run
+        // =====================================================================
+
+        private static StreamRoundResult FindFilesRound(string fileName)
+        {
+            return new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.ToolCalls,
+                Stream = new StreamCompletionResult
+                {
+                    ToolCalls = new[]
+                    {
+                        new ToolCallRecord { CallId = "call_" + fileName, FunctionName = "find_files", ArgumentsJson = "{\"file_name\":\"" + fileName + "\"}" }
+                    }
+                }
+            };
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_ToolCallsInLastRound_AnswerFromGatheredResults()
+        {
+            _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            AllowTool("find_files");
+            _toolExecutionManagerMock
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
+                .ReturnsAsync(new ToolExecutionResult { ToolId = "call_A.cs", ToolName = "find_files", Result = "src\\A.cs" });
+
+            var requests = SetupRounds(FindFilesRound("A.cs"), FindFilesRound("B.cs"), CompletedRound("A.cs is in src; B.cs was not checked."));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 2), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.Content, Is.EqualTo("A.cs is in src; B.cs was not checked."));
+            Assert.That(response.Rounds, Is.EqualTo(3), "The final answer comes in one extra round after the limit.");
+            Assert.That(response.Recoveries, Has.Count.EqualTo(1));
+            Assert.That(response.Recoveries[0], Is.EqualTo("SubAgent reached the round limit (2) and answered from the results gathered so far."));
+
+            _toolExecutionManagerMock.Verify(
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()),
+                Times.Once,
+                "Only the first round's call runs: the call of the last round has no round left for its result.");
+
+            Assert.That(requests, Has.Count.EqualTo(3));
+            Assert.That(requests[1].Tools, Is.Not.Empty);
+            Assert.That(requests[2].Tools, Is.Empty, "The final-answer round is sent without tools.");
+            Assert.That(requests[2].IsToolRound, Is.False);
+            Assert.That(requests[2].Prompt, Is.EqualTo(SubAgentRecoveryPolicy.RoundLimitNudge));
+
+            var history = requests[2].History.GetHistoryCopy();
+            Assert.That(history.Select(m => m.Role), Is.EqualTo(new[] { "assistant" }),
+                "The unfinished tool turn is closed like in the other recoveries.");
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_ToolCallsInFinalAnswerRound_Fail()
+        {
+            AllowTool("find_files");
+            SetupRounds(FindFilesRound("A.cs"), FindFilesRound("B.cs"));
 
             var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 1), CancellationToken.None);
 
             Assert.That(response.Success, Is.False);
-            Assert.That(response.Error, Does.Contain("malformed tool calls"));
-            Assert.That(response.Recoveries, Is.Null);
+            Assert.That(response.Error, Is.EqualTo("SubAgent exceeded maximum rounds (1). " + SubAgentRecoveryPolicy.LimitRetryHint));
         }
 
         private void SetupRepeatedToolCalls(string toolName, string argumentsJson)

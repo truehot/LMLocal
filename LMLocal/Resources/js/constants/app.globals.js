@@ -24,11 +24,11 @@ export const UIText = Object.freeze({
     STATUS_ONLINE: 'Connected',
     STATUS_PROCESSING: 'Thinking...',
     STATUS_RESPONDING: 'Tool result ready',
+    STATUS_STEPPING: 'SubAgent working...',
     STATUS_STOPPING: 'Stopping...',
     STATUS_STREAMING: 'Generating...',
     STATUS_THINKING: 'Reasoning...',
     STATUS_UNKNOWN: 'Wait...',
-    // Status bar: instruction | tools | subagents
     STATUS_TOOLS_READ: 'Read',
     STATUS_TOOLS_READ_WRITE: 'Read & Write',
     STATUS_SUBAGENTS: 'SubAgents',

@@ -131,6 +131,47 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
 
         #endregion
 
+        #region PageNumbers
+
+        // offset, pageSize, total, page, totalPages
+        [TestCase(0, 500, 582, 1, 2)]   // benchmark A1.8
+        [TestCase(500, 500, 582, 2, 2)]
+        [TestCase(0, 25, 100, 1, 4)]
+        [TestCase(75, 25, 100, 4, 4)]
+        [TestCase(10, 25, 100, 2, 5)]   // offset not on a page boundary: the partial first page counts as a page
+        [TestCase(2, 7, 9, 2, 2)]       // page size changed between calls
+        public void PageNumbers_SeveralPages_ReturnsPageAndTotal(int offset, int pageSize, int total, int page, int totalPages)
+        {
+            ToolPagination.PageNumbers(offset, pageSize, total, out int? actualPage, out int? actualTotal);
+
+            Assert.That(actualPage, Is.EqualTo(page));
+            Assert.That(actualTotal, Is.EqualTo(totalPages));
+        }
+
+        [TestCase(0, 25, 25)]   // everything on one page
+        [TestCase(0, 25, 3)]
+        [TestCase(0, 25, 0)]
+        [TestCase(100, 25, 100)] // past the end
+        [TestCase(0, 0, 10)]
+        public void PageNumbers_OnePageOrPastTheEnd_ReturnsNull(int offset, int pageSize, int total)
+        {
+            ToolPagination.PageNumbers(offset, pageSize, total, out int? page, out int? totalPages);
+
+            Assert.That(page, Is.Null);
+            Assert.That(totalPages, Is.Null);
+        }
+
+        [Test]
+        public void PageNumbers_OffsetNearIntMax_DoesNotOverflow()
+        {
+            ToolPagination.PageNumbers(int.MaxValue - 10, 500, int.MaxValue, out int? page, out int? totalPages);
+
+            Assert.That(page, Is.GreaterThan(0));
+            Assert.That(totalPages, Is.EqualTo(page));
+        }
+
+        #endregion
+
         #region Full walk
 
         [Test]
@@ -144,7 +185,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [Test]
         public void Walk_PageSizeGrows_VisitsEveryItemExactlyOnce()
         {
-            // Benchmark A3.7: the first page of 50, then the model asked for 200 and lost 29 references.
+            // Benchmark A1.29 (was A3.7): the first page of 50, then the model asked for 200 and lost 29 references.
             Assert.That(Walk(79, new[] { 50, 200 }), Is.EqualTo(Items(79)));
             Assert.That(Walk(79, new[] { 25, 50, 500 }), Is.EqualTo(Items(79)));
         }

@@ -163,8 +163,8 @@ namespace LMLocal.Infrastructure.WebView.Controllers
         {
             return request != null
                 && (!string.IsNullOrWhiteSpace(request.ProviderType)
-                    || !string.IsNullOrWhiteSpace(request.CustomBaseUrl)
-                    || !string.IsNullOrWhiteSpace(request.CustomApiKey)
+                    || request.CustomBaseUrl != null
+                    || request.CustomApiKey != null
                     || !string.IsNullOrWhiteSpace(request.Model));
         }
 

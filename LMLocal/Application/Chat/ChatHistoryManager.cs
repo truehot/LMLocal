@@ -446,7 +446,7 @@ namespace LMLocal.Application.Chat
         {
             var allowedTools = new HashSet<string>
             {
-                "read_file_lines", "get_solution_overview", "get_active_document", "code_reader_subagent"
+                "read_file_lines", "get_solution_overview", "get_active_document", "code_explorer_subagent"
             };
 
             List<ChatMessage> consolidatedFragment = null;

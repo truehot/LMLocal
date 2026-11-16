@@ -13,6 +13,7 @@ using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
@@ -181,7 +182,8 @@ internal static class IpcCommandHandler
                     var res = await ExecuteToolAsync(builtInVsToolProvider, canonical, parts, token);
                     toolSucceeded = true;
 
-                    if (string.Equals(canonical, "get_symbol_info", StringComparison.OrdinalIgnoreCase))
+                    // A 'symbol_names' call has no references to reshape: it is written as is.
+                    if (string.Equals(canonical, "get_symbol_info", StringComparison.OrdinalIgnoreCase) && !(res is GetSymbolInfo.SymbolInfoMultiResponse))
                     {
                         await writer.WriteLineAsync(TransformSymbolInfo(res));
                     }
@@ -220,7 +222,7 @@ internal static class IpcCommandHandler
             try
             {
                 // parts[0] = "RunSubAgent"
-                // parts[1] = agent id (code_explorer_subagent, code_reader_subagent, ...)
+                // parts[1] = agent id (code_explorer_subagent, build_subagent, ...)
                 // parts[2] = Uri.EscapeDataString(prompt)
                 // parts[3] = model override (optional)
                 // parts[4] = maxRounds override (optional)

@@ -93,9 +93,37 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
 
         [TestCase("\"\"")]
         [TestCase("\"")]
+        [TestCase(" \" ")]
         public void Create_EmptyOrLoneQuote_HasNoFallback(string text)
         {
             Assert.That(SearchQueryFallback.Create(text).HasTerms, Is.False);
+        }
+
+        // Seen in subagent logs: the task said "new DefaultFileSystem(" and the explorer searched new DefaultFileSystem(" .
+        [TestCase("new DefaultFileSystem(\"", "new DefaultFileSystem(")]
+        [TestCase("\"ChatLogSerializer", "ChatLogSerializer")]
+        [TestCase("  \"Interlocked ", "Interlocked")]
+        public void Create_UnpairedQuoteAtEdge_IsRemoved(string text, string expected)
+        {
+            var f = SearchQueryFallback.Create(text);
+
+            Assert.That(f.Kind, Is.EqualTo(SearchFallbackKind.StrayQuoteRemoved));
+            Assert.That(f.Terms, Is.EqualTo(new[] { expected }));
+        }
+
+        [TestCase("Name == \"read")]
+        [TestCase("say \"hi\"")]
+        public void Create_QuoteInsideOrPaired_IsNotStray(string text)
+        {
+            Assert.That(SearchQueryFallback.Create(text).Kind, Is.Not.EqualTo(SearchFallbackKind.StrayQuoteRemoved));
+        }
+
+        [Test]
+        public void BuildNote_StrayQuote_MentionsRemovedQuote()
+        {
+            var note = SearchQueryFallback.Create("new Foo(\"").BuildNote(2);
+
+            Assert.That(note, Does.Contain("unpaired double quote").And.Contain("'new Foo('").And.Contain("not for the original text"));
         }
 
         [Test]

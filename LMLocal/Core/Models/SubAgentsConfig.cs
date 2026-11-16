@@ -95,6 +95,13 @@ namespace LMLocal.Core.Models
         public int? MaxParallel { get; set; }
 
         /// <summary>
+        /// Built-in tools the main model keeps even when an enabled agent lists them in allowedTools
+        /// (normally such tools are owned by the agent and hidden from the main model). Optional.
+        /// </summary>
+        [JsonProperty("sharedTools")]
+        public List<string> SharedTools { get; set; }
+
+        /// <summary>
         /// Validation errors of the most recent parse.
         /// </summary>
         [JsonIgnore]
@@ -196,7 +203,8 @@ namespace LMLocal.Core.Models
                 MaxTokens = MaxTokens,
                 ReasoningEffort = ReasoningEffort,
                 Parallel = Parallel,
-                MaxParallel = MaxParallel
+                MaxParallel = MaxParallel,
+                SharedTools = SharedTools != null ? new List<string>(SharedTools) : null
             };
 
             foreach (var agent in Agents)

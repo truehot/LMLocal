@@ -210,6 +210,23 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public async Task UpdateSubAgentsAsync_EmptyApiKey_ForwardedAsEmptyString()
+        {
+            var json = @"{ ""providerType"": ""lmstudio"", ""customBaseUrl"": ""http://localhost:1234"", ""customApiKey"": """", ""model"": ""google/gemma-4-e2b"", ""agents"": [ { ""id"": ""coder"", ""enabled"": true } ] }";
+
+            var resultJson = await _controller.UpdateSubAgentsAsync(json);
+            var result = resultJson.FromJson<SubAgentsUpdateResponse>();
+
+            Assert.That(result.Success, Is.True);
+            _configManagerMock.Verify(
+                m => m.UpdateEnabledFlagsAsync(
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
+                    It.IsAny<CancellationToken>(),
+                    It.Is<SubAgentDefaults>(d => d != null && d.CustomApiKey == "")),
+                Times.Once);
+        }
+
+        [Test]
         public async Task UpdateSubAgentsAsync_WithoutRootDefaults_DoesNotPassDefaults()
         {
             var json = @"{ ""agents"": [ { ""id"": ""coder"", ""enabled"": false } ] }";

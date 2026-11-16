@@ -26,6 +26,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int DefaultPageSize = 50;
         private const int MaxPageSize = 500;
         private const int MaxFilesToScan = 1500;
+        internal const int MaxFileNames = 30;
+        internal const string FileNameParameter = "file_name";
+        internal const string FileNamesParameter = "file_names";
 
         public string ToolName => "find_files";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -45,19 +48,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Independent: several calls can go in one response.",
+                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Several names: pass them all in 'file_names' in ONE call, not one call per name. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. With 'file_names' each name is matched on its own and the response has 'terms', one block per name (file_name, results, total_files, note, next_page_token); to continue one block, call again with that 'file_name' and its 'page_token'. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_name", new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'." } },
+                        { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'. Required unless 'file_names' is passed." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Exact file extension to narrow the search, as a plain dot-prefixed string with NO wildcard characters — e.g. '.cs', '.csproj', '.js'. Do NOT use glob patterns: pass '.cs', never '*.cs'. If omitted, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Substring filter applied case-insensitively to project/path components. It is not an exact full project-name match; for example, 'Tests' can match a project such as 'LMLocal.Tests.E2E' when that text occurs in a relevant path component." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } },
-                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of files to return per page. Default 50, max 500." } }
+                        { "max_results", new ToolDetails { Type = "integer", Description = "Number of files to return per page. Default 50, max 500." } },
+                        { FileNamesParameter, new ToolDetails { Type = "array", Items = new ToolDetails { Type = "string" }, Description = $"Several file name patterns to find in one call (up to {MaxFileNames}), each like 'file_name'. The response has one block per pattern in 'terms'; max_results applies to each block, and all blocks together return at most {MaxPageSize} files. Use instead of 'file_name' when the names are known up front." } }
                     },
-                    Required = new List<string> { "file_name" }
+                    Required = new List<string>()
                 }
             };
         }
@@ -71,54 +75,69 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
-                var (fileName, fileExtension, projectFilter, pageToken, pageSize, error) = ExtractAndValidateParameters(parameters);
-                if (!string.IsNullOrEmpty(error))
-                    return ErrorResponse(error);
+                var request = ExtractAndValidateParameters(parameters);
+                if (request.Error != null)
+                    return ErrorResponse(request.Error);
 
-                int offset = ToolPagination.ParseOffset(pageToken, pageSize);
+                var names = request.Names;
+                // Several names share the page budget: each block gets max_results, but the whole response stays within MaxPageSize.
+                int pageSize = request.IsMulti ? Math.Max(1, Math.Min(request.PageSize, MaxPageSize / names.Count)) : request.PageSize;
+                int offset = ToolPagination.ParseOffset(request.PageToken, pageSize);
 
-                string cacheKey = BuildCacheKey(fileName, fileExtension, projectFilter);
-                if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
-                    return BuildPageResponse(cached.AllResults, offset, pageSize, cached.Note);
-
-                var filter = new EnumerateSolutionFilesFilter
+                // Every name is cached under the same key as a search for that name alone, so a page_token call with 'file_name' continues a block.
+                var pages = new FileSearchResultsResponse[names.Count];
+                var uncached = new List<int>();
+                for (int i = 0; i < names.Count; i++)
                 {
-                    ExtensionFilter = fileExtension,
-                    ReturnRelative = true,
-                    FileName = fileName,
-                    ProjectFilter = projectFilter,
-                    Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
-                    IncludeProjects = true
-                };
+                    string cacheKey = BuildCacheKey(names[i], request.FileExtension, request.ProjectFilter);
+                    if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
+                        pages[i] = BuildPageResponse(cached.AllResults, offset, pageSize, cached.Note);
+                    else
+                        uncached.Add(i);
+                }
 
-                await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
-                var matchingFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
-                bool limitReached = TrimToLimit(matchingFiles, MaxFilesToScan);
-                string note = limitReached
-                    ? $"The search was limited: the limit of {MaxFilesToScan} matching files was reached, so more files match than are listed and the list is incomplete. Narrow the search with file_name, extension_filter and/or project_filter."
-                    : null;
-                if (limitReached)
-                    InternalLogger.Warn($"{ToolName}: limit of {MaxFilesToScan} files reached for '{fileName}'.");
-
-                var response = await Task.Run(() =>
+                if (uncached.Count > 0)
                 {
-                    var results = matchingFiles
-                        .Select(file => new FileSearchResult { FilePath = file })
-                        .ToList();
-
-                    var cacheEntry = new CachedToolResults<FileSearchResult>
+                    foreach (int i in uncached)
                     {
-                        AllResults = results,
-                        ItemsScanned = matchingFiles.Count,
-                        Note = note
-                    };
-                    _searchCache.Set(cacheKey, solutionDir, cacheEntry);
+                        // The scanner reads the solution hierarchy on the UI thread (no-op when already there).
+                        await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
+                        var filter = new EnumerateSolutionFilesFilter
+                        {
+                            ExtensionFilter = request.FileExtension,
+                            ReturnRelative = true,
+                            FileName = names[i],
+                            ProjectFilter = request.ProjectFilter,
+                            Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
+                            IncludeProjects = true
+                        };
 
-                    return BuildPageResponse(cacheEntry.AllResults, offset, pageSize, cacheEntry.Note);
+                        var matchingFiles = (await _solutionFilesScanner.EnumerateSolutionFilesAsync(filter, cancellationToken)).ToList();
+                        bool limitReached = TrimToLimit(matchingFiles, MaxFilesToScan);
+                        string note = limitReached
+                            ? $"The search was limited: the limit of {MaxFilesToScan} matching files was reached, so more files match than are listed and the list is incomplete. Narrow the search with file_name, extension_filter and/or project_filter."
+                            : null;
+                        if (limitReached)
+                            InternalLogger.Warn($"{ToolName}: limit of {MaxFilesToScan} files reached for '{names[i]}'.");
 
-                }, cancellationToken).ConfigureAwait(false);
+                        var cacheEntry = new CachedToolResults<FileSearchResult>
+                        {
+                            AllResults = matchingFiles.Select(file => new FileSearchResult { FilePath = file }).ToList(),
+                            ItemsScanned = matchingFiles.Count,
+                            Note = note
+                        };
+                        _searchCache.Set(BuildCacheKey(names[i], request.FileExtension, request.ProjectFilter), solutionDir, cacheEntry);
+                        pages[i] = BuildPageResponse(cacheEntry.AllResults, offset, pageSize, cacheEntry.Note);
+                    }
+                }
 
-                return response;
+                if (!request.IsMulti)
+                    return pages[0];
+
+                for (int i = 0; i < names.Count; i++)
+                    pages[i].FileName = names[i];
+
+                return new FindFilesMultiResponse { Terms = pages.ToList(), Success = true };
             }
             catch (Exception ex)
             {
@@ -148,7 +167,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
+        internal static string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
         {
             var ext = fileExtension ?? string.Empty;
             var proj = projectFilter ?? string.Empty;
@@ -160,12 +179,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (parameters == null) return "Finding... ";
 
-            var fileName = parameters.TryGetValue("file_name", out var fn) ? fn?.ToString() : "";
+            var request = ExtractAndValidateParameters(parameters);
+            var names = request.Names != null && request.Names.Count > 0
+                ? string.Join(", ", request.Names.Take(MaxFileNames).Select(n => "'" + n + "'"))
+                  + (request.Names.Count > MaxFileNames ? $" and {request.Names.Count - MaxFileNames} more" : "")
+                : "''";
             var ext = parameters.TryGetValue("extension_filter", out var fe) ? fe?.ToString() : null;
             var project = parameters.TryGetValue("project_filter", out var pf) ? pf?.ToString() : null;
             var pageToken = ToolPagination.ReadToken(parameters);
 
-            var message = $"Finding '{fileName}'";
+            var message = $"Finding {names}";
             if (!string.IsNullOrEmpty(project))
                 message += $" in project '{project}'";
             if (!string.IsNullOrEmpty(ext))
@@ -193,27 +216,90 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 message += ".";
                 return message;
             }
+
+            if (result is FindFilesMultiResponse multi)
+            {
+                if (!multi.Success)
+                    return $"Error: {multi.ErrorMessage}";
+
+                var blocks = multi.Terms ?? new List<FileSearchResultsResponse>();
+                int total = blocks.Sum(b => b.TotalFiles);
+                var counts = string.Join(", ", blocks.Select(b => $"'{b.FileName}': {b.TotalFiles}"));
+                return $"Found {total} {Pluralizer.Pluralize(total, "file", "files")} for {blocks.Count} {Pluralizer.Pluralize(blocks.Count, "name", "names")} ({counts}).";
+            }
+
             return "File search finished.";
         }
 
-        private (string fileName, string fileExtension, string projectFilter, string pageToken, int pageSize, string error) ExtractAndValidateParameters(
-            Dictionary<string, object> parameters)
+        internal sealed class FindRequest
+        {
+            public List<string> Names;
+
+            /// <summary>'file_names' was passed: the response is <see cref="FindFilesMultiResponse"/>, one block per name.</summary>
+            public bool IsMulti;
+
+            public string FileExtension, ProjectFilter, PageToken, Error;
+            public int PageSize = DefaultPageSize;
+        }
+
+        internal static FindRequest ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, null, null, null, DefaultPageSize, "Parameters cannot be null.");
-            if (!parameters.TryGetValue("file_name", out object fileNameObj) || !(fileNameObj is string))
-                return (null, null, null, null, DefaultPageSize, "Parameter 'file_name' is required and must be a string.");
+                return new FindRequest { Error = "Parameters cannot be null." };
 
-            var fileName = (string)fileNameObj;
-            var fileExtension = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null;
-            var projectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null;
-            var pageToken = ToolPagination.ReadToken(parameters);
+            parameters.TryGetValue(FileNameParameter, out object nameObj);
+            parameters.TryGetValue(FileNamesParameter, out object namesObj);
 
-            int pageSize = DefaultPageSize;
+            if (LiteralListParameter.IsMissing(namesObj) && nameObj != null && !(nameObj is string))
+            {
+                namesObj = nameObj;
+                nameObj = null;
+            }
+
+            bool isMulti = !LiteralListParameter.IsMissing(namesObj);
+
+            List<string> names;
+            if (!isMulti)
+            {
+                // Single name: unchanged contract.
+                if (!(nameObj is string single))
+                    return new FindRequest { Error = $"Parameter '{FileNameParameter}' (or '{FileNamesParameter}') is required and must be a string." };
+                names = new List<string> { single };
+            }
+            else
+            {
+                if (nameObj != null && !(nameObj is string))
+                    return new FindRequest { Error = $"Parameter '{FileNameParameter}' must be a string." };
+
+                // File-name matching is case-insensitive, so case variants are duplicates.
+                names = new List<string>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                LiteralListParameter.Add(nameObj as string, names, seen);
+                if (!LiteralListParameter.TryAdd(namesObj, names, seen))
+                    return new FindRequest { Error = $"Parameter '{FileNamesParameter}' must be an array of strings." };
+
+                if (names.Count == 0)
+                    return new FindRequest { Error = $"Parameter '{FileNamesParameter}' has no non-empty name." };
+                if (names.Count > MaxFileNames)
+                    return new FindRequest { Names = names, Error = $"At most {MaxFileNames} file names per call (got {names.Count}). Split them into several calls." };
+            }
+
+            var request = new FindRequest
+            {
+                Names = names,
+                IsMulti = isMulti,
+                FileExtension = parameters.TryGetValue("extension_filter", out object extObj) ? extObj as string : null,
+                ProjectFilter = parameters.TryGetValue("project_filter", out object projObj) ? projObj as string : null,
+                PageToken = ToolPagination.ReadToken(parameters)
+            };
+
             if (parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
-                pageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+                request.PageSize = Math.Min(Math.Max(maxVal, 1), MaxPageSize);
 
-            return (fileName, fileExtension, projectFilter, pageToken, pageSize, null);
+            if (isMulti && names.Count > 1 && request.PageToken != null)
+                request.Error = $"'{ToolPagination.TokenParameter}' continues one name: call again with '{FileNameParameter}' set to that block's name and its next_page_token.";
+
+            return request;
         }
 
         private static FileSearchResultsResponse ErrorResponse(string message)
@@ -237,6 +323,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public class FileSearchResultsResponse
         {
+            /// <summary>The searched name pattern; set only on a block of <see cref="FindFilesMultiResponse"/>.</summary>
+            [JsonProperty("file_name", NullValueHandling = NullValueHandling.Ignore, Order = -2)]
+            public string FileName { get; set; }
+
             [JsonProperty("results")]
             public List<FileSearchResult> Results { get; set; }
 
@@ -249,6 +339,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("total_files")]
             public int TotalFiles { get; set; }
+
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
+            public string ErrorMessage { get; set; }
+        }
+
+        /// <summary>
+        /// Response of a call with 'file_names': one <see cref="FileSearchResultsResponse"/> block per name, in request order,
+        /// each with <c>FileName</c> set and its own totals, note and next_page_token.
+        /// </summary>
+        public class FindFilesMultiResponse
+        {
+            [JsonProperty("terms")]
+            public List<FileSearchResultsResponse> Terms { get; set; }
 
             [JsonProperty("success")]
             public bool Success { get; set; }

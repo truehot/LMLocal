@@ -132,7 +132,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 foreach (var m in s.Mutations)
                 {
                     var text = File.ReadAllText(Path.Combine(root, m.RelativePath));
-                    Assert.IsTrue(text.Contains(m.Find), $"{s.Id}: mutation anchor '{m.Find}' not found in {m.RelativePath}");
+                    Assert.Contains(m.Find, text, $"{s.Id}: mutation anchor '{m.Find}' not found in {m.RelativePath}");
                 }
             }
         }

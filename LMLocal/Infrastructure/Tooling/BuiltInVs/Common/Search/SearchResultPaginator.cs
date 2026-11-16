@@ -55,6 +55,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                     page.Add(new SearchResult
                     {
                         FilePath = result.FilePath,
+                        TotalLines = result.TotalLines,
                         Matches = result.Matches.GetRange(startIndex, take),
                         MatchCount = take,
                         Score = result.Score

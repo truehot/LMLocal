@@ -21,6 +21,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
     internal class CreateFile : ICreateFile
     {
+        private const string FilePathParameter = "file_path";
+        private const string ContentParameter = "content";
+        private const string CopyFromParameter = "copy_from";
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
@@ -43,16 +46,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Creates a new file with the given content. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path relative to solution root. After creating .cs files, use set_file_project_status to register them in the .csproj project.",
+                Description = "Creates a new file — either with the given content, or as a byte-for-byte copy of an existing file via copy_from. Exactly one of content/copy_from is required. To copy an existing file, pass copy_from instead of content — byte-for-byte, no need to read the file first; the copy keeps the original encoding, BOM and line endings. Fails if the file already exists — use replace_file_content to update an existing file instead. Parent directories are created automatically if they don't exist. Path relative to solution root. A copy is a new file in the project, so in SDK-style projects it joins the compilation immediately — rename the namespace/type names next. After creating .cs files, use set_file_project_status to register them in the .csproj project.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "file_path", new ToolDetails { Type = "string", Description = "Relative path to file to create." } },
-                        { "content", new ToolDetails { Type = "string", Description = "Initial content for the file." } }
+                        { FilePathParameter, new ToolDetails { Type = "string", Description = "Relative path to file to create." } },
+                        { ContentParameter, new ToolDetails { Type = "string", Description = "Initial content for the file. Required unless copy_from is passed." } },
+                        { CopyFromParameter, new ToolDetails { Type = "string", Description = "Relative path to an existing file to copy byte-for-byte (same format as file_path). Requires content to be omitted." } }
                     },
-                    Required = new List<string> { "file_path", "content" }
+                    Required = new List<string> { FilePathParameter }
                 }
             };
         }
@@ -65,7 +69,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (pruneRejection != null)
                     return ErrorReponse(pruneRejection);
 
-                var (filePath, content, error) = ExtractAndValidateParameters(parameters);
+                var (filePath, content, copyFrom, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
                     return ErrorReponse(error);
 
@@ -91,6 +95,34 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return ErrorReponse($"Invalid file path: {ex.Message}");
                 }
 
+                string absoluteSourcePath = null;
+                if (copyFrom != null)
+                {
+                    if (!_pathResolver.TryResolveFilePath(copyFrom, solutionDir, out absoluteSourcePath))
+                        return ErrorReponse($"Failed to resolve source path: {copyFrom}");
+
+                    if (!_pathResolver.IsPathInsideDirectory(absoluteSourcePath, solutionDir))
+                        return ErrorReponse($"Source file '{copyFrom}' is outside the solution directory '{solutionDir}'.");
+
+                    try
+                    {
+                        _fileSystem.ValidateFilePath(absoluteSourcePath);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        return ErrorReponse($"Invalid source file path: {ex.Message}");
+                    }
+
+                    if (string.Equals(absoluteSourcePath, absolutePath, StringComparison.OrdinalIgnoreCase))
+                        return ErrorReponse($"Cannot copy file onto itself: {filePath}");
+
+                    if (_fileSystem.DirectoryExists(absoluteSourcePath))
+                        return ErrorReponse($"Source '{copyFrom}' is a directory. Only files can be copied.");
+
+                    if (!_fileSystem.FileExists(absoluteSourcePath))
+                        return ErrorReponse($"Source file not found: {copyFrom}");
+                }
+
                 if (_fileSystem.FileExists(absolutePath))
                     return ErrorReponse($"File already exists: {filePath}");
 
@@ -98,6 +130,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 await _snapshotManager.SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeCreate, cancellationToken).ConfigureAwait(false);
 
                 _fileSystem.EnsureDirectoryExistsForFile(absolutePath);
+
+                if (copyFrom != null)
+                    return await CopyFromExistingFileAsync(filePath, absolutePath, copyFrom, absoluteSourcePath, solutionDir, cancellationToken).ConfigureAwait(false);
 
                 string normalizedContent = content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
 
@@ -135,7 +170,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
-            var filePath = (parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "") ?? "";
+            var filePath = (parameters?.TryGetValue(FilePathParameter, out var f) == true ? f?.ToString() : "") ?? "";
+            var copyFrom = (parameters?.TryGetValue(CopyFromParameter, out var c) == true ? c?.ToString() : "") ?? "";
+
+            if (!string.IsNullOrWhiteSpace(copyFrom))
+                return $"Copying '{copyFrom}' -> '{filePath}'... ";
+
             return $"Creating file '{filePath}'... ";
         }
 
@@ -143,6 +183,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             if (result is CreateFileResponse response)
             {
+                if (response.CopiedFrom != null)
+                    return "File copied.";
+
                 if (!response.Success)
                     return $"File creation failed: {response.ErrorMessage}";
 
@@ -156,19 +199,93 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return "File creation finished.";
         }
 
-        private (string filePath, string content, string error) ExtractAndValidateParameters(
+        private (string filePath, string content, string copyFrom, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
             if (parameters == null)
-                return (null, null, "Parameters cannot be null.");
+                return (null, null, null, "Parameters cannot be null.");
 
-            if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string))
-                return (null, null, "file_path parameter is required and must be a string.");
+            if (!parameters.TryGetValue(FilePathParameter, out object filePathObj) || !(filePathObj is string filePath) || string.IsNullOrEmpty(filePath))
+                return (null, null, null, "file_path parameter is required and must be a string.");
 
-            if (!parameters.TryGetValue("content", out object contentObj) || !(contentObj is string))
-                return (null, null, "content parameter is required and must be a string.");
+            parameters.TryGetValue(ContentParameter, out object contentObj);
+            parameters.TryGetValue(CopyFromParameter, out object copyFromObj);
 
-            return ((string)filePathObj, (string)contentObj, null);
+            bool hasCopyFrom = copyFromObj != null && !(copyFromObj is string copyFromText && string.IsNullOrWhiteSpace(copyFromText));
+            bool hasContent = contentObj != null && !(hasCopyFrom && contentObj is string contentText && contentText.Length == 0);
+
+            if (hasContent && hasCopyFrom)
+                return (null, null, null, "Provide either 'content' or 'copy_from', not both.");
+
+            if (!hasContent && !hasCopyFrom)
+                return (null, null, null, "Provide either 'content' (string) or 'copy_from' (string).");
+
+            if (hasContent)
+            {
+                if (!(contentObj is string content))
+                    return (null, null, null, "content parameter must be a string.");
+
+                return (filePath, content, null, null);
+            }
+
+            if (!(copyFromObj is string copyFrom) || string.IsNullOrWhiteSpace(copyFrom))
+                return (null, null, null, "copy_from parameter must be a non-empty string (relative path to the file to copy).");
+
+            return (filePath, null, copyFrom, null);
+        }
+
+        /// <summary>
+        /// Copy branch: the file is copied byte-for-byte, so encoding, BOM and line endings are preserved.
+        /// </summary>
+        private async Task<CreateFileResponse> CopyFromExistingFileAsync(
+            string filePath, string absolutePath, string copyFrom, string absoluteSourcePath, string solutionDir,
+            CancellationToken cancellationToken)
+        {
+            _pathResolver.TryGetRelativePath(absoluteSourcePath, solutionDir, out string relativeSourcePath);
+
+            try
+            {
+                await _fileSystem.CopyFileAsync(absoluteSourcePath, absolutePath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                TryDeletePartialCopy(absolutePath);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                TryDeletePartialCopy(absolutePath);
+                InternalLogger.Error($"{ToolName}: failed to copy '{absoluteSourcePath}' to '{absolutePath}': {ex}");
+                return ErrorReponse($"Failed to copy '{copyFrom}' to '{filePath}': {ex.Message}");
+            }
+
+            _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
+
+            InternalLogger.Info($"{ToolName}: copied '{absoluteSourcePath}' to '{absolutePath}'.");
+
+            return new CreateFileResponse
+            {
+                Success = true,
+                FilePath = relativePath ?? absolutePath,
+                CreatedSuccessfully = true,
+                CopiedFrom = relativeSourcePath ?? absoluteSourcePath
+            };
+        }
+
+        /// <summary>
+        /// A failed copy can leave a truncated target behind; remove it so the tree stays clean.
+        /// </summary>
+        private void TryDeletePartialCopy(string absolutePath)
+        {
+            try
+            {
+                if (_fileSystem.FileExists(absolutePath))
+                    _fileSystem.Delete(absolutePath);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"{ToolName}: failed to delete the partial copy '{absolutePath}': {ex.Message}");
+            }
         }
 
         private static CreateFileResponse ErrorReponse(string message)
@@ -196,6 +313,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("created_successfully")]
         public bool CreatedSuccessfully { get; set; }
+
+        [JsonProperty("copied_from", NullValueHandling = NullValueHandling.Ignore)]
+        public string CopiedFrom { get; set; }
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }

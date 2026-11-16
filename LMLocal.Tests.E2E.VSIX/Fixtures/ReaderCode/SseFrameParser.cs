@@ -9,7 +9,7 @@ namespace BenchFixtures.ReaderCode
 {
     /// <summary>
     /// Benchmark fixture (frozen, not compiled): reads a server-sent events stream and collects
-    /// the text and the tool call frames it carries. Scenarios A2.2 and A2.3 depend on its content.
+    /// the text and the tool call frames it carries. Scenarios A1.14 and A1.15 (were A2.2 and A2.3) depend on its content.
     /// </summary>
     internal sealed class SseFrameParser
     {

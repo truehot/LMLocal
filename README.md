@@ -420,18 +420,15 @@ To bind subagents to a different provider (e.g., cloud API, custom endpoint) or 
 
 ### Predefined Subagents
 
-Out of the box, LMLocal includes **8 predefined subagents**, all enabled by default:
+Out of the box, LMLocal includes **5 predefined subagents**, all enabled by default:
 
-1. **Code explorer** (`code_explorer_subagent`) — Read-only code search agent for finding files by name or content, listing directories, and general path discovery. Returns verified locations (file path, line number, matched line); matched lines are reported through ref markers, so the line text comes verbatim from the search results.
-2. **Code reader** (`code_reader_subagent`) — Deterministic read-only code reader designed to read specific files or code ranges verbatim (via ref markers that the runner replaces with the real file lines). At most 4 files per task.
-3. **Symbol analyzer** (`symbol_analyzer_subagent`) — Read-only symbol analyzer for C# and JavaScript symbols, declarations, references, and type metadata.
-4. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
-5. **Context retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
-6. **Architect** (`architect_subagent`) — Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
-7. **Task planner** (`task_planner_subagent`) — Planning agent without tools: decides whether a plan is needed (`needs_plan`, `persist`, `blocked`) and returns one consolidated Markdown plan that the main model presents, saves when required, and keeps up to date.
-8. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that inspects the actual pending diff and validates proposed plans and implementations before delivery, ending with `Status: COMPLETE`, `PARTIAL`, or `REJECTED`.
+1. **Code explorer** (`code_explorer_subagent`) — Read-only code agent: finds files by name or content, resolves C# and JavaScript/TypeScript symbols (declarations and usages), and reads source that first has to be located. Returns verified locations (file path, line number, matched line) or raw source blocks; both are reported through markers that the runner replaces with the real file lines, so the text comes verbatim from the tool results.
+2. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
+3. **Context retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
+4. **Architect** (`architect_subagent`) — Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
+5. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that inspects the actual pending diff and validates proposed plans and implementations before delivery, ending with `Status: COMPLETE`, `PARTIAL`, or `REJECTED`.
 
-**Typical order:** explorer / reader / symbol analyzer / context retriever gather evidence → architect (only when an architectural decision is needed) → task planner → edits → build & test → reviewer.
+**Typical order:** explorer / context retriever gather evidence → architect (only when an architectural decision is needed) → edits → build & test → reviewer.
 
 > * **Note:** The default subagent prompts are specifically optimized for the `google_gemma-4-e4b-it` model.
 
@@ -495,6 +492,8 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 
 **Root-level defaults** (`providerType`, `customBaseUrl`, `customApiKey`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`, `parallel`, `maxParallel`) are applied to any agent that doesn't set its own value. Changing a root value updates every agent that currently *inherits* it; explicit per-agent values stay exactly as typed.
 
+**Tool ownership:** while subagent mode is on, a built-in tool listed in the `allowedTools` of an enabled agent is removed from the main model's tools: the main model reaches it only through that agent. Root-level `sharedTools` lists the tools the main model keeps anyway; the agent still has them too. The default config shares `read_file_lines`, so the main model reads a file whose path it already knows directly instead of running the code explorer for it.
+
 #### Example (illustrative)
 
 ```json
@@ -515,7 +514,8 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
         "list_directory",
         "find_files",
         "search_file_content",
-        "get_solution_overview"
+        "get_solution_overview",
+        "read_file_lines"
       ]
     }
   ],
@@ -524,9 +524,19 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
   "customApiKey": "",
   "model": "google_gemma-4-e4b-it",
   "temperature": 0.1,
-  "reasoningEffort": "medium"
+  "reasoningEffort": "medium",
+  "sharedTools": [
+    "read_file_lines"
+  ]
 }
 ```
+
+#### Root-level fields (not inherited by agents)
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `agents[]` | object[] | ✅ | — | see the schema below |
+| `sharedTools[]` | string[] | | — | built-in tool names the main model keeps even though an enabled agent lists them in `allowedTools` (see *Tool ownership*) |
 
 #### `agents[]` schema
 
@@ -550,7 +560,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 | `enabled` | bool | | `true` | runtime gate |
 | `allowedTools[]` | string[] | | `[]` | built-in tool names; an unknown name or another subagent's `id` (no recursion) → save rejected |
 
-**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_active_document`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`, `get_changes_diff`, `replace_file_lines`, `insert_file_lines`.
+**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`, `get_changes_diff`, `replace_file_lines`, `insert_file_lines`.
 
 ---
 
@@ -559,7 +569,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 Open the Sub Agents dialog from the main menu.
 
 - **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it **overwrites every agent's `model`** and updates `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values. If the list is empty (no custom file), it first **loads the 8 built-in defaults into the dialog**.
+- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it updates `model`, `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values (the others inherit the root defaults). If the active provider has no API key (or base URL), the old value is **removed** from the root and from agents, so a key from the previous provider does not stay in `subagents.json`. If the list is empty (no custom file), it first **loads the 8 built-in defaults into the dialog**.
 - **Save** behaves in two modes:
   - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the whole agent set is written, creating or replacing `subagents.json`.
   - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags and root-level changes are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
@@ -574,7 +584,7 @@ Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable S
 
 1. **Defensive Prompting is Mandatory:** You **must** use a strict system prompt with explicit planning steps and verification loops, or be prepared to switch to a larger model.
 2. **Fine-Tuning Option:** Fine-tuning the model (e.g., via LoRA/QLoRA) on task-specific function-calling datasets builds native adherence to tool schemas.
-3. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal scenarios for most predefined agents (explorer, reader, symbol analyzer, reviewer, edit, architect, planner) to check basic functionality.
+3. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal scenarios for most predefined agents (explorer, reviewer, edit, architect, context retriever) to check basic functionality.
 
 > ⏱️ **Important for models <8B:** Because `Run_Full_Benchmark` executes against a live `lmlocal` solution in real time, it runs **relatively slowly**. **Run the benchmark multiple times** rather than just once to account for model variance and verify how reliably your custom prompts or fine-tuned models handle real workloads across multiple attempts.
 

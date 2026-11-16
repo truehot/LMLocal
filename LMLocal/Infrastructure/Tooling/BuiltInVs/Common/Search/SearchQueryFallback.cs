@@ -13,7 +13,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         OrSplit,
 
         /// <summary>Quotes wrapping the whole text were removed.</summary>
-        Unquoted
+        Unquoted,
+
+        /// <summary>A single double quote at the start or the end of the text, with no pair, was removed.</summary>
+        StrayQuoteRemoved
     }
 
     /// <summary>
@@ -61,7 +64,33 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
             if (unquoted.Length > 0 && !string.Equals(unquoted, trimmed, StringComparison.Ordinal))
                 return new SearchQueryFallback(SearchFallbackKind.Unquoted, new[] { unquoted });
 
+            string withoutStrayQuote = RemoveStrayEdgeQuote(trimmed);
+            if (withoutStrayQuote != null)
+                return new SearchQueryFallback(SearchFallbackKind.StrayQuoteRemoved, new[] { withoutStrayQuote });
+
             return None;
+        }
+
+        /// <summary>
+        /// The text without its only double quote when that quote is its first or last character (a quote the caller
+        /// left from a quoted task text, e.g. new Foo(" ); otherwise null.
+        /// </summary>
+        private static string RemoveStrayEdgeQuote(string trimmed)
+        {
+            int first = trimmed.IndexOf('"');
+            if (first < 0 || first != trimmed.LastIndexOf('"'))
+                return null;
+
+            string rest;
+            if (first == 0)
+                rest = trimmed.Substring(1);
+            else if (first == trimmed.Length - 1)
+                rest = trimmed.Substring(0, trimmed.Length - 1);
+            else
+                return null;
+
+            rest = rest.Trim();
+            return rest.Length > 0 ? rest : null;
         }
 
         /// <summary>
@@ -97,6 +126,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                         + quotedTerms + ". " + outcome + " Each match has 'matched_term'. Prefer one literal term per call.";
                 case SearchFallbackKind.Unquoted:
                     return "The literal text (including its surrounding quotes) has no matches; the quotes were removed and "
+                        + quotedTerms + " was searched instead. " + outcome;
+                case SearchFallbackKind.StrayQuoteRemoved:
+                    return "The literal text has no matches; its unpaired double quote at the start or end was removed and "
                         + quotedTerms + " was searched instead. " + outcome;
                 default:
                     return null;

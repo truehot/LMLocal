@@ -23,12 +23,9 @@ namespace LMLocal.Tests.E2E.VSIX
         private const string PipeName = "LMLocal.Ipc";
 
         private const string Explorer = "code_explorer_subagent";
-        private const string Reader = "code_reader_subagent";
-        private const string Analyzer = "symbol_analyzer_subagent";
         private const string Reviewer = "reviewer_subagent";
         private const string Editor = "edit_subagent";
         private const string Architect = "architect_subagent";
-        private const string Planner = "task_planner_subagent";
         private const string Retriever = "context_retriever_subagent";
 
         public TestContext TestContext { get; set; }
@@ -281,7 +278,7 @@ line six - foxtrot";
         {
             var list = new List<Scenario>();
             var guid = Guid.NewGuid().ToString("N").Substring(0, 12);
-            // ---- A.1 code_explorer_subagent: discovery (12) ----
+            // ---- A.1 code_explorer_subagent: discovery, reading, symbols (30) ----
 
             list.Add(Sc("A1.1", Explorer,
                 "Search for the exact identifier GetAsync in the solution. Report yes if the returned results include GetAsync and report the returned total count.",
@@ -308,7 +305,7 @@ line six - foxtrot";
                 "yes"));
 
             list.Add(Sc("A1.7", Explorer,
-                "Get the solution overview and report yes if returned project list doen't contain LMLocal.Web.",
+                "Get the solution overview and report `yes` if returned project list doen't contain LMLocal.Web.",
                 "yes"));
 
             var a108Lines = MatchingLines(A108File, A108Text);
@@ -358,80 +355,69 @@ line six - foxtrot";
                 + $"3. Search the entire solution, including test projects, for the literal text bench-{guid}-q3. Report every hit with file:line and the matched line text, or state clearly that there are none.",
                 a112Decl + ":" + LineOf(a112Decl, a112DeclText) + ": `" + a112DeclText + "`",
                 a112Call + ":" + LineOf(a112Call, a112CallText) + ": `" + a112CallText + "`",
-                // The planted line takes the anchor's line number; the anchor moves one line down.
+
                 a112Q3File + ":" + LineOf(a112Q3File, a112Q3Anchor) + ": `" + a112Q3Text + "`");
             a112.Mutations.Add(new FileMutation(a112Q3File, a112Q3Anchor, a112Q3Text + "\r\n" + a112Q3Anchor));
             a112.MustNotContain = new[] { "@LMLocal" };
             list.Add(a112);
 
-            // ---- A.2 code_reader_subagent: deterministic reading (14) ----------
-
-            const string a201File = @"LMLocal\GettingStarted.txt";
-            list.Add(ScVerbatim("A2.1", Reader,
+            const string a113File = @"LMLocal\GettingStarted.txt";
+            list.Add(ScVerbatim("A1.13", Explorer,
                 "Read lines 1-12 of LMLocal\\GettingStarted.txt and return them verbatim.",
-                Ev(a201File, "LM Local", 12), Ev(a201File, "Visual Studio", 12)));
+                Ev(a113File, "LM Local", 12), Ev(a113File, "Visual Studio", 12)));
 
-            // A2.2, A2.3 and A2.5 read frozen copies in Fixtures\ReaderCode, so refactoring LMLocal never breaks them.
-            var a202 = Sc("A2.2", Reader,
+
+            var a114 = Sc("A1.14", Explorer,
                 "Find the file named exactly SseFrameParser.cs and read it (there is also a SseFrameParserFactory.cs in the same folder - do not pick the factory).",
                 Ev(ReaderCodeDir + "SseFrameParser.cs", "FrameRecord"), Ev(ReaderCodeDir + "SseFrameParser.cs", "SseLineSplitter"));
-            a202.MustNotContain = new[] { Ev(ReaderCodeDir + "SseFrameParserFactory.cs", "CreateForEndpoint") };
-            list.Add(a202);
+            a114.MustNotContain = new[] { Ev(ReaderCodeDir + "SseFrameParserFactory.cs", "CreateForEndpoint") };
+            list.Add(a114);
 
-            list.Add(ScVerbatim("A2.3", Reader,
-                "Read these 4 files and return them verbatim: SessionLogWriter.cs, CompletionSummary.cs, SseFrameParser.cs, HistoryLedger.cs.",
+            list.Add(ScVerbatim("A1.15", Explorer,
+                "Find and read these 4 files and return them verbatim: SessionLogWriter.cs, CompletionSummary.cs, SseFrameParser.cs, HistoryLedger.cs.",
                 Ev(ReaderCodeDir + "SessionLogWriter.cs", "WriteSessionHeader"),
+                Ev(ReaderCodeDir + "SessionLogWriter.cs", "internal const int MaxTitleLength = 120;"),
+                Ev(ReaderCodeDir + "SessionLogWriter.cs", "sb.Append(\"...\");"),
                 Ev(ReaderCodeDir + "CompletionSummary.cs", "FinishReasonCode"),
                 Ev(ReaderCodeDir + "SseFrameParser.cs", "ParseFramesAsync"),
                 Ev(ReaderCodeDir + "HistoryLedger.cs", "MergeLastExchangeAsync")));
 
-            list.Add(Sc("A2.4", Reader,
+
+            list.Add(Sc("A1.16", Explorer,
                 "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs and return yes if not found.",
                 "yes"));
 
-            // The anchors are in the last lines of the file: a partial read cannot contain them.
-            list.Add(ScVerbatim("A2.5", Reader,
-                "Read the file at exact path " + ReaderCodeDir + "SessionLogWriter.cs and return its contents verbatim. If the entire file is not returned, clearly state that it is partial and identify the missing portion.",
-                Ev(ReaderCodeDir + "SessionLogWriter.cs", "internal const int MaxTitleLength = 120;"),
-                Ev(ReaderCodeDir + "SessionLogWriter.cs", "sb.Append(\"...\");")));
-
-            var a206 = ScVerbatim("A2.6", Reader,
+            var a117 = ScVerbatim("A1.17", Explorer,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-truth-fixture.md and return it verbatim.",
                 "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "Tail-Anchor-Open");
-            a206.MustAppearExactlyOnce = new[] { "Seed-One-Anchor", "Ref-Anchor-Alpha", "Tail-Anchor-Open" };
-            list.Add(a206);
+            a117.MustAppearExactlyOnce = new[] { "Seed-One-Anchor", "Ref-Anchor-Alpha", "Tail-Anchor-Open" };
+            list.Add(a117);
 
-            var a207 = Sc("A2.7", Reader,
+            var a118 = Sc("A1.18", Explorer,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-truth-fixture.md. Verify whether these headings appear in this exact order: \"## 1. First Section\", \"## 2. Second Section\", \"## 3. Third Section\", \"## Appendix A. References\". Use the actual file contents and line positions. Do not infer or assume any heading or position that is not present in the retrieved content.",
                 "## Appendix A. References");
-            a207.MustContainInOrder = new[] { "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "## 3. Third Section" };
-            list.Add(a207);
+            a118.MustContainInOrder = new[] { "## 1. First Section", "## Appendix A. References", "## 2. Second Section", "## 3. Third Section" };
+            list.Add(a118);
 
-            list.Add(Sc("A2.8", Reader,
+            list.Add(Sc("A1.19", Explorer,
                 "Read the entire file LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-large-fixture.md and return it verbatim. Continue reading until the entire file has been retrieved; do not stop while has_more_results is true.",
                 "Reader-Start", "Reader-End"));
 
-            var a209 = ScVerbatim("A2.9", Reader,
-                "In LMLocal\\Infrastructure\\Security\\TestConnectionErrorClassifier.cs return VERBATIM only the single line that contains ExceptionFormatter.Format. Return no other line of the file and do not mark the file as missing.",
-                Ev(@"LMLocal\Infrastructure\Security\TestConnectionErrorClassifier.cs", "return ExceptionFormatter.Format(ex);"));
-            a209.MustNotContain = new[] { "Missing files" };
-            list.Add(a209);
-
-            var a210 = ScVerbatim("A2.10", Reader,
+            var a120 = ScVerbatim("A1.20", Explorer,
                 "In LMLocal\\Application\\ModelsList\\ModelsListService.cs return VERBATIM only the two lines that contain ExceptionFormatter.Format. Return no other line of the file and do not mark the file as missing.",
                 Ev(@"LMLocal\Application\ModelsList\ModelsListService.cs", "var errorResponse = new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };"),
                 Ev(@"LMLocal\Application\ModelsList\ModelsListService.cs", "return new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };"));
-            a210.MustNotContain = new[] { "Missing files" };
-            list.Add(a210);
+            a120.MustNotContain = new[] { "Missing files" };
+            list.Add(a120);
 
-            var a211 = ScVerbatim("A2.11", Reader,
+            var a121 = ScVerbatim("A1.21", Explorer,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md and return ONLY lines 11-15 and lines 30-39 VERBATIM, with each line carrying its actual 1-based line number. Do not include any other line of the file, do not substitute different ranges, and do not mark the file as missing.",
                 "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN");
-            a211.MustContainInOrder = new[] { "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN" };
-            a211.MustNotContain = new[] { "RANGE-ANCHOR-A2-OPEN", "RANGE-ANCHOR-A2-CLOSE", "RANGE-ANCHOR-A3-OPEN", "RANGE-ANCHOR-APP-CLOSE", "RANGE-ANCHOR-TAIL-OPEN", "RANGE-ANCHOR-A1-OPEN-COPY", "RANGE-ANCHOR-A1-CLOSE-COPY", "# End of fixture" };
-            list.Add(a211);
+            a121.MustContainInOrder = new[] { "RANGE-ANCHOR-A1-OPEN", "RANGE-ANCHOR-A1-CLOSE", "RANGE-ANCHOR-A3-CLOSE", "RANGE-ANCHOR-APP-OPEN" };
+            a121.MustNotContain = new[] { "RANGE-ANCHOR-A2-OPEN", "RANGE-ANCHOR-A2-CLOSE", "RANGE-ANCHOR-A3-OPEN", "RANGE-ANCHOR-APP-CLOSE", "RANGE-ANCHOR-TAIL-OPEN", "RANGE-ANCHOR-A1-OPEN-COPY", "RANGE-ANCHOR-A1-CLOSE-COPY", "# End of fixture" };
+            list.Add(a121);
 
-            var a212 = ScVerbatim("A2.12", Reader,
+            var a122 = ScVerbatim("A1.22", Explorer,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-symbols-fixture.md and return it verbatim, with each line carrying its 1-based line number. Preserve every character exactly — multiple spaces, tabs, single and double quotes, and every bracket. Do not normalize, drop, or rebalance any of them.",
                 "SYM-SPACE-MID: two  spaces  between  words",
                 "SYM-QUOTE-NESTED-SINGLE: 'outer \"inner\" value'",
@@ -442,80 +428,66 @@ line six - foxtrot";
                 "SYM-EMPTY-AFTER: this line follows the empty line above",
                 "SYM-END-TAIL: last line anchor");
 
-            a212.MustNotContain = new[]
+            a122.MustNotContain = new[]
             {
                 "SYM-EMPTY-UNWANTED",
                 "//SECTION-SKIP",
                 "///"
             };
-            list.Add(a212);
+            list.Add(a122);
 
-            const string a213Cs = @"LMLocal\Core\Models\StreamChunk.cs";
-            var a213 = ScVerbatim("A2.13", Reader,
+            const string a123Cs = @"LMLocal\Core\Models\StreamChunk.cs";
+
+            var a123 = ScVerbatim("A1.23", Explorer,
                 "Read verbatim with exact line numbers (I will use them for precise line-range replacements):\n"
                 + "1. LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md - lines 11-15\n"
-                + "2. " + a213Cs + " - lines 1-6",
+                + "2. " + a123Cs + " - lines 1-6",
                 "reader-ranges-fixture.md, lines 11-15",
                 "StreamChunk.cs, lines 1-6",
                 "RANGE-ANCHOR-A1-OPEN",
                 "RANGE-ANCHOR-A1-CLOSE",
-                LineAt(a213Cs, 6));
-            a213.MustNotContain = new[] { "// Line", "RANGE-ANCHOR-A2-OPEN", "Missing files" };
-            list.Add(a213);
+                LineAt(a123Cs, 6));
+            a123.MustNotContain = new[] { "// Line", "RANGE-ANCHOR-A2-OPEN", "Missing files" };
+            list.Add(a123);
 
-            var a214 = ScVerbatim("A2.14", Reader,
-                "In LMLocal\\Application\\SubAgents\\ReadRefs\\FileContentRenderer.cs return VERBATIM the whole method AppendSearchLocation, from its signature line to its closing brace. Return no other method of the file and do not mark the file as missing.",
-                Ev(@"LMLocal\Application\SubAgents\ReadRefs\FileContentRenderer.cs", "public static void AppendSearchLocation(StringBuilder sb, string filePath, int lineNumber, string text)"),
-                Ev(@"LMLocal\Application\SubAgents\ReadRefs\FileContentRenderer.cs", "sb.Append(fence);"));
-            a214.MustNotContain = new[] { "AppendRefContentBlock(StringBuilder", "AppendNumberedLines(sb, lines);", "Missing files" };
-            list.Add(a214);
-
-            // ---- A.3 symbol_analyzer_subagent: symbols & references (9) ----
-
-            const string a33File = @"LMLocal\Core\Models\StreamCompletionResult.cs";
-            list.Add(Sc("A3.1", Analyzer,
+            const string StreamCompletionResultFile = @"LMLocal\Core\Models\StreamCompletionResult.cs";
+            list.Add(Sc("A1.24", Explorer,
                 "Find the C# symbol ToolCallRecord and report its declaration file and line.",
-                EvFile(a33File), LineOf(a33File, "internal class ToolCallRecord").ToString()));
+                EvFile(StreamCompletionResultFile), LineOf(StreamCompletionResultFile, "internal class ToolCallRecord").ToString()));
 
-            list.Add(Sc("A3.2", Analyzer,
+            list.Add(Sc("A1.25", Explorer,
                 "Find all references to ChatLogSerializer. Report file:line coordinates.",
                 "ChatLogSerializer", Ev(@"LMLocal\Infrastructure\Persistence\ChatPersistenceService.cs", "ChatLogSerializer", fileNameOnly: true)));
 
-            list.Add(Sc("A3.3", Analyzer,
+            list.Add(Sc("A1.26", Explorer,
                 "Inspect the type StreamCompletionResult and list its public members with file:line locations.",
-                Ev(a33File, "ContentResponse"), Ev(a33File, "ToolCalls"),
-                "StreamCompletionResult.cs:" + LineOf(a33File, "public IReadOnlyList<ToolCallRecord> ToolCalls { get; set; }"),
-                "StreamCompletionResult.cs:" + LineOf(a33File, "public int? HttpStatusCode { get; set; }")));
+                Ev(StreamCompletionResultFile, "ContentResponse"), Ev(StreamCompletionResultFile, "ToolCalls"),
+                "StreamCompletionResult.cs:" + LineOf(StreamCompletionResultFile, "public IReadOnlyList<ToolCallRecord> ToolCalls { get; set; }"),
+                "StreamCompletionResult.cs:" + LineOf(StreamCompletionResultFile, "public int? HttpStatusCode { get; set; }")));
 
-            list.Add(Sc("A3.4", Analyzer,
+            list.Add(Sc("A1.27", Explorer,
                 "Find the JavaScript symbol lmInit and report its file and line. Use the semantic JavaScript tool.",
                 Ev(@"LMLocal\Resources\js\app.js", "lmInit", fileNameOnly: true)));
 
-            list.Add(NotFoundSc("A3.5", Analyzer,
+            list.Add(NotFoundSc("A1.28", Explorer,
                 "Find the symbol GeminiThoughtSignaturePolicyEnforcer.",
                 Absent("LMLocal", "GeminiThoughtSignaturePolicyEnforcer")));
 
-            list.Add(Sc("A3.6", Analyzer,
-                "Find the symbol ToolCallRecord, then read its declaration context.",
-                Ev(a33File, "ToolCallRecord"), EvFile(a33File)));
-
-            var a37 = Sc("A3.7", Analyzer,
+            var a129 = Sc("A1.29", Explorer,
                 "Find all references to the ToolCalls property of the type ChatMessage (declared in LMLocal/Core/Models/ChatMessage.cs). Ignore the same-named ToolCalls property on other types such as Message and StreamCompletionResult. Retrieve ALL pages of references and state the total reference count.",
                 "ToolCalls", Ev(@"LMLocal\Core\Models\ChatMessage.cs", "ToolCalls", fileNameOnly: true));
-            a37.MustContainAny = new[] { new[] { Ev(@"LMLocal\Infrastructure\LlmApi\ApiRequestBuilder.cs", "ToolCalls", fileNameOnly: true), "ApiRequestBuilder" } };
-            list.Add(a37);
+            a129.MustContainAny = new[] { new[] { Ev(@"LMLocal\Infrastructure\LlmApi\ApiRequestBuilder.cs", "ToolCalls", fileNameOnly: true), "ApiRequestBuilder" } };
+            list.Add(a129);
 
-            var a38 = Sc("A3.8", Analyzer,
+            var a130 = Sc("A1.30", Explorer,
                 "Inspect ConsolidateLastExchangeAsync and determine whether the ToolCalls of the final assistant message in the consolidated fragment are copied by reference or reconstructed. Read the actual source before answering.",
                 Ev(ChatHistoryManagerFile, "ConsolidateLastExchangeAsync"), "ToolCalls");
-            a38.MustContainAny = new[] { new[] { "reference", "same instance", "reused", "not reconstructed" } };
-            list.Add(a38);
+            a130.MustContainAny = new[] { new[] { "reference", "same instance", "reused", "not reconstructed" } };
+            list.Add(a130);
 
-            list.Add(Sc("A3.9", Analyzer,
+            list.Add(Sc("A1.31", Explorer,
                 "Find the C# method AddAssistantMessage in LMLocal/Application/Chat/ChatHistoryManager.cs. It has an interface declaration and two concrete overloads. Select the concrete implementation overload that accepts IReadOnlyList<ToolCallRecord> and return its declaration line together with its full implementation body.",
                 "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "normalizedArguments")));
-
-            // ---- A.4 reviewer_subagent: structured status review (3) ----
 
             var a41 = Sc("A4.1", Reviewer,
                 "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. The change is a small refactoring of ChatHistoryManager: the ToolCalls copying logic was extracted into a private helper. The build passes, all existing unit tests for the chat service pass, and a new unit test covers the copied-by-reference behavior. The user requested exactly this refactoring and it is complete; no further phases are planned. The change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect of the deliverable. Review it adversarially.",
@@ -536,15 +508,15 @@ line six - foxtrot";
             var a43 = Sc("A4.3", Reviewer,
                 "Review a documentation-only deliverable. Nothing in it changes code, and the change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect.\n"
                 + "User request: \"add to the plan how symbol references from get_symbol_info reach the main chat as verified lines\".\n"
-                + "Verified facts (read from the code):\n"
+                + "Verified facts (given as premises; do not re-check them in the code):\n"
                 + "- SearchLedger (LMLocal\\Application\\SubAgents\\ReadRefs\\SearchLedger.cs) stores (file, line, text) records. ReadRefExpander replaces an @path:line marker in a subagent's final answer with 'path:line: `text`' only for lines recorded in SearchLedger.\n"
                 + "- SubAgentRunEvidence (LMLocal\\Application\\SubAgents\\ReadRefs\\SubAgentRunEvidence.cs) records search_file_content results into SearchLedger through SearchResultRecorder.TryRecord. No other tool result is recorded there.\n"
                 + "- get_symbol_info and get_symbol_info_js results are not recorded anywhere.\n"
-                + "- The symbol_analyzer_subagent prompt contains no instructions about markers.\n"
+                + "- The code_explorer_subagent prompt contains no instructions about markers.\n"
                 + "Deliverable (plan text added to Docs\\explorer-search-quality-plan.md):\n"
-                + "Step 1. No code change is needed: references returned by get_symbol_info are already recorded in SearchLedger, so the analyzer's @path:line markers expand today.\n"
-                + "Step 2. Add a short section about markers to the symbol_analyzer_subagent prompt.\n"
-                + "Step 3. Measure the share of analyzer answers with expanded markers.\n"
+                + "Step 1. No code change is needed: references returned by get_symbol_info are already recorded in SearchLedger, so the explorer's @path:line markers expand today.\n"
+                + "Step 2. Add a short section about markers to the code_explorer_subagent prompt.\n"
+                + "Step 3. Measure the share of explorer answers with expanded markers.\n"
                 + "Review the deliverable against the verified facts and produce your structured review ending with an exact final 'Status: ...' line.",
                 "Status:");
             a43.MustContainAny = new[]
@@ -556,8 +528,6 @@ line six - foxtrot";
             a43.CheckRefusal = false;
             list.Add(a43);
 
-            // ---- A.6 architect_subagent: architecture decision (1) ----
-
             var a61 = Sc("A6.1", Architect,
                 @"Requirement: show the number of pending (uncommitted) file changes in the Visual Studio status bar and keep it current whenever the snapshot changes. Single process, one consumer, no persistence or retries needed.
             Verified context:
@@ -568,25 +538,6 @@ line six - foxtrot";
                 "SnapshotChangedAsync");
             a61.MustContainAny = new[] { new[] { "NO_ARCH_CHANGE", "DECIDED", "CONDITIONAL" } };
             list.Add(a61);
-
-            // ---- A.7 task_planner_subagent: planning decisions (2) ----
-
-            var a71 = Sc("A7.1", Planner,
-                @"Task: in LMLocal\Application\Chat\HistoryCompactor.cs change the modifier of the private struct ChatStepRange from 'private struct' to 'private readonly struct'. All its fields are already readonly. One file, one line, no callers change.",
-                "needs_plan: false", "persist: false", "blocked: false");
-            list.Add(a71);
-
-            list.Add(Sc("A7.2", Planner,
-                @"Task: add a recorder so that references returned by get_symbol_info and get_symbol_info_js are written into the per-run SearchLedger, so that symbol_analyzer_subagent can report @path:line markers that the runner expands.
-            Verified context:
-            - LMLocal\Application\SubAgents\ReadRefs\SearchResultRecorder.cs records search_file_content results into SearchLedger: internal static class with TryRecord(SearchLedger ledger, object result).
-            - LMLocal\Application\SubAgents\ReadRefs\SubAgentRunEvidence.cs calls SearchResultRecorder.TryRecord in Record(toolName, result), which the subagent tool loop calls after every successful tool call.
-            - LMLocal.Tests.Unit\Application\SubAgents\SearchRefExpansionTests.cs holds the NUnit tests for SearchResultRecorder and marker expansion.
-            - LMLocal\LMLocal.csproj is a legacy project with explicit Compile Include entries; C# 7.3, .NET Framework 4.7.2.
-            Files to change: a new LMLocal\Application\SubAgents\ReadRefs\SymbolReferenceRecorder.cs, SubAgentRunEvidence.cs, LMLocal.csproj, SearchRefExpansionTests.cs.",
-                "needs_plan: true", "SymbolReferenceRecorder", "SubAgentRunEvidence", "SearchRefExpansionTests"));
-
-
 
             return list;
         }
@@ -772,7 +723,7 @@ line six - foxtrot";
                         // The second answer may still carry the marker: there is one attempt, after it the answer
                         // is returned as is, so UnresolvedRefCount is only logged.
                         Assert.IsTrue(run.Success, "A recovered run must complete, not fail: " + (run.Error ?? "<no error>"));
-                        Assert.IsTrue(run.Rounds >= 2, "The nudge needs its own round; rounds=" + run.Rounds);
+                        Assert.IsGreaterThanOrEqualTo(2, run.Rounds, "The nudge needs its own round; rounds=" + run.Rounds);
                     }
                     finally
                     {
@@ -818,7 +769,7 @@ line six - foxtrot";
         }
 
         [TestMethod]
-        //[Ignore("Disable to run benchmark")]
+        [Ignore("Disable to run benchmark")]
         public async Task Run_Build_Benchmark()
         {
             AssertWriteToolsEnabled();
@@ -832,7 +783,7 @@ line six - foxtrot";
         }
 
         [TestMethod]
-        //[Ignore("Disable to run benchmark")]
+        [Ignore("Disable to run benchmark")]
         public async Task Run_Knowledge_Benchmark()
         {
             var fixturePath = GetKnowledgeFixtureSolutionPath();

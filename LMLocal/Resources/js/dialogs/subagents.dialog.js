@@ -79,10 +79,20 @@ export class SubAgentsDialog {
         const customApiKey = (profile && profile.customApiKey) || settingsState.ApiKey || null;
 
         if (providerType) defaults.providerType = providerType;
-        if (customBaseUrl) defaults.customBaseUrl = customBaseUrl;
-        if (customApiKey) defaults.customApiKey = customApiKey;
+
+        defaults.customBaseUrl = customBaseUrl || '';
+        defaults.customApiKey = customApiKey || '';
 
         return defaults;
+    }
+
+    // Root defaults for a full replace: empty values are dropped so the new file has no empty fields.
+    _nonEmptyRootDefaults() {
+        const result = {};
+        Object.entries(this._useActiveModelApplied || {}).forEach(([key, value]) => {
+            if (value) result[key] = value;
+        });
+        return result;
     }
 
     async _loadDefaultSubAgents() {
@@ -97,8 +107,8 @@ export class SubAgentsDialog {
     _applyActiveModel(defaults) {
         this._agents.forEach(agent => {
             if (agent.providerType && defaults.providerType) agent.providerType = defaults.providerType;
-            if (agent.customBaseUrl && defaults.customBaseUrl) agent.customBaseUrl = defaults.customBaseUrl;
-            if (agent.customApiKey && defaults.customApiKey) agent.customApiKey = defaults.customApiKey;
+            if (agent.customBaseUrl && defaults.customBaseUrl !== undefined) agent.customBaseUrl = defaults.customBaseUrl || undefined;
+            if (agent.customApiKey && defaults.customApiKey !== undefined) agent.customApiKey = defaults.customApiKey || undefined;
             agent.model = defaults.model;
         });
     }
@@ -146,7 +156,7 @@ export class SubAgentsDialog {
             if (this._loadedDefaults) {
 
                 const config = {
-                    ...(this._useActiveModelApplied || {}),
+                    ...this._nonEmptyRootDefaults(),
                     __replace: true,
                     agents: this._agents.map(agent => ({
                         id: agent.id,

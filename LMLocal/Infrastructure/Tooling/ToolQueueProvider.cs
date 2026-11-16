@@ -230,7 +230,7 @@ namespace LMLocal.Infrastructure.Tooling
         }
 
         /// <summary>
-        /// Union of allowed tool names of all visible agents.
+        /// Union of allowed tool names of all visible agents, minus the config's sharedTools.
         /// </summary>
         private IReadOnlyCollection<string> GetOwnedToolNames(
             SubAgentsConfig config,
@@ -255,6 +255,15 @@ namespace LMLocal.Infrastructure.Tooling
                 {
                     if (!string.IsNullOrWhiteSpace(name))
                         owned.Add(name.Trim());
+                }
+            }
+
+            if (config.SharedTools != null)
+            {
+                foreach (var name in config.SharedTools)
+                {
+                    if (!string.IsNullOrWhiteSpace(name))
+                        owned.Remove(name.Trim());
                 }
             }
 

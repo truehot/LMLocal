@@ -228,6 +228,60 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             Assert.That(lines[0], Is.EqualTo("abc→"));
         }
+
+        [Test]
+        public async Task CopyFileAsync_CopiesBytesVerbatim()
+        {
+            var fs = new DefaultFileSystem();
+            string sourcePath = Path.Combine(_tempDir, "source.cs");
+            string destPath = Path.Combine(_tempDir, "copy.cs");
+
+            string text = "namespace N\r\n{\r\n    class A { }\r\n}\r\n";
+            byte[] preamble = Encoding.UTF8.GetPreamble();
+            byte[] body = Encoding.UTF8.GetBytes(text);
+            byte[] bytes = new byte[preamble.Length + body.Length];
+            Array.Copy(preamble, 0, bytes, 0, preamble.Length);
+            Array.Copy(body, 0, bytes, preamble.Length, body.Length);
+            await fs.WriteAllBytesAsync(sourcePath, bytes).ConfigureAwait(false);
+
+            await fs.CopyFileAsync(sourcePath, destPath).ConfigureAwait(false);
+
+            Assert.That(File.ReadAllBytes(destPath), Is.EqualTo(bytes),
+                "CopyFileAsync must not decode/re-encode: BOM and CRLF have to survive untouched");
+        }
+
+        [Test]
+        public async Task CopyFileAsync_SucceedsWhileSourceIsOpenForWriting()
+        {
+            var fs = new DefaultFileSystem();
+            string sourcePath = Path.Combine(_tempDir, "open.cs");
+            string destPath = Path.Combine(_tempDir, "open-copy.cs");
+            byte[] bytes = Encoding.UTF8.GetBytes("class A { }");
+            await fs.WriteAllBytesAsync(sourcePath, bytes).ConfigureAwait(false);
+
+            // An editor keeps files open for writing; a copy must still be able to read the source.
+            using (var writer = new FileStream(sourcePath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+            {
+                await fs.CopyFileAsync(sourcePath, destPath).ConfigureAwait(false);
+            }
+
+            Assert.That(File.ReadAllBytes(destPath), Is.EqualTo(bytes));
+        }
+
+        [Test]
+        public async Task CopyFileAsync_OverwritesExistingDestination()
+        {
+            var fs = new DefaultFileSystem();
+            string sourcePath = Path.Combine(_tempDir, "rollback-src.cs");
+            string destPath = Path.Combine(_tempDir, "rollback-dest.cs");
+            await fs.WriteAllBytesAsync(sourcePath, Encoding.UTF8.GetBytes("new")).ConfigureAwait(false);
+            await fs.WriteAllBytesAsync(destPath, Encoding.UTF8.GetBytes("old content")).ConfigureAwait(false);
+
+            // Snapshot rollback relies on the destination being overwritten, so FileMode.Create must stay.
+            await fs.CopyFileAsync(sourcePath, destPath).ConfigureAwait(false);
+
+            Assert.That(await fs.ReadAllTextAsync(destPath).ConfigureAwait(false), Is.EqualTo("new"));
+        }
     }
 }
 

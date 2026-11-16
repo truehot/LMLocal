@@ -259,6 +259,8 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ChatHistoryScorer.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ChatHistorySearchModels.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ContentSearchMatcher.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ContentTermScanner.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\LiteralListParameter.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\SearchQueryFallback.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\DeclarationMatcher.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\KnowledgeSearchModels.cs" />

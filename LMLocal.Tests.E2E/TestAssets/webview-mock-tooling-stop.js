@@ -43,7 +43,7 @@ const __mockBridge = {
         callIds.forEach((callId, i) => {
             emit({
                 Type: 'StreamToolCall',
-                FunctionName: 'code_reader_subagent',
+                FunctionName: 'code_explorer_subagent',
                 CallId: callId,
                 ArgumentsJson: '{"task": "read the file"}',
                 Message: 'Running Code Reader...'

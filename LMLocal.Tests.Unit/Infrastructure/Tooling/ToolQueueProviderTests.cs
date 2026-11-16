@@ -136,6 +136,36 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling
         }
 
         [Test]
+        public void GetMainQueue_SharedTool_StaysWithMainModelAndAgent()
+        {
+            SetBuiltIn(
+                new ToolDefinition { Name = "read_file_lines" },
+                new ToolDefinition { Name = "search_file_content" });
+            var config = Config(Agent("explorer", new List<string> { "read_file_lines", "search_file_content" }));
+            config.SharedTools = new List<string> { " READ_FILE_LINES " };
+            SetSnapshot(config);
+
+            var names = _provider.GetMainQueue().Definitions.Select(d => d.Name);
+
+            Assert.That(names, Is.EquivalentTo(new[] { "read_file_lines", "explorer" }));
+        }
+
+        [Test]
+        public void GetMainQueue_SharedToolNotOwned_ChangesNothing()
+        {
+            SetBuiltIn(
+                new ToolDefinition { Name = "read_file_lines" },
+                new ToolDefinition { Name = "search_file_content" });
+            var config = Config(Agent("explorer", new List<string> { "search_file_content" }));
+            config.SharedTools = new List<string> { "read_file_lines", "ghost_tool", "" };
+            SetSnapshot(config);
+
+            var names = _provider.GetMainQueue().Definitions.Select(d => d.Name);
+
+            Assert.That(names, Is.EquivalentTo(new[] { "read_file_lines", "explorer" }));
+        }
+
+        [Test]
         public void GetMainQueue_NonEmptyAllowlistAllUnavailable_ExcludesAgent()
         {
             // Registered in the built-in registry but gated by the current mode: the agent would have

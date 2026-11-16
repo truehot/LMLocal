@@ -40,6 +40,42 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public void FindFiles_PositionalOrderIsUnchanged()
+        {
+            var tool = new FindFiles(Mock.Of<IVsDependencies>(), Mock.Of<IVsSolutionFilesScanner>(), Mock.Of<ISearchResultCache>());
+
+            Assert.That(PositionalOrder(tool.GetToolInfo()),
+                Is.EqualTo(new[] { "file_name", "extension_filter", "project_filter", "page_token", "max_results", "file_names" }));
+        }
+
+        [Test]
+        public void GetSymbolInfo_PositionalOrderIsUnchanged()
+        {
+            var tool = new GetSymbolInfo(Mock.Of<IPathResolver>(), Mock.Of<ISearchResultCache>(), Mock.Of<IFileSystem>());
+
+            Assert.That(PositionalOrder(tool.GetToolInfo()),
+                Is.EqualTo(new[] { "symbol_name", "file_path", "include_references", "max_references", "page_token", "symbol_names" }));
+        }
+
+        [Test]
+        public void ReadFileLines_PositionalOrderIsUnchanged()
+        {
+            var tool = new ReadFileLines(Mock.Of<IVsDependencies>(), Mock.Of<IPathResolver>(), Mock.Of<IFileSystem>());
+
+            Assert.That(PositionalOrder(tool.GetToolInfo()), Is.EqualTo(new[] { "file_path", "start_line", "end_line", "files" }));
+        }
+
+        [Test]
+        public void SearchFileContent_PositionalOrderIsUnchanged()
+        {
+            var tool = new SearchFileContent(
+                Mock.Of<IVsDependencies>(), Mock.Of<IPathResolver>(), Mock.Of<IVsSolutionFilesScanner>(), Mock.Of<ISearchResultCache>(), Mock.Of<IFileSystem>());
+
+            Assert.That(PositionalOrder(tool.GetToolInfo()),
+                Is.EqualTo(new[] { "text", "group_by", "extension_filter", "path", "page_token", "max_results", "texts" }));
+        }
+
+        [Test]
         public void SetFileProjectStatus_PositionalOrderIsUnchanged()
         {
             var tool = new SetFileProjectStatus(

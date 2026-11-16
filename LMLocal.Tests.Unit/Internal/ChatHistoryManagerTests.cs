@@ -1813,7 +1813,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task ConsolidateLastExchange_CodeReaderSubagent_ContentCarried()
+        public async Task ConsolidateLastExchange_CodeExplorerSubagent_ContentCarried()
         {
             var persistence = CreatePersistenceMock();
             var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
@@ -1821,7 +1821,7 @@ namespace LMLocal.Tests.Unit
             const string SubagentMarkdown = "File: src/Program.cs, lines 1-2\nusing System;";
 
             manager.AddUserMessage("read the file");
-            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_reader_subagent")));
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_explorer_subagent")));
             manager.AddToolExecutionResultMessages(new[]
             {
                 new ChatMessage("tool", SubagentMarkdown, "c1")
@@ -1840,15 +1840,15 @@ namespace LMLocal.Tests.Unit
             var expectedUserContent = "read the file"
                 + "\n\n---\n\n"
                 + "## Tool Results\n\n"
-                + "**code_reader_subagent**\n\n"
+                + "**code_explorer_subagent**\n\n"
                 + SubagentMarkdown;
 
             // The formatter builds its lines with StringBuilder.AppendLine (Environment.NewLine), so normalize before comparing.
             var normalizedUserContent = userContent?.Replace("\r\n", "\n");
 
             Assert.That(normalizedUserContent, Is.EqualTo(expectedUserContent),
-                "The code reader subagent output must be carried verbatim under its own header.");
-            Assert.That(userContent, Does.Contain("**code_reader_subagent**"));
+                "The code explorer subagent output must be carried verbatim under its own header.");
+            Assert.That(userContent, Does.Contain("**code_explorer_subagent**"));
             Assert.That(userContent, Does.Contain("using System;"));
         }
 
@@ -1858,34 +1858,34 @@ namespace LMLocal.Tests.Unit
             var persistence = CreatePersistenceMock();
             var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
 
-            manager.AddUserMessage("find the method");
-            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_explorer_subagent")));
+            manager.AddUserMessage("build the solution");
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "build_subagent")));
             manager.AddToolExecutionResultMessages(new[]
             {
-                new ChatMessage("tool", "src/Program.cs:12: void Foo()", "c1")
+                new ChatMessage("tool", "Build succeeded. 0 errors.", "c1")
             });
-            manager.AddAssistantMessage("It is in src/Program.cs.");
+            manager.AddAssistantMessage("The build succeeded.");
 
             await manager.ConsolidateLastExchangeAsync();
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
-            Assert.That(history[1].Content, Is.EqualTo("It is in src/Program.cs."));
+            Assert.That(history[1].Content, Is.EqualTo("The build succeeded."));
 
             var userContent = history[0].Content as string;
-            Assert.That(userContent, Is.EqualTo("find the method"));
+            Assert.That(userContent, Is.EqualTo("build the solution"));
             Assert.That(userContent, Does.Not.Contain("Tool Results"),
-                "Only the code reader subagent output is carried over, other subagents are not.");
+                "Only the code explorer subagent output is carried over, other subagents are not.");
         }
 
         [Test]
-        public async Task ConsolidateLastExchange_CodeReaderSubagentEmpty_NotCarried()
+        public async Task ConsolidateLastExchange_CodeExplorerSubagentEmpty_NotCarried()
         {
             var persistence = CreatePersistenceMock();
             var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
 
             manager.AddUserMessage("read the file");
-            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_reader_subagent")));
+            manager.AddAssistantMessage(null, ToolCalls(("c1", "code_explorer_subagent")));
             manager.AddToolExecutionResultMessages(new[]
             {
                 new ChatMessage("tool", string.Empty, "c1")

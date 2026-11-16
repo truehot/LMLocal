@@ -38,6 +38,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const int DefaultPageSize = 50;
         private const int MaxPageSize = 200;
         private const int MaxDefinitions = 100;
+        internal const int MaxSymbolNames = 10;
+        internal const string SymbolNameParameter = "symbol_name";
+        internal const string SymbolNamesParameter = "symbol_names";
 
         public string ToolName => "get_symbol_info";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -54,25 +57,40 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Returns navigation info for a C# symbol. Definitions: declaration sites of every matching symbol (file, line, column, full signature with parameters, modifiers, namespace), deduplicated, up to 100; not paginated. References (default included): usages of ONE symbol (file, line, line text, symbol kind), up to 5000 total, paginated (page size default 50, max 200) via page_token. Reference target: if file_path is set, the first symbol declared in that file; otherwise the first exact case-sensitive name match, else the first case-insensitive match. For overloads/partials, definitions include all declarations, but references cover only the selected symbol. Name matching prefers exact case-sensitive matches and falls back to case-insensitive only if no exact match exists. file_path restricts only the returned definitions to that file; references are still searched across the whole solution. Does NOT return method bodies, fields, properties, base classes, or dependencies. Lines are 1-indexed. Independent: several calls can go in one response.",
+                Description = "Use this tool to find where a C# symbol (class, interface, struct, enum, method, property, field) is declared and every place it is used. Prefer it over search_file_content for a C# identifier: it resolves the symbol through the compiler, so matches in comments, strings and unrelated same-named text are not returned. " +
+                    $"Several symbols whose declarations you need: pass them all in 'symbol_names' (up to {MaxSymbolNames}) in ONE call, not one call per symbol; the response has 'symbols', one block per name in request order with its 'symbol_name' and 'definitions' (or its own success=false and error_message). 'symbol_names' returns definitions only: for usages call again with one 'symbol_name'. " +
+                    "Definitions: declaration sites of every matching symbol (file, line, end_line, column, full signature with parameters, modifiers, namespace), deduplicated, up to 100; not paginated. line..end_line is the whole declaration (attributes through the closing brace, or the ';' line of an expression-bodied member): to read a whole method or property, call read_file_lines with exactly that range. References (default included): usages of ONE symbol (file, line, line text, symbol kind), up to 5000 total, paginated (page size default 50, max 200) via page_token. Reference target: if file_path is set, the first symbol declared in that file; otherwise the first exact case-sensitive name match, else the first case-insensitive match. For overloads/partials, definitions include all declarations, but references cover only the selected symbol. Name matching prefers exact case-sensitive matches and falls back to case-insensitive only if no exact match exists. file_path restricts only the returned definitions to that file; references are still searched across the whole solution. Does NOT return method bodies, fields, properties, base classes, or dependencies. Lines are 1-indexed. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "symbol_name", new ToolDetails { Type = "string", Description = "The name of the symbol to look up. Exact case-sensitive matches are preferred; if none exist, case-insensitive matches are used." } },
+                        { SymbolNameParameter, new ToolDetails { Type = "string", Description = "The name of the symbol to look up. Exact case-sensitive matches are preferred; if none exist, case-insensitive matches are used. Required unless 'symbol_names' is passed." } },
                         { "file_path", new ToolDetails { Type = "string", Description = "Restricts returned definitions to this file (relative or absolute path): only declaration sites in this file are returned. Also selects the reference target — usages are computed for the first symbol declared in this file. References themselves are still searched across the entire solution." } },
                         { "include_references", new ToolDetails { Type = "boolean", Description = "Whether to include usages (references). Default true." } },
                         { "max_references", new ToolDetails { Type = "integer", Description = "Number of references per page (page size). Default 50, max 200. Total references never exceed 5000 regardless of page size." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for the next page of references." } }
+                        { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for the next page of references." } },
+                        {
+                            SymbolNamesParameter, new ToolDetails
+                            {
+                                Type = "array",
+                                Description = $"Several symbol names to look up in one call (up to {MaxSymbolNames}), each like 'symbol_name'; definitions only (no references). file_path, if set, restricts the definitions of every name.",
+                                Items = new ToolDetails { Type = "string" }
+                            }
+                        }
                     },
-                    Required = new List<string> { "symbol_name" }
+                    Required = new List<string>()
                 }
             };
         }
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
+            object namesObj = null;
+            parameters?.TryGetValue(SymbolNamesParameter, out namesObj);
+            if (!LiteralListParameter.IsMissing(namesObj))
+                return await ExecuteManyAsync(parameters, namesObj, cancellationToken);
+
             try
             {
                 var (symbolName, filePathParam, includeReferences, pageSize, pageToken, error) = ExtractAndValidateParameters(parameters);
@@ -141,6 +159,99 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 return Error(ex.Message, null);
             }
+        }
+
+        /// <summary>'symbol_names': definitions of each name, one block per name in request order; no references.</summary>
+        private async Task<object> ExecuteManyAsync(Dictionary<string, object> parameters, object namesObj, CancellationToken cancellationToken)
+        {
+            var (names, error) = ExtractSymbolNames(parameters, namesObj);
+            if (error != null)
+                return new SymbolInfoMultiResponse { Success = false, ErrorMessage = error, Symbols = new List<SymbolDefinitionsBlock>() };
+
+            string filePath = parameters.TryGetValue("file_path", out object fpObj) && fpObj is string fp && !string.IsNullOrEmpty(fp) ? fp : null;
+
+            try
+            {
+                var blocks = new List<SymbolDefinitionsBlock>();
+                foreach (var name in names)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var definitions = await GetDefinitionsAsync(name, filePath, cancellationToken);
+                    blocks.Add(new SymbolDefinitionsBlock
+                    {
+                        SymbolName = name,
+                        Success = definitions.Success,
+                        ErrorMessage = definitions.Success ? null : definitions.ErrorMessage,
+                        Definitions = definitions.Definitions ?? new List<DefinitionItem>()
+                    });
+                }
+
+                bool any = blocks.Any(b => b.Success);
+                return new SymbolInfoMultiResponse
+                {
+                    Success = any,
+                    ErrorMessage = any ? null : "No symbol was looked up: see error_message of each block.",
+                    Symbols = blocks
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                return new SymbolInfoMultiResponse { Success = false, ErrorMessage = "Operation was cancelled.", Symbols = new List<SymbolDefinitionsBlock>() };
+            }
+            catch (Exception ex)
+            {
+                return new SymbolInfoMultiResponse { Success = false, ErrorMessage = ex.Message, Symbols = new List<SymbolDefinitionsBlock>() };
+            }
+        }
+
+        /// <summary>Definitions of one name without references, through the same cache entry as a single call with include_references=false.</summary>
+        private async Task<SymbolInfoResponse> GetDefinitionsAsync(string symbolName, string filePath, CancellationToken cancellationToken)
+        {
+            string cacheKey = BuildCacheKey(symbolName, filePath, false);
+            if (_searchCache.TryGet(cacheKey, "", out CachedToolResults<SymbolInfo> cached))
+            {
+                var cachedInfo = cached.AllResults.FirstOrDefault();
+                if (cachedInfo != null)
+                    return new SymbolInfoResponse { Success = true, SymbolName = symbolName, Definitions = cachedInfo.Definitions ?? new List<DefinitionItem>() };
+            }
+
+            var result = await ExecuteCoreAsync(symbolName, filePath, false, cancellationToken);
+            if (result.Success)
+            {
+                _searchCache.Set(cacheKey, "", new CachedToolResults<SymbolInfo>
+                {
+                    AllResults = new List<SymbolInfo> { new SymbolInfo { Definitions = result.Definitions ?? new List<DefinitionItem>() } },
+                    ItemsScanned = 1
+                });
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Names of a 'symbol_names' call: a top-level symbol_name first, then the list; exact duplicates dropped
+        /// (names are case-sensitive). page_token pages references, which this mode does not return.
+        /// </summary>
+        internal static (List<string> names, string error) ExtractSymbolNames(Dictionary<string, object> parameters, object namesObj)
+        {
+            object nameObj = null;
+            parameters?.TryGetValue(SymbolNameParameter, out nameObj);
+            if (nameObj != null && !(nameObj is string))
+                return (null, $"Parameter '{SymbolNameParameter}' must be a string.");
+
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            LiteralListParameter.Add(nameObj as string, names, seen);
+            if (!LiteralListParameter.TryAdd(namesObj, names, seen))
+                return (null, $"Parameter '{SymbolNamesParameter}' must be an array of strings.");
+
+            if (names.Count == 0)
+                return (names, $"Parameter '{SymbolNamesParameter}' has no non-empty name.");
+            if (names.Count > MaxSymbolNames)
+                return (names, $"At most {MaxSymbolNames} symbol names per call (got {names.Count}). Split them into several calls.");
+            if (ToolPagination.ReadToken(parameters) != null)
+                return (names, $"'{ToolPagination.TokenParameter}' pages the references of one symbol: call again with '{SymbolNameParameter}' and the next_page_token.");
+
+            return (names, null);
         }
 
         private async Task<SymbolInfoResponse> ExecuteCoreAsync(string symbolName, string filePathParam, bool includeReferences, CancellationToken cancellationToken)
@@ -225,6 +336,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                                     var lineSpan = location.GetLineSpan();
                                     int line = lineSpan.StartLinePosition.Line + 1;
+                                    int endLine = lineSpan.EndLinePosition.Line + 1;
                                     int column = lineSpan.StartLinePosition.Character + 1;
 
                                     var locationKey = $"{filePath}:{line}:{column}";
@@ -235,6 +347,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                     {
                                         FilePath = _pathResolver.TryGetRelativePath(filePath, solutionDir, out var rel) ? rel : filePath,
                                         Line = line,
+                                        EndLine = endLine,
                                         Column = column,
                                         SymbolKind = symbol.Kind.ToString(),
                                         FullSignature = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -423,7 +536,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             };
         }
 
-        private string BuildCacheKey(string symbolName, string filePath, bool includeReferences)
+        internal static string BuildCacheKey(string symbolName, string filePath, bool includeReferences)
         {
             return $"{symbolName}||{filePath ?? ""}||{includeReferences}";
         }
@@ -435,7 +548,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return (null, null, true, DefaultPageSize, null, "Parameters are required.");
 
             if (!parameters.TryGetValue("symbol_name", out object symbolObj) || !(symbolObj is string symbolName))
-                return (null, null, true, DefaultPageSize, null, "Parameter 'symbol_name' is required and must be a string.");
+                return (null, null, true, DefaultPageSize, null, $"Parameter '{SymbolNameParameter}' (or '{SymbolNamesParameter}') is required and must be a string.");
 
             if (string.IsNullOrWhiteSpace(symbolName))
                 return (null, null, true, DefaultPageSize, null, "Parameter 'symbol_name' cannot be empty.");
@@ -459,6 +572,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
+            object namesObj = null;
+            parameters?.TryGetValue(SymbolNamesParameter, out namesObj);
+            if (!LiteralListParameter.IsMissing(namesObj))
+            {
+                var (names, _) = ExtractSymbolNames(parameters, namesObj);
+                if (names != null && names.Count > 0)
+                    return $"Getting symbol info for {string.Join(", ", names.Select(n => $"'{n}'"))}... ";
+            }
+
             var symbolName = parameters?.TryGetValue("symbol_name", out var s) == true ? s?.ToString() : "";
             var filePath = parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : null;
             if (!string.IsNullOrEmpty(filePath))
@@ -481,6 +603,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     msg += $" (total: {resp.TotalReferences} {Pluralizer.Pluralize(resp.TotalReferences, "reference", "references")})";
                 return msg + ".";
             }
+
+            if (result is SymbolInfoMultiResponse multi)
+            {
+                var blocks = multi.Symbols ?? new List<SymbolDefinitionsBlock>();
+                if (blocks.Count == 0)
+                    return $"Failed: {multi.ErrorMessage}";
+
+                int total = blocks.Where(b => b.Success).Sum(b => b.Definitions?.Count ?? 0);
+                var counts = string.Join(", ", blocks.Select(b => $"'{b.SymbolName}': {(b.Success ? (b.Definitions?.Count ?? 0).ToString() : "failed")}"));
+                return $"Found {total} {Pluralizer.Pluralize(total, "definition", "definitions")} for {blocks.Count} {Pluralizer.Pluralize(blocks.Count, "symbol", "symbols")} ({counts}).";
+            }
+
             return "Symbol info retrieval completed.";
         }
 
@@ -500,6 +634,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string FilePath { get; set; }
             [JsonProperty("line")]
             public int Line { get; set; }
+            /// <summary>Last line of the declaration syntax: the closing brace of a body, or the ';' line of an expression-bodied or body-less member.</summary>
+            [JsonProperty("end_line")]
+            public int EndLine { get; set; }
             [JsonProperty("column")]
             public int Column { get; set; }
             [JsonProperty("symbol_kind")]
@@ -555,6 +692,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string NextPageToken { get; set; }
             [JsonProperty("has_more_results")]
             public bool HasMoreResults { get; set; }
+        }
+
+        /// <summary>One name of a 'symbol_names' call: its definitions only.</summary>
+        public class SymbolDefinitionsBlock
+        {
+            [JsonProperty("symbol_name")]
+            public string SymbolName { get; set; }
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
+            public string ErrorMessage { get; set; }
+            [JsonProperty("definitions")]
+            public List<DefinitionItem> Definitions { get; set; }
+        }
+
+        /// <summary>Response of a call with 'symbol_names': one block per name in request order.</summary>
+        public class SymbolInfoMultiResponse
+        {
+            [JsonProperty("symbols")]
+            public List<SymbolDefinitionsBlock> Symbols { get; set; }
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
+            public string ErrorMessage { get; set; }
         }
 
         #endregion

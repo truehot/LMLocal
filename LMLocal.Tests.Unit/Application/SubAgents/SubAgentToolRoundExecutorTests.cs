@@ -29,7 +29,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         private static ToolQueue Queue(params string[] toolNames)
-            => ToolQueue.ForSubAgent("code_reader_subagent", toolNames.Select(n => new ToolDefinition { Name = n }).ToList());
+            => ToolQueue.ForSubAgent("code_explorer_subagent", toolNames.Select(n => new ToolDefinition { Name = n }).ToList());
 
         private static ToolCallRecord Call(string name, string id)
             => new ToolCallRecord { CallId = id, FunctionName = name, ArgumentsJson = "{}" };

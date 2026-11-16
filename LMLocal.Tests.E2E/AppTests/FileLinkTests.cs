@@ -72,8 +72,11 @@ public class FileLinkTests : AppTestBase
             () => Page.Locator(FileLinkSelector).ClickAsync(),
             new() { Predicate = m => m.Type == "warning" && m.Text.Contains("was not opened"), Timeout = 5000 });
 
-        Assert.That(warning.Text, Does.Contain("notFound"));
-        Assert.That(await Page.EvaluateAsync<int>("() => window.__fileLinkCalls.length"), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warning.Text, Does.Contain("notFound"));
+            Assert.That(await Page.EvaluateAsync<int>("() => window.__fileLinkCalls.length"), Is.EqualTo(1));
+        }
         await Expect(Page.Locator("#app-toast.show")).ToHaveCountAsync(0);
     }
 }

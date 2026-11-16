@@ -38,8 +38,7 @@ namespace LMLocal.Application.Tool
 
             foreach (var name in new[]
             {
-                "code_explorer_subagent", "code_reader_subagent", "symbol_analyzer_subagent", "build_subagent",
-                "context_retriever_subagent"
+                "code_explorer_subagent", "build_subagent", "context_retriever_subagent"
             })
             {
                 limits.Add(name, ShortTaskSubAgentMaxLength);

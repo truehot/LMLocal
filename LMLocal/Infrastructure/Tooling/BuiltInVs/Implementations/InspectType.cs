@@ -9,6 +9,7 @@ using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.VisualStudio.ComponentModelHost;
@@ -34,6 +35,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IPathResolver _pathResolver;
         private const int MaxTypeSearchMatches = 50;
         internal const int MaxCandidates = 5;
+        internal const int MaxOtherMatches = 5;
+        internal const int MaxTypeNames = 10;
+        internal const string TypeNameParameter = "type_name";
+        internal const string TypeNamesParameter = "type_names";
 
         public string ToolName => "inspect_type";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -52,6 +57,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Description = "Performs deep structural inspection of a type. " +
                                "If exact metadata name is given (e.g., 'System.String', 'System.Collections.Generic.List`1'), returns full details. " +
                                "If not found, or if 'search_mode' is true, performs a partial case-insensitive search over all types (including NuGet packages). " +
+                               $"When that search finds exactly one type whose name equals 'type_name' (the simple name, or the full name for a namespace-qualified query), its full details are returned and 'other_matches' lists up to {MaxOtherMatches} other matching types by full name ('total_matches' counts all matches when there are more); call again with one of them for its details. " +
+                               $"Several types: pass them all in 'type_names' (up to {MaxTypeNames}) in ONE call, not one call per type; project_name, namespace, assembly_name and search_mode apply to every name; the response has 'types', one block per name in request order, each shaped like a single-name response. " +
                                "A short name (e.g. 'Proposal') is matched as a substring of the type's simple name; " +
                                "a namespace-qualified name (e.g. 'Microsoft.VisualStudio.Language.Proposals' or 'System.Collections.Generic.List') is matched against the fully qualified name by dot-separated segments. " +
                                "Optionally filter by 'project_name', 'namespace' and/or 'assembly_name' (NuGet package id usually matches the assembly name). " +
@@ -67,33 +74,39 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { "type_name", new ToolDetails { Type = "string", Description = "Type name: full metadata name for exact match (e.g. 'System.Collections.Generic.List`1'), or partial name for search. In search mode a short name is matched as a substring of the simple name, and a namespace-qualified name (e.g. 'Microsoft.VisualStudio.Language.Proposals') is matched against the fully qualified name by dot-separated segments." } },
+                        { TypeNameParameter, new ToolDetails { Type = "string", Description = $"Type name: full metadata name for exact match (e.g. 'System.Collections.Generic.List`1'), or partial name for search. In search mode a short name is matched as a substring of the simple name, and a namespace-qualified name (e.g. 'Microsoft.VisualStudio.Language.Proposals') is matched against the fully qualified name by dot-separated segments. Required unless '{TypeNamesParameter}' is passed." } },
                         { "project_name", new ToolDetails { Type = "string", Description = "Name of the project to search in. If omitted, all projects." } },
                         { "namespace", new ToolDetails { Type = "string", Description = "Filter results by containing namespace (case-insensitive partial match)." } },
                         { "assembly_name", new ToolDetails { Type = "string", Description = "Filter results by containing assembly name (case-insensitive partial match). Useful for listing types from a NuGet package; package id usually equals the assembly name." } },
-                        { "search_mode", new ToolDetails { Type = "boolean", Description = "If true, skip exact metadata name lookup and perform a partial case-insensitive search directly (capped at 50 matches)." } }
+                        { "search_mode", new ToolDetails { Type = "boolean", Description = "If true, skip exact metadata name lookup and perform a partial case-insensitive search directly (capped at 50 matches)." } },
+                        {
+                            TypeNamesParameter, new ToolDetails
+                            {
+                                Type = "array",
+                                Description = $"Several type names to inspect in one call (up to {MaxTypeNames}), each like 'type_name'; the other parameters apply to every name.",
+                                Items = new ToolDetails { Type = "string" }
+                            }
+                        }
                     },
-                    Required = new List<string> { "type_name" }
+                    Required = new List<string>()
                 }
             };
         }
 
         public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
         {
+            object namesObj = null;
+            parameters?.TryGetValue(TypeNamesParameter, out namesObj);
+            if (!LiteralListParameter.IsMissing(namesObj))
+                return await ExecuteManyAsync(parameters, namesObj, cancellationToken);
+
             try
             {
                 var (typeName, projectName, nsFilter, assemblyFilter, searchMode, error) = ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
                     return ErrorResponse(null, error);
 
-                var (result, matches, candidates, matchTotal, coreError) = await ExecuteCoreAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken);
-                if (!string.IsNullOrEmpty(coreError))
-                    return ErrorResponse(typeName, coreError, candidates);
-
-                if (result == null)
-                    return MatchResponse(typeName, matches, matchTotal);
-
-                return SuccessResponse(typeName, result);
+                return await InspectOneAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -105,7 +118,72 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private async Task<(TypeInspectionResult result, List<TypeSearchMatch> matches, List<TypeSearchMatch> candidates, int matchTotal, string error)> ExecuteCoreAsync(
+        /// <summary>'type_names': one single-name response per name, in request order; the filters apply to every name.</summary>
+        private async Task<object> ExecuteManyAsync(Dictionary<string, object> parameters, object namesObj, CancellationToken cancellationToken)
+        {
+            var (names, error) = ExtractTypeNames(parameters, namesObj);
+            if (error != null)
+                return new TypeInspectionMultiResponse { Success = false, ErrorMessage = error, Types = new List<TypeInspectionResponse>() };
+
+            var (projectName, nsFilter, assemblyFilter, searchMode) = ExtractFilters(parameters);
+            var blocks = new List<TypeInspectionResponse>();
+            try
+            {
+                foreach (var raw in names)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var (typeName, nameError) = NormalizeTypeName(raw);
+                    if (nameError != null)
+                    {
+                        blocks.Add(ErrorResponse(raw, nameError));
+                        continue;
+                    }
+
+                    try
+                    {
+                        blocks.Add(await InspectOneAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken));
+                    }
+                    catch (Exception ex) when (!(ex is OperationCanceledException))
+                    {
+                        blocks.Add(ErrorResponse(typeName, $"Internal error: {ex.Message}"));
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return new TypeInspectionMultiResponse { Success = false, ErrorMessage = "Operation was cancelled.", Types = blocks };
+            }
+
+            bool any = blocks.Any(b => b.Success);
+            return new TypeInspectionMultiResponse
+            {
+                Success = any,
+                ErrorMessage = any ? null : "No type was inspected: see error_message of each block.",
+                Types = blocks
+            };
+        }
+
+        private async Task<TypeInspectionResponse> InspectOneAsync(
+            string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, CancellationToken cancellationToken)
+        {
+            var (result, matches, candidates, matchTotal, otherMatches, coreError) = await ExecuteCoreAsync(typeName, projectName, nsFilter, assemblyFilter, searchMode, cancellationToken);
+            if (!string.IsNullOrEmpty(coreError))
+                return ErrorResponse(typeName, coreError, candidates);
+
+            if (result == null)
+                return MatchResponse(typeName, matches, matchTotal);
+
+            var response = SuccessResponse(typeName, result);
+            if (otherMatches != null && otherMatches.Count > 0)
+            {
+                response.OtherMatches = otherMatches;
+                if (matchTotal - 1 > otherMatches.Count)
+                    response.TotalMatches = matchTotal;
+            }
+            return response;
+        }
+
+        private async Task<(TypeInspectionResult result, List<TypeSearchMatch> matches, List<TypeSearchMatch> candidates, int matchTotal, List<string> otherMatches, string error)> ExecuteCoreAsync(
             string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, CancellationToken cancellationToken)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
@@ -118,10 +196,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 projects = projects.Where(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase)).ToList();
 
             if (projects.Count == 0)
-                return (null, null, null, 0, $"Project '{projectName}' was not found in the current solution.");
+                return (null, null, null, 0, null, $"Project '{projectName}' was not found in the current solution.");
 
             string solutionDir = string.IsNullOrEmpty(solution.FilePath) ? null : Path.GetDirectoryName(solution.FilePath);
-            Func<string, string> toRelativePath = path => _pathResolver.TryGetRelativePath(path, solutionDir, out var rel) ? rel : path;
+            string toRelativePath(string path) => _pathResolver.TryGetRelativePath(path, solutionDir, out var rel) ? rel : path;
 
             return await Task.Run(async () =>
             {
@@ -148,7 +226,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             continue;
                         }
 
-                        return (TypeInspector.Inspect(typeSymbol, project.Name, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
+                        return (TypeInspector.Inspect(typeSymbol, project.Name, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (List<string>)null, (string)null);
                     }
                 }
 
@@ -160,20 +238,32 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (search.Candidates.Count > 0)
                     {
                         return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null,
-                            search.Candidates.Select(ToTypeSearchMatch).ToList(), 0,
+                            search.Candidates.Select(ToTypeSearchMatch).ToList(), 0, (List<string>)null,
                             BuildCandidatesMessage(typeName, search.CandidateTotal, search.Candidates.Count));
                     }
 
                     string notFound = !searchMode && exactFilteredOut
                         ? BuildFilteredOutMessage(typeName, nsFilter, assemblyFilter)
                         : BuildNotFoundMessage(typeName, searchMode, nsFilter, assemblyFilter);
-                    return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, notFound);
+                    return ((TypeInspectionResult)null, (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (List<string>)null, notFound);
                 }
 
                 if (search.Matches.Count == 1)
-                    return (TypeInspector.Inspect(search.Matches[0].Symbol, search.Matches[0].ProjectName, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (string)null);
+                    return (TypeInspector.Inspect(search.Matches[0].Symbol, search.Matches[0].ProjectName, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, 0, (List<string>)null, (string)null);
 
-                return ((TypeInspectionResult)null, search.Matches.Select(ToTypeSearchMatch).ToList(), (List<TypeSearchMatch>)null, search.MatchTotal, (string)null);
+                int exact = PickSingleExactMatch(search.Matches, TypeSearchQuery.Create(typeName));
+                if (exact >= 0)
+                {
+                    var picked = search.Matches[exact];
+                    var others = search.Matches
+                        .Where((m, i) => i != exact)
+                        .Take(MaxOtherMatches)
+                        .Select(m => m.Symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
+                        .ToList();
+                    return (TypeInspector.Inspect(picked.Symbol, picked.ProjectName, toRelativePath), (List<TypeSearchMatch>)null, (List<TypeSearchMatch>)null, search.MatchTotal, others, (string)null);
+                }
+
+                return ((TypeInspectionResult)null, search.Matches.Select(ToTypeSearchMatch).ToList(), (List<TypeSearchMatch>)null, search.MatchTotal, (List<string>)null, (string)null);
             }, cancellationToken);
         }
 
@@ -277,24 +367,48 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (match == null || query == null)
                 return int.MaxValue;
 
-            bool exact;
-            bool startsWith;
-            if (query.HasNamespace)
-            {
-                exact = string.Equals(match.FullName, query.FullNameQuery, StringComparison.OrdinalIgnoreCase);
-                startsWith = (match.FullName ?? "").StartsWith(query.FullNameQuery ?? "", StringComparison.OrdinalIgnoreCase);
-            }
-            else
-            {
-                exact = string.Equals(match.ShortName, query.ShortName, StringComparison.OrdinalIgnoreCase);
-                startsWith = (match.ShortName ?? "").StartsWith(query.ShortName ?? "", StringComparison.OrdinalIgnoreCase);
-            }
+            bool exact = IsExactName(match, query);
+            bool startsWith = query.HasNamespace
+                ? (match.FullName ?? "").StartsWith(query.FullNameQuery ?? "", StringComparison.OrdinalIgnoreCase)
+                : (match.ShortName ?? "").StartsWith(query.ShortName ?? "", StringComparison.OrdinalIgnoreCase);
 
             int rank = 0;
             if (!exact) rank += 4;
             if (!match.IsFromSource) rank += 2;
             if (!startsWith) rank += 1;
             return rank;
+        }
+
+        /// <summary>
+        /// The type's name equals the query: the simple name for a short query, the full name for a namespace-qualified one
+        /// (case-insensitive, generic arity ignored).
+        /// </summary>
+        internal static bool IsExactName(MatchedType match, TypeSearchQuery query)
+        {
+            if (match == null || query == null)
+                return false;
+
+            return query.HasNamespace
+                ? string.Equals(match.FullName, query.FullNameQuery, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(match.ShortName, query.ShortName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Index of the only match whose name equals the query, or -1 when there is none or more than one.</summary>
+        internal static int PickSingleExactMatch(IReadOnlyList<MatchedType> matches, TypeSearchQuery query)
+        {
+            if (matches == null)
+                return -1;
+
+            int found = -1;
+            for (int i = 0; i < matches.Count; i++)
+            {
+                if (!IsExactName(matches[i], query))
+                    continue;
+                if (found >= 0)
+                    return -1;
+                found = i;
+            }
+            return found;
         }
 
         private static MatchedType ToMatchedType(IndexedType indexed, string projectName)
@@ -604,11 +718,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         internal static (string typeName, string projectName, string nsFilter, string assemblyFilter, bool searchMode, string error) ExtractAndValidateParameters(
             Dictionary<string, object> parameters)
         {
-            if (parameters == null || !parameters.TryGetValue("type_name", out object typeObj) || !(typeObj is string typeName))
-                return (null, null, null, null, false, "Parameter 'type_name' is required and must be a string.");
+            if (parameters == null || !parameters.TryGetValue(TypeNameParameter, out object typeObj) || !(typeObj is string rawTypeName))
+                return (null, null, null, null, false, $"Parameter '{TypeNameParameter}' (or '{TypeNamesParameter}') is required and must be a string.");
 
+            var (typeName, nameError) = NormalizeTypeName(rawTypeName);
+            if (nameError != null)
+                return (null, null, null, null, false, nameError);
+
+            var (projectName, nsFilter, assemblyFilter, searchMode) = ExtractFilters(parameters);
+            return (typeName, projectName, nsFilter, assemblyFilter, searchMode, null);
+        }
+
+        /// <summary>Trims the name and drops a leading 'global::'; an empty name or '.' is an error.</summary>
+        internal static (string typeName, string error) NormalizeTypeName(string typeName)
+        {
             if (string.IsNullOrWhiteSpace(typeName))
-                return (null, null, null, null, false, "Parameter 'type_name' cannot be empty.");
+                return (null, $"Parameter '{TypeNameParameter}' cannot be empty.");
 
             typeName = typeName.Trim();
             const string GlobalAlias = "global::";
@@ -616,10 +741,47 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 typeName = typeName.Substring(GlobalAlias.Length);
 
             if (typeName.Length == 0)
-                return (null, null, null, null, false, "Parameter 'type_name' cannot be empty.");
+                return (null, $"Parameter '{TypeNameParameter}' cannot be empty.");
 
             if (typeName == ".")
-                return (null, null, null, null, false, "Parameter 'type_name' cannot be '.'.");
+                return (null, $"Parameter '{TypeNameParameter}' cannot be '.'.");
+
+            return (typeName, null);
+        }
+
+        /// <summary>
+        /// Names of a 'type_names' call: a top-level type_name first, then the list; exact duplicates (after trimming) dropped.
+        /// </summary>
+        internal static (List<string> names, string error) ExtractTypeNames(Dictionary<string, object> parameters, object namesObj)
+        {
+            object nameObj = null;
+            parameters?.TryGetValue(TypeNameParameter, out nameObj);
+            if (nameObj != null && !(nameObj is string))
+                return (null, $"Parameter '{TypeNameParameter}' must be a string.");
+
+            var raw = new List<string>();
+            var seenRaw = new HashSet<string>(StringComparer.Ordinal);
+            LiteralListParameter.Add(nameObj as string, raw, seenRaw);
+            if (!LiteralListParameter.TryAdd(namesObj, raw, seenRaw))
+                return (null, $"Parameter '{TypeNamesParameter}' must be an array of strings.");
+
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var name in raw)
+                LiteralListParameter.Add(name.Trim(), names, seen);
+
+            if (names.Count == 0)
+                return (names, $"Parameter '{TypeNamesParameter}' has no non-empty name.");
+            if (names.Count > MaxTypeNames)
+                return (names, $"At most {MaxTypeNames} type names per call (got {names.Count}). Split them into several calls.");
+
+            return (names, null);
+        }
+
+        internal static (string projectName, string nsFilter, string assemblyFilter, bool searchMode) ExtractFilters(Dictionary<string, object> parameters)
+        {
+            if (parameters == null)
+                return (null, null, null, false);
 
             string projectName = null;
             if (parameters.TryGetValue("project_name", out object projObj) && projObj is string projStr && !string.IsNullOrWhiteSpace(projStr))
@@ -637,7 +799,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters.TryGetValue("search_mode", out object searchObj) && searchObj is bool searchBool)
                 searchMode = searchBool;
 
-            return (typeName, projectName, nsFilter, assemblyFilter, searchMode, null);
+            return (projectName, nsFilter, assemblyFilter, searchMode);
         }
 
         private static TypeInspectionResponse ErrorResponse(string typeName, string message, List<TypeSearchMatch> candidates = null)
@@ -674,14 +836,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
-            var typeName = parameters?.TryGetValue("type_name", out var s) == true ? s?.ToString() : "";
+            var typeName = parameters?.TryGetValue(TypeNameParameter, out var s) == true ? s?.ToString() : "";
             var searchMode = parameters?.TryGetValue("search_mode", out var m) == true && m is bool searchBool && searchBool;
             var nsFilter = parameters?.TryGetValue("namespace", out var n) == true ? n?.ToString() : null;
             var assemblyFilter = parameters?.TryGetValue("assembly_name", out var a) == true ? a?.ToString() : null;
 
-            string message = searchMode
-                ? $"Searching for types matching '{typeName}'"
-                : $"Inspecting type '{typeName}'";
+            List<string> names = null;
+            object namesObj = null;
+            parameters?.TryGetValue(TypeNamesParameter, out namesObj);
+            if (!LiteralListParameter.IsMissing(namesObj))
+                names = ExtractTypeNames(parameters, namesObj).names;
+
+            string message;
+            if (names != null && names.Count > 0)
+            {
+                string list = string.Join(", ", names.Select(t => $"'{t}'"));
+                message = searchMode ? $"Searching for types matching {list}" : $"Inspecting types {list}";
+            }
+            else
+            {
+                message = searchMode
+                    ? $"Searching for types matching '{typeName}'"
+                    : $"Inspecting type '{typeName}'";
+            }
 
             if (!string.IsNullOrEmpty(nsFilter))
                 message += $" in namespace '{nsFilter}'";
@@ -729,9 +906,37 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string message = $"Inspected {data.FullName}: {(memberCounts.Count > 0 ? string.Join(", ", memberCounts) : "no members")}";
                 if (data.HasMoreResults)
                     message += " (truncated)";
+                if (resp.OtherMatches != null && resp.OtherMatches.Count > 0)
+                {
+                    int others = resp.TotalMatches.HasValue ? resp.TotalMatches.Value - 1 : resp.OtherMatches.Count;
+                    message += $"; {others} other {Pluralizer.Pluralize(others, "match", "matches")}";
+                }
                 return message;
             }
+
+            if (result is TypeInspectionMultiResponse multi)
+            {
+                var blocks = multi.Types ?? new List<TypeInspectionResponse>();
+                if (blocks.Count == 0)
+                    return $"Inspection failed: {multi.ErrorMessage}";
+
+                int inspected = blocks.Count(b => b.Success && b.Data != null);
+                var states = string.Join(", ", blocks.Select(b => $"'{b.TypeName}': {DescribeBlock(b)}"));
+                return $"Inspected {inspected} of {blocks.Count} {Pluralizer.Pluralize(blocks.Count, "type", "types")} ({states}).";
+            }
+
             return "Type inspection completed.";
+        }
+
+        private static string DescribeBlock(TypeInspectionResponse block)
+        {
+            if (!block.Success)
+                return "failed";
+            if (block.Data != null)
+                return "inspected";
+
+            int count = block.TotalMatches ?? block.Matches?.Count ?? 0;
+            return $"{count} {Pluralizer.Pluralize(count, "match", "matches")}";
         }
 
         #region DTOs
@@ -774,6 +979,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public int? TotalMatches { get; set; }
             [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
             public List<TypeSearchMatch> Candidates { get; set; }
+            /// <summary>Full names of the other search matches when 'data' is the only exact-name match.</summary>
+            [JsonProperty("other_matches", NullValueHandling = NullValueHandling.Ignore)]
+            public List<string> OtherMatches { get; set; }
+        }
+
+        /// <summary>Response of a 'type_names' call: one single-name response per name, in request order.</summary>
+        public class TypeInspectionMultiResponse
+        {
+            [JsonProperty("success")]
+            public bool Success { get; set; }
+            [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
+            public string ErrorMessage { get; set; }
+            [JsonProperty("types")]
+            public List<TypeInspectionResponse> Types { get; set; }
         }
 
         #endregion

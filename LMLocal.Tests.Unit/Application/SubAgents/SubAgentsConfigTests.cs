@@ -396,6 +396,25 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         [Test]
+        public void Clone_CopiesSharedTools()
+        {
+            var cfg = Parse("{ \"sharedTools\": [ \"read_file_lines\" ], \"agents\": [ { \"id\": \"a\", \"description\": \"d\", \"model\": \"m\", \"customBaseUrl\": \"http://x\" } ] }");
+
+            var clone = cfg.Clone();
+
+            Assert.That(clone.SharedTools, Is.EqualTo(new[] { "read_file_lines" }));
+            Assert.That(clone.SharedTools, Is.Not.SameAs(cfg.SharedTools));
+        }
+
+        [Test]
+        public void Clone_WithoutSharedTools_KeepsNull()
+        {
+            var cfg = Parse("{ \"agents\": [ { \"id\": \"a\", \"description\": \"d\", \"model\": \"m\", \"customBaseUrl\": \"http://x\" } ] }");
+
+            Assert.That(cfg.Clone().SharedTools, Is.Null);
+        }
+
+        [Test]
         public void Validate_AgentMaxParallelLessThanOne_ReportsError()
         {
             var cfg = Parse("{ \"agents\": [ { \"id\": \"a\", \"description\": \"d\", \"model\": \"m\", \"customBaseUrl\": \"http://x\", \"maxParallel\": 0 } ] }");

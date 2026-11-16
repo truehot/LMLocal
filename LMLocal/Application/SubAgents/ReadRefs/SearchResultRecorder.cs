@@ -3,7 +3,7 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 namespace LMLocal.Application.SubAgents.ReadRefs
 {
     /// <summary>
-    /// Records successful <c>search_file_content</c> results (both 'file' and 'text' grouping) into the per-run <see cref="SearchLedger"/>.
+    /// Records successful <c>search_file_content</c> results ('file' and 'text' grouping, and each block of a 'texts' call) into the per-run <see cref="SearchLedger"/>.
     /// </summary>
     internal static class SearchResultRecorder
     {
@@ -17,7 +17,15 @@ namespace LMLocal.Application.SubAgents.ReadRefs
 
             int recorded = 0;
 
-            if (result is SearchResultsResponse byFile && byFile.Success && byFile.Results != null)
+            if (result is SearchMultiTermResponse multi)
+            {
+                if (multi.Success && multi.Terms != null)
+                {
+                    foreach (var block in multi.Terms)
+                        recorded += TryRecord(ledger, block);
+                }
+            }
+            else if (result is SearchResultsResponse byFile && byFile.Success && byFile.Results != null)
             {
                 foreach (var file in byFile.Results)
                 {

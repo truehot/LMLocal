@@ -190,11 +190,16 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ChatHistoryScorerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileToolsReadReplaceRoundTripTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesNamesTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoNamesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\PageResponseBuilderTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLinesFilesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLinesTotalLinesTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchFileContentTextsTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ToolParameterOrderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiffTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeNamesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\InspectTypeTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\KnowledgeScorerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadReplaceRoundTripFixtureTests.cs" />

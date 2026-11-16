@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 
 namespace LMLocal.Application.SubAgents.ReadRefs
@@ -10,12 +11,21 @@ namespace LMLocal.Application.SubAgents.ReadRefs
         public const string ReadFileLinesToolName = "read_file_lines";
 
         /// <summary>
-        /// Adds a <see cref="ReadRecord"/> for a successful read_file_lines result.
+        /// Adds a <see cref="ReadRecord"/> for a successful read_file_lines result; a result with several ranges
+        /// ('files') adds one record per successful block.
         /// </summary>
         public static bool TryRecord(ReadLedger ledger, object result)
         {
             if (ledger == null)
                 return false;
+
+            if (result is ReadFileLines.ReadFilesResponse multi)
+            {
+                bool any = false;
+                foreach (var block in multi.Files ?? new List<ReadFileLines.FileLinesResponse>())
+                    any |= TryRecord(ledger, block);
+                return any;
+            }
 
             if (!TryExtract(result, out string relativePath, out string absolutePath, out int startLine, out int endLine))
                 return false;

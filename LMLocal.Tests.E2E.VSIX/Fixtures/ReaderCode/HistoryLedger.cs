@@ -8,7 +8,7 @@ namespace BenchFixtures.ReaderCode
 {
     /// <summary>
     /// Benchmark fixture (frozen, not compiled): keeps chat entries and merges the last
-    /// user/assistant exchange into one entry. Scenario A2.3 depends on its content.
+    /// user/assistant exchange into one entry. Scenario A1.15 (was A2.3) depends on its content.
     /// </summary>
     internal sealed class HistoryLedger
     {

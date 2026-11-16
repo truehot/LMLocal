@@ -340,8 +340,14 @@ namespace LMLocal.Infrastructure.SubAgents
             return new List<string>();
         }
 
+        private static string NullIfEmpty(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
         /// <summary>
         /// Applies the "Use Active Model" top-level defaults to the raw config.
+        /// For customBaseUrl/customApiKey: null = not provided (keep), empty string = clear.
         /// </summary>
         private static void ApplyActiveModelDefaults(SubAgentsConfig config, SubAgentDefaults defaults)
         {
@@ -350,10 +356,10 @@ namespace LMLocal.Infrastructure.SubAgents
 
             if (!string.IsNullOrWhiteSpace(defaults.ProviderType))
                 config.ProviderType = defaults.ProviderType;
-            if (!string.IsNullOrWhiteSpace(defaults.CustomBaseUrl))
-                config.CustomBaseUrl = defaults.CustomBaseUrl;
-            if (!string.IsNullOrWhiteSpace(defaults.CustomApiKey))
-                config.CustomApiKey = defaults.CustomApiKey;
+            if (defaults.CustomBaseUrl != null)
+                config.CustomBaseUrl = NullIfEmpty(defaults.CustomBaseUrl);
+            if (defaults.CustomApiKey != null)
+                config.CustomApiKey = NullIfEmpty(defaults.CustomApiKey);
             if (!string.IsNullOrWhiteSpace(defaults.Model))
                 config.Model = defaults.Model;
 
@@ -367,10 +373,10 @@ namespace LMLocal.Infrastructure.SubAgents
 
                 if (!string.IsNullOrWhiteSpace(agent.ProviderType) && !string.IsNullOrWhiteSpace(defaults.ProviderType))
                     agent.ProviderType = defaults.ProviderType;
-                if (!string.IsNullOrWhiteSpace(agent.CustomBaseUrl) && !string.IsNullOrWhiteSpace(defaults.CustomBaseUrl))
-                    agent.CustomBaseUrl = defaults.CustomBaseUrl;
-                if (!string.IsNullOrWhiteSpace(agent.CustomApiKey) && !string.IsNullOrWhiteSpace(defaults.CustomApiKey))
-                    agent.CustomApiKey = defaults.CustomApiKey;
+                if (!string.IsNullOrWhiteSpace(agent.CustomBaseUrl) && defaults.CustomBaseUrl != null)
+                    agent.CustomBaseUrl = NullIfEmpty(defaults.CustomBaseUrl);
+                if (!string.IsNullOrWhiteSpace(agent.CustomApiKey) && defaults.CustomApiKey != null)
+                    agent.CustomApiKey = NullIfEmpty(defaults.CustomApiKey);
                 if (!string.IsNullOrWhiteSpace(agent.Model) && !string.IsNullOrWhiteSpace(defaults.Model))
                     agent.Model = defaults.Model;
             }

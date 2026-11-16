@@ -758,7 +758,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             public Task<(string content, Encoding encoding, bool hasBom)> ReadAllTextWithDetectedEncodingAsync(string path, CancellationToken cancellationToken = default)
                 => Task.FromResult(("{}", Encoding.UTF8, false));
             public Task<List<string>> ReadLinesRangeAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default) => Task.FromResult(new List<string>());
-            public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default)
+            public async Task<(System.Collections.Generic.List<string> Lines, int? TotalLines)> ReadLinesRangeWithTotalAsync(string path, int startLine, int endLine, CancellationToken cancellationToken = default, int countTotalUpTo = 0)
                 => (await ReadLinesRangeAsync(path, startLine, endLine, cancellationToken).ConfigureAwait(false), null);
 
             public Task ReadLinesAsync(string path, Action<int, string> lineHandler, CancellationToken cancellationToken = default) => Task.CompletedTask;

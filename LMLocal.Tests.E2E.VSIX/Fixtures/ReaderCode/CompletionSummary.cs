@@ -4,7 +4,7 @@ namespace BenchFixtures.ReaderCode
 {
     /// <summary>
     /// Benchmark fixture (frozen, not compiled): the outcome of one streamed completion.
-    /// Scenario A2.3 depends on its content.
+    /// Scenario A1.15 (was A2.3) depends on its content.
     /// </summary>
     internal sealed class CompletionSummary
     {

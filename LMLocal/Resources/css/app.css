@@ -427,8 +427,8 @@ body {
 #status-text {
     line-height: 1;
     display: block;
-    flex: 0 1 auto;
-    min-width: 14ch;
+    flex: 0 0 12ch;
+    width: 12ch;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

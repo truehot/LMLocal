@@ -26,8 +26,8 @@ namespace LMLocal.Application.SubAgents
         private const int DefaultMaxRounds = 10;
         internal const int DefaultTimeoutSeconds = 120;
 
-        // Told to the main model when a run hits maxRounds or the timeout: the limit itself is not actionable, the next step is.
-        private const string LimitRetryHint = "Split the task into smaller pieces or narrow it and retry.";
+        // Sent in the final-answer round after the round limit: an empty list, so the request carries no tools at all.
+        private static readonly IReadOnlyList<ToolDefinition> NoTools = new ToolDefinition[0];
 
         /// <summary>
         /// Enables loop recovery: on an identical repeated tool call the run closes the turn and continues as a new user turn on the same history instead of failing.
@@ -148,6 +148,7 @@ namespace LMLocal.Application.SubAgents
                 List<ToolResultMessage> toolResultsForRound = null;
 
                 bool isToolRound = false;
+                bool finalAnswerRound = false;
                 string promptForRound = request.Prompt;
 
                 var recovery = new SubAgentRecoveryPolicy(_loopDetector, _loopRecoveryEnabled, maxRounds);
@@ -161,7 +162,8 @@ namespace LMLocal.Application.SubAgents
                         overallCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                     }
 
-                    for (int round = 0; round < maxRounds; round++)
+                    // After the round limit guard one extra round runs without tools, so the model can only answer.
+                    for (int round = 0; round < maxRounds || (finalAnswerRound && round == maxRounds); round++)
                     {
                         lastRound = round;
                         overallCts.Token.ThrowIfCancellationRequested();
@@ -178,7 +180,7 @@ namespace LMLocal.Application.SubAgents
                             ReasoningEffort = request.ReasoningEffort,
                             MaxOutputTokens = request.MaxTokens,
                             Provider = provider,
-                            Tools = tools,
+                            Tools = finalAnswerRound ? NoTools : tools,
                             OnChunk = null
                         };
 
@@ -228,6 +230,7 @@ namespace LMLocal.Application.SubAgents
 
                                     toolResultsForRound = null;
                                     isToolRound = false;
+                                    finalAnswerRound |= decision.DisableTools;
                                     promptForRound = decision.Nudge;
                                     continue;
                                 }
@@ -268,7 +271,7 @@ namespace LMLocal.Application.SubAgents
                     }
 
                     return FailRun(
-                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {LimitRetryHint}", lastRound);
+                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {SubAgentRecoveryPolicy.LimitRetryHint}", lastRound);
                 }
             }
             catch (OperationCanceledException)
@@ -358,7 +361,7 @@ namespace LMLocal.Application.SubAgents
             text = round.HasValue
                 ? text + $" (round {round.Value + 1}/{EffectiveMaxRounds(request)})."
                 : text + ".";
-            return text + " " + LimitRetryHint;
+            return text + " " + SubAgentRecoveryPolicy.LimitRetryHint;
         }
 
         private static int EffectiveTimeoutSeconds(SubAgentRunRequest request)

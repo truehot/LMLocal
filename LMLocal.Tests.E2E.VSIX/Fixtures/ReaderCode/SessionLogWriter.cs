@@ -8,7 +8,7 @@ namespace BenchFixtures.ReaderCode
 {
     /// <summary>
     /// Benchmark fixture (frozen, not compiled): writes a chat session to a plain-text log.
-    /// Scenarios A2.3 and A2.5 depend on its content; MaxTitleLength and TruncateTitle sit at the
+    /// Scenario A1.15 (was A2.3 and A2.5) depends on its content; MaxTitleLength and TruncateTitle sit at the
     /// end of the file on purpose, so a partial read misses them.
     /// </summary>
     internal sealed class SessionLogWriter

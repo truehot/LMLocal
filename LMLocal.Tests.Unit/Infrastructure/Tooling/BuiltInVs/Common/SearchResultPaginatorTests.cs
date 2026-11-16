@@ -108,7 +108,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [Test]
         public void SliceByMatches_PageSizeChangeBetweenCalls_LosesAndRepeatsNothing()
         {
-            // Benchmark A3.7: 79 references; the second call asked for 200 after a page of 50.
+            // Benchmark A1.29 (was A3.7): 79 references; the second call asked for 200 after a page of 50.
             var all = NumberedFiles(30, 30, 19);
             int total = all.Sum(r => r.MatchCount);
 

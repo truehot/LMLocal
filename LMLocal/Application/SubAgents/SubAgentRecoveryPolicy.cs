@@ -25,17 +25,21 @@ namespace LMLocal.Application.SubAgents
     /// </summary>
     internal sealed class RecoveryDecision
     {
-        public static readonly RecoveryDecision Proceed = new RecoveryDecision(RecoveryAction.Proceed, null, null, null);
+        public static readonly RecoveryDecision Proceed = new RecoveryDecision(RecoveryAction.Proceed, null, null, null, false);
 
-        private RecoveryDecision(RecoveryAction action, string nudge, string note, string error)
+        private RecoveryDecision(RecoveryAction action, string nudge, string note, string error, bool disableTools)
         {
             Action = action;
             Nudge = nudge;
             Note = note;
             Error = error;
+            DisableTools = disableTools;
         }
 
         public RecoveryAction Action { get; }
+
+        /// <summary>Recover: the next round is the run's last one, sent without tools, so the model can only answer.</summary>
+        public bool DisableTools { get; }
 
         /// <summary>Recover: the prompt of the next user turn.</summary>
         public string Nudge { get; }
@@ -46,17 +50,33 @@ namespace LMLocal.Application.SubAgents
         /// <summary>Fail: the error of the run.</summary>
         public string Error { get; }
 
-        public static RecoveryDecision Recover(string nudge, string note) => new RecoveryDecision(RecoveryAction.Recover, nudge, note, null);
+        public static RecoveryDecision Recover(string nudge, string note) => new RecoveryDecision(RecoveryAction.Recover, nudge, note, null, false);
 
-        public static RecoveryDecision Fail(string error) => new RecoveryDecision(RecoveryAction.Fail, null, null, error);
+        /// <summary>Recover with one extra round without tools, in which the model answers from what it has gathered.</summary>
+        public static RecoveryDecision FinalAnswer(string nudge, string note) => new RecoveryDecision(RecoveryAction.Recover, nudge, note, null, true);
+
+        public static RecoveryDecision Fail(string error) => new RecoveryDecision(RecoveryAction.Fail, null, null, error, false);
     }
 
     /// <summary>
-    /// Decides whether a SubAgent run recovers from a malformed (aborted) tool call, a repeated tool call loop, or a
-    /// final answer with ref markers the runner could not expand.
+    /// Decides whether a SubAgent run recovers from a malformed (aborted) tool call, a repeated tool call loop, the
+    /// round limit, or a final answer with ref markers the runner could not expand.
     /// </summary>
     internal sealed class SubAgentRecoveryPolicy
     {
+        /// <summary>
+        /// Told to the main model when a run hits the round limit or the timeout: the limit itself is not actionable, the next step is.
+        /// </summary>
+        internal const string LimitRetryHint = "Split the task into smaller pieces or narrow it and retry.";
+
+        /// <summary>
+        /// User-turn instruction injected when the model still wants tools in the last round; the next round has no tools.
+        /// </summary>
+        internal const string RoundLimitNudge = @"[AUTOMATED GUARD: ROUND LIMIT REACHED]
+No tool calls are left in this run.
+Answer the task now using only the tool results above.
+For every part of the task those results do not answer, say that it was not checked; do not report it as NOT FOUND.";
+
         /// <summary>
         /// User-turn instruction injected after a repeated tool call.
         /// </summary>
@@ -70,9 +90,7 @@ Answer directly.";
         /// </summary>
         internal const string MalformedToolCallNudge = @"[AUTOMATED GUARD: MALFORMED TOOL CALL ABORTED]
 The previous tool call was malformed and aborted.
-
 Retry it once using the correct tool name and argument format. Keep arguments simple; avoid unnecessary quotes, backticks, and escaping.
-
 Output only the corrected tool call. If unable, stop.";
 
         /// <summary>
@@ -108,6 +126,7 @@ Then give the complete final answer again.";
         private int _loopRecoveryAttempts;
         private int _malformedRecoveryAttempts;
         private int _unresolvedRefsAttempts;
+        private bool _finalAnswerRequested;
 
         public SubAgentRecoveryPolicy(IToolCallLoopDetector loopDetector, bool loopRecoveryEnabled, int maxRounds)
         {
@@ -123,6 +142,17 @@ Then give the complete final answer again.";
         {
             if (round == null)
                 throw new ArgumentNullException(nameof(round));
+
+            if (roundIndex + 1 >= _maxRounds)
+            {
+                if (_finalAnswerRequested)
+                    return RecoveryDecision.Fail($"SubAgent exceeded maximum rounds ({_maxRounds}). {LimitRetryHint}");
+
+                _finalAnswerRequested = true;
+                return RecoveryDecision.FinalAnswer(
+                    RoundLimitNudge,
+                    $"SubAgent reached the round limit ({_maxRounds}) and answered from the results gathered so far.");
+            }
 
             if (round.StopReason == StreamStopReason.ToolCallAborted)
             {

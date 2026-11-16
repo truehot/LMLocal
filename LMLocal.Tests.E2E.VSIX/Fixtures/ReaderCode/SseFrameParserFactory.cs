@@ -3,7 +3,7 @@ using System;
 namespace BenchFixtures.ReaderCode
 {
     /// <summary>
-    /// Benchmark fixture (frozen, not compiled): the distractor for scenario A2.2, which must read
+    /// Benchmark fixture (frozen, not compiled): the distractor for scenario A1.14 (was A2.2), which must read
     /// SseFrameParser.cs and not this file.
     /// </summary>
     internal static class SseFrameParserFactory

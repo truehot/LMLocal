@@ -63,6 +63,31 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(response.TotalFiles, Is.EqualTo(2));
             Assert.That(response.NextPageToken, Is.EqualTo("2"));
             Assert.That(response.Note, Is.EqualTo("note"));
+            Assert.That(response.Page, Is.EqualTo(1));
+            Assert.That(response.TotalPages, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void BuildFilePageResponse_SinglePage_HasNoPageNumbers()
+        {
+            var all = new List<SearchResult> { File("a.cs", 1, 2), File("b.cs", 3) };
+
+            var response = SearchFileContent.BuildFilePageResponse(all, 0, 25, null);
+
+            Assert.That(response.Page, Is.Null);
+            Assert.That(response.TotalPages, Is.Null);
+            Assert.That(Newtonsoft.Json.JsonConvert.SerializeObject(response), Does.Not.Contain("\"page\"").And.Not.Contain("total_pages"));
+        }
+
+        [Test]
+        public void BuildFilePageResponse_PageNumbersAreSerializedRightBeforeNextPageToken()
+        {
+            var all = new List<SearchResult> { File("a.cs", 1, 2), File("b.cs", 3, 4, 5) };
+
+            string json = Newtonsoft.Json.JsonConvert.SerializeObject(SearchFileContent.BuildFilePageResponse(all, 0, 2, null));
+
+            Assert.That(json, Does.Contain("\"page\":1,\"total_pages\":3,\"next_page_token\":\"2\""));
+            Assert.That(json.IndexOf("\"results\"", System.StringComparison.Ordinal), Is.LessThan(json.IndexOf("\"page\"", System.StringComparison.Ordinal)));
         }
 
         [Test]
@@ -180,6 +205,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(response.Results.Select(g => g.Text), Is.EqualTo(new[] { "c" }));
             Assert.That(response.NextPageToken, Is.Null);
             Assert.That(response.TotalMatches, Is.EqualTo(6));
+            // Pages are counted in groups, like next_page_token.
+            Assert.That(response.Page, Is.EqualTo(2));
+            Assert.That(response.TotalPages, Is.EqualTo(2));
         }
 
         [Test]

@@ -25,7 +25,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes
         /// </summary>
         public static bool TryGet(ISymbol symbol, out SymbolSourceLocation location)
         {
-            location = default(SymbolSourceLocation);
+            location = default;
             var source = symbol?.Locations.FirstOrDefault(l => l.IsInSource);
             string filePath = source?.SourceTree?.FilePath;
             if (string.IsNullOrEmpty(filePath))
