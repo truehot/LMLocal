@@ -72,7 +72,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var expectedResult = "built_in_result";
             _builtInFactoryMock.Setup(f => f.ToolExists("search_in_files")).Returns(true);
             _builtInFactoryMock.Setup(f => f.ExecuteAsync("search_in_files",
-                It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>()))
+                It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<LMLocal.Application.Tool.ToolExecutionBudget>()))
                 .ReturnsAsync(expectedResult);
 
             var result = await _router.ExecuteAsync("search_in_files", new Dictionary<string, object>(), CancellationToken.None);

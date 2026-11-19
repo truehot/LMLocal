@@ -42,7 +42,7 @@ namespace LMLocal.Infrastructure.Persistence
             {
                 int imageCount = parts.Count(p => p.Type == "image_url");
                 if (imageCount > 0)
-                    content = FormatImagePlaceholder(imageCount);
+                    content = ChatMessagePlaceholders.FormatImagePlaceholder(imageCount);
             }
 
             var entry = new Dictionary<string, object>
@@ -124,11 +124,5 @@ namespace LMLocal.Infrastructure.Persistence
                 : content;
         }
 
-        private static string FormatImagePlaceholder(int count)
-        {
-            return count == 1
-                ? "[1 image attached - not available in this session]"
-                : $"[{count} images attached - not available in this session]";
-        }
     }
 }

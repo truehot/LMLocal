@@ -325,6 +325,7 @@ export class SettingsDialog {
                     }
 
                     const elems = body.querySelectorAll('[data-setting]');
+
                     const newSettings = {};
                     elems.forEach(el => {
                         const key = el.getAttribute('data-setting');

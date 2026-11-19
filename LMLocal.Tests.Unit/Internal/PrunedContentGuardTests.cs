@@ -81,5 +81,43 @@ namespace LMLocal.Tests.Unit
 
             Assert.That(PrunedContentGuard.Validate(parameters), Is.Null);
         }
+
+        [Test]
+        public void Validate_MarkerInsideEditsItem_IsRejected()
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                { "file_path", "src/A.cs" },
+                { "edits", Newtonsoft.Json.Linq.JArray.Parse(
+                    "[{\"start_line\":3,\"old_lines\":\"a\",\"new_lines\":\"b\"}," +
+                    "{\"start_line\":9,\"old_lines\":\"c\",\"new_lines\":\"" + ToolHistoryPruner.Marker + ": 12 lines⟧\"}]") }
+            };
+
+            Assert.That(PrunedContentGuard.Validate(parameters), Is.Not.Null);
+        }
+
+        [Test]
+        public void Validate_PrunedKeyInsideEditsItem_IsRejected()
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                { "file_path", "src/A.cs" },
+                { "edits", new List<object> { new Dictionary<string, object> { { "start_line", 3 }, { ToolHistoryPruner.PrunedKey, true } } } }
+            };
+
+            Assert.That(PrunedContentGuard.Validate(parameters), Is.Not.Null);
+        }
+
+        [Test]
+        public void Validate_NormalEdits_AreAccepted()
+        {
+            var parameters = new Dictionary<string, object>
+            {
+                { "file_path", "src/A.cs" },
+                { "edits", Newtonsoft.Json.Linq.JArray.Parse("[{\"start_line\":3,\"old_lines\":\"a\",\"new_lines\":\"b\"}]") }
+            };
+
+            Assert.That(PrunedContentGuard.Validate(parameters), Is.Null);
+        }
     }
 }

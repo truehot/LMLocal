@@ -33,6 +33,18 @@ namespace LMLocal.Models
         /// Optional list of base64 image data URLs (data:image/...) attached to the user message as multimodal content.
         /// </summary>
         public List<string> Images { get; set; }
+
+        /// <summary>
+        /// Null for a normal prompt. "answer" regenerates the last exchange (its user message is kept),
+        /// "exchange" replaces it, so the prompt of this request is asked instead.
+        /// </summary>
+        public string ReplaceLast { get; set; }
+
+        /// <summary>
+        /// Prompt of the last user message the UI is showing. Sent with <see cref="ReplaceLast"/> so the backend can
+        /// refuse the replacement when the history ends with another prompt.
+        /// </summary>
+        public string ReplaceLastPrompt { get; set; }
     }
 }
 

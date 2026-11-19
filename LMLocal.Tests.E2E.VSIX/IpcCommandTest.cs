@@ -132,11 +132,12 @@ namespace LMLocal.Tests.E2E.VSIX
                         var content = obj["content"] as JArray;
                         Assert.IsNotNull(content, "'content' should be an array of lines");
                         Assert.IsGreaterThan(0, content.Count, "Expected at least one line of content");
-                        // Each returned line is an object with explicit line_number and text fields.
-                        var firstEntry = content[0] as JObject;
-                        Assert.IsNotNull(firstEntry, "First returned line should be an object with line_number/text");
-                        Assert.AreEqual(1, firstEntry["line_number"].Value<int>(), "First returned line should have line_number 1");
-                        var firstText = firstEntry["text"]?.Value<string>();
+                        // Each returned line is a ["line_number","text"] pair of strings.
+                        var firstEntry = content[0] as JArray;
+                        Assert.IsNotNull(firstEntry, "First returned line should be a [line_number, text] pair");
+                        Assert.AreEqual(2, firstEntry.Count, "A line pair should have two elements");
+                        Assert.AreEqual("1", firstEntry[0].Value<string>(), "First returned line should have line number \"1\"");
+                        var firstText = firstEntry[1]?.Value<string>();
                         Assert.IsFalse(string.IsNullOrEmpty(firstText), "First returned line should have non-empty text");
                         Assert.IsFalse(firstText.StartsWith("1: ", StringComparison.Ordinal), "line text should not contain the line-number prefix");
                     }

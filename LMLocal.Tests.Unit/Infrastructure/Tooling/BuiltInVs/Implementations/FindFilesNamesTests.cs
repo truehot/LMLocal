@@ -58,11 +58,30 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public void Parse_NoFileNameAndNoFileNames_IsError()
+        public void Parse_NoFileNameAndNoFilters_IsError()
         {
-            var request = FindFiles.ExtractAndValidateParameters(new Dictionary<string, object> { ["extension_filter"] = ".cs" });
+            var request = FindFiles.ExtractAndValidateParameters(new Dictionary<string, object> { ["max_results"] = 10 });
 
-            Assert.That(request.Error, Does.Contain("'file_name'").And.Contain("'file_names'"));
+            Assert.That(request.Error, Does.Contain("'file_name'").And.Contain("'file_names'").And.Contain("'.'"));
+        }
+
+        [TestCase("extension_filter", ".cs")]
+        [TestCase("project_filter", "LMLocal.Tests.Unit")]
+        public void Parse_OnlyFilter_ListsAllFiles(string filter, string value)
+        {
+            var request = FindFiles.ExtractAndValidateParameters(new Dictionary<string, object> { [filter] = value });
+
+            Assert.That(request.Error, Is.Null);
+            Assert.That(request.IsMulti, Is.False);
+            Assert.That(request.Names, Is.EqualTo(new[] { FindFiles.ListAllFilesName }));
+        }
+
+        [Test]
+        public void Parse_BlankFilterOnly_IsError()
+        {
+            var request = FindFiles.ExtractAndValidateParameters(new Dictionary<string, object> { ["project_filter"] = " " });
+
+            Assert.That(request.Error, Does.Contain("'file_name'"));
         }
 
         [Test]

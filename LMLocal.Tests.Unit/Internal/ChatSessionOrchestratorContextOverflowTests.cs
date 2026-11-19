@@ -103,9 +103,10 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         _retryFlags.Add(gctx.IsContextOverflowRetry);
                         _toolRoundFlags.Add(toolResults != null && toolResults.Count > 0);

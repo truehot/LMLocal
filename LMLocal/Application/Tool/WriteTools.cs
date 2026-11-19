@@ -21,6 +21,25 @@ namespace LMLocal.Application.Tool
             };
 
         /// <summary>
+        /// Array arguments whose items hold file content, per write tool: array name -> content fields of each item.
+        /// </summary>
+        private static readonly Dictionary<string, Dictionary<string, string[]>> NestedContentArguments =
+            new Dictionary<string, Dictionary<string, string[]>>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "replace_file_lines", new Dictionary<string, string[]> { { "edits", new[] { "old_lines", "new_lines" } } } }
+            };
+
+        private static readonly IReadOnlyDictionary<string, string[]> NoNestedArguments = new Dictionary<string, string[]>();
+
+        /// <summary>
+        /// The array arguments of a write tool whose items carry content (array name -> content fields); empty for any other tool.
+        /// </summary>
+        public static IReadOnlyDictionary<string, string[]> GetNestedContentArguments(string toolName)
+        {
+            return !string.IsNullOrEmpty(toolName) && NestedContentArguments.TryGetValue(toolName, out var arrays) ? arrays : NoNestedArguments;
+        }
+
+        /// <summary>
         /// True when the tool writes content into a file and therefore carries its payload in the arguments.
         /// </summary>
         public static bool IsWriteTool(string toolName)

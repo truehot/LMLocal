@@ -1,6 +1,6 @@
 ﻿import bridgeClient from '@app/api/bridge.client.js';
 
-import { UIText, Config } from '@app/constants/app.globals.js';
+import { UIText, Config, Icons } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
@@ -31,10 +31,13 @@ class InputComponent {
         this.onTabChanged = createCallback();
         this.onAiToolsChanged = createCallback();
         this.onSubAgentsToggled = createCallback();
+        this.onEditModeChanged = createCallback();
 
         this._resizeState = { active: false, startY: 0, startHeight: 0 };
         this._resizerBound = { down: null, move: null, up: null };
         this._images = [];      // { id, name, mimeType, dataUrl } for attached images
+        this._editMode = false; // true while the input holds the last prompt and Send replaces it
+        this._draftBeforeEdit = null; // what was in the field before; given back when the edit ends
         this._inputSession = this._createInputSession();
     }
 
@@ -248,6 +251,12 @@ class InputComponent {
     };
 
     _handleKeydown = async (e) => {
+        if (e.key === 'Escape' && this._editMode) {
+            e.preventDefault();
+            this.exitEditMode();
+            return;
+        }
+
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             if (this._hasPendingImages()) {
@@ -630,6 +639,152 @@ class InputComponent {
         this._inputSession = this._createInputSession();
         this._images = [];
         this._renderAttachments();
+        this._leaveEditMode();
+        this._restoreDraft();
+    }
+
+    /**
+     * Puts the last prompt back into the input and marks it as being edited: Send replaces the exchange.
+     */
+    startEditLastPrompt(text) {
+        const el = this.elements.userInput;
+        const value = typeof text === 'string' ? text : '';
+
+        if (!el || !value) return false;
+
+        if (this._editMode) return false;
+
+        this._saveDraft();
+
+        el.value = value;
+        this._handleInput();
+
+        this._editMode = true;
+        this._renderEditBanner(true);
+        this.onEditModeChanged.emit(true);
+        this._focusUserInput();
+        return true;
+    }
+
+    isEditModeActive() {
+        return this._editMode;
+    }
+
+    /**
+     * Cancels the edit: the prompt leaves the field, the draft comes back. The chat is left untouched.
+     * Send leaves the edit through clearInput as well, after the prompt was accepted.
+     */
+    exitEditMode() {
+        if (!this._editMode) return;
+        this.clearInput();
+    }
+
+    /**
+     * Gives text back to the field without losing what is there: an empty field takes it as is, otherwise it goes
+     * below the current text. Used for an edited prompt whose replacement the backend refused.
+     */
+    appendText(text) {
+        const el = this.elements.userInput;
+        const value = typeof text === 'string' ? text : '';
+        if (!el || !value) return;
+
+        el.value = el.value ? `${el.value}\n\n${value}` : value;
+        this._handleInput();
+        this._focusUserInput();
+    }
+
+    _leaveEditMode() {
+        const wasEditing = this._editMode;
+        this._editMode = false;
+        this._renderEditBanner(false);
+
+        if (wasEditing) this.onEditModeChanged.emit(false);
+    }
+
+    /**
+     * Puts the content of the field aside before the last prompt replaces it, so the draft is not lost.
+     */
+    _saveDraft() {
+        const el = this.elements.userInput;
+        const text = el ? el.value : '';
+        const images = this._images.slice();
+
+        this._draftBeforeEdit = (text || images.length > 0) ? { text, images } : null;
+
+        this._images = [];
+        this._renderAttachments();
+    }
+
+    _restoreDraft() {
+        const draft = this._draftBeforeEdit;
+        if (!draft) return;
+
+        this._draftBeforeEdit = null;
+
+        const el = this.elements.userInput;
+        if (!el) return;
+
+        el.value = draft.text || '';
+        this._images = Array.isArray(draft.images) ? draft.images : [];
+        this._renderAttachments();
+        this._handleInput();
+    }
+
+    /**
+     * Shows or hides the edit banner.
+     */
+    _renderEditBanner(visible) {
+        const wrapper = this.elements.inputWrapper;
+        if (!wrapper) return;
+
+        const banner = visible ? this._ensureEditBanner() : wrapper.querySelector('.edit-prompt-banner');
+
+        if (banner) {
+            banner.classList.toggle('hidden', !visible);
+
+            const hint = banner.querySelector('.edit-prompt-hint');
+            if (hint) hint.classList.toggle('hidden', !this._draftBeforeEdit);
+        }
+
+        wrapper.classList.toggle('editing-prompt', !!visible);
+    }
+
+    _ensureEditBanner() {
+        const wrapper = this.elements.inputWrapper;
+        if (!wrapper) return null;
+
+        let banner = wrapper.querySelector('.edit-prompt-banner');
+        if (banner) return banner;
+
+        banner = document.createElement('div');
+        banner.className = 'edit-prompt-banner hidden';
+
+        const text = document.createElement('span');
+        text.className = 'edit-prompt-text';
+        text.textContent = UIText.EDIT_BANNER_TEXT;
+
+        const hint = document.createElement('span');
+        hint.className = 'edit-prompt-hint hidden';
+        hint.textContent = UIText.EDIT_BANNER_DRAFT_HINT;
+
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className = 'edit-prompt-cancel';
+        cancel.title = UIText.EDIT_CANCEL_TOOLTIP;
+        cancel.setAttribute('aria-label', UIText.EDIT_CANCEL_TOOLTIP);
+        cancel.innerHTML = Icons.REMOVE;
+        cancel.addEventListener('click', (e) => {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+            this.exitEditMode();
+        });
+
+        banner.appendChild(text);
+        banner.appendChild(hint);
+        banner.appendChild(cancel);
+
+        wrapper.insertBefore(banner, wrapper.firstChild);
+        return banner;
     }
 
     _initResizer() {
@@ -724,9 +879,14 @@ class InputComponent {
         if (this.elements.userInput && this.elements.mainBtn) {
             this._updateControls(state, prev);
         }
+
+        if (state.status === AppStatus.CLEARING) {
+            this.exitEditMode();
+        }
     }
 
     reset() {
+        this._draftBeforeEdit = null;
         this._detachDragDrop();
         this._destroyResizer();
         this._detachEvents();

@@ -165,7 +165,7 @@
 
     <div class="scroll-spacer"></div>
 
-    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
+    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="rate-limit-status" aria-live="polite"></span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
 
     <div class="input-container">
         <div class="input-wrapper">
@@ -446,6 +446,29 @@
                             <span class="checkbox-description">
                                 Asks for confirmation before Visual Studio is closed while an AI request is still running,
                                 so it is not cancelled by accident.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="FlashTaskbarOnCompletion">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Flash taskbar when done</span>
+                            <span class="checkbox-description">
+                                Flashes the Visual Studio taskbar icon when an AI request finishes while Visual Studio is in the background.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="EnableRateLimitHandling">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Retry once on rate limit</span>
+                            <span class="checkbox-description">
+                                When the provider answers "too many requests", waits for the delay it suggests and sends the request one more time.
+                                Retries consume additional tokens.
                             </span>
                         </span>
                     </label>

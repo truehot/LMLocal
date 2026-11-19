@@ -66,6 +66,17 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public void ReplaceFileLines_PositionalOrderIsUnchanged()
+        {
+            var tool = new ReplaceFileLines(
+                Mock.Of<IVsDependencies>(), Mock.Of<IPathResolver>(), Mock.Of<ISnapshotManager>(),
+                Mock.Of<IFileSystem>(), Mock.Of<LMLocal.Infrastructure.Syntax.ISyntaxCheckerFactory>());
+
+            Assert.That(PositionalOrder(tool.GetToolInfo()),
+                Is.EqualTo(new[] { "file_path", "start_line", "old_lines", "new_lines", "edits" }));
+        }
+
+        [Test]
         public void SearchFileContent_PositionalOrderIsUnchanged()
         {
             var tool = new SearchFileContent(

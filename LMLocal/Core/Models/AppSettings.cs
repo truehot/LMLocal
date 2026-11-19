@@ -28,11 +28,6 @@ namespace LMLocal.Core.Models
         public bool AutoLoadOnStartup { get; set; } = true;
 
         /// <summary>
-        /// When true, message history is cleaned of markdown and trimmed to reduce token usage.
-        /// </summary>
-        public bool EnableHistoryCompression { get; set; } = false;
-
-        /// <summary>
         /// When true, older conversation history is summarized into a concise summary as context limits are approached,
         /// and a request rejected by the provider for exceeding the context window is compacted and retried automatically.
         /// </summary>
@@ -98,6 +93,12 @@ namespace LMLocal.Core.Models
         public bool PreventCloseWhileGenerating { get; set; } = true;
 
         /// <summary>
+        /// When true, the Visual Studio taskbar button flashes when an AI request finishes while Visual Studio is in the
+        /// background, so a result that arrives meanwhile is not missed.
+        /// </summary>
+        public bool FlashTaskbarOnCompletion { get; set; } = true;
+
+        /// <summary>
         /// When true, sequential model tool executions are grouped into a single compact UI block to reduce chat clutter.
         /// </summary>
         public bool CollapseToolCalls { get; set; } = false;
@@ -106,6 +107,11 @@ namespace LMLocal.Core.Models
         /// When true, the number of tokens (total, prompt, completion) is displayed for each message to monitor usage and costs.
         /// </summary>
         public bool ShowTokenStats { get; set; } = false;
+
+        /// <summary>
+        /// When true, a request that fails with a transient rate limit is retried once per round after the delay the server suggests.
+        /// </summary>
+        public bool EnableRateLimitHandling { get; set; } = false;
 
         /// <summary>
         /// AI provider backend: "lmstudio" (local), "ollama" (local), "openai" (custom compatible), etc..
@@ -124,7 +130,6 @@ namespace LMLocal.Core.Models
             if (other == null) return false;
             return string.Equals(LmStudioBaseUrl, other.LmStudioBaseUrl, StringComparison.OrdinalIgnoreCase)
                 && AutoLoadOnStartup == other.AutoLoadOnStartup
-                && EnableHistoryCompression == other.EnableHistoryCompression
                 && EnableHistoryCompaction == other.EnableHistoryCompaction
                 && Theme == other.Theme
                 && StreamInactivityTimeoutSeconds == other.StreamInactivityTimeoutSeconds
@@ -136,8 +141,10 @@ namespace LMLocal.Core.Models
                 && EnableCodeCollapse == other.EnableCodeCollapse
                 && OpenToolFilesInEditor == other.OpenToolFilesInEditor
                 && PreventCloseWhileGenerating == other.PreventCloseWhileGenerating
+                && FlashTaskbarOnCompletion == other.FlashTaskbarOnCompletion
                 && CollapseToolCalls == other.CollapseToolCalls
                 && ShowTokenStats == other.ShowTokenStats
+                && EnableRateLimitHandling == other.EnableRateLimitHandling
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
                 && string.Equals(Provider, other.Provider, StringComparison.OrdinalIgnoreCase)
                 && ProviderId == other.ProviderId
@@ -154,7 +161,6 @@ namespace LMLocal.Core.Models
                 int hash = 17;
                 hash = hash * 23 + (LmStudioBaseUrl != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(LmStudioBaseUrl) : 0);
                 hash = hash * 23 + AutoLoadOnStartup.GetHashCode();
-                hash = hash * 23 + EnableHistoryCompression.GetHashCode();
                 hash = hash * 23 + EnableHistoryCompaction.GetHashCode();
                 hash = hash * 23 + Theme.GetHashCode();
                 hash = hash * 23 + StreamInactivityTimeoutSeconds.GetHashCode();
@@ -166,8 +172,10 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + EnableCodeCollapse.GetHashCode();
                 hash = hash * 23 + OpenToolFilesInEditor.GetHashCode();
                 hash = hash * 23 + PreventCloseWhileGenerating.GetHashCode();
+                hash = hash * 23 + FlashTaskbarOnCompletion.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
                 hash = hash * 23 + ShowTokenStats.GetHashCode();
+                hash = hash * 23 + EnableRateLimitHandling.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);
                 hash = hash * 23 + (Provider != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(Provider) : 0);
                 hash = hash * 23 + ProviderId.GetHashCode();

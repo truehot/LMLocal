@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.ChatSession;
@@ -38,7 +38,7 @@ namespace LMLocal.Tests.Unit.Internal
             var config = new Mock<ISubAgentsConfigManager>();
             config.Setup(c => c.RefreshAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object);
+            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object);
 
             var first = manager.TryStartSessionAsync(new GenerateStreamContext { Prompt = "one", ModelId = "m" }, _ => Task.CompletedTask, CancellationToken.None);
 
@@ -77,7 +77,7 @@ namespace LMLocal.Tests.Unit.Internal
             var config = new Mock<ISubAgentsConfigManager>();
             config.Setup(c => c.RefreshAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object);
+            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object);
 
             var first = manager.TryStartSessionAsync(new GenerateStreamContext { Prompt = "first", ModelId = "m" }, _ => Task.CompletedTask, CancellationToken.None);
             await Task.Delay(50);

@@ -110,7 +110,7 @@ namespace LMLocal.Application.Chat
                 var summaryMessages = new List<ChatMessage>();
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
-                    summaryMessages.Add(new ChatMessage("user", "Provide a brief summary of our previous session to continue."));
+                    summaryMessages.Add(new ChatMessage("user", ChatMessagePlaceholders.SummaryRequest));
                     summaryMessages.Add(new ChatMessage("assistant", summary));
                 }
 

@@ -40,7 +40,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         private void Returns(string toolName, object result, string error = null)
         {
             _manager
-                .Setup(m => m.ExecuteToolAsync(It.Is<ToolCallRecord>(c => string.Equals(c.FunctionName, toolName, StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()))
+                .Setup(m => m.ExecuteToolAsync(It.Is<ToolCallRecord>(c => string.Equals(c.FunctionName, toolName, StringComparison.OrdinalIgnoreCase)), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolName = toolName, Result = result, Error = error });
         }
 
@@ -68,7 +68,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(executor.UsedTools, Is.Empty);
             Assert.That(executor.Steps, Is.EqualTo(0));
             Assert.That(_events, Is.Empty);
-            _manager.Verify(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()), Times.Never);
+            _manager.Verify(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()), Times.Never);
         }
 
         [Test]
@@ -138,7 +138,42 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     () => executor.ExecuteAsync(new[] { Call("find_files", "c1") }, cts.Token));
             }
 
-            _manager.Verify(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>()), Times.Never);
+            _manager.Verify(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Budget_IsAskedBeforeEachCall()
+        {
+            var budgets = new List<TimeSpan?>();
+            _manager
+                .Setup(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Callback<ToolCallRecord, CancellationToken, ToolQueue, ToolExecutionBudget>((c, ct, q, b) => budgets.Add(b?.Available))
+                .ReturnsAsync(new ToolExecutionResult { Result = "ok" });
+            var executor = CreateExecutor(Queue("build_solution", "run_tests"));
+
+            // The first call "spends" 100 s: the second one must see what is left, not the round's starting budget.
+            var left = new TimeSpan?[] { TimeSpan.FromSeconds(200), TimeSpan.FromSeconds(100) };
+            int asked = 0;
+            await executor.ExecuteAsync(
+                new[] { Call("build_solution", "c1"), Call("run_tests", "c2") },
+                CancellationToken.None,
+                () => left[asked++]);
+
+            Assert.That(budgets, Is.EqualTo(new TimeSpan?[] { TimeSpan.FromSeconds(200), TimeSpan.FromSeconds(100) }));
+        }
+
+        [Test]
+        public async Task NoBudgetProvider_PassesNullBudget()
+        {
+            var budgets = new List<ToolExecutionBudget>();
+            _manager
+                .Setup(m => m.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Callback<ToolCallRecord, CancellationToken, ToolQueue, ToolExecutionBudget>((c, ct, q, b) => budgets.Add(b))
+                .ReturnsAsync(new ToolExecutionResult { Result = "ok" });
+
+            await CreateExecutor(Queue("find_files")).ExecuteAsync(new[] { Call("find_files", "c1") }, CancellationToken.None);
+
+            Assert.That(budgets, Is.EqualTo(new ToolExecutionBudget[] { null }));
         }
 
         [Test]

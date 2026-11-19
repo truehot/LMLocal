@@ -102,7 +102,7 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// User message that carries the forced summary in the compacted history.
         /// </summary>
-        private const string ForcedSummaryUserPlaceholder = "Summary of the earlier part of this session:";
+        private const string ForcedSummaryUserPlaceholder = ChatMessagePlaceholders.ForcedSummaryUser;
 
         /// <summary>
         /// Reasoning effort sent with a summary call; LM Studio maps it to reasoning "off".

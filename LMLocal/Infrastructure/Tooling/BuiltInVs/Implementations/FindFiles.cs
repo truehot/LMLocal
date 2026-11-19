@@ -30,6 +30,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         internal const string FileNameParameter = "file_name";
         internal const string FileNamesParameter = "file_names";
 
+        /// <summary>file_name that matches every file; used when only extension_filter/project_filter is passed.</summary>
+        internal const string ListAllFilesName = ".";
+
         public string ToolName => "find_files";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
@@ -54,7 +57,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'. Required unless 'file_names' is passed." } },
+                        { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'. Required unless 'file_names', 'extension_filter' or 'project_filter' is passed; with only filters, all files matching them are listed (same as '.')." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Exact file extension to narrow the search, as a plain dot-prefixed string with NO wildcard characters — e.g. '.cs', '.csproj', '.js'. Do NOT use glob patterns: pass '.cs', never '*.cs'. If omitted, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Substring filter applied case-insensitively to project/path components. It is not an exact full project-name match; for example, 'Tests' can match a project such as 'LMLocal.Tests.E2E' when that text occurs in a relevant path component." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } },
@@ -261,9 +264,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             List<string> names;
             if (!isMulti)
             {
+                if (LiteralListParameter.IsMissing(nameObj) && (HasText(parameters, "extension_filter") || HasText(parameters, "project_filter")))
+                    nameObj = ListAllFilesName;
+
                 // Single name: unchanged contract.
                 if (!(nameObj is string single))
-                    return new FindRequest { Error = $"Parameter '{FileNameParameter}' (or '{FileNamesParameter}') is required and must be a string." };
+                    return new FindRequest { Error = $"Parameter '{FileNameParameter}' (or '{FileNamesParameter}') is required and must be a string. To list all files, pass '{ListAllFilesName}'." };
                 names = new List<string> { single };
             }
             else
@@ -271,7 +277,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (nameObj != null && !(nameObj is string))
                     return new FindRequest { Error = $"Parameter '{FileNameParameter}' must be a string." };
 
-                // File-name matching is case-insensitive, so case variants are duplicates.
                 names = new List<string>();
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 LiteralListParameter.Add(nameObj as string, names, seen);
@@ -301,6 +306,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             return request;
         }
+
+        private static bool HasText(Dictionary<string, object> parameters, string name) =>
+            parameters.TryGetValue(name, out object value) && value is string text && !string.IsNullOrWhiteSpace(text);
 
         private static FileSearchResultsResponse ErrorResponse(string message)
         {

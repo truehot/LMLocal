@@ -1432,7 +1432,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var info = _tool.GetToolInfo();
             string oldLines = info.Parameters.Properties["old_lines"].Description;
 
-            Assert.That(info.Description, Does.Contain("ONE turn"));
+            // Since 2026-11-17 several edits go in 'edits' of one call (Docs\multi-replace-file-lines-plan.md).
+            Assert.That(info.Description, Does.Contain("ONE call").And.Contain("'edits'"));
             Assert.That(info.Description, Does.Contain("same read"));
             Assert.That(info.Description + oldLines, Does.Not.Contain("fresh read_file_lines"));
             Assert.That(oldLines, Does.Not.Contain("older read"));

@@ -65,6 +65,11 @@ namespace LMLocal.Application.Chat
         Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages);
 
         /// <summary>
+        /// Drops the last exchange - everything after the last user message - and replaces the history with the rest.
+        /// </summary>
+        Task<TruncateLastExchangeOutcome> TruncateLastExchangeAsync(bool keepUserMessage, string expectedPrompt = null);
+
+        /// <summary>
         /// Adds tool execution result messages to history and persists them.
         /// </summary>
         void AddToolExecutionResultMessages(IEnumerable<ChatMessage> messages);
@@ -113,6 +118,21 @@ namespace LMLocal.Application.Chat
         /// Clears history, starts a new session, and persists the provided messages in that new session.
         /// </summary>
         Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages);
+    }
+
+    /// <summary>
+    /// Outcome of dropping the last exchange from the history.
+    /// </summary>
+    internal enum TruncateLastExchangeOutcome
+    {
+        /// <summary>The history was replaced; the prompt can be answered again.</summary>
+        Replaced,
+
+        /// <summary>There is no user message, or it is a service message the model cannot be asked again.</summary>
+        NothingToReplace,
+
+        /// <summary>The last user message is not the prompt the UI was showing; nothing was changed.</summary>
+        OutOfSync
     }
 
     internal class ChatHistoryManager : IChatHistoryManager
@@ -300,6 +320,69 @@ namespace LMLocal.Application.Chat
             }
 
             return await _persistence.StartSessionWithMessagesAsync(replacement, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Drops the last exchange and replaces the history with the remainder, so the old answer stays in the previous
+        /// session in the log.
+        /// </summary>
+        public async Task<TruncateLastExchangeOutcome> TruncateLastExchangeAsync(bool keepUserMessage, string expectedPrompt = null)
+        {
+            List<ChatMessage> truncated;
+
+            lock (_lock)
+            {
+                int lastUserIndex = _history.FindLastIndex(m => m != null && m.Role == "user");
+                if (lastUserIndex < 0)
+                    return TruncateLastExchangeOutcome.NothingToReplace;
+
+                var lastUser = _history[lastUserIndex];
+                if (IsServiceUserMessage(lastUser))
+                    return TruncateLastExchangeOutcome.NothingToReplace;
+
+                if (!MatchesExpectedPrompt(lastUser, expectedPrompt))
+                    return TruncateLastExchangeOutcome.OutOfSync;
+
+                truncated = _history.GetRange(0, lastUserIndex + (keepUserMessage ? 1 : 0));
+            }
+
+            if (!await ReplaceHistoryWithNewSessionAsync(truncated).ConfigureAwait(false))
+                InternalLogger.Warn("ChatHistoryManager: the replaced history was not written to the chat log");
+
+            return TruncateLastExchangeOutcome.Replaced;
+        }
+
+        /// <summary>
+        /// True when the user message was written by the app (summary request, compaction placeholder or the image
+        /// placeholder of a loaded log), so it cannot be answered again on its own.
+        /// </summary>
+        private static bool IsServiceUserMessage(ChatMessage message)
+        {
+            var text = ContentTextExtractor.ExtractTextContent(message.Content)?.Trim();
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            return text == ChatMessagePlaceholders.SummaryRequest
+                || text == ChatMessagePlaceholders.ForcedSummaryUser
+                || ChatMessagePlaceholders.IsImagePlaceholder(text);
+        }
+
+        /// <summary>
+        /// True when the last user message really is the prompt the UI was showing.
+        /// </summary>
+        private static bool MatchesExpectedPrompt(ChatMessage message, string expectedPrompt)
+        {
+            if (expectedPrompt == null)
+                return true;
+
+            var expected = expectedPrompt.Trim();
+            var text = ContentTextExtractor.ExtractTextContent(message.Content)?.Trim() ?? string.Empty;
+
+            if (expected.Length == 0)
+                return text.Length == 0;
+
+            return string.Equals(text, expected, StringComparison.Ordinal)
+                || text.EndsWith("\n\n" + expected, StringComparison.Ordinal);
         }
 
         /// <summary>

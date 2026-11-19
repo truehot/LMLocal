@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Net.Http.Headers;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using Newtonsoft.Json;
@@ -88,17 +90,9 @@ namespace LMLocal.Infrastructure.LlmApi
                         {
                             info.RawMetadata = metadata.ToString();
                             info.Provider = metadata["provider_name"]?.ToString();
-
-                            var retry = metadata["retry_after_seconds"] ?? metadata["retry_after_seconds_raw"];
-                            if (retry != null && double.TryParse(retry.ToString(), out double secs))
-                                info.RetryAfterSeconds = secs;
                         }
 
-                        if (!info.RetryAfterSeconds.HasValue && errorObj["retry_after"] != null)
-                        {
-                            if (double.TryParse(errorObj["retry_after"].ToString(), out double secs))
-                                info.RetryAfterSeconds = secs;
-                        }
+                        ApplyBodyRetryAfter(errorObj, info);
                     }
                     else if (errorToken.Type == JTokenType.String)
                     {
@@ -160,6 +154,136 @@ namespace LMLocal.Infrastructure.LlmApi
                     RawBody = Preview(fallback)
                 };
             }
+        }
+
+        /// <summary>
+        /// Reads every supported body hint for the retry delay and keeps the largest valid value, so a malformed or
+        /// smaller duplicate field never masks the delay another field reports.
+        /// </summary>
+        private static void ApplyBodyRetryAfter(JObject errorObj, ApiErrorInfo info)
+        {
+            if (errorObj == null)
+                return;
+
+            var metadata = errorObj["metadata"];
+            double? best = null;
+
+            foreach (var candidate in new[]
+            {
+                metadata?["retry_after_seconds"],
+                metadata?["retry_after_seconds_raw"],
+                errorObj["retry_after"]
+            })
+            {
+                if (TryParseSeconds(candidate, out double seconds) && (!best.HasValue || seconds > best.Value))
+                    best = seconds;
+            }
+
+            if (!best.HasValue)
+                return;
+
+            info.RetryAfterSeconds = best.Value;
+            info.RetryAfterSource = RetryAfterSource.Body;
+        }
+
+        /// <summary>
+        /// Merges the <c>Retry-After</c> header into the parsed hint, keeping the larger value so a retry never
+        /// happens earlier than any server signal asked for.
+        /// </summary>
+        public static void ApplyRetryAfterHeader(ApiErrorInfo info, HttpResponseHeaders headers)
+        {
+            if (info == null)
+                return;
+
+            double? headerHint = ParseRetryAfterHeader(headers);
+            if (!headerHint.HasValue)
+                return;
+
+            if (info.RetryAfterSeconds.HasValue && info.RetryAfterSeconds.Value >= headerHint.Value)
+                return;
+
+            info.RetryAfterSeconds = headerHint.Value;
+            info.RetryAfterSource = RetryAfterSource.Header;
+        }
+
+        /// <summary>
+        /// Reads the <c>Retry-After</c> header: delta-seconds or HTTP-date. Returns null when absent or unusable.
+        /// </summary>
+        public static double? ParseRetryAfterHeader(HttpResponseHeaders headers)
+        {
+            if (headers == null)
+                return null;
+
+            RetryConditionHeaderValue retryAfter = headers.RetryAfter;
+            if (retryAfter == null)
+                return null;
+
+            if (retryAfter.Delta.HasValue)
+            {
+                double deltaSeconds = retryAfter.Delta.Value.TotalSeconds;
+                return deltaSeconds < 0 ? (double?)null : deltaSeconds;
+            }
+
+            if (!retryAfter.Date.HasValue)
+                return null;
+
+            // Prefer the server's own clock, so a skewed client clock cannot shorten the wait.
+            DateTimeOffset reference = headers.Date ?? DateTimeOffset.UtcNow;
+            double seconds = (retryAfter.Date.Value - reference).TotalSeconds - ReadAgeSeconds(headers);
+
+            return seconds < 0 ? 0 : seconds;
+        }
+
+        /// <summary>
+        /// Parses one JSON hint into a non-negative, finite number of seconds.
+        /// </summary>
+        private static bool TryParseSeconds(JToken token, out double seconds)
+        {
+            seconds = 0;
+
+            if (token == null || token.Type == JTokenType.Null || token.Type == JTokenType.None)
+                return false;
+
+            try
+            {
+                if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+                {
+                    seconds = token.Value<double>();
+                }
+                else if (token.Type == JTokenType.String)
+                {
+                    string raw = token.Value<string>();
+                    if (string.IsNullOrWhiteSpace(raw))
+                        return false;
+
+                    if (!double.TryParse(raw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out seconds))
+                        return false;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is ArgumentException)
+            {
+                seconds = 0;
+                return false;
+            }
+
+            return !(double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0);
+        }
+
+        /// <summary>
+        /// Age of the response in a shared cache, used to discount an HTTP-date hint.
+        /// </summary>
+        private static double ReadAgeSeconds(HttpResponseHeaders headers)
+        {
+            TimeSpan? age = headers.Age;
+            if (!age.HasValue)
+                return 0;
+
+            double seconds = age.Value.TotalSeconds;
+            return seconds > 0 ? seconds : 0;
         }
 
         /// <summary>

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using LMLocal.Application.ChatSessionStream;
+using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using NUnit.Framework;
 
@@ -25,6 +26,14 @@ namespace LMLocal.Tests.Unit
                 HttpStatusCode = httpStatusCode,
                 ToolCalls = new List<ToolCallRecord>()
             };
+        }
+
+        private static ApiException Error(int? httpStatusCode, string message = null, string rawCode = null,
+            string type = null, int? code = null)
+        {
+            return new ApiException(
+                new ApiErrorInfo { Message = message, RawCode = rawCode, Type = type, Code = code },
+                httpStatusCode);
         }
 
         [Test]
@@ -67,11 +76,41 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public void PayloadTooLarge_ReturnsTrue()
+        public void PayloadTooLarge_WithoutContextMarker_ReturnsFalse()
         {
+            // Groq and DeepSeek send 413 for a request body that is too large in bytes or for an exceeded per-minute
+            // token budget. Compacting the history cannot help there, so the server text has to reach the user.
             var result = Result(httpStatusCode: 413, errorMessage: "Payload too large");
 
+            Assert.That(ContextOverflowDetector.IsContextOverflow(result), Is.False);
+        }
+
+        [Test]
+        public void PayloadTooLarge_WithContextCode_ReturnsTrue()
+        {
+            var result = Result(httpStatusCode: 413, errorCode: "context_length_exceeded", errorMessage: "Request failed.");
+
             Assert.That(ContextOverflowDetector.IsContextOverflow(result), Is.True);
+        }
+
+        [Test]
+        public void PayloadTooLarge_WithContextLengthText_ReturnsTrue()
+        {
+            var result = Result(httpStatusCode: 413, errorMessage: "This model's maximum context length is 8192 tokens");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflow(result), Is.True);
+        }
+
+        [Test]
+        public void PayloadTooLarge_TokensPerMinute_ReturnsFalse()
+        {
+            var result = Result(
+                httpStatusCode: 413,
+                errorCode: "rate_limit_exceeded",
+                errorMessage: "Request too large for model `openai/gpt-oss-120b` on tokens per minute (TPM): " +
+                              "Limit 8000, Requested 9500, please reduce your message size and try again.");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflow(result), Is.False);
         }
 
         [TestCase("This model's maximum context length is 8192 tokens")]
@@ -189,6 +228,57 @@ namespace LMLocal.Tests.Unit
             var result = Result(finishReason: "stop");
 
             Assert.That(ContextOverflowDetector.IsContextOverflow(result), Is.False);
+        }
+
+        [Test]
+        public void ErrorPayloadTooLarge_WithoutContextMarker_ReturnsFalse()
+        {
+            var exception = Error(413, message: "Payload too large");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(exception), Is.False);
+        }
+
+        [Test]
+        public void ErrorPayloadTooLarge_WithContextCode_ReturnsTrue()
+        {
+            var exception = Error(413, message: "Request failed.", rawCode: "context_length_exceeded");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(exception), Is.True);
+        }
+
+        [Test]
+        public void ErrorPayloadTooLarge_WithContextLengthText_ReturnsTrue()
+        {
+            var exception = Error(413, message: "This model's maximum context length is 8192 tokens");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(exception), Is.True);
+        }
+
+        [Test]
+        public void ErrorPayloadTooLarge_TokensPerMinute_ReturnsFalse()
+        {
+            var exception = Error(
+                413,
+                message: "Request too large for model `openai/gpt-oss-120b` on tokens per minute (TPM): " +
+                         "Limit 8000, Requested 9500, please reduce your message size and try again.",
+                rawCode: "rate_limit_exceeded");
+
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(exception), Is.False);
+        }
+
+        [Test]
+        public void ErrorStatusFromErrorInfoCode_IsUsed()
+        {
+            // Some gateways keep the HTTP status in the body only; the detector then falls back to ApiErrorInfo.Code.
+            var exception = Error(null, message: "Request failed.", rawCode: "context_length_exceeded", code: 413);
+
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(exception), Is.True);
+        }
+
+        [Test]
+        public void ErrorNull_ReturnsFalse()
+        {
+            Assert.That(ContextOverflowDetector.IsContextOverflowError(null), Is.False);
         }
     }
 }

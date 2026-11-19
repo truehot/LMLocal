@@ -133,9 +133,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         }
 
         [TestCase("Tests")]
-        [TestCase("Compactor.cs")]
-        [TestCase(@"Chat\Compactor.cs")]
         [TestCase(@"App\Missing")]
+        [TestCase(@"App\*.cs")]
         public async Task Resolve_NotAPathNorProject_Fails(string path)
         {
             Create(@"App\Chat\Compactor.cs");
@@ -147,6 +146,45 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             Assert.That(scope, Is.Null);
             Assert.That(error, Does.StartWith("Path not found"));
             Assert.That(error, Does.Contain("find_files"));
+        }
+
+        [TestCase("Compactor.cs")]
+        [TestCase(@"Chat\Compactor.cs")]
+        [TestCase("Other/Compactor.cs")]
+        public async Task Resolve_WrongPathOfExistingFile_NamesRealPath(string path)
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            var (scope, error) = await _resolver.ResolveAsync(path, _solutionDir, NoProjects);
+
+            Assert.That(scope, Is.Null);
+            Assert.That(error, Is.EqualTo(
+                $"Path not found: '{path}'. The file 'Compactor.cs' exists at 'App\\Chat\\Compactor.cs': call again with that path."));
+        }
+
+        [Test]
+        public async Task Resolve_WrongPathOfSeveralFiles_ListsThem()
+        {
+            Create(@"App\Chat\Compactor.cs");
+            Create(@"Lib\Compactor.cs");
+
+            var (scope, error) = await _resolver.ResolveAsync(@"Other\Compactor.cs", _solutionDir, NoProjects);
+
+            Assert.That(scope, Is.Null);
+            Assert.That(error, Is.EqualTo(
+                "Path not found: 'Other\\Compactor.cs'. Files named 'Compactor.cs' exist at: 'Lib\\Compactor.cs', 'App\\Chat\\Compactor.cs'. Call again with the right one."));
+        }
+
+        [Test]
+        public async Task Resolve_FileNamedNowhere_IsFileNotFound()
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            var (scope, error) = await _resolver.ResolveAsync("App/Persistence/NoSuchSerializer.cs", _solutionDir, NoProjects);
+
+            Assert.That(scope, Is.Null);
+            Assert.That(error, Is.EqualTo(
+                "File not found: 'App/Persistence/NoSuchSerializer.cs'. No file named 'NoSuchSerializer.cs' exists anywhere in the solution."));
         }
 
         [Test]

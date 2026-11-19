@@ -69,6 +69,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Application\Abstractions\Ports\IAttentionNotifier.cs" />
     <Compile Include="Application\Abstractions\Ports\IChangesReader.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatInjectionService.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatPersistenceFactory.cs" />
@@ -83,6 +84,8 @@
     <Compile Include="Application\Changes\Models\ChangesResult.cs" />
     <Compile Include="Application\Changes\UnifiedDiffBuilder.cs" />
     <Compile Include="Application\ChatSessionStream\ContextOverflowDetector.cs" />
+    <Compile Include="Application\ChatSessionStream\RateLimitRetryPolicy.cs" />
+    <Compile Include="Application\ChatSessionStream\RateLimitWaitInfo.cs" />
     <Compile Include="Application\ChatSessionStream\StreamingRoundService.cs" />
     <Compile Include="Application\ChatSessionStream\ArgumentsLengthGuard.cs" />
     <Compile Include="Application\ChatSessionStream\CompositeToolCallArgumentsGuard.cs" />
@@ -120,19 +123,24 @@
     <Compile Include="Application\SubAgents\SubAgentsService.cs" />
     <Compile Include="Application\Tool\IToolExecutionOutcome.cs" />
     <Compile Include="Application\Tool\ToolActivityEvent.cs" />
+    <Compile Include="Application\Tool\ToolBudgetExhaustedException.cs" />
     <Compile Include="Application\Tool\ToolCallLoopDetector.cs" />
+    <Compile Include="Application\Tool\ToolExecutionBudget.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
     <Compile Include="Application\Tool\ToolResultTokenEstimator.cs" />
     <Compile Include="Commands\SendActiveFilesCommand.cs" />
     <Compile Include="Commands\SendAllOpenFilesCommand.cs" />
     <Compile Include="Commands\VisibleDocumentsHelper.cs" />
     <Compile Include="Core\Common\ChatLogConstants.cs" />
+    <Compile Include="Core\Common\ChatMessagePlaceholders.cs" />
     <Compile Include="Core\Common\LineSplitter.cs" />
     <Compile Include="Core\Common\OpenDocumentsPromptBuilder.cs" />
     <Compile Include="Core\Common\PromptContentLimits.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
+    <Compile Include="Core\Common\TaskObserver.cs" />
     <Compile Include="Core\Models\ChatSessionSummary.cs" />
     <Compile Include="Core\Models\ModelProfileLookup.cs" />
+    <Compile Include="Core\Models\RetryAfterSource.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\GhostLinesTagger.cs" />
@@ -142,17 +150,26 @@
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionSourceProvider.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
     <Compile Include="Infrastructure\Persistence\FileEncodingDetector.cs" />
+    <Compile Include="Infrastructure\Tooling\Abstractions\ToolExecutionLimits.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInToolTimeoutLimits.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CanonicalWindowCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\FileLinkResolver.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\ProjectBuildConfiguration.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PrunedContentGuard.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\IToolFileOpenResult.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Search\ToolPagination.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestAssemblyLocator.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\TestRunSummary.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
+    <Compile Include="Infrastructure\Tooling\ToolTimeoutPolicy.cs" />
+    <Compile Include="Infrastructure\VisualStudio\TaskbarAttentionNotifier.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\FileLinksController.cs" />
+    <Compile Include="Infrastructure\WebView\Messaging\BoundedMessageNotifier.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2CompactionEndMessage.cs" />
+    <Compile Include="Infrastructure\WebView\Models\WebView2RateLimitWaitMessage.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
     <Compile Include="UI\ChatInjectionService.cs" />
     <Compile Include="Commands\AddSummaryCommand.cs" />
@@ -664,6 +681,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\store\providers.store.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\store\rate.limit.state.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>

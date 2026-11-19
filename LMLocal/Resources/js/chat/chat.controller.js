@@ -9,7 +9,18 @@ import { createAiCollapsibleMessage } from '@app/chat/ai.collapsible.message.js'
 import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
 import { PipelineBuilder } from '@app/chat/chat.pipeline.builder.js';
-import { attachCopyAction, getCopySource, COPY_ACTION_SELECTOR } from '@app/chat/message.actions.js';
+import {
+    attachCopyAction,
+    attachExchangeActions,
+    detachExchangeActions,
+    getCopySource,
+    getMessageSource,
+    isServicePromptText,
+    setExchangeActionsDisabled,
+    COPY_ACTION_SELECTOR,
+    EDIT_ACTION_SELECTOR,
+    REGENERATE_ACTION_SELECTOR
+} from '@app/chat/message.actions.js';
 
 /**
  * ChatController — manages chat UI and message lifecycle.
@@ -27,11 +38,15 @@ class ChatController {
         this.onCopyCode = createCallback();
         this.onOpenFile = createCallback();
         this.onContinue = createCallback();
+        this.onRegenerate = createCallback();
+        this.onEditLastPrompt = createCallback();
         this.collapseToolCalls = false;
         this.showTokenStats = false;
         this._sessionStartedAt = 0;
         this.pipelineBuilder = null;
         this._pendingFinishPromise = null;
+        // True while the input edits the last prompt: the buttons of the last exchange stay disabled.
+        this._editDimmed = false;
     }
 
     _getContainer() {
@@ -78,6 +93,29 @@ class ChatController {
         const messageCopyBtn = e.target.closest(COPY_ACTION_SELECTOR);
         if (messageCopyBtn) {
             this._handleCopy(getCopySource(messageCopyBtn), messageCopyBtn);
+            return;
+        }
+
+        const messageRegenerateBtn = e.target.closest(REGENERATE_ACTION_SELECTOR);
+        if (messageRegenerateBtn) {
+            if (messageRegenerateBtn.disabled) return;
+
+            const expectedPrompt = this.getLastPromptText();
+
+            messageRegenerateBtn.disabled = true;
+            this.onRegenerate.emit(expectedPrompt).then(accepted => {
+                if (!accepted) messageRegenerateBtn.disabled = false;
+            }).catch(err => {
+                console.error('Regenerate failed:', err);
+                messageRegenerateBtn.disabled = false;
+            });
+            return;
+        }
+
+        const messageEditBtn = e.target.closest(EDIT_ACTION_SELECTOR);
+        if (messageEditBtn) {
+            if (messageEditBtn.disabled) return;
+            this.onEditLastPrompt.emit(getCopySource(messageEditBtn));
             return;
         }
 
@@ -178,6 +216,10 @@ class ChatController {
 
                 this._pendingFinishPromise = null;
 
+                if (state.roundNumber === 0) {
+                    detachExchangeActions(this.container);
+                }
+
                 if (state.roundNumber > 0) {
                     // Tool round iteration — no new user message
                     if (this.collapseToolCalls && this.currentAi?.isCollapsible) {
@@ -265,6 +307,7 @@ class ChatController {
                     this.currentAi = null;
                 }
                 this._pendingFinishPromise = null;
+                this._attachLastExchangeActions();
                 break;
 
             case AppStatus.OFFLINE:
@@ -303,6 +346,8 @@ class ChatController {
                         awaitFinalize().then(showStatsAndScroll);
                     }
                 }
+
+                this._attachLastExchangeActions();
                 break;
 
         }
@@ -439,6 +484,7 @@ class ChatController {
         this.pipelineBuilder = null;
         this._sessionStartedAt = 0;
         this._pendingFinishPromise = null;
+        this._editDimmed = false;
     }
 
     /**
@@ -449,6 +495,109 @@ class ChatController {
         this._sessionStartedAt = Date.now();
         this._enforceMessageLimit();
         createUserMessage(text || '', this.container, this.scrollManager, images);
+    }
+
+    /**
+     * Message elements of the chat, in DOM order.
+     */
+    _getMessageElements() {
+        if (!this.container) return [];
+        return Array.from(this.container.children)
+            .filter(el => el.classList && el.classList.contains('message'));
+    }
+
+    /**
+     * The last exchange of the chat: its prompt and every response node that follows it.
+     */
+    _getLastExchange() {
+        const messages = this._getMessageElements();
+        let userIndex = -1;
+
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].classList.contains('user-message')) {
+                userIndex = i;
+                break;
+            }
+        }
+
+        if (userIndex < 0) return null;
+
+        const answers = messages.slice(userIndex + 1).filter(el => el.classList.contains('ai-message'));
+
+        return {
+            index: userIndex,
+            messages,
+            user: messages[userIndex],
+            answer: answers.length > 0 ? answers[answers.length - 1] : null
+        };
+    }
+
+    /**
+     * Puts Regenerate on the last answer and Edit on the last prompt; removes both everywhere else.
+     */
+    _attachLastExchangeActions() {
+        if (!this.container) return;
+
+        detachExchangeActions(this.container);
+
+        const exchange = this._getLastExchange();
+        if (!exchange) return;
+
+        const promptText = getMessageSource(exchange.user);
+
+        const isServicePrompt = isServicePromptText(promptText);
+
+        const hasImages = !!exchange.user.querySelector('.message-image-thumb');
+        const hasPromptText = !!promptText;
+
+        const canRegenerate = !!exchange.answer && !isServicePrompt;
+        const canEdit = !isServicePrompt && hasPromptText && !hasImages;
+
+        if (!canRegenerate && !canEdit) return;
+
+        attachExchangeActions(canRegenerate ? exchange.answer : null, canEdit ? exchange.user : null);
+
+        if (this._editDimmed) this.setLastExchangeDimmed(true);
+    }
+
+    /**
+     * Text of the last prompt on screen, as its copy button would copy it; empty when there is none.
+     */
+    getLastPromptText() {
+        return getMessageSource(this._getLastExchange()?.user);
+    }
+
+    /**
+     * Drops the last exchange from the chat. The prompt is kept when asked (regenerate) and dropped otherwise (edit).
+     */
+    removeLastExchange(keepUserMessage) {
+        const exchange = this._getLastExchange();
+        if (!exchange) return;
+
+        // If the backend refuses, the chat is drawn again from the history (AppController), so nothing is kept here.
+        const removeFrom = exchange.index + (keepUserMessage ? 1 : 0);
+        for (const node of exchange.messages.slice(removeFrom)) node.remove();
+
+        this.currentAi = null;
+        this._pendingFinishPromise = null;
+    }
+
+    /**
+     * Greys out the exchange that is being edited and disables the actions that would overwrite the field: the prompt
+     * is not part of the chat any more unless Send replaces it. Copy stays available - it changes nothing.
+     */
+    setLastExchangeDimmed(active) {
+        this._editDimmed = !!active;
+
+        const exchange = this._getLastExchange();
+
+        if (exchange) {
+            for (let i = exchange.index; i < exchange.messages.length; i++) {
+                exchange.messages[i].classList.toggle('exchange-being-edited', this._editDimmed);
+            }
+        }
+
+        setExchangeActionsDisabled(this.container, this._editDimmed);
     }
 
     renderHistory(messages) {
@@ -481,8 +630,10 @@ class ChatController {
             }
         }
 
-        var self = this;
-        Promise.all(pending).then(function () { self.scrollManager?.scrollToBottom(true); });
+        Promise.all(pending).then(() => {
+            this.scrollManager?.scrollToBottom(true);
+            this._attachLastExchangeActions();
+        });
     }
 
     markAsFinalRound() {

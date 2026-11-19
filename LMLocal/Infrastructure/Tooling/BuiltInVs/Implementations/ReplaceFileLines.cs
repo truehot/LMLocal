@@ -10,8 +10,11 @@ using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Syntax;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Collections;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
@@ -29,6 +32,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string ToolName => "replace_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.FullAccess;
+
+        /// <summary>Several edits of one file in one call; Docs\multi-replace-file-lines-plan.md.</summary>
+        internal const string EditsParameter = "edits";
+
+        internal const int MaxEdits = 10;
 
         public ReplaceFileLines(
             IVsDependencies vsDependencies,
@@ -49,9 +57,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Take start_line and old_lines from a read_file_lines result of the same file: old_lines is the raw 'text' of those lines (see old_lines). The tool verifies old_lines before changing the file. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. " +
+                Description = "Replaces a range of lines in a file by line numbers (1-indexed). Take start_line and old_lines from a read_file_lines result of the same file: old_lines is the raw text of those lines, the second element of each [line_number, text] pair (see old_lines). The tool verifies old_lines before changing the file. The replaced range ends at start_line + number_of_lines_in_old_lines - 1. " +
                               "Set new_lines to an empty string to delete the range. " +
-                              "SEVERAL EDITS IN ONE FILE: send them all in ONE turn as several calls, ordered bottom-up (LARGEST start_line first), all taken from the same read - do not re-read between them. Calls of one turn run in the order sent, and an edit never shifts the lines above it. " +
+                              "SEVERAL EDITS IN ONE FILE: put them all in 'edits' in ONE call, every start_line and old_lines from the same read, in any order - the tool applies them bottom-up itself. If any edit does not match, nothing is written. Edits must not overlap. " +
                               "If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1 (at most 50; more is rejected with the real line count). If the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. " +
                               "If old_lines does not match at start_line, the tool searches nearby lines (±50); a single match is applied there and reported by a flag: auto_corrected=true (exact match), matched_ignoring_first_line_indent=true (first line's indentation ignored; the first line of new_lines is re-indented to match the file), or matched_with_normalization=true (typographic spaces, quotes, dashes and zero-width characters normalized; unchanged lines are kept from the file). The flags only report how the match was found: the change is written. " +
                               "success=false means nothing was written; error_message says why, and candidates list the start lines when old_lines matches several places. Only then re-read the file and retry; after a successful edit you do not need to re-read it. For .cs and .js files the syntax is checked automatically: if syntax_errors is non-empty, the file is saved but the change is not complete - re-read the affected range and fix the errors.",
@@ -69,23 +77,42 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "start_line", new ToolDetails
                             {
                                 Type = "integer",
-                                Description = "Starting line number (1-indexed, inclusive, positive integer (>= 1)). A start_line more than 50 lines past the end of the file is rejected with the real line count."
+                                Description = "Starting line number (1-indexed, inclusive, positive integer (>= 1)). A start_line more than 50 lines past the end of the file is rejected with the real line count. Required unless 'edits' is passed."
                             }
                         },
                         { "old_lines", new ToolDetails
                             {
                                 Type = "string",
-                                Description = "Raw source text currently occupying the lines from start_line through the end of the block, copied from read_file_lines (not from search results). Edits lower in the file do not change it. No line-number prefix and no trailing newline. Leading whitespace and character casing must match exactly; trailing whitespace and line-ending style (\\r\\n vs \\n) are ignored during comparison. If the requested range extends past the current line count, missing trailing lines are treated as empty strings for comparison. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty."
+                                Description = "Raw source text currently occupying the lines from start_line through the end of the block, copied from read_file_lines (not from search results). Edits lower in the file do not change it. No line-number prefix and no trailing newline. Leading whitespace and character casing must match exactly; trailing whitespace and line-ending style (\\r\\n vs \\n) are ignored during comparison. If the requested range extends past the current line count, missing trailing lines are treated as empty strings for comparison. Can contain multiple lines separated by \\n or \\r\\n. Must not be empty. Required unless 'edits' is passed."
                             }
                         },
                         { "new_lines", new ToolDetails
                             {
                                 Type = "string",
-                                Description = "Raw source text to replace the selected lines with. Can contain multiple lines separated by \\n or \\r\\n. If empty string, the line range is deleted."
+                                Description = "Raw source text to replace the selected lines with. Can contain multiple lines separated by \\n or \\r\\n. If empty string, the line range is deleted. Required unless 'edits' is passed."
+                            }
+                        },
+                        { EditsParameter, new ToolDetails
+                            {
+                                Type = "array",
+                                Description = $"Several edits of this file in one call (up to {MaxEdits}), each like a single edit. Every start_line and old_lines comes from the same read of the file; any order - the tool applies them bottom-up. " +
+                                              "Nothing is written if any edit does not match. Edits must not overlap and must lie within the file. " +
+                                              "To insert lines, use the line before (or after) the insertion point as old_lines and repeat it in new_lines.",
+                                Items = new ToolDetails
+                                {
+                                    Type = "object",
+                                    Properties = new Dictionary<string, ToolDetails>
+                                    {
+                                        { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, >= 1) in the file as read." } },
+                                        { "old_lines", new ToolDetails { Type = "string", Description = "Raw source text currently at start_line, copied from read_file_lines. Must not be empty." } },
+                                        { "new_lines", new ToolDetails { Type = "string", Description = "Raw source text to replace those lines with; empty string deletes them." } }
+                                    },
+                                    Required = new List<string> { "start_line", "old_lines", "new_lines" }
+                                }
                             }
                         }
                     },
-                    Required = new List<string> { "file_path", "start_line", "old_lines", "new_lines" }
+                    Required = new List<string> { "file_path" }
                 }
             };
         }
@@ -97,6 +124,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string pruneRejection = PrunedContentGuard.Validate(parameters);
                 if (pruneRejection != null)
                     return Error(pruneRejection);
+
+                object editsObj = null;
+                parameters?.TryGetValue(EditsParameter, out editsObj);
+                if (!LiteralListParameter.IsMissing(editsObj))
+                    return await ReplaceManyAsync(parameters, editsObj, cancellationToken).ConfigureAwait(false);
 
                 var (filePath, startLine, oldLinesText, newLinesText, error) = ExtractAndValidateParameters(parameters);
                 if (error != null)
@@ -151,49 +183,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 while (linesList.Count < requiredTotalLines)
                     linesList.Add("");
 
-                var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, reportedPath);
-                if (errorResponse != null)
-                    return DiagnoseJsonEscapedOldLines(errorResponse, fileLines, oldLinesText, startLine, reportedPath, absolutePath) ?? errorResponse;
+                var edit = PrepareEdit(fileLines, linesList, startLine, oldLinesText, newLinesText, reportedPath, absolutePath, out var errorResponse);
+                if (edit == null)
+                    return errorResponse;
 
-                bool autoCorrected = resolvedStartLine != startLine;
-                startLine = resolvedStartLine;
+                bool autoCorrected = edit.AutoCorrected;
+                bool matchedIgnoringIndent = edit.MatchedIgnoringIndent;
+                bool matchedWithNormalization = edit.MatchedWithNormalization;
+                startLine = edit.AppliedStartLine;
+                string[] newLinesArray = edit.NewLines;
+                bool hasNewLines = newLinesArray != null;
+                int removeStart = edit.RemoveStart;
+                int realCount = edit.RealCount;
 
-                string matchedFirstLineIndent = matchedIgnoringIndent
-                    ? GetLeadingRun(linesList[startLine - 1])
-                    : null;
-
-                string[] newLinesArray = null;
-                string[] newLinesAsReceived = null;
-                bool hasNewLines = !string.IsNullOrEmpty(newLinesText);
-                if (hasNewLines)
-                {
-                    newLinesArray = LineSplitter.Split(newLinesText);
-
-                    if (matchedWithNormalization)
-                        newLinesAsReceived = (string[])newLinesArray.Clone();
-                }
-
-                if (matchedIgnoringIndent && hasNewLines && newLinesArray.Length > 0)
-                {
-                    string firstLineContent = StripLeading(newLinesArray[0]);
-                    if (firstLineContent.Length > 0)
-                        newLinesArray[0] = matchedFirstLineIndent + firstLineContent;
-                }
-
-                int removeStart = startLine - 1;
-
-                int realCount = Math.Min(oldLinesCount, Math.Max(0, fileLines.Length - removeStart));
-
-                if (matchedWithNormalization && hasNewLines)
-                {
-                    RestoreUnchangedLines(
-                        linesList, newLinesAsReceived, newLinesArray, oldLinesArray,
-                        removeStart, realCount, matchedIgnoringIndent, canonicalCache);
-                }
-
-                if (hasNewLines
-                    && newLinesArray.Length == realCount
-                    && RangeEquals(fileLines, removeStart, newLinesArray))
+                if (edit.IsNoOp)
                 {
                     InternalLogger.Debug(
                         $"replace_file_lines: no-op on {absolutePath}, lines {startLine}-{startLine + realCount - 1} already hold the requested text; nothing written.");
@@ -259,6 +262,367 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 InternalLogger.Error($"Error in {ToolName}: {ex}");
                 return Error($"Error: {ex.Message}");
             }
+        }
+
+        /// <summary>One edit resolved against the file as read; nothing is changed yet.</summary>
+        private sealed class PreparedEdit
+        {
+            public int RequestedStartLine;
+            public int AppliedStartLine;
+            public int OldCount;
+            public int RealCount;
+
+            /// <summary>Lines to write, after re-indent and restore of unchanged lines; null when the range is deleted.</summary>
+            public string[] NewLines;
+
+            public bool MatchedIgnoringIndent;
+            public bool MatchedWithNormalization;
+            public bool IsNoOp;
+
+            public bool AutoCorrected => AppliedStartLine != RequestedStartLine;
+            public int RemoveStart => AppliedStartLine - 1;
+        }
+
+        /// <summary>
+        /// Resolves one edit against <paramref name="linesList"/> (the file as read, padded by the caller when a single
+        /// call goes past the end) without changing it: where old_lines really is, the lines to write, and whether the
+        /// range already holds them. Null with <paramref name="error"/> when old_lines cannot be placed.
+        /// </summary>
+        private PreparedEdit PrepareEdit(
+            string[] fileLines, List<string> linesList, int startLine, string oldLinesText, string newLinesText,
+            string reportedPath, string absolutePath, out ReplaceLinesResponse error)
+        {
+            error = null;
+            string[] oldLinesArray = LineSplitter.Split(oldLinesText);
+
+            var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, reportedPath);
+            if (errorResponse != null)
+            {
+                error = DiagnoseJsonEscapedOldLines(errorResponse, fileLines, oldLinesText, startLine, reportedPath, absolutePath) ?? errorResponse;
+                return null;
+            }
+
+            string matchedFirstLineIndent = matchedIgnoringIndent
+                ? GetLeadingRun(linesList[resolvedStartLine - 1])
+                : null;
+
+            string[] newLinesArray = null;
+            string[] newLinesAsReceived = null;
+            bool hasNewLines = !string.IsNullOrEmpty(newLinesText);
+            if (hasNewLines)
+            {
+                newLinesArray = LineSplitter.Split(newLinesText);
+
+                if (matchedWithNormalization)
+                    newLinesAsReceived = (string[])newLinesArray.Clone();
+            }
+
+            if (matchedIgnoringIndent && hasNewLines && newLinesArray.Length > 0)
+            {
+                string firstLineContent = StripLeading(newLinesArray[0]);
+                if (firstLineContent.Length > 0)
+                    newLinesArray[0] = matchedFirstLineIndent + firstLineContent;
+            }
+
+            int removeStart = resolvedStartLine - 1;
+            int realCount = Math.Min(oldLinesArray.Length, Math.Max(0, fileLines.Length - removeStart));
+
+            if (matchedWithNormalization && hasNewLines)
+            {
+                RestoreUnchangedLines(
+                    linesList, newLinesAsReceived, newLinesArray, oldLinesArray,
+                    removeStart, realCount, matchedIgnoringIndent, canonicalCache);
+            }
+
+            return new PreparedEdit
+            {
+                RequestedStartLine = startLine,
+                AppliedStartLine = resolvedStartLine,
+                OldCount = oldLinesArray.Length,
+                RealCount = realCount,
+                NewLines = newLinesArray,
+                MatchedIgnoringIndent = matchedIgnoringIndent,
+                MatchedWithNormalization = matchedWithNormalization,
+                IsNoOp = hasNewLines
+                    && newLinesArray.Length == realCount
+                    && RangeEquals(fileLines, removeStart, newLinesArray)
+            };
+        }
+
+        /// <summary>One requested edit of an 'edits' call; <see cref="Label"/> names it in messages.</summary>
+        internal sealed class EditRequest
+        {
+            public string Label;
+            public int StartLine;
+            public string OldLines;
+            public string NewLines;
+        }
+
+        private const string TopLevelEditLabel = "the top-level edit";
+
+        /// <summary>
+        /// Reads an 'edits' call: file_path plus 'edits' (an array of {start_line, old_lines, new_lines}, or such an array
+        /// serialized into a string). A top-level start_line/old_lines/new_lines, when also passed, becomes the first edit.
+        /// Every edit is validated here, so a bad edit fails the call before the file is read.
+        /// </summary>
+        internal static (string FilePath, List<EditRequest> Edits, string Error) ExtractEdits(Dictionary<string, object> parameters, object editsObj)
+        {
+            if (parameters == null)
+                return (null, null, "Parameters cannot be null.");
+
+            if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string filePath) || string.IsNullOrWhiteSpace(filePath))
+                return (null, null, "file_path parameter is required and must be a string.");
+
+            string shapeError = $"Parameter '{EditsParameter}' must be an array of objects {{start_line, old_lines, new_lines}}.";
+
+            if (editsObj is JValue scalar)
+                editsObj = scalar.Value;
+
+            if (editsObj is string text)
+            {
+                try
+                {
+                    editsObj = JToken.Parse(text);
+                }
+                catch (JsonException)
+                {
+                    return (null, null, shapeError);
+                }
+            }
+
+            if (!(editsObj is IEnumerable items) || editsObj is string || editsObj is JObject)
+                return (null, null, shapeError);
+
+            var entries = new List<(string Label, Dictionary<string, object> Values)>();
+
+            bool hasTopLevel = new[] { "start_line", "old_lines", "new_lines" }
+                .Any(k => parameters.TryGetValue(k, out object v) && !LiteralListParameter.IsMissing(v));
+            if (hasTopLevel)
+            {
+                entries.Add((TopLevelEditLabel, new Dictionary<string, object>
+                {
+                    ["start_line"] = parameters.TryGetValue("start_line", out object s) ? s : null,
+                    ["old_lines"] = parameters.TryGetValue("old_lines", out object o) ? o : null,
+                    ["new_lines"] = parameters.TryGetValue("new_lines", out object n) ? n : null
+                }));
+            }
+
+            int index = 0;
+            foreach (object item in items)
+            {
+                Dictionary<string, object> values;
+                if (item is JObject obj)
+                    values = obj.ToObject<Dictionary<string, object>>();
+                else if (item is Dictionary<string, object> dict)
+                    values = dict;
+                else
+                    return (null, null, $"Each item of '{EditsParameter}' must be an object {{start_line, old_lines, new_lines}}.");
+
+                entries.Add(($"{EditsParameter}[{index++}]", values));
+            }
+
+            if (entries.Count == 0)
+                return (null, null, $"Parameter '{EditsParameter}' has no edits.");
+            if (entries.Count > MaxEdits)
+                return (null, null, $"At most {MaxEdits} edits per call (got {entries.Count}). Split them into several calls.");
+
+            var edits = new List<EditRequest>(entries.Count);
+            foreach (var (label, values) in entries)
+            {
+                if (!values.TryGetValue("start_line", out object startObj) || !TryParseInt(startObj, out int startLine) || startLine < 1)
+                    return (null, null, $"{label}: start_line is required and must be an integer >= 1.");
+
+                if (!values.TryGetValue("old_lines", out object oldObj) || !(UnwrapString(oldObj) is string oldLines) || oldLines.Length == 0)
+                    return (null, null, $"{label}: old_lines is required and must be a non-empty string.");
+
+                if (!values.TryGetValue("new_lines", out object newObj) || !(UnwrapString(newObj) is string newLines))
+                    return (null, null, $"{label}: new_lines is required and must be a string (empty to delete the lines).");
+
+                edits.Add(new EditRequest { Label = label, StartLine = startLine, OldLines = oldLines, NewLines = newLines });
+            }
+
+            return (filePath, edits, null);
+        }
+
+        private static object UnwrapString(object value) => value is JValue jv ? jv.Value : value;
+
+        /// <summary>
+        /// Applies all edits of one file from the same read: every edit is resolved first, then they are written bottom-up
+        /// in one write. Nothing is written when any edit does not match or two edits overlap.
+        /// </summary>
+        private async Task<ReplaceLinesBatchResponse> ReplaceManyAsync(Dictionary<string, object> parameters, object editsObj, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var (filePath, requests, error) = ExtractEdits(parameters, editsObj);
+                if (error != null)
+                    return BatchError(error);
+
+                if (!_vsDependencies.IsSolutionOpen)
+                    return BatchError("No solution is currently open.");
+
+                string solutionDir = _vsDependencies.GetSolutionDirectory();
+                if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath))
+                    return BatchError($"Failed to resolve file path: {filePath}");
+
+                if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
+                    return BatchError($"File '{absolutePath}' is outside the solution directory.");
+
+                try { _fileSystem.ValidateFilePath(absolutePath); }
+                catch (ArgumentException ex) { return BatchError($"Invalid file path: {ex.Message}"); }
+
+                if (!_fileSystem.FileExists(absolutePath))
+                    return BatchError($"File not found: {filePath}");
+
+                var (originalContent, fileEncoding, hasBom) = await _fileSystem
+                    .ReadAllTextWithDetectedEncodingAsync(absolutePath, cancellationToken)
+                    .ConfigureAwait(false);
+
+                string separator = originalContent.Contains("\r\n") ? "\r\n" : "\n";
+                _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath);
+                string reportedPath = relativePath ?? filePath;
+
+                string[] fileLines = LineSplitter.Split(originalContent);
+                bool hadTrailingNewline = LineSplitter.HasTrailingEol(originalContent);
+
+                // No padding in a batch: every edit must match inside the file as read.
+                var linesList = new List<string>(fileLines);
+
+                var prepared = new List<PreparedEdit>(requests.Count);
+                foreach (var request in requests)
+                {
+                    // Beyond the search window old_lines cannot match anywhere; this also keeps start_line + window from overflowing.
+                    if (request.StartLine > fileLines.Length + LineMatcher.MaxSearchWindowLines)
+                    {
+                        return BatchMatchFailure(reportedPath, request,
+                            MatchFailure(reportedPath, $"start_line {request.StartLine} is past the end of the file."), fileLines.Length);
+                    }
+
+                    var edit = PrepareEdit(fileLines, linesList, request.StartLine, request.OldLines, request.NewLines, reportedPath, absolutePath, out var editError);
+                    if (edit == null)
+                        return BatchMatchFailure(reportedPath, request, editError, fileLines.Length);
+                    prepared.Add(edit);
+                }
+
+                string overlap = FindOverlap(requests, prepared);
+                if (overlap != null)
+                    return new ReplaceLinesBatchResponse { Success = false, FilePath = reportedPath, ErrorMessage = overlap };
+
+                var results = BuildEditResults(prepared);
+
+                if (prepared.All(p => p.IsNoOp))
+                {
+                    InternalLogger.Debug($"replace_file_lines: no-op on {absolutePath}, every edit already holds the requested text; nothing written.");
+                    return new ReplaceLinesBatchResponse { Success = true, FilePath = reportedPath, Edits = results, IsNoOp = true };
+                }
+
+                foreach (var edit in prepared.Where(p => !p.IsNoOp).OrderByDescending(p => p.RemoveStart))
+                {
+                    linesList.RemoveRange(edit.RemoveStart, edit.OldCount);
+                    if (edit.NewLines != null)
+                        linesList.InsertRange(edit.RemoveStart, edit.NewLines);
+                }
+
+                string newContent = LineSplitter.Join(separator, linesList, hadTrailingNewline);
+
+                await _snapshotManager
+                    .SnapshotFileAsync(absolutePath, SnapshotChangeStatus.BeforeModify, cancellationToken)
+                    .ConfigureAwait(false);
+
+                await _fileSystem
+                    .WriteAllBytesWithEncodingAsync(absolutePath, newContent, fileEncoding, hasBom, cancellationToken)
+                    .ConfigureAwait(false);
+
+                string[] syntaxErrors = null;
+                var checker = _syntaxFactory.GetChecker(absolutePath);
+                if (checker != null && !checker.IsSyntaxValid(newContent, out var errors))
+                {
+                    syntaxErrors = errors.Select(e => $"{e.Id}: {e.GetMessage()}").ToArray();
+                    InternalLogger.Info($"Syntax errors detected after replacement in {absolutePath}:\n" + string.Join("\n", syntaxErrors));
+                }
+
+                return new ReplaceLinesBatchResponse
+                {
+                    Success = true,
+                    FilePath = reportedPath,
+                    Edits = results,
+                    SyntaxErrors = syntaxErrors
+                };
+            }
+            catch (OperationCanceledException)
+            {
+                return BatchError("Operation was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                return BatchError($"Error: {ex.Message}");
+            }
+        }
+
+        /// <summary>Message for the first pair of edits whose resolved ranges share a line, or null.</summary>
+        private static string FindOverlap(List<EditRequest> requests, List<PreparedEdit> prepared)
+        {
+            var order = Enumerable.Range(0, prepared.Count).OrderBy(i => prepared[i].RemoveStart).ToList();
+            for (int k = 1; k < order.Count; k++)
+            {
+                var a = prepared[order[k - 1]];
+                var b = prepared[order[k]];
+                int aEnd = a.AppliedStartLine + a.OldCount - 1;
+                if (b.AppliedStartLine <= aEnd)
+                {
+                    return $"{requests[order[k - 1]].Label} (lines {a.AppliedStartLine}-{aEnd}) overlaps " +
+                           $"{requests[order[k]].Label} (lines {b.AppliedStartLine}-{b.AppliedStartLine + b.OldCount - 1}). " +
+                           "Merge them into one edit. Nothing was written.";
+                }
+            }
+            return null;
+        }
+
+        private static List<ReplaceEditResult> BuildEditResults(List<PreparedEdit> prepared)
+        {
+            return prepared.Select(p => new ReplaceEditResult
+            {
+                StartLine = p.RequestedStartLine,
+                AppliedStartLine = p.AutoCorrected ? (int?)p.AppliedStartLine : null,
+                AutoCorrected = p.AutoCorrected ? (bool?)true : null,
+                MatchedIgnoringFirstLineIndent = p.MatchedIgnoringIndent ? (bool?)true : null,
+                MatchedWithNormalization = p.MatchedWithNormalization ? (bool?)true : null,
+                NoOp = p.IsNoOp ? (bool?)true : null,
+                LinesReplaced = p.IsNoOp ? null : p.NewLines != null ? (int?)p.NewLines.Length : null,
+                LinesRemoved = p.IsNoOp || p.NewLines != null ? null : (int?)p.RealCount
+            }).ToList();
+        }
+
+        private static ReplaceLinesBatchResponse BatchError(string message)
+        {
+            return new ReplaceLinesBatchResponse { Success = false, ErrorMessage = message };
+        }
+
+        /// <summary>One edit of the batch could not be placed: the whole call writes nothing.</summary>
+        private static ReplaceLinesBatchResponse BatchMatchFailure(string filePath, EditRequest request, ReplaceLinesResponse editError, int fileLineCount)
+        {
+            string message = $"{request.Label} (start_line {request.StartLine}): {editError.ErrorMessage}";
+
+            long requestedEnd = (long)request.StartLine - 1 + LineSplitter.Split(request.OldLines).Length;
+            if (requestedEnd > fileLineCount)
+            {
+                message += $" In '{EditsParameter}' every edit must lie within the file ({fileLineCount} line(s)); " +
+                           $"to add lines past the end, send that edit as a separate call without '{EditsParameter}'.";
+            }
+
+            message += " Nothing was written: fix this edit and resend all edits.";
+
+            return new ReplaceLinesBatchResponse
+            {
+                Success = false,
+                FilePath = filePath,
+                ErrorMessage = message,
+                FailedEdit = request.Label,
+                Candidates = editError.Candidates,
+                OldLinesJsonEscaped = editError.OldLinesJsonEscaped,
+                IsMatchFailure = editError.IsMatchFailure
+            };
         }
 
         /// <summary>
@@ -584,7 +948,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return (filePath, startLine, oldLines, newLines, null);
         }
 
-        private bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
+        private static bool TryParseInt(object value, out int result) => int.TryParse(value?.ToString(), out result);
 
         /// <summary>
         /// Ordinal comparison of the file range the call would rewrite with the lines the model sent.
@@ -663,12 +1027,26 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
             var filePath = parameters?.TryGetValue("file_path", out var f) == true ? f?.ToString() : "";
+
+            object editsObj = null;
+            parameters?.TryGetValue(EditsParameter, out editsObj);
+            if (!LiteralListParameter.IsMissing(editsObj))
+            {
+                var (_, edits, error) = ExtractEdits(parameters, editsObj);
+                return error == null
+                    ? $"Replacing {edits.Count} {Pluralizer.Pluralize(edits.Count, "range", "ranges")} in '{filePath}'... "
+                    : $"Replacing lines in '{filePath}'... ";
+            }
+
             var start = parameters?.TryGetValue("start_line", out var s) == true ? s?.ToString() : "?";
             return $"Replacing lines starting at line {start} in '{filePath}'... ";
         }
 
         public string GetCompletionMessage(object result)
         {
+            if (result is ReplaceLinesBatchResponse batch)
+                return DescribeBatch(batch);
+
             if (result is ReplaceLinesResponse response)
             {
                 if (!response.Success)
@@ -700,6 +1078,38 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return msg;
             }
             return "Replacing lines finished.";
+        }
+
+        private static string DescribeBatch(ReplaceLinesBatchResponse batch)
+        {
+            if (!batch.Success)
+            {
+                if (batch.OldLinesJsonEscaped == true)
+                    return $"Edits not applied: old_lines of {batch.FailedEdit} looks JSON-escaped.";
+                if (batch.IsMatchFailure)
+                    return $"Edits not applied: old_lines of {batch.FailedEdit} did not match the file.";
+                return $"Edits not applied: {batch.ErrorMessage}";
+            }
+
+            if (batch.IsNoOp)
+                return "No changes needed.";
+
+            var edits = batch.Edits ?? new List<ReplaceEditResult>();
+            int applied = edits.Count(e => e.NoOp != true);
+            string msg = $"{applied} {Pluralizer.Pluralize(applied, "edit", "edits")} applied";
+
+            var notes = new List<string>();
+            int corrected = edits.Count(e => e.AutoCorrected == true);
+            if (corrected > 0)
+                notes.Add($"{corrected} auto-corrected");
+            int unchanged = edits.Count - applied;
+            if (unchanged > 0)
+                notes.Add($"{unchanged} already up to date");
+            if (notes.Count > 0)
+                msg += " (" + string.Join(", ", notes) + ")";
+            if (batch.SyntaxErrors != null && batch.SyntaxErrors.Length > 0)
+                msg += $" with {batch.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(batch.SyntaxErrors.Length, "error", "errors")}";
+            return msg + ".";
         }
 
         /// <summary>
@@ -809,5 +1219,79 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }
+    }
+
+    /// <summary>
+    /// Response of a replace_file_lines call with 'edits': one result per edit in request order, or the edit that
+    /// stopped the call (then nothing was written).
+    /// </summary>
+    internal class ReplaceLinesBatchResponse : IToolFileOpenResult
+    {
+        string IToolFileOpenResult.FileToOpen => FilePath;
+
+        bool IToolFileOpenResult.WroteFile => Success && !IsNoOp;
+
+        [JsonProperty("success")]
+        public bool Success { get; set; }
+
+        [JsonProperty("file_path", NullValueHandling = NullValueHandling.Ignore)]
+        public string FilePath { get; set; }
+
+        [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
+        public string ErrorMessage { get; set; }
+
+        /// <summary>The edit that did not match ("edits[2]" or "the top-level edit").</summary>
+        [JsonProperty("failed_edit", NullValueHandling = NullValueHandling.Ignore)]
+        public string FailedEdit { get; set; }
+
+        [JsonProperty("edits", NullValueHandling = NullValueHandling.Ignore)]
+        public List<ReplaceEditResult> Edits { get; set; }
+
+        [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] SyntaxErrors { get; set; }
+
+        [JsonProperty("old_lines_json_escaped", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? OldLinesJsonEscaped { get; set; }
+
+        [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
+        public List<LineCandidate> Candidates { get; set; }
+
+        /// <summary>Set when every edit already held the requested text: nothing was written.</summary>
+        [JsonIgnore]
+        internal bool IsNoOp { get; set; }
+
+        /// <summary>Set when the call failed only because old_lines of one edit could not be placed; used for the UI message.</summary>
+        [JsonIgnore]
+        internal bool IsMatchFailure { get; set; }
+    }
+
+    /// <summary>Result of one edit of a batch, with the same flags as a single call.</summary>
+    internal class ReplaceEditResult
+    {
+        /// <summary>start_line as sent.</summary>
+        [JsonProperty("start_line")]
+        public int StartLine { get; set; }
+
+        [JsonProperty("applied_start_line", NullValueHandling = NullValueHandling.Ignore)]
+        public int? AppliedStartLine { get; set; }
+
+        [JsonProperty("auto_corrected", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? AutoCorrected { get; set; }
+
+        [JsonProperty("matched_ignoring_first_line_indent", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? MatchedIgnoringFirstLineIndent { get; set; }
+
+        [JsonProperty("matched_with_normalization", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? MatchedWithNormalization { get; set; }
+
+        [JsonProperty("lines_replaced", NullValueHandling = NullValueHandling.Ignore)]
+        public int? LinesReplaced { get; set; }
+
+        [JsonProperty("lines_removed", NullValueHandling = NullValueHandling.Ignore)]
+        public int? LinesRemoved { get; set; }
+
+        /// <summary>The range already held the requested text; this edit wrote nothing.</summary>
+        [JsonProperty("no_op", NullValueHandling = NullValueHandling.Ignore)]
+        public bool? NoOp { get; set; }
     }
 }

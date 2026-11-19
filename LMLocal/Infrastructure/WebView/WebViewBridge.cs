@@ -126,7 +126,9 @@ namespace LMLocal.Infrastructure.WebView
                     AdditionalPrompt = request.AdditionalPrompt,
                     ModelId = request.ModelId,
                     Temperature = request.Temperature,
-                    Images = request.Images
+                    Images = request.Images,
+                    ReplaceLast = request.ReplaceLast,
+                    ReplaceLastPrompt = request.ReplaceLastPrompt
                 };
 
                 async Task OnMessageAsync(WebView2ScriptMessage message)

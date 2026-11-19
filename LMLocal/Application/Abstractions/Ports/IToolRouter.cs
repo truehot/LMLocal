@@ -23,7 +23,8 @@ namespace LMLocal.Application.Abstractions.Ports
             string toolName,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
-            IProgress<ToolActivityEvent> progress = null);
+            IProgress<ToolActivityEvent> progress = null,
+            ToolExecutionBudget budget = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its parameters.

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace LMLocal.Core.Models
@@ -38,5 +39,50 @@ namespace LMLocal.Core.Models
         /// True when the next round retries a request that failed on context overflow.
         /// </summary>
         public bool IsContextOverflowRetry { get; set; }
+
+        /// <summary>
+        /// Set when the session must replace the last exchange before its first round, one of
+        /// <see cref="ReplaceLastModes"/>. Null for a normal prompt.
+        /// </summary>
+        public string ReplaceLast { get; set; }
+
+        /// <summary>
+        /// Prompt of the last user message the UI is showing. The replacement is refused when the history ends with
+        /// another prompt.
+        /// </summary>
+        public string ReplaceLastPrompt { get; set; }
+    }
+
+    /// <summary>
+    /// Accepted values of <see cref="GenerateStreamContext.ReplaceLast"/>.
+    /// </summary>
+    public static class ReplaceLastModes
+    {
+        /// <summary>Keeps the last user message and drops everything after it, so the answer is generated again.</summary>
+        public const string Answer = "answer";
+
+        /// <summary>Drops the last user message too, so a new prompt replaces the whole exchange.</summary>
+        public const string Exchange = "exchange";
+
+        /// <summary>
+        /// Maps a known mode to whether the last user message is kept.
+        /// </summary>
+        public static bool TryGetKeepUserMessage(string mode, out bool keepUserMessage)
+        {
+            if (string.Equals(mode, Answer, StringComparison.Ordinal))
+            {
+                keepUserMessage = true;
+                return true;
+            }
+
+            if (string.Equals(mode, Exchange, StringComparison.Ordinal))
+            {
+                keepUserMessage = false;
+                return true;
+            }
+
+            keepUserMessage = false;
+            return false;
+        }
     }
 }

@@ -1,4 +1,8 @@
-﻿using LMLocal.Core.Models;
+using System;
+using System.Globalization;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using NUnit.Framework;
 
@@ -307,6 +311,133 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var str = info.ToString();
 
             Assert.That(str, Is.EqualTo("boom"));
+        }
+
+        // --- retry-after hints (rate-limit handling) ---
+
+        [Test]
+        public void ParseErrorBody_NumericAndStringHints_AreCultureInvariant()
+        {
+            var previousCulture = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo("ru-RU");
+
+                var numeric = ApiErrorParser.ParseErrorBody("{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":5.5}}}");
+                var textual = ApiErrorParser.ParseErrorBody("{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"5.5\"}}}");
+
+                Assert.That(numeric.RetryAfterSeconds, Is.EqualTo(5.5));
+                Assert.That(textual.RetryAfterSeconds, Is.EqualTo(5.5));
+                Assert.That(numeric.RetryAfterSource, Is.EqualTo(RetryAfterSource.Body));
+                Assert.That(textual.RetryAfterSource, Is.EqualTo(RetryAfterSource.Body));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previousCulture;
+            }
+        }
+
+        [Test]
+        public void ParseErrorBody_StringHintWithCommaSeparator_IsRejected()
+        {
+            var json = "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"5,5\"}}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.RetryAfterSeconds, Is.Null, "'5,5' must not be read as 55");
+            Assert.That(result.RetryAfterSource, Is.EqualTo(RetryAfterSource.None));
+        }
+
+        [Test]
+        public void ParseErrorBody_MalformedOrNonFiniteHints_LeaveNull()
+        {
+            var bodies = new[]
+            {
+                "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"abc\"}}}",
+                "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"NaN\"}}}",
+                "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"Infinity\"}}}",
+                "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":-5}}}"
+            };
+
+            foreach (var json in bodies)
+            {
+                var result = ApiErrorParser.ParseErrorBody(json);
+
+                Assert.That(result.RetryAfterSeconds, Is.Null, json);
+                Assert.That(result.RetryAfterSource, Is.EqualTo(RetryAfterSource.None), json);
+            }
+        }
+
+        [Test]
+        public void ParseErrorBody_InvalidFirstCandidate_DoesNotMaskValidSecond()
+        {
+            var json = "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":\"oops\",\"retry_after_seconds_raw\":30}}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.RetryAfterSeconds, Is.EqualTo(30.0));
+        }
+
+        [Test]
+        public void ParseErrorBody_TakesMaxAcrossBodyCandidates()
+        {
+            var json = "{\"error\":{\"message\":\"slow\",\"metadata\":{\"retry_after_seconds\":5},\"retry_after\":30}}";
+
+            var result = ApiErrorParser.ParseErrorBody(json);
+
+            Assert.That(result.RetryAfterSeconds, Is.EqualTo(30.0));
+            Assert.That(result.RetryAfterSource, Is.EqualTo(RetryAfterSource.Body));
+        }
+
+        [Test]
+        public void ParseRetryAfterHeader_Delta_ReturnsSeconds()
+        {
+            using (var response = new HttpResponseMessage())
+            {
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
+
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(response.Headers), Is.EqualTo(30.0));
+            }
+        }
+
+        [Test]
+        public void ParseRetryAfterHeader_HttpDate_UsesServerDateHeader()
+        {
+            var serverNow = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
+
+            using (var response = new HttpResponseMessage())
+            {
+                response.Headers.Date = serverNow;
+                response.Headers.Age = TimeSpan.FromSeconds(10);
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(serverNow.AddSeconds(60));
+
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(response.Headers), Is.EqualTo(50.0));
+            }
+        }
+
+        [Test]
+        public void ParseRetryAfterHeader_HttpDateInThePast_IsClampedToZero()
+        {
+            using (var response = new HttpResponseMessage())
+            {
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(DateTimeOffset.UtcNow.AddSeconds(-60));
+
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(response.Headers), Is.EqualTo(0.0));
+            }
+        }
+
+        [Test]
+        public void ParseRetryAfterHeader_AbsentOrUnusable_ReturnsNull()
+        {
+            using (var response = new HttpResponseMessage())
+            {
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(response.Headers), Is.Null);
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(null), Is.Null);
+
+                response.Headers.TryAddWithoutValidation("Retry-After", "-30");
+
+                Assert.That(ApiErrorParser.ParseRetryAfterHeader(response.Headers), Is.Null);
+            }
         }
     }
 }

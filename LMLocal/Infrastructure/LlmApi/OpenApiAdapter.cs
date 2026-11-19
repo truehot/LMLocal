@@ -147,6 +147,7 @@ namespace LMLocal.Infrastructure.LlmApi
                         {
                             var errorInfo = ApiErrorParser.ParseErrorBody(json);
                             errorInfo.Code = (int)response.StatusCode;
+                            ApiErrorParser.ApplyRetryAfterHeader(errorInfo, response.Headers);
                             InternalLogger.Warn($"ListModelsRawAsync: backend returned error: {errorInfo}");
                             throw new ApiException(errorInfo, (int)response.StatusCode);
                         }
@@ -225,6 +226,7 @@ namespace LMLocal.Infrastructure.LlmApi
                     var rawError = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     var errorInfo = ApiErrorParser.ParseErrorBody(rawError);
                     errorInfo.Code = (int)response.StatusCode;
+                    ApiErrorParser.ApplyRetryAfterHeader(errorInfo, response.Headers);
                     InternalLogger.Warn($"SendChatStreamingAsync: API error: {errorInfo}");
                     throw new ApiException(errorInfo, (int)response.StatusCode);
                 }
@@ -302,6 +304,7 @@ namespace LMLocal.Infrastructure.LlmApi
                     {
                         var errorInfo = ApiErrorParser.ParseErrorBody(json);
                         errorInfo.Code = (int)response.StatusCode;
+                        ApiErrorParser.ApplyRetryAfterHeader(errorInfo, response.Headers);
                         InternalLogger.Warn($"SendChatAsync: API error: {errorInfo}");
                         throw new ApiException(errorInfo, (int)response.StatusCode);
                     }
@@ -388,6 +391,7 @@ namespace LMLocal.Infrastructure.LlmApi
                     {
                         var errorInfo = ApiErrorParser.ParseErrorBody(rawJson);
                         errorInfo.Code = (int)response.StatusCode;
+                        ApiErrorParser.ApplyRetryAfterHeader(errorInfo, response.Headers);
                         InternalLogger.Warn($"SendCompletionAsync: API error: {errorInfo}");
                         throw new ApiException(errorInfo, (int)response.StatusCode);
                     }

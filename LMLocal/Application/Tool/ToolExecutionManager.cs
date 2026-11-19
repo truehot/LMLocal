@@ -16,14 +16,15 @@ namespace LMLocal.Application.Tool
     internal interface IToolExecutionManager
     {
         /// <summary>
-        /// Executes a tool call against an explicit queue.
+        /// Executes a tool call against an explicit queue. <paramref name="budget"/> passes the caller's remaining time
+        /// to long-running tools; null means unlimited.
         /// </summary>
-        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue);
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null);
 
         /// <summary>
         /// Executes a tool call in the main chat context, streaming progress steps.
         /// </summary>
-        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress);
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its tool call.
@@ -50,22 +51,23 @@ namespace LMLocal.Application.Tool
             _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
         }
 
-        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null)
         {
-            return ExecuteCoreAsync(toolCall, ct, queue, null);
+            return ExecuteCoreAsync(toolCall, ct, queue, null, budget);
         }
 
-        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null)
         {
             var queue = _toolQueueProvider.GetMainQueue();
-            return ExecuteCoreAsync(toolCall, ct, queue, progress);
+            return ExecuteCoreAsync(toolCall, ct, queue, progress, budget);
         }
 
         private async Task<ToolExecutionResult> ExecuteCoreAsync(
             ToolCallRecord toolCall,
             CancellationToken ct,
             ToolQueue queue,
-            IProgress<ToolActivityEvent> progress)
+            IProgress<ToolActivityEvent> progress,
+            ToolExecutionBudget budget)
         {
             if (toolCall == null)
             {
@@ -119,7 +121,8 @@ namespace LMLocal.Application.Tool
                     toolCall.FunctionName,
                     parameters,
                     ct,
-                    progress).ConfigureAwait(false);
+                    progress,
+                    budget).ConfigureAwait(false);
 
                 var completionMessage = _toolRouter.GetCompletionMessage(toolCall.FunctionName, result);
 
@@ -158,6 +161,17 @@ namespace LMLocal.Application.Tool
                     ToolId = toolCall.CallId,
                     ToolName = toolCall.FunctionName,
                     Error = errorMsg
+                };
+            }
+            catch (ToolBudgetExhaustedException ex)
+            {
+                InternalLogger.Warn($"ToolExecutionManager: {toolCall.FunctionName} not started: {ex.Message}");
+                return new ToolExecutionResult
+                {
+                    ToolId = toolCall.CallId,
+                    ToolName = toolCall.FunctionName,
+                    Error = ex.Message,
+                    UserMessage = ex.Message
                 };
             }
             catch (ArgumentException ex)

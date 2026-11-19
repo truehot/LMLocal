@@ -198,7 +198,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompression = true });
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
             manager.AddUserMessage("**bold**");
@@ -212,7 +212,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompression = true });
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
             manager.AddAssistantMessage("**bold**");
@@ -2006,6 +2006,239 @@ namespace LMLocal.Tests.Unit
 
             var assistant = manager.GetHistoryCopy().First(m => m.Role == "assistant");
             Assert.That(assistant.ModelId, Is.EqualTo("qwen-7b"));
+        }
+
+        // ---------- Truncate last exchange (regenerate / edit) ----------
+
+        private static (ChatHistoryManager Manager, Mock<IChatPersistenceService> Persistence) CreateManagerWithPersistence()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+
+            var mockPersistence = new Mock<IChatPersistenceService>();
+            mockPersistence
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
+
+            return (new ChatHistoryManager(mockSettings.Object, mockPersistence.Object), mockPersistence);
+        }
+
+        private static void SeedExchangeWithToolRound(ChatHistoryManager manager)
+        {
+            manager.AddUserMessage("first");
+            manager.AddAssistantMessage("first answer", null);
+
+            manager.AddUserMessage("second");
+            manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            });
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "result1", "c1") });
+            manager.AddAssistantMessage("second answer", null);
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_KeepUser_RemovesEverythingAfterLastUser()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            SeedExchangeWithToolRound(manager);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced));
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(3), "Everything after the last prompt must go, including tool rounds");
+            Assert.That(history[2].Role, Is.EqualTo("user"));
+            Assert.That(history[2].Content, Is.EqualTo("second"));
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_DropUser_RemovesPromptToo()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            SeedExchangeWithToolRound(manager);
+
+            var outcome = await manager.TruncateLastExchangeAsync(false).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced));
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+            Assert.That(history[0].Content, Is.EqualTo("first"));
+            Assert.That(history[1].Content, Is.EqualTo("first answer"));
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_ReturnsNothingToReplace_WhenHistoryHasNoUserMessage()
+        {
+            var (manager, persistence) = CreateManagerWithPersistence();
+            manager.AddAssistantMessage("orphan answer", null);
+            persistence.Invocations.Clear();
+
+            var outcome = await manager.TruncateLastExchangeAsync(true).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.NothingToReplace));
+            persistence.Verify(
+                p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [TestCase("Provide a brief summary of our previous session to continue.")]
+        [TestCase("Summary of the earlier part of this session:")]
+        [TestCase("[1 image attached - not available in this session]")]
+        [TestCase("[3 images attached - not available in this session]")]
+        [TestCase("look at this\n\n[2 images attached - not available in this session]")]
+        public async Task TruncateLastExchange_ReturnsNothingToReplace_ForServiceMessages(string serviceText)
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddAssistantMessage("earlier answer", null);
+            manager.AddUserMessage(serviceText);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.NothingToReplace));
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(2), "A service message must not be dropped");
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_DropsPendingAssistantOfTheReplacedRound()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage("first");
+            manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
+            {
+                new ToolCallRecord { CallId = "c1", FunctionName = "find", ArgumentsJson = "{}" }
+            });
+
+            await manager.TruncateLastExchangeAsync(true).ConfigureAwait(false);
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "result1", "c1") });
+
+            Assert.That(manager.GetHistoryCopy().Any(m => m.Role == "assistant"), Is.False,
+                "The tool call of the replaced round must not be committed after the truncation");
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_StartsNewSession()
+        {
+            var (manager, persistence) = CreateManagerWithPersistence();
+            manager.AddUserMessage("first");
+            manager.AddAssistantMessage("first answer", null);
+            persistence.Invocations.Clear();
+
+            await manager.TruncateLastExchangeAsync(true).ConfigureAwait(false);
+
+            persistence.Verify(
+                p => p.StartSessionWithMessagesAsync(
+                    It.Is<IReadOnlyList<ChatMessage>>(m => m.Count == 1 && m[0].Role == "user"),
+                    It.IsAny<CancellationToken>()),
+                Times.Once);
+        }
+
+        // ---------- The replacement must not depend on the chat log ----------
+
+        [Test]
+        public async Task TruncateLastExchange_ReplacesEvenWhenTheLogWriteFails()
+        {
+            var (manager, persistence) = CreateManagerWithPersistence();
+            manager.AddUserMessage("first");
+            manager.AddAssistantMessage("first answer", null);
+            manager.AddUserMessage("second");
+            manager.AddAssistantMessage("second answer", null);
+
+            // Logging is disabled (or the write failed): the log writer reports it, nothing else cares.
+            persistence
+                .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(false);
+
+            var outcome = await manager.TruncateLastExchangeAsync(false).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced),
+                "A missing log entry must not turn the replacement into a refusal");
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(2));
+        }
+
+        // ---------- The last prompt must be the one the chat is showing ----------
+
+        [Test]
+        public async Task TruncateLastExchange_Replaces_WhenExpectedPromptMatches()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage("first");
+            manager.AddAssistantMessage("first answer", null);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true, "first").ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced));
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_Replaces_WhenDocumentIsPrependedToThePrompt()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage("fix it", "```cs\nclass A { }\n```");
+            manager.AddAssistantMessage("done", null);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true, "fix it").ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced));
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_ReturnsOutOfSync_WhenPromptWasNeverWritten()
+        {
+            var (manager, persistence) = CreateManagerWithPersistence();
+            manager.AddUserMessage("previous prompt");
+            manager.AddAssistantMessage("previous answer", null);
+            persistence.Invocations.Clear();
+
+            // The UI shows a prompt that never reached the history (session never started).
+            var outcome = await manager.TruncateLastExchangeAsync(false, "prompt that was never committed").ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.OutOfSync));
+            Assert.That(manager.GetHistoryCopy().Count, Is.EqualTo(2), "Nothing may be dropped when the prompt does not match");
+            persistence.Verify(
+                p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+
+        [TestCase("ok", "that's ok")]
+        [TestCase("prompt", "another prompt")]
+        public async Task TruncateLastExchange_ReturnsOutOfSync_ForAFalseSuffix(string expected, string stored)
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage(stored);
+            manager.AddAssistantMessage("answer", null);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true, expected).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.OutOfSync),
+                "A stored prompt that merely ends with the expected one is a different prompt");
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_ReturnsOutOfSync_WhenExpectedPromptIsEmptyButTheStoredOneHasText()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage("some prompt");
+            manager.AddAssistantMessage("answer", null);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true, string.Empty).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.OutOfSync));
+        }
+
+        [Test]
+        public async Task TruncateLastExchange_Replaces_WhenExpectedPromptIsEmptyAndTheMessageIsImagesOnly()
+        {
+            var (manager, _) = CreateManagerWithPersistence();
+            manager.AddUserMessage(string.Empty, null, new List<string> { "data:image/png;base64,AAA" });
+            manager.AddAssistantMessage("answer", null);
+
+            var outcome = await manager.TruncateLastExchangeAsync(true, string.Empty).ConfigureAwait(false);
+
+            Assert.That(outcome, Is.EqualTo(TruncateLastExchangeOutcome.Replaced));
         }
 
     }

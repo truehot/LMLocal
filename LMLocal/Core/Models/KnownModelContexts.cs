@@ -11,16 +11,24 @@ namespace LMLocal.Core.Models
         private static readonly Dictionary<string, int> KnownContexts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             // ========== DeepSeek (2026) ==========
+            ["deepseek-v4.1-flash-cyber"] = 1_048_576,
+            ["deepseek/deepseek-v4.1-flash-cyber"] = 1_048_576,
             ["deepseek-v4.1-flash"] = 1_048_576,
             ["deepseek-v4.1-flash-1017"] = 1_048_576,
             ["deepseek/deepseek-v4.1-flash"] = 1_048_576,
             ["deepseek-v4"] = 1_048_576,
             ["deepseek-v4-pro"] = 1_048_576,
             ["deepseek-v4-flash"] = 1_048_576,
+            ["deepseek-v4-flash-0731"] = 1_048_576,
             ["deepseek-flash"] = 1_048_576,
             ["deepseek-ai/DeepSeek-V4-Flash"] = 1_048_576,
             ["deepseek-ai/DeepSeek-V4-Pro"] = 1_048_576,
+
             // ========== Kimi (Moonshot AI, 2026) ==========
+            ["kimi-k3.1-pro"] = 1_048_576,
+            ["kimi-k3.1-pro-highspeed"] = 1_048_576,
+            ["moonshotai/Kimi-K3.1-Pro"] = 1_048_576,
+            ["moonshot/kimi-k3.1-pro"] = 1_048_576,
             ["kimi-k3"] = 1_048_576,
             ["moonshot/kimi-k3"] = 1_048_576,
             ["kimi-k2.7"] = 256_000,
@@ -33,6 +41,9 @@ namespace LMLocal.Core.Models
             ["moonshot/kimi-k2.5"] = 256_000,
 
             // ========== MiniMax (2026) ==========
+            ["minimax-m3.1-flash"] = 1_000_000,
+            ["minimax-m3.1-flash-preview"] = 1_000_000,
+            ["MiniMaxAI/MiniMax-M3.1-Flash"] = 1_000_000,
             ["minimax-m3"] = 1_000_000,
             ["minimax-m2.7"] = 204_800,
             ["minimax-m2.7-highspeed"] = 204_800,
@@ -42,6 +53,10 @@ namespace LMLocal.Core.Models
             ["MiniMaxAI/MiniMax-M3"] = 1_000_000,
 
             // ========== Google Gemini (2026) ==========
+            ["gemini-4-carbon"] = 1_048_576,
+            ["gemini-4-argon"] = 1_048_576,
+            ["gemini-4-hydrogen"] = 1_048_576,
+            ["gemini-omni-1.2-flash"] = 1_048_576,
             ["gemini-3.8-flash"] = 1_048_576,
             ["gemini-3.6-flash"] = 1_048_576,
             ["gemini-3.5-flash-cyber"] = 1_048_576,
@@ -52,6 +67,8 @@ namespace LMLocal.Core.Models
 
             // ========== GLM (Zhipu / Z.ai) ==========
             ["glm-5.3"] = 1_048_576,
+            ["glm-5.3-flash"] = 1_048_576,
+            ["zai-org/GLM-5.3"] = 1_048_576,
             ["glm-5.2"] = 1_048_576,
             ["glm-5.2-1m"] = 1_048_576,
             ["glm-5.1"] = 200_000,
@@ -64,12 +81,15 @@ namespace LMLocal.Core.Models
 
             // ========== Gemma 4 (Google, 2026) ==========
             ["gemma-4-26b-a4b"] = 256_000,
+            ["gemma-4-26b-a4b-it"] = 256_000,
             ["gemma-4-31b"] = 256_000,
+            ["gemma-4-31b-it"] = 256_000,
             ["gemma-4-12b"] = 256_000,
             ["gemma-4-e2b"] = 128_000,
             ["gemma-4-e4b"] = 128_000,
 
             // ========== OpenAI GPT (2025–2026) ==========
+            ["gpt-6-cyber"] = 1_050_000,
             ["gpt-6-astra"] = 1_050_000,
             ["gpt-6.1-sol"] = 1_050_000,
             ["gpt-6-luna"] = 1_050_000,
@@ -80,16 +100,31 @@ namespace LMLocal.Core.Models
             ["gpt-oss-120b"] = 131_072,
             ["gpt-oss-20b"] = 131_072,
 
-            // ========== Meta Llama 4 (2026) ==========
+            // ========== Meta Muse & Llama 4 (2026) ==========
+            ["muse-wonder"] = 1_048_576,
+            ["muse-wonder-full"] = 1_048_576,
+            ["muse-spark"] = 1_048_576,
+            ["muse-spark-1.3"] = 1_048_576,
+            ["muse-spark-open"] = 1_048_576,
+            ["muse-ember"] = 1_048_576,
             ["llama-4-scout"] = 10_000_000,
             ["llama-4-maverick"] = 1_000_000,
 
-            // ========== NVIDIA Nemotron 3 (2025–2026) ==========
+            // ========== NVIDIA Nemotron 3 & 3.5 (2025–2026) ==========
+            ["nemotron-3.5-super-vl"] = 1_000_000,
+            ["nemotron-3.5-super-vl-120b-a12b"] = 1_000_000,
+            ["nemotron-3.5-lightning"] = 1_000_000,
+            ["nemotron-3-ultra-550b-a55b"] = 1_000_000,
             ["nemotron-3-super-120b"] = 1_000_000,
+            ["nemotron-3-super-120b-a12b"] = 1_000_000,
             ["nemotron-3-nano-30b"] = 256_000,
             ["nemotron-3-nano-omni-30b"] = 256_000,
 
             // ========== Qwen (Alibaba, 2026) ==========
+            ["qwen4-max"] = 1_000_000,
+            ["qwen4-max-preview"] = 1_000_000,
+            ["Qwen/Qwen4-Max"] = 1_000_000,
+
             ["qwen3.5-plus"] = 1_000_000,
             ["qwen3.5-flash"] = 1_000_000,
             ["qwen3.5-35b-a3b"] = 262_144,
@@ -105,8 +140,12 @@ namespace LMLocal.Core.Models
             ["qwen3.7-35b-a3b"] = 262_144,
             ["qwen3.7-27b"] = 262_144,
 
+            ["qwen3.8-max"] = 1_000_000,
+            ["Qwen/Qwen3.8-Max"] = 1_000_000,
             ["Qwen/Qwen3.8-Flash"] = 1_000_000,
             ["qwen3.8-flash"] = 1_000_000,
+            ["qwen3.8-flash-next"] = 1_000_000,
+            ["qwen3.8-2.4t-a95b"] = 1_000_000,
 
             ["qwen3-coder-480b-a35b"] = 262_144,
             ["qwen3-coder-next"] = 262_144,
@@ -115,13 +154,18 @@ namespace LMLocal.Core.Models
             // ========== Xiaomi MiMo ==========
             ["mimo-v2.5-pro"] = 1_000_000,
 
-            // ========== xAI Grok (coding-focused) ==========
+            // ========== xAI Grok (coding & frontier) ==========
             ["grok-code-fast-1"] = 256_000,
             ["grok-build-0.1"] = 256_000,
+            ["grok-4.7"] = 500_000,
+            ["grok-4.6"] = 500_000,
+            ["grok-4.5"] = 1_000_000,
             ["grok-4.3"] = 1_000_000,
             ["grok-4.20"] = 2_000_000,
 
             // ========== Anthropic Claude (2026) ==========
+            ["claude-fable-5-2"] = 1_000_000,
+            ["claude-mythos-5-2"] = 1_000_000,
             ["claude-fable-5-1"] = 1_000_000,
             ["claude-opus-5-5"] = 1_000_000,
             ["claude-sonnet-5-5"] = 1_000_000,
@@ -129,10 +173,28 @@ namespace LMLocal.Core.Models
             ["claude-haiku-4-5"] = 200_000,
 
             // ========== Additional 2026 models ==========
+            ["hy4-flash"] = 1_000_000,
+            ["hy4-preview"] = 1_000_000,
+            ["ernie-5.5-flash-preview"] = 1_000_000,
+            ["ernie-5.0"] = 1_000_000,
+            ["inkling"] = 1_048_576,
+            ["thinkingmachines/inkling"] = 1_048_576,
+            ["laguna-s-2.1"] = 256_000,
+            ["north-mini-code"] = 256_000,
             ["mistral-large-3"] = 128_000,
             ["cohere-command-a"] = 128_000,
             ["xai-grok-4.5"] = 1_000_000,
             ["seed-2.1-pro"] = 1_000_000,
+
+            // ========== Ling (Ant Group / inclusionAI, 2026) ==========
+            ["ling-3.0-flash"] = 262_144,          // 256 Ki — 262_144
+            ["inclusionAI/Ling-3.0-flash"] = 256_000,
+
+            ["ling-3.1-flash"] = 1_048_576,        // 1M
+            ["inclusionAI/Ling-3.1-flash"] = 1_048_576,
+
+            ["ling-3.2-flash"] = 1_048_576,        // 1M
+            ["inclusionAI/Ling-3.2-flash"] = 1_048_576,
         };
 
         /// <summary>
@@ -147,7 +209,17 @@ namespace LMLocal.Core.Models
             if (KnownContexts.TryGetValue(modelId, out var context))
                 return context;
 
-            // 2. Try to get the last part after '/'
+            // 2. Strip provider suffix (e.g., ":free" on OpenRouter)
+            var colonIndex = modelId.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                var baseId = modelId.Substring(0, colonIndex);
+                if (KnownContexts.TryGetValue(baseId, out context))
+                    return context;
+                modelId = baseId;
+            }
+
+            // 3. Try to get the last part after '/'
             var lastSlash = modelId.LastIndexOf('/');
             if (lastSlash >= 0 && lastSlash < modelId.Length - 1)
             {

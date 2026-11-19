@@ -11,7 +11,6 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.ModelsConfig;
-using LMLocal.Infrastructure.Tooling;
 using Moq;
 using NUnit.Framework;
 
@@ -148,6 +147,7 @@ namespace LMLocal.Tests.Unit
             public void DiscardPendingAssistant() { }
             public void DiscardLastAssistantFromFailedRound() { }
             public Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages) => Task.FromResult(true);
+            public Task<TruncateLastExchangeOutcome> TruncateLastExchangeAsync(bool keepUserMessage, string expectedPrompt = null) => Task.FromResult(TruncateLastExchangeOutcome.Replaced);
             public Task MoveLastExchangeToNewSessionAsync() => Task.CompletedTask;
             public Task ConsolidateLastExchangeAsync() => Task.CompletedTask;
             public Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = 200) => Task.FromResult(new List<ChatSessionSummary>());

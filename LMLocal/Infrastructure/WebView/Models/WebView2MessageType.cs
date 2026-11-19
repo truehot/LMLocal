@@ -102,6 +102,12 @@ namespace LMLocal.Infrastructure.WebView
         /// Snapshot files list has changed (files were backed up, rolled back, or committed).
         /// Sent after tool execution or when snapshot operations complete.
         /// </summary>
-        SnapshotFilesChanged
+        SnapshotFilesChanged,
+
+        /// <summary>
+        /// The backend is waiting out a provider rate limit before retrying (Phase "Begin"), or the wait is over
+        /// (Phase "End"). Carries a WaitId so an End can only clear the banner it owns.
+        /// </summary>
+        RateLimitWait
     }
 }

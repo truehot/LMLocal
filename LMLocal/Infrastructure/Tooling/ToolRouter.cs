@@ -69,7 +69,8 @@ namespace LMLocal.Infrastructure.Tooling
             string toolName,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
-            IProgress<ToolActivityEvent> progress = null)
+            IProgress<ToolActivityEvent> progress = null,
+            ToolExecutionBudget budget = null)
         {
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
@@ -81,7 +82,7 @@ namespace LMLocal.Infrastructure.Tooling
                 if (!IsBuiltInToolAccessAllowed(toolName))
                     throw new ArgumentException($"Tool '{toolName}' requires write access (EnableAiWriteTools).", nameof(toolName));
 
-                return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken).ConfigureAwait(false);
+                return await _builtInToolProvider.ExecuteAsync(toolName, parameters, cancellationToken, budget).ConfigureAwait(false);
             }
 
             if (_mcpToolManager.ToolExists(toolName))
@@ -138,7 +139,7 @@ namespace LMLocal.Infrastructure.Tooling
                 return null;
 
             if (AreBuiltInToolsEnabled && _builtInToolProvider.ToolExists(toolName))
-                return null;
+                return _builtInToolProvider.GetToolTimeout(toolName);
 
             if (_mcpToolManager.ToolExists(toolName))
                 return null;

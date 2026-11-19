@@ -78,6 +78,15 @@ Answer the task now using only the tool results above.
 For every part of the task those results do not answer, say that it was not checked; do not report it as NOT FOUND.";
 
         /// <summary>
+        /// Appended to a tool round when the agent budget is nearly spent: the results of that round are already in the
+        /// history, this note turns them into a final answer instead of losing them to the hard budget timeout.
+        /// </summary>
+        internal const string BudgetExhaustedNudge = @"[AUTOMATED GUARD: AGENT BUDGET NEARLY EXHAUSTED]
+There is no time left for more tool calls in this run.
+Answer the task now using only the tool results above.
+For every part of the task those results do not answer, say that it was not checked; do not report it as NOT FOUND.";
+
+        /// <summary>
         /// User-turn instruction injected after a repeated tool call.
         /// </summary>
         internal const string LoopRecoveryNudge = @"[AUTOMATED GUARD: DUPLICATE TOOL CALL BLOCKED]

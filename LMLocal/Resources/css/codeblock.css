@@ -24,7 +24,9 @@
 }
 
 .header-copy-btn,
-.message-copy-btn {
+.message-copy-btn,
+.message-regenerate-btn,
+.message-edit-btn {
     background: transparent;
     border: none;
     color: var(--btn-icon-color);
@@ -37,13 +39,17 @@
 }
 
     .header-copy-btn:hover,
-    .message-copy-btn:hover {
+    .message-copy-btn:hover,
+    .message-regenerate-btn:hover,
+    .message-edit-btn:hover {
         background: var(--input-bg);
         color: var(--btn-icon-hover);
     }
 
     .header-copy-btn svg,
-    .message-copy-btn svg {
+    .message-copy-btn svg,
+    .message-regenerate-btn svg,
+    .message-edit-btn svg {
         opacity: 0.7;
         flex-shrink: 0;
     }
@@ -56,6 +62,18 @@
     .header-copy-btn.error,
     .message-copy-btn.error {
         color: var(--danger-color) !important;
+    }
+
+    .message-regenerate-btn:disabled,
+    .message-edit-btn:disabled {
+        opacity: .4;
+        cursor: default;
+    }
+
+    .message-regenerate-btn:disabled:hover,
+    .message-edit-btn:disabled:hover {
+        background: transparent;
+        color: var(--btn-icon-color);
     }
 
 pre {

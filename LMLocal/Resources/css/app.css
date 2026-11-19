@@ -434,6 +434,23 @@ body {
     text-overflow: ellipsis;
 }
 
+#rate-limit-status {
+    line-height: 1;
+    display: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--danger-color);
+    font-variant-numeric: tabular-nums;
+}
+
+    #rate-limit-status.visible {
+        display: block;
+    }
+
 #live-token-count {
     line-height: 1;
     display: flex;
@@ -966,6 +983,7 @@ body {
 .message-actions {
     display: flex;
     justify-content: flex-start;
+    gap: 4px;
     margin-top: 6px;
     opacity: 0;
     pointer-events: none;
@@ -973,13 +991,13 @@ body {
     white-space: nowrap;
 }
 
-    .ai-message:hover .message-actions,
-    .ai-message:focus-within .message-actions,
-    .user-message:hover .message-actions,
-    .user-message:focus-within .message-actions {
-        opacity: 1;
-        pointer-events: auto;
-    }
+.ai-message:hover .message-actions,
+.ai-message:focus-within .message-actions,
+.user-message:hover .message-actions,
+.user-message:focus-within .message-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
 
 /* ====== Token stats badge ====== */
 .token-stats {
@@ -1427,3 +1445,57 @@ body {
         .app-toast.anchored.show {
             transform: none;
         }
+
+/* ====== Edit last prompt (input banner) ====== */
+.edit-prompt-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: var(--muted-color);
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.edit-prompt-banner.hidden {
+    display: none;
+}
+
+.edit-prompt-text {
+    flex: 1 1 auto;
+}
+
+.edit-prompt-hint {
+    flex: 0 0 auto;
+    font-style: italic;
+    opacity: .75;
+}
+
+.edit-prompt-hint.hidden {
+    display: none;
+}
+
+.edit-prompt-cancel {
+    display: flex;
+    align-items: center;
+    padding: 2px 4px;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: var(--btn-icon-color);
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+    .edit-prompt-cancel:hover {
+        background: var(--input-bg);
+        color: var(--btn-icon-hover);
+    }
+
+/* ====== Last exchange while it is being edited ====== */
+#chat-container .message.exchange-being-edited {
+    opacity: .55;
+}

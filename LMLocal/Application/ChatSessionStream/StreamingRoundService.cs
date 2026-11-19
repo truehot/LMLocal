@@ -55,6 +55,11 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>User prompt for a user round.</summary>
         public string Prompt { get; set; }
 
+        /// <summary>
+        /// Optional instruction appended as a user message AFTER the round's tool results.
+        /// </summary>
+        public string RoundNote { get; set; }
+
         /// <summary>Active document content attached to the user message. Optional.</summary>
         public string ActiveDocumentContent { get; set; }
 
@@ -84,6 +89,12 @@ namespace LMLocal.Application.ChatSessionStream
 
         /// <summary>Optional streaming callback (chunks/token stats).</summary>
         public Func<TextStreamChunk, TokenGenerationStats, Task> OnChunk { get; set; }
+
+        /// <summary>
+        /// Optional sink for rate-limit wait notifications. Null means "retry silently" and is the SubAgent path,
+        /// where the wait is only recorded in the internal log.
+        /// </summary>
+        public Func<RateLimitWaitInfo, Task> OnRateLimitWait { get; set; }
 
         /// <summary>Calibration of the conversation this round belongs to. Optional.</summary>
         public IContextCalibration Calibration { get; set; }
@@ -160,6 +171,11 @@ namespace LMLocal.Application.ChatSessionStream
                     }
 
                     history.AddToolExecutionResultMessages(pendingToolMessages);
+
+                    if (!string.IsNullOrWhiteSpace(request.RoundNote))
+                    {
+                        history.AddUserMessage(request.RoundNote, null, null);
+                    }
                 }
                 else if (!request.IsContextOverflowRetry)
                 {
@@ -183,28 +199,62 @@ namespace LMLocal.Application.ChatSessionStream
                 int fixedOverhead = Math.Max(0, envelopeEstimate - EnvelopeEstimator.Estimate(WithoutSystemMessage(messages), null));
                 request.Calibration?.RecordEnvelope(envelopeEstimate, fixedOverhead);
 
-                StreamCompletionResult result;
-                try
+                StreamingResponse streaming = null;
+                int attempt = 0;
+
+                while (streaming == null)
                 {
-                    using (var streaming = await SendStreamingAsync(messageContext, modelContext, request, linkedCts.Token).ConfigureAwait(false))
+                    attempt++;
+
+                    try
                     {
-                        result = await processor.ProcessStreamAsync(
-                            streaming.Stream,
-                            linkedCts.Token,
-                            request.OnChunk,
-                            _settingsManager.BatchIntervalMs).ConfigureAwait(false);
+                        streaming = await SendStreamingAsync(messageContext, modelContext, request, linkedCts.Token).ConfigureAwait(false);
+                    }
+                    catch (ApiException ex)
+                    {
+                        if (linkedCts.Token.IsCancellationRequested)
+                        {
+                            linkedCts.Token.ThrowIfCancellationRequested();
+                        }
+
+                        if (!TryPlanRateLimitRetry(ex, attempt, out TimeSpan delay, out RetryAfterSource source))
+                        {
+                            request.Calibration?.RecordOverflowError(ex.ErrorInfo?.PromptTokens, ex.ErrorInfo?.ContextLength, envelopeEstimate);
+
+                            return new StreamRoundResult
+                            {
+                                Outcome = StreamRoundOutcome.Error,
+                                Stream = BuildErrorResult(ex),
+                                EnvelopeEstimate = envelopeEstimate
+                            };
+                        }
+
+                        InternalLogger.Info($"Rate limit: retrying attempt {attempt + 1}/{RateLimitRetryPolicy.MaxAttempts} after {delay.TotalSeconds:0.#}s ({source})");
+
+                        string waitId = Guid.NewGuid().ToString("N");
+                        NotifyRateLimitWait(request.OnRateLimitWait, new RateLimitWaitInfo(
+                            waitId, attempt + 1, RateLimitRetryPolicy.MaxAttempts, delay, source, RateLimitWaitPhase.Begin));
+
+                        try
+                        {
+                            await Task.Delay(delay, linkedCts.Token).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            NotifyRateLimitWait(request.OnRateLimitWait, new RateLimitWaitInfo(
+                                waitId, attempt + 1, RateLimitRetryPolicy.MaxAttempts, delay, source, RateLimitWaitPhase.End));
+                        }
                     }
                 }
-                catch (ApiException ex) when (!linkedCts.Token.IsCancellationRequested)
-                {
-                    request.Calibration?.RecordOverflowError(ex.ErrorInfo?.PromptTokens, ex.ErrorInfo?.ContextLength, envelopeEstimate);
 
-                    return new StreamRoundResult
-                    {
-                        Outcome = StreamRoundOutcome.Error,
-                        Stream = BuildErrorResult(ex),
-                        EnvelopeEstimate = envelopeEstimate
-                    };
+                StreamCompletionResult result;
+                using (streaming)
+                {
+                    result = await processor.ProcessStreamAsync(
+                        streaming.Stream,
+                        linkedCts.Token,
+                        request.OnChunk,
+                        _settingsManager.BatchIntervalMs).ConfigureAwait(false);
                 }
 
                 request.Calibration?.RecordSuccessfulRound(result?.TokenUsage?.PromptTokens, envelopeEstimate);
@@ -309,6 +359,60 @@ namespace LMLocal.Application.ChatSessionStream
             }
 
             return _openApiAdapter.SendChatStreamingAsync(messageContext, modelContext, cancellationToken);
+        }
+
+        /// <summary>
+        /// Decides whether the failed attempt may be retried: the feature must be on, the error must be a transient
+        /// throttle, the per-round attempt budget must not be spent and the server hint must fit the policy cap.
+        /// </summary>
+        private bool TryPlanRateLimitRetry(ApiException ex, int attempt, out TimeSpan delay, out RetryAfterSource source)
+        {
+            delay = TimeSpan.Zero;
+            source = RetryAfterSource.Fallback;
+
+            if (!RateLimitRetryPolicy.IsRateLimit(ex))
+                return false;
+
+            var settings = _settingsManager?.Current;
+            if (settings == null || !settings.EnableRateLimitHandling)
+                return false;
+
+            if (attempt >= RateLimitRetryPolicy.MaxAttempts)
+            {
+                InternalLogger.Info($"Rate limit: attempt {attempt}/{RateLimitRetryPolicy.MaxAttempts} was throttled again — giving up");
+                return false;
+            }
+
+            int cap = RateLimitRetryPolicy.MaxRetryDelaySeconds;
+            if (!RateLimitRetryPolicy.TryGetDelay(ex, cap, out delay, out source))
+            {
+                double hint = ex?.ErrorInfo?.RetryAfterSeconds ?? 0d;
+                int clampedCap = RateLimitRetryPolicy.Clamp(
+                    cap, RateLimitRetryPolicy.MinMaxDelaySeconds, RateLimitRetryPolicy.MaxMaxDelaySeconds);
+                InternalLogger.Info($"Rate limit: NOT retrying — the server asks for {hint:0.#}s, which exceeds the {clampedCap}s cap");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Delivers a wait notification without letting the UI influence the retry: a synchronous throw is swallowed
+        /// and a returned task is only observed, never awaited.
+        /// </summary>
+        private static void NotifyRateLimitWait(Func<RateLimitWaitInfo, Task> callback, RateLimitWaitInfo info)
+        {
+            if (callback == null)
+                return;
+
+            try
+            {
+                TaskObserver.Observe(callback(info), "Rate limit: wait notification");
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn("Rate limit: wait notification failed: " + ex.Message);
+            }
         }
 
         /// <summary>

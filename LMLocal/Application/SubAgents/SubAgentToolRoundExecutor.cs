@@ -39,8 +39,11 @@ namespace LMLocal.Application.SubAgents
 
         /// <summary>
         /// Executes the round's calls in order; a call not allowed in the queue gets the "not allowed" error and is not run.
+        /// <paramref name="available"/> is asked before EACH call: the calls run one after another, so a budget taken once
+        /// per round would hand the second long tool the time the first one already spent. Null provider or null value
+        /// = unlimited.
         /// </summary>
-        public async Task<List<ToolResultMessage>> ExecuteAsync(IReadOnlyList<ToolCallRecord> calls, CancellationToken cancellationToken)
+        public async Task<List<ToolResultMessage>> ExecuteAsync(IReadOnlyList<ToolCallRecord> calls, CancellationToken cancellationToken, Func<TimeSpan?> available = null)
         {
             var results = new List<ToolResultMessage>(calls?.Count ?? 0);
             if (calls == null)
@@ -69,8 +72,11 @@ namespace LMLocal.Application.SubAgents
                     Step = ++Steps
                 });
 
+                var availableNow = available?.Invoke();
+                var budget = availableNow.HasValue ? new ToolExecutionBudget(availableNow.Value) : null;
+
                 var execResult = await _managerResolver()
-                    .ExecuteToolAsync(toolCall, cancellationToken, _queue)
+                    .ExecuteToolAsync(toolCall, cancellationToken, _queue, budget)
                     .ConfigureAwait(false);
 
                 bool succeeded = string.IsNullOrEmpty(execResult.Error);

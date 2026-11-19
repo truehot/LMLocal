@@ -264,4 +264,55 @@ public class SettingsTests : AppTestBase
         await Expect(toast).ToContainTextAsync("added automatically");
     }
 
+    /// <summary>
+    /// The backend replaces the whole settings file with the payload it receives, so every value the dialog displays
+    /// must travel back unchanged even when the user never touched it. The dialog therefore has to populate the form
+    /// from the loaded settings before it collects them.
+    /// </summary>
+    [Test]
+    [Category("Settings")]
+    public async Task Save_Settings_KeepsValuesTheUserDidNotTouch()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        // The dialog reloads the settings each time it opens, so overriding the source here is enough. The payload
+        // carries the required fields so the form is valid without the test filling anything in.
+        await Page.EvaluateAsync(
+            "() => { if (window.__settingsOverride) { window.__settingsOverride.GetSettingsAsync = async () => JSON.stringify({ LmStudioBaseUrl: 'http://localhost:1234', StreamInactivityTimeoutSeconds: 20, AutoLoadOnStartup: true, EnableHistoryCompaction: true, ShowTokenStats: true, EnableRateLimitHandling: true }); } }");
+        await Page.EvaluateAsync(
+            "() => { window.__capturedSettings = null; if (window.__settingsOverride) { const orig = window.__settingsOverride.UpdateSettingsAsync; window.__settingsOverride.UpdateSettingsAsync = async (json) => { window.__capturedSettings = json; return orig(json); } } }");
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await Page.WaitForFunctionAsync("() => document.querySelector('#settings-dialog form')?.children.length > 0");
+
+        await Page.Locator("#settings-dialog .modal-footer button.btn-primary").ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        var capturedRaw = await Page.EvaluateAsync<string>(
+            "() => { const v = window.__capturedSettings; if (v === undefined || v === null) return null; return (typeof v === 'string') ? v : JSON.stringify(v); }");
+        Assert.That(capturedRaw, Is.Not.Null, "Bridge did not receive settings payload");
+
+        var json = capturedRaw!;
+        if (json.Length > 0 && json[0] == '"' && json[^1] == '"')
+        {
+            json = System.Text.Json.JsonSerializer.Deserialize<string>(json)!;
+        }
+
+        var doc = System.Text.Json.JsonDocument.Parse(json).RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.GetProperty("EnableHistoryCompaction").GetBoolean(), Is.True,
+                "a setting the user did not touch must reach the bridge unchanged");
+            Assert.That(doc.GetProperty("ShowTokenStats").GetBoolean(), Is.True);
+            Assert.That(doc.GetProperty("EnableRateLimitHandling").GetBoolean(), Is.True);
+        }
+    }
+
 }

@@ -26,6 +26,12 @@ namespace LMLocal.Application.SubAgents
         private const int DefaultMaxRounds = 10;
         internal const int DefaultTimeoutSeconds = 120;
 
+        /// <summary>
+        /// Time kept back for the final answer round. Tool rounds stop this long before the agent deadline, so the answer
+        /// comes from the results already gathered instead of dying with the hard budget timeout.
+        /// </summary>
+        internal const int BudgetReserveSeconds = 25;
+
         // Sent in the final-answer round after the round limit: an empty list, so the request carries no tools at all.
         private static readonly IReadOnlyList<ToolDefinition> NoTools = new ToolDefinition[0];
 
@@ -150,10 +156,19 @@ namespace LMLocal.Application.SubAgents
                 bool isToolRound = false;
                 bool finalAnswerRound = false;
                 string promptForRound = request.Prompt;
+                string finalRoundNote = null;
 
                 var recovery = new SubAgentRecoveryPolicy(_loopDetector, _loopRecoveryEnabled, maxRounds);
                 var evidence = new SubAgentRunEvidence();
                 var toolExecutor = new SubAgentToolRoundExecutor(_toolExecutionManagerResolver, toolQueue, request.Progress, evidence);
+
+                TimeSpan? AvailableForTools()
+                {
+                    if (timeoutSeconds <= 0)
+                        return null;
+
+                    return TimeSpan.FromSeconds(timeoutSeconds) - stopwatch.Elapsed - TimeSpan.FromSeconds(BudgetReserveSeconds);
+                }
 
                 using (var overallCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
@@ -162,7 +177,6 @@ namespace LMLocal.Application.SubAgents
                         overallCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                     }
 
-                    // After the round limit guard one extra round runs without tools, so the model can only answer.
                     for (int round = 0; round < maxRounds || (finalAnswerRound && round == maxRounds); round++)
                     {
                         lastRound = round;
@@ -174,6 +188,7 @@ namespace LMLocal.Application.SubAgents
                             IsToolRound = isToolRound,
                             ToolResults = isToolRound ? toolResultsForRound : null,
                             Prompt = isToolRound ? null : promptForRound,
+                            RoundNote = isToolRound ? finalRoundNote : null,
                             SystemPrompt = systemPrompt,
                             ModelId = modelId,
                             Temperature = request.Temperature,
@@ -186,6 +201,7 @@ namespace LMLocal.Application.SubAgents
 
                         promptForRound = null;
                         isToolRound = true;
+                        finalRoundNote = null;
 
                         var roundResult = await _roundService.RunAsync(roundRequest, overallCts.Token).ConfigureAwait(false);
                         var streamResult = roundResult.Stream;
@@ -217,6 +233,15 @@ namespace LMLocal.Application.SubAgents
                                     response, request, streamResult.ErrorMessage, round);
 
                             case StreamRoundOutcome.ToolCalls:
+                                if (finalAnswerRound && roundRequest.IsToolRound)
+                                {
+                                    return FailRun(
+                                        response,
+                                        request,
+                                        "SubAgent called tools in the final answer round (agent budget exhausted); run stopped.",
+                                        round);
+                                }
+
                                 var decision = recovery.Evaluate(streamResult, round);
                                 if (decision.Action == RecoveryAction.Fail)
                                 {
@@ -235,7 +260,21 @@ namespace LMLocal.Application.SubAgents
                                     continue;
                                 }
 
-                                toolResultsForRound = await toolExecutor.ExecuteAsync(streamResult.ToolCalls, overallCts.Token).ConfigureAwait(false);
+                                toolResultsForRound = await toolExecutor
+                                    .ExecuteAsync(streamResult.ToolCalls, overallCts.Token, AvailableForTools)
+                                    .ConfigureAwait(false);
+
+                                var remainingForTools = AvailableForTools();
+                                if (!finalAnswerRound && remainingForTools.HasValue && remainingForTools.Value <= TimeSpan.Zero)
+                                {
+                                    finalAnswerRound = true;
+                                    finalRoundNote = SubAgentRecoveryPolicy.BudgetExhaustedNudge;
+                                    AddRecovery(
+                                        response,
+                                        request,
+                                        round,
+                                        "SubAgent budget is nearly exhausted and answered from the results gathered so far.");
+                                }
                                 continue;
 
                             case StreamRoundOutcome.Completed:

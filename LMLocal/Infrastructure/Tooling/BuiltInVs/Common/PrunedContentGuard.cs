@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using LMLocal.Application.Chat;
+using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 {
@@ -36,11 +38,61 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 if (string.Equals(parameter.Key, PrunedKey, StringComparison.OrdinalIgnoreCase))
                     return RejectionMessage;
 
-                if (parameter.Value is string text && text.IndexOf(Marker, StringComparison.Ordinal) >= 0)
+                if (CarriesMarker(parameter.Value, 0))
                     return RejectionMessage;
             }
 
             return null;
+        }
+
+        /// <summary>Nesting depth checked inside array arguments such as replace_file_lines 'edits'.</summary>
+        private const int MaxDepth = 4;
+
+        /// <summary>
+        /// True when the value is a string with the marker, or an object / array (replace_file_lines 'edits') that holds one
+        /// or a pruned-flag key.
+        /// </summary>
+        private static bool CarriesMarker(object value, int depth)
+        {
+            if (value == null || depth > MaxDepth)
+                return false;
+
+            if (value is JValue jv)
+                value = jv.Value;
+
+            if (value is string text)
+                return text.IndexOf(Marker, StringComparison.Ordinal) >= 0;
+
+            if (value is JObject obj)
+            {
+                foreach (var property in obj.Properties())
+                {
+                    if (string.Equals(property.Name, PrunedKey, StringComparison.OrdinalIgnoreCase) || CarriesMarker(property.Value, depth + 1))
+                        return true;
+                }
+                return false;
+            }
+
+            if (value is IDictionary<string, object> dict)
+            {
+                foreach (var entry in dict)
+                {
+                    if (string.Equals(entry.Key, PrunedKey, StringComparison.OrdinalIgnoreCase) || CarriesMarker(entry.Value, depth + 1))
+                        return true;
+                }
+                return false;
+            }
+
+            if (value is IEnumerable items)
+            {
+                foreach (var item in items)
+                {
+                    if (CarriesMarker(item, depth + 1))
+                        return true;
+                }
+            }
+
+            return false;
         }
     }
 }

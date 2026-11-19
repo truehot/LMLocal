@@ -65,8 +65,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 // complete without sending chunks
                 if (onComplete != null)
@@ -114,8 +115,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 // Wait until cancellation is requested
                 try
@@ -166,8 +168,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 if (onComplete != null)
                 {
@@ -204,8 +207,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 if (onComplete != null)
                 {
@@ -263,8 +267,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 if (onComplete != null)
                 {
@@ -314,8 +319,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 call++;
 
@@ -363,7 +369,8 @@ namespace LMLocal.Tests.Unit.Internal
                 .Setup(m => m.ExecuteToolAsync(
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
-                    It.IsAny<IProgress<ToolActivityEvent>>()))
+                    It.IsAny<IProgress<ToolActivityEvent>>(),
+                    It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult
                 {
                     ToolId = "call_1",
@@ -411,8 +418,9 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, ct) =>
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
             {
                 call++;
 
@@ -462,7 +470,8 @@ namespace LMLocal.Tests.Unit.Internal
                 .Setup(m => m.ExecuteToolAsync(
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
-                    It.IsAny<IProgress<ToolActivityEvent>>()))
+                    It.IsAny<IProgress<ToolActivityEvent>>(),
+                    It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult
                 {
                     ToolId = "call_1",
@@ -495,6 +504,66 @@ namespace LMLocal.Tests.Unit.Internal
 
             // Cached tokens never inflate the prompt: in stays 3000 + 4200.
             Assert.That(completeMsg.RequestPromptTokens, Is.EqualTo(7200));
+        }
+
+        // The orchestrator owns the delivery channel for rate-limit notifications: the UI has to receive both phases,
+        // otherwise the banner it shows would never be cleared.
+        [Test]
+        public async Task RateLimitWait_IsForwardedToTheMessageSink()
+        {
+            var messages = new List<WebView2ScriptMessage>();
+            var gate = new object();
+
+            _chatServiceMock.Setup(s => s.GenerateStreamAsync(
+                It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
+                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
+                It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
+            {
+                var begin = new RateLimitWaitInfo("wait-1", 2, 2, TimeSpan.FromSeconds(1), RetryAfterSource.Header, RateLimitWaitPhase.Begin);
+                var end = new RateLimitWaitInfo("wait-1", 2, 2, TimeSpan.FromSeconds(1), RetryAfterSource.Header, RateLimitWaitPhase.End);
+
+                await onRateLimitWait(begin).ConfigureAwait(false);
+                await onRateLimitWait(end).ConfigureAwait(false);
+
+                if (onComplete != null)
+                {
+                    await onComplete(new StreamCompletionResult { StopReason = StreamStopReason.Completed, FinishReason = "stop" }).ConfigureAwait(false);
+                }
+            });
+
+            var orchestrator = CreateOrchestrator();
+
+            // The notifier posts from its own consumer, so the list is guarded.
+            Task OnMessage(WebView2ScriptMessage msg)
+            {
+                lock (gate)
+                {
+                    messages.Add(msg);
+                }
+
+                return Task.CompletedTask;
+            }
+
+            await orchestrator.RunSessionAsync(
+                new GenerateStreamContext { Prompt = "prompt", ModelId = "m" }, OnMessage, CancellationToken.None).ConfigureAwait(false);
+
+            List<WebView2RateLimitWaitMessage> waits;
+            lock (gate)
+            {
+                waits = messages.OfType<WebView2RateLimitWaitMessage>().ToList();
+            }
+
+            Assert.That(waits, Has.Count.EqualTo(2), "both phases must reach the UI");
+            Assert.That(waits[0].Phase, Is.EqualTo("Begin"));
+            Assert.That(waits[1].Phase, Is.EqualTo("End"));
+            Assert.That(waits[0].WaitId, Is.EqualTo(waits[1].WaitId));
+            Assert.That(waits[0].Attempt, Is.EqualTo(2));
+            Assert.That(waits[0].MaxAttempts, Is.EqualTo(2));
+            Assert.That(waits[0].Source, Is.EqualTo("header"));
         }
     }
 }

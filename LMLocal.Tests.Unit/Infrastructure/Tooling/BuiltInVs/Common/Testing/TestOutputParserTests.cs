@@ -1,4 +1,5 @@
-﻿using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing;
+﻿using System.Text;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common.Testing
@@ -116,6 +117,131 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common.Testing
             Assert.That(result, Does.Contain("A.Test1"));
             Assert.That(result, Does.Contain("B.Test2"));
             Assert.That(result.IndexOf("A.Test1"), Is.LessThan(result.IndexOf("B.Test2")));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_PassedTestWithFailedInName_IsNotAFailure()
+        {
+            var output = "  Passed CopyAnswer_SurvivesIdleTransitionAfterFailedSummarize [2 s]\r\n" +
+                         "  Passed Menu_ClickTwiceClosesDropdown [953 ms]\r\n" +
+                         "Passed!  - Failed: 0, Passed: 2, Skipped: 0, Total: 2";
+
+            Assert.That(TestOutputParser.ExtractFailedDetails(output), Is.Null);
+        }
+
+        [Test]
+        public void ExtractFailedDetails_ProseStartingWithFailed_IsNotAFailure()
+        {
+            var output = "Failed to load the test adapter from the probing path.\r\n" +
+                         "Passed!  - Failed: 0, Passed: 1, Skipped: 0, Total: 1";
+
+            Assert.That(TestOutputParser.ExtractFailedDetails(output), Is.Null);
+        }
+
+        [Test]
+        public void ExtractFailedDetails_FailedBlock_StopsAtNextResultLine()
+        {
+            var output = "  Failed A.Test1 [5 ms]\r\n" +
+                         "  Error Message:\r\n" +
+                         "   Expected: 1 But was: 2\r\n" +
+                         "  Passed B.Test2 [1 s]\r\n" +
+                         "  Skipped C.Test3 [< 1 ms]\r\n" +
+                         "  Passed D.Test4 [1 s]";
+
+            var result = TestOutputParser.ExtractFailedDetails(output);
+
+            Assert.That(result, Does.Contain("Expected: 1 But was: 2"));
+            Assert.That(result, Does.Not.Contain("B.Test2"));
+            Assert.That(result, Does.Not.Contain("C.Test3"));
+            Assert.That(result, Does.Not.Contain("D.Test4"));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_FailedTestNameWithSpacesBeforeDuration_IsAFailure()
+        {
+            var output = "  Failed Ns.Method(\"a b\") [3 ms]\r\n" +
+                         "  Error Message:\r\n" +
+                         "   boom";
+
+            var result = TestOutputParser.ExtractFailedDetails(output);
+
+            Assert.That(result, Does.Contain("Failed Ns.Method(\"a b\")"));
+            Assert.That(result, Does.Contain("boom"));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_RunSummaryAfterBlock_IsNotPartOfIt()
+        {
+            var output = "  Failed A.Test1 [1 ms]\r\n" +
+                         "  Error Message:\r\n" +
+                         "   boom\r\n" +
+                         "\r\n" +
+                         "Test Run Failed.\r\n" +
+                         "Total tests: 2\r\n" +
+                         "     Passed: 1\r\n" +
+                         "     Failed: 1";
+
+            var result = TestOutputParser.ExtractFailedDetails(output);
+
+            Assert.That(result, Does.Contain("boom"));
+            Assert.That(result, Does.Not.Contain("Test Run Failed"));
+            Assert.That(result, Does.Not.Contain("Total tests"));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_TwoFailuresWithLongStacks_KeepBothNamesAndMessages()
+        {
+            var output = FailedBlock("A.First", "first message", stackLines: 200) +
+                         FailedBlock("B.Second", "second message", stackLines: 200);
+
+            var result = TestOutputParser.ExtractFailedDetails(output, maxChars: 6000);
+
+            Assert.That(result.Length, Is.LessThanOrEqualTo(6000));
+            Assert.That(result, Does.Contain("Failed A.First"));
+            Assert.That(result, Does.Contain("first message"));
+            Assert.That(result, Does.Contain("Failed B.Second"));
+            Assert.That(result, Does.Contain("second message"));
+            Assert.That(result, Does.Contain("[details truncated]"));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_TooManyFailures_ListsTheRestByName()
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < 50; i++)
+                sb.Append(FailedBlock("Ns.Test" + i, "message " + i, stackLines: 5));
+
+            var result = TestOutputParser.ExtractFailedDetails(sb.ToString(), maxChars: 6000);
+
+            Assert.That(result.Length, Is.LessThanOrEqualTo(6000));
+            Assert.That(result, Does.Contain("Failed Ns.Test0 "));
+            Assert.That(result, Does.Contain("message 0"));
+            Assert.That(result, Does.Match(@"\.\.\. and \d+ more failed: "));
+            Assert.That(result, Does.Contain("Ns.Test49"));
+        }
+
+        [Test]
+        public void ExtractFailedDetails_WithinBudget_IsNotShortened()
+        {
+            var output = FailedBlock("A.Only", "only message", stackLines: 3);
+
+            var result = TestOutputParser.ExtractFailedDetails(output, maxChars: 6000);
+
+            Assert.That(result, Does.Contain("only message"));
+            Assert.That(result, Does.Not.Contain("[details truncated]"));
+            Assert.That(result, Does.Not.Contain("more failed"));
+        }
+
+        private static string FailedBlock(string name, string message, int stackLines)
+        {
+            var sb = new StringBuilder();
+            sb.Append("  Failed ").Append(name).Append(" [12 ms]\r\n");
+            sb.Append("  Error Message:\r\n");
+            sb.Append("   ").Append(message).Append("\r\n");
+            sb.Append("  Stack Trace:\r\n");
+            for (int i = 0; i < stackLines; i++)
+                sb.Append("     at ").Append(name).Append(".Frame").Append(i).Append("() in C:\\src\\File.cs:line ").Append(i).Append("\r\n");
+            return sb.ToString();
         }
 
         [Test]

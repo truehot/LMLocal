@@ -103,6 +103,8 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISearchResultCache, SearchResultCache>();
             services.AddSingleton<IToolFileOpener, ToolFileOpener>();
             services.AddSingleton<ICloseWhileGeneratingGuard, CloseWhileGeneratingGuard>();
+            services.AddSingleton<ITaskbarAttentionNotifier, TaskbarAttentionNotifier>();
+            services.AddSingleton<IAttentionNotifier>(sp => sp.GetRequiredService<ITaskbarAttentionNotifier>());
             services.AddSingleton<IAutocompletionsConfigManager, AutocompletionsConfigManager>();
 
             services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();

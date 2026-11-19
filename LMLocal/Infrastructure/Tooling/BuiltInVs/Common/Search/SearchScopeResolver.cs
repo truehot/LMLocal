@@ -64,6 +64,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
     /// </summary>
     internal sealed class SearchScopeResolver
     {
+        /// <summary>Upper bound for the solution walk that looks up a missing file by name.</summary>
+        internal const int NameLookupTimeoutMs = 10000;
+
+        /// <summary>Files with the same name listed in the error when the path is wrong.</summary>
+        internal const int MaxNameCandidates = 10;
+
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
 
@@ -122,7 +128,54 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                     return (SearchScope.ForFolders(inside), null);
             }
 
-            return (null, $"Path not found: '{path}'. path must be an existing file or folder inside the solution directory, or a project name. A bare file name is not a path: resolve it with find_files first.");
+            return (null, await BuildNotFoundErrorAsync(path, trimmed, solutionDir, cancellationToken).ConfigureAwait(false));
+        }
+
+        /// <summary>
+        /// Error for a path that resolved to nothing.
+        /// </summary>
+        private async Task<string> BuildNotFoundErrorAsync(string path, string trimmed, string solutionDir, CancellationToken cancellationToken)
+        {
+            string generic = $"Path not found: '{path}'. path must be an existing file or folder inside the solution directory, or a project name. A bare file name is not a path: resolve it with find_files first.";
+
+            string link = FileLinkResolver.NormalizeLink(trimmed);
+            string fileName = link == null ? null : Path.GetFileName(link);
+            if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(Path.GetExtension(fileName)))
+                return generic;
+
+            List<string> files;
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                timeout.CancelAfter(NameLookupTimeoutMs);
+                try
+                {
+                    files = await EnumerateFolderFilesAsync(new[] { solutionDir }, Path.GetExtension(fileName), 0, timeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return generic;
+                }
+            }
+
+            string baseDir = solutionDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var candidates = files
+                .Where(f => string.Equals(Path.GetFileName(f), fileName, StringComparison.OrdinalIgnoreCase))
+                .Select(f => _pathResolver.TryGetRelativeNormalizedPath(f, baseDir, out string relative) ? relative : null)
+                .Where(r => !string.IsNullOrEmpty(r))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(r => r.Length)
+                .ThenBy(r => r, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (candidates.Count == 0)
+                return $"File not found: '{path}'. No file named '{fileName}' exists anywhere in the solution.";
+
+            if (candidates.Count == 1)
+                return $"Path not found: '{path}'. The file '{fileName}' exists at '{candidates[0]}': call again with that path.";
+
+            var shown = candidates.Take(MaxNameCandidates).Select(c => "'" + c + "'");
+            string more = candidates.Count > MaxNameCandidates ? $" and {candidates.Count - MaxNameCandidates} more" : string.Empty;
+            return $"Path not found: '{path}'. Files named '{fileName}' exist at: {string.Join(", ", shown)}{more}. Call again with the right one.";
         }
 
         /// <summary>

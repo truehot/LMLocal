@@ -33,6 +33,8 @@ import { AutocompletionsDialog } from '@app/dialogs/autocompletions.dialog.js';
 import { ChatHistoryDialog } from '@app/dialogs/chat.history.dialog.js';
 
 import { providerResolver } from '@app/lib/provider.resolver.js';
+import toast from '@app/lib/toast.js';
+import { ReplaceLastMode } from '@app/constants/app.globals.js';
 
 /**
  * AppController - central initializer and event router.
@@ -142,18 +144,23 @@ class AppController {
                 return false;
             }
 
-            return await appManager.performSendMessage(text, hasActiveContent, images);
+            return await appManager.performSendMessage(text, hasActiveContent, images, this._editedPromptTarget());
         });
 
         inputComponent.onEnter.on(async (text, hasActiveContent, images) => {
-            return await appManager.performSendMessage(text, hasActiveContent, images);
+            return await appManager.performSendMessage(text, hasActiveContent, images, this._editedPromptTarget());
         });
 
         appManager.onUserMessagePending.on((text, images) => {
             chatController.renderPendingUserMessage(text, images);
         });
 
+        appManager.onRemoveLastExchange.on((keepUserMessage) => {
+            chatController.removeLastExchange(keepUserMessage);
+        });
+
         appManager.onHistoryLoaded.on((messages) => {
+            inputComponent.exitEditMode();
             chatController.renderHistory(messages);
         });
 
@@ -163,6 +170,10 @@ class AppController {
 
         bridgeMessageHandler.onFinalRound.on(() => {
             chatController.markAsFinalRound();
+        });
+
+        bridgeMessageHandler.onReplaceRefused.on(async (refused, errorMessage) => {
+            await this._resyncAfterRefusedReplace(refused, errorMessage);
         });
 
         inputComponent.onTabChanged.on(async (tabId) => {
@@ -196,6 +207,20 @@ class AppController {
 
         chatController.onContinue.on(async () => {
             return await appManager.performContinue();
+        });
+
+        chatController.onRegenerate.on(async (expectedPrompt) => {
+            inputComponent.exitEditMode();
+            return await appManager.performRegenerate(expectedPrompt);
+        });
+
+        chatController.onEditLastPrompt.on(async (text) => {
+            if (!appSelectors.canSend(appStore.getState().status)) return false;
+            return inputComponent.startEditLastPrompt(text);
+        });
+
+        inputComponent.onEditModeChanged.on((active) => {
+            chatController.setLastExchangeDimmed(active);
         });
 
         menuComponent.onClick.on(async (action) => {
@@ -417,6 +442,32 @@ class AppController {
         return this._initialized;
     }
 
+    /**
+     * Prompt of the exchange that Send must replace: the last prompt on screen while it is being edited, null otherwise.
+     */
+    _editedPromptTarget() {
+        return inputComponent.isEditModeActive() ? chatController.getLastPromptText() : null;
+    }
+
+    /**
+     * A regenerate/edit request was refused before its session started, so the backend kept the exchange the chat
+     * already removed. The chat is drawn again from the history; an edited prompt goes back to the input.
+     */
+    async _resyncAfterRefusedReplace(refused, errorMessage) {
+        const messages = await appManager.loadCurrentHistory();
+
+        if (messages) {
+            chatController.resetChatUI();
+            chatController.renderHistory(messages);
+        }
+
+        if (errorMessage) toast.show(`${errorMessage}`, 'error');
+
+        if (refused?.mode === ReplaceLastMode.Exchange && refused.prompt) {
+            inputComponent.appendText(refused.prompt);
+        }
+    }
+
     _detachEvents() {
         if (this._appStoreListener) {
             appStore.unsubscribe(this._appStoreListener);
@@ -464,6 +515,10 @@ class AppController {
         chatController.onCopyCode.off();
         chatController.onOpenFile.off();
         chatController.onContinue.off();
+        chatController.onRegenerate.off();
+        chatController.onEditLastPrompt.off();
+        bridgeMessageHandler.onReplaceRefused.off();
+        inputComponent.onEditModeChanged.off();
         menuComponent.onClick.off();
         toolbarComponent.onModelNameClick.off();
         statusComponent.onRetry.off();

@@ -34,6 +34,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         internal const int DefaultWindowLines = 200;
         internal const string FilesParameter = "files";
 
+        private static readonly string EndLineDescription =
+            "Last line number to read (1-indexed, inclusive, >= start_line). It is a line number, not a line count: " +
+            "start_line 413 with end_line 442 reads 30 lines. " +
+            $"Optional: omitted, up to {DefaultWindowLines} lines from start_line are read.";
+
         public string ToolName => "read_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
@@ -49,14 +54,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Reads line ranges from files and returns the lines as an array of objects, one per line. " +
+                Description = "Reads line ranges from files and returns the lines as an array of [line_number, text] pairs, one per line. " +
                     "Read every range you already know in the SAME response, best as ONE call with 'files' (other files or other parts of one file); " +
                     "do not read one range per turn and decide on the next one after the result. " +
                     "file_path/start_line/end_line are for exactly one range. " +
                     $"When you do not know where the file or the needed part ends, omit end_line: up to {DefaultWindowLines} lines from start_line (default 1) are read, and has_more_results and total_lines tell whether and where to continue. " +
                     "A range you already know (get_symbol_info line..end_line, total_lines from a previous read or a search_file_content result, a search hit) is read as one entry, not in parts (not 1-260 and then 260-520). " +
                     $"A later call is only for: continuing after has_more_results=true, ranges found after the previous call, or more than {MaxFiles} ranges. " +
-                    "Each object has 'line_number' (the 1-based line number) and 'text' (the exact raw source text of that line, with no line-number prefix and no trailing newline). A blank line is returned as an object with its line_number set and text equal to an empty string. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. has_more_results=true means additional lines exist after the returned content; to continue, call the tool again for the same file starting from the next line number after the last line shown in the returned content. total_lines is the file's line count (omitted for files over 20000 lines), so you know how far the file goes before reading on (empty content: start_line is past the end). With 'files' the response has 'files', one block per entry in request order with the same fields as a single read; an entry that fails has its own success=false and error_message, the others are still read. Only works inside the open solution directory — a path that resolves outside the solution is rejected with an explicit error. Use this tool to inspect a known file and line range without loading the entire content, or to visually confirm a fact after another tool has located it. Prefer search_file_content or symbol tools to locate unknown text, identifiers, or line numbers before using this tool. Independent: several calls can go in one response.",
+                    "Each item of 'content' is a two-element array of strings: the first element is the 1-based line number (as a string, e.g. \"60\"), the second is the exact raw source text of that line, with no line-number prefix and no trailing newline (example: [\"60\",\"    return x;\"]). A blank line is returned as [\"<line_number>\",\"\"]. If the requested end_line exceeds the total number of lines, the tool returns all available lines from start_line to the end of the file. has_more_results=true means additional lines exist after the returned content; to continue, call the tool again for the same file starting from the next line number after the last line shown in the returned content. total_lines is the file's line count (omitted for files over 20000 lines), so you know how far the file goes before reading on (empty content: start_line is past the end). With 'files' the response has 'files', one block per entry in request order with the same fields as a single read; an entry that fails has its own success=false and error_message, the others are still read. Only works inside the open solution directory — a path that resolves outside the solution is rejected with an explicit error. Use this tool to inspect a known file and line range without loading the entire content, or to visually confirm a fact after another tool has located it. Prefer search_file_content or symbol tools to locate unknown text, identifiers, or line numbers before using this tool. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -64,7 +69,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     {
                         { "file_path", new ToolDetails { Type = "string", Description = "Relative path to the file. Required unless 'files' is passed." } },
                         { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, inclusive, >= 1). Optional, default 1." } },
-                        { "end_line", new ToolDetails { Type = "integer", Description = $"Ending line number (inclusive, >= start_line). Optional: omitted, up to {DefaultWindowLines} lines from start_line are read." } },
+                        { "end_line", new ToolDetails { Type = "integer", Description = EndLineDescription } },
                         {
                             FilesParameter, new ToolDetails
                             {
@@ -77,7 +82,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                     {
                                         { "file_path", new ToolDetails { Type = "string", Description = "Relative path to the file." } },
                                         { "start_line", new ToolDetails { Type = "integer", Description = "Starting line number (1-indexed, inclusive, >= 1). Optional, default 1." } },
-                                        { "end_line", new ToolDetails { Type = "integer", Description = $"Ending line number (inclusive, >= start_line). Optional: omitted, up to {DefaultWindowLines} lines from start_line are read." } }
+                                        { "end_line", new ToolDetails { Type = "integer", Description = EndLineDescription } }
                                     },
                                     Required = new List<string> { "file_path" }
                                 }
@@ -351,7 +356,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return (null, 0, 0, "end_line must be a positive integer (>= 1).");
 
             if (endLine < startLine)
-                return (null, 0, 0, "end_line must be greater than or equal to start_line.");
+            {
+                long countedEnd = (long)startLine + endLine - 1;
+                return (null, 0, 0,
+                    $"end_line must be greater than or equal to start_line (got start_line {startLine}, end_line {endLine}). " +
+                    $"end_line is the last line number to read, not a line count: to read {endLine} lines from line {startLine}, pass end_line {countedEnd}, or omit end_line.");
+            }
 
             return ((string)filePathObj, startLine, endLine, null);
         }
@@ -416,13 +426,58 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string ErrorMessage { get; set; }
         }
 
+        /// <summary>
+        /// One line of a read. Serialized as a pair of strings ["60","text"] to keep the response short.
+        /// </summary>
+        [JsonConverter(typeof(FileLineEntryConverter))]
         public class FileLineEntry
         {
-            [JsonProperty("line_number")]
             public int LineNumber { get; set; }
 
-            [JsonProperty("text")]
             public string Text { get; set; }
+        }
+
+        internal sealed class FileLineEntryConverter : JsonConverter<FileLineEntry>
+        {
+            public override void WriteJson(JsonWriter writer, FileLineEntry value, JsonSerializer serializer)
+            {
+                if (value == null)
+                {
+                    writer.WriteNull();
+                    return;
+                }
+
+                writer.WriteStartArray();
+                writer.WriteValue(value.LineNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                writer.WriteValue(value.Text ?? string.Empty);
+                writer.WriteEndArray();
+            }
+
+            public override FileLineEntry ReadJson(JsonReader reader, Type objectType, FileLineEntry existingValue, bool hasExistingValue, JsonSerializer serializer)
+            {
+                var token = JToken.Load(reader);
+                return TryParse(token, out var entry) ? entry : null;
+            }
+
+            /// <summary>Reads a line in either form: ["60","text"] or {"line_number":60,"text":"text"}.</summary>
+            internal static bool TryParse(JToken token, out FileLineEntry entry)
+            {
+                entry = null;
+                if (token is JArray pair && pair.Count == 2
+                    && int.TryParse(pair[0]?.ToString(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int number))
+                {
+                    entry = new FileLineEntry { LineNumber = number, Text = pair[1]?.Type == JTokenType.Null ? string.Empty : pair[1]?.ToString() ?? string.Empty };
+                    return true;
+                }
+
+                if (token is JObject obj && obj["line_number"] != null)
+                {
+                    entry = new FileLineEntry { LineNumber = obj["line_number"].Value<int>(), Text = obj["text"]?.Value<string>() ?? string.Empty };
+                    return true;
+                }
+
+                return false;
+            }
         }
     }
 }

@@ -239,6 +239,53 @@ namespace LMLocal.Application.Chat
                 removed = true;
             }
 
+            foreach (var nested in WriteTools.GetNestedContentArguments(call.Function.Name))
+            {
+                var property = arguments.Property(nested.Key);
+                if (property == null)
+                    continue;
+
+                JToken arrayToken = property.Value;
+                if (arrayToken.Type == JTokenType.String)
+                {
+                    try
+                    {
+                        arrayToken = JToken.Parse(arrayToken.Value<string>());
+                    }
+                    catch (JsonException)
+                    {
+                        continue;
+                    }
+                }
+
+                if (!(arrayToken is JArray items))
+                    continue;
+
+                bool itemPruned = false;
+                foreach (var item in items.Children<JObject>())
+                {
+                    foreach (var field in nested.Value)
+                    {
+                        var itemProperty = item.Property(field);
+                        if (itemProperty == null)
+                            continue;
+
+                        removedLines += CountLines(itemProperty.Value.Type == JTokenType.String
+                            ? itemProperty.Value.Value<string>()
+                            : itemProperty.Value.ToString(Formatting.None));
+
+                        itemProperty.Remove();
+                        itemPruned = true;
+                    }
+                }
+
+                if (itemPruned)
+                {
+                    property.Value = items;
+                    removed = true;
+                }
+            }
+
             if (!removed)
                 return null;
 

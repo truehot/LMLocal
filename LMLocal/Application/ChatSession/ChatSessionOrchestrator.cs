@@ -115,16 +115,18 @@ namespace LMLocal.Application.ChatSession
             Func<WebView2ScriptMessage, Task> onMessage,
             CancellationToken cancellationToken)
         {
+            if (onMessage == null) throw new ArgumentNullException(nameof(onMessage));
+
             lock (_resetLock)
             {
                 _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             }
             var sessionToken = _sessionCts.Token;
 
-            var messageSink = onMessage != null ? new SerializingMessageSink(onMessage) : null;
-            Func<WebView2ScriptMessage, Task> send = messageSink != null
-                ? (Func<WebView2ScriptMessage, Task>)messageSink.SendAsync
-                : null;
+            var messageSink = new SerializingMessageSink(onMessage);
+            var rateLimitNotifier = new BoundedMessageNotifier(onMessage);
+
+            Task rateLimitDelivery = Task.Run(() => rateLimitNotifier.RunAsync());
 
             var sessionContext = new SessionStateContext
             {
@@ -132,11 +134,43 @@ namespace LMLocal.Application.ChatSession
                 RoundNumber = 0,
                 AllResults = new List<StreamCompletionResult>(),
                 ToolResultsForNextRound = new List<ToolResultMessage>(),
-                SessionCancellationToken = sessionToken
+                SessionCancellationToken = sessionToken,
+                RateLimitWaitSink = info => OnRateLimitWaitAsync(rateLimitNotifier, info)
             };
 
             try
             {
+                if (!string.IsNullOrEmpty(context.ReplaceLast))
+                {
+                    if (!ReplaceLastModes.TryGetKeepUserMessage(context.ReplaceLast, out bool keepUserMessage))
+                    {
+                        InternalLogger.Warn($"ChatSessionOrchestrator: Unknown replaceLast '{context.ReplaceLast}' ignored.");
+                    }
+                    else
+                    {
+                        var outcome = await _history
+                            .TruncateLastExchangeAsync(keepUserMessage, context.ReplaceLastPrompt)
+                            .ConfigureAwait(false);
+
+                        if (outcome != TruncateLastExchangeOutcome.Replaced)
+                        {
+                            InternalLogger.Info($"ChatSessionOrchestrator: The last exchange was not replaced ({outcome}).");
+
+                            await messageSink.SendAsync(new WebView2ScriptMessage
+                            {
+                                Type = WebView2MessageType.ChatSessionError,
+                                Payload = outcome == TruncateLastExchangeOutcome.OutOfSync
+                                    ? "The chat is out of sync with the history. Nothing was changed."
+                                    : "The last prompt cannot be asked again. Nothing was changed."
+                            }).ConfigureAwait(false);
+
+                            return;
+                        }
+
+                        InternalLogger.Info($"ChatSessionOrchestrator: Replaced the last exchange (replaceLast={context.ReplaceLast}) before the first round.");
+                    }
+                }
+
                 int stateIterationCount = 0;
 
                 while (sessionContext.CurrentState != ChatSessionState.Terminated)
@@ -166,7 +200,7 @@ namespace LMLocal.Application.ChatSession
                             continue;
                         }
 
-                        var nextState = await handler(this, sessionContext, context, send, sessionToken).ConfigureAwait(false);
+                        var nextState = await handler(this, sessionContext, context, messageSink.SendAsync, sessionToken).ConfigureAwait(false);
 
                         InternalLogger.Info($"ChatSessionOrchestrator: State {sessionContext.CurrentState} -> {nextState}");
 
@@ -192,6 +226,9 @@ namespace LMLocal.Application.ChatSession
                     _sessionCts?.Dispose();
                     _sessionCts = null;
                 }
+
+                rateLimitNotifier.Complete();
+                await rateLimitDelivery.ConfigureAwait(false);
 
                 if (sessionContext.LastException != null)
                 {
@@ -227,6 +264,7 @@ namespace LMLocal.Application.ChatSession
                 context.ToolResultsForNextRound.Count > 0 ? context.ToolResultsForNextRound : null,
                 async (chunk, stats) => await OnChunkReceivedAsync(chunk, stats, onMessage),
                 result => OnGenerationCompletedAsync(context, result),
+                context.RateLimitWaitSink,
                 context.SessionCancellationToken).ConfigureAwait(false);
 
             context.RoundNumber++;
@@ -239,6 +277,40 @@ namespace LMLocal.Application.ChatSession
 
             context.AllResults.Add(context.LastResult);
             return ChatSessionState.ProcessingResult;
+        }
+
+        /// <summary>
+        /// Maps a rate-limit wait to its UI message and hands it to the bounded notifier.
+        /// </summary>
+        private static Task OnRateLimitWaitAsync(BoundedMessageNotifier notifier, RateLimitWaitInfo info)
+        {
+            notifier.Notify(new WebView2RateLimitWaitMessage
+            {
+                WaitId = info.WaitId,
+                Attempt = info.Attempt,
+                MaxAttempts = info.MaxAttempts,
+                DelaySeconds = info.Delay.TotalSeconds,
+                Source = DescribeSource(info.Source),
+                Phase = info.Phase == RateLimitWaitPhase.Begin ? "Begin" : "End"
+            });
+
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Wire name of a delay source.
+        /// </summary>
+        private static string DescribeSource(RetryAfterSource source)
+        {
+            switch (source)
+            {
+                case RetryAfterSource.Header:
+                    return "header";
+                case RetryAfterSource.Body:
+                    return "body";
+                default:
+                    return "fallback";
+            }
         }
 
         /// <summary>
@@ -562,14 +634,16 @@ namespace LMLocal.Application.ChatSession
                 }
             }
 
-            catch (Exception)
-            {
-                await _snapshotManager.CancelBatchAsync(ct).ConfigureAwait(false);
-                throw;
-            }
             finally
             {
-                await _snapshotManager.EndBatchAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await _snapshotManager.EndBatchAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception batchEx)
+                {
+                    InternalLogger.Error($"ChatSessionOrchestrator: snapshot batch cleanup failed: {batchEx.Message}", batchEx);
+                }
             }
 
             await SendSnapshotUpdateAsync(onMessage).ConfigureAwait(false);
@@ -895,10 +969,7 @@ namespace LMLocal.Application.ChatSession
                     ChangedFiles = changedFiles.ToList(),
                 };
 
-                if (onMessage != null)
-                {
-                    await onMessage(message).ConfigureAwait(false);
-                }
+                await onMessage(message).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

@@ -226,6 +226,17 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public async Task Single_EndLineBelowStart_ErrorExplainsLineNumberNotCount()
+        {
+            var result = (ReadFileLines.FileLinesResponse)await _reader.ExecuteAsync(new Dictionary<string, object> { ["file_path"] = "a.txt", ["start_line"] = 413, ["end_line"] = 30 });
+
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.ErrorMessage, Is.EqualTo(
+                "end_line must be greater than or equal to start_line (got start_line 413, end_line 30). " +
+                "end_line is the last line number to read, not a line count: to read 30 lines from line 413, pass end_line 442, or omit end_line."));
+        }
+
+        [Test]
         public async Task Files_EntryWithoutEndLine_ReadsDefaultWindow()
         {
             var response = await ReadFilesAsync(new JArray(new JObject { ["file_path"] = "b.txt", ["start_line"] = 2 }, Range("a.txt", 1, 1)));

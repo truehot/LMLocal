@@ -384,7 +384,7 @@ line six - foxtrot";
 
 
             list.Add(Sc("A1.16", Explorer,
-                "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs and return yes if not found.",
+                "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs and return `yes` if not found.",
                 "yes"));
 
             var a117 = ScVerbatim("A1.17", Explorer,
@@ -489,9 +489,16 @@ line six - foxtrot";
                 "Find the C# method AddAssistantMessage in LMLocal/Application/Chat/ChatHistoryManager.cs. It has an interface declaration and two concrete overloads. Select the concrete implementation overload that accepts IReadOnlyList<ToolCallRecord> and return its declaration line together with its full implementation body.",
                 "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "normalizedArguments")));
 
+            // The deliverable is a frozen fixture, so every code claim can be checked with read_file_lines / search_file_content.
+            // Build and test results cannot be checked with the reviewer tools, hence PARTIAL is a valid outcome.
             var a41 = Sc("A4.1", Reviewer,
-                "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. The change is a small refactoring of ChatHistoryManager: the ToolCalls copying logic was extracted into a private helper. The build passes, all existing unit tests for the chat service pass, and a new unit test covers the copied-by-reference behavior. The user requested exactly this refactoring and it is complete; no further phases are planned. The change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect of the deliverable. Review it adversarially.",
-                "Status:");
+                "Review the following completed deliverable and produce your structured review ending with an exact final 'Status: ...' line. " +
+                "The change is a small refactoring of ToolCallLedger (" + ReviewCodeDir + "ToolCallLedger.cs): the ToolCalls copying logic of ConsolidateLastExchange was extracted into the private helper CopyToolCalls. " +
+                "A new unit test ConsolidateLastExchange_KeepsToolCallsOfFinalAssistantByReference (" + ReviewCodeDir + "ToolCallLedgerTests.cs) covers the copied-by-reference behavior. " +
+                "The build passes and all existing unit tests pass. The user requested exactly this refactoring and it is complete; no further phases are planned. " +
+                "The change is already committed, so get_changes_diff is expected to show no pending changes; that alone is not a defect of the deliverable. " +
+                "Verify the code with read_file_lines and search_file_content. Review it adversarially.",
+                "Status:", "CopyToolCalls");
             a41.MustContainAny = new[] { new[] { "COMPLETE", "PARTIAL" } };
             a41.MustNotContain = new[] { "Status: REJECTED" };
 
@@ -536,7 +543,11 @@ line six - foxtrot";
             - ISnapshotManager is resolved from DI.
             Choose the architecture for this change.",
                 "SnapshotChangedAsync");
-            a61.MustContainAny = new[] { new[] { "NO_ARCH_CHANGE", "DECIDED", "CONDITIONAL" } };
+            // The architect prompt has no decision status: the answer is three sections and verdicts are forbidden.
+            a61.MustContainAny = new[] { new[] { "As-Is" }, new[] { "Recommendation" } };
+            a61.MustNotContain = new[] { "Status: APPROVED", "Status: REJECTED" };
+            // The architect may propose new files, which do not exist yet.
+            a61.SkipInventedPathCheck = true;
             list.Add(a61);
 
             return list;
@@ -738,6 +749,121 @@ line six - foxtrot";
         }
 
         // ---------------------------------------------------------------------
+        // Round limit recovery
+        //
+        // Guards the round-limit path: tool calls in the last round are not executed; one extra round is sent
+        // without tools and the model answers from the results it already has, instead of the run failing.
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// The probe runs with maxRounds 2 (IPC override): round 1 gathers a real result, round 2 is the last one and
+        /// its tool call hits the limit. The model and every other setting come from the explorer entry in subagents.json.
+        /// </summary>
+        private const int RoundLimitProbeMaxRounds = 2;
+
+        /// <summary>
+        /// Holds one value per search key. The values are written only there, never in this file, so the answer
+        /// can contain a value only if the search that returns it was executed.
+        /// </summary>
+        private const string RoundLimitFixture = @"LMLocal.Tests.E2E.VSIX\Fixtures\round-limit-fixture.md";
+
+        private const string RoundLimitAlphaKey = "RoundLimit-Alpha";
+        private const string RoundLimitBetaKey = "RoundLimit-Beta";
+
+        /// <summary>
+        /// Two calls, one per response: the Alpha search runs in round 1; the Beta search lands in the last round and
+        /// is not executed. The answer must then carry the Alpha value (partial result) and not the Beta value.
+        /// </summary>
+        private const string RoundLimitProbePrompt =
+            "You are being instrumented. Do exactly this, one tool call per response, waiting for each result:\n" +
+            "1. Call search_file_content with text \"" + RoundLimitAlphaKey + "\" and path \"" + RoundLimitFixture + "\".\n" +
+            "2. Then call search_file_content with text \"" + RoundLimitBetaKey + "\" and path \"" + RoundLimitFixture + "\".\n" +
+            "Then answer: the first line is ROUND_LIMIT_PROBE_DONE; then, for each search, its matched line, " +
+            "or 'not checked' for a search you could not run.";
+
+        /// <summary>Value after "<paramref name="key"/>:" in the fixture.</summary>
+        private static string ReadRoundLimitValue(string key)
+        {
+            var path = Path.Combine(Path.GetDirectoryName(GetSolutionPath()), RoundLimitFixture);
+            var line = File.ReadAllLines(path).Single(l => l.IndexOf(key + ":", StringComparison.Ordinal) >= 0);
+            var value = line.Substring(line.IndexOf(key + ":", StringComparison.Ordinal) + key.Length + 1).Trim();
+            Assert.IsFalse(string.IsNullOrEmpty(value), "No value for " + key + " in " + RoundLimitFixture);
+            return value;
+        }
+
+        [TestMethod]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_RoundLimitRecovery_ToolCallInLastRound_AnswersWithoutTools()
+        {
+            var alphaValue = ReadRoundLimitValue(RoundLimitAlphaKey);
+            var betaValue = ReadRoundLimitValue(RoundLimitBetaKey);
+
+            using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15)))
+            {
+                var vs = await VsLauncher.StartExperimentalInstanceAsync(cts.Token);
+                try
+                {
+                    var client = await IpcClient.ConnectAsync(PipeName, TimeSpan.FromMinutes(2), cts.Token);
+                    try
+                    {
+                        var solutionPath = GetSolutionPath();
+                        var open = await client.SendCommandAsync("OpenSolution|" + solutionPath, cts.Token);
+                        Assert.AreEqual("OK", open, "OpenSolution IPC command failed");
+
+                        await WaitForSolutionLoadedAsync(client, cts.Token);
+
+                        // Empty model part: keep the model from subagents.json; only maxRounds is overridden.
+                        var command = "RunSubAgent|" + Explorer + "|" + Uri.EscapeDataString(RoundLimitProbePrompt)
+                            + "||" + RoundLimitProbeMaxRounds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        var json = await client.SendCommandAsync(command, TimeSpan.FromMinutes(5), cts.Token);
+
+                        var run = JsonConvert.DeserializeObject<RunResponseDto>(json);
+                        Assert.IsNotNull(run, "RunSubAgent returned no parsable response: " + json);
+
+                        TestContext.WriteLine("round limit probe: success=" + run.Success
+                            + " rounds=" + run.Rounds
+                            + " runId=" + run.RunId
+                            + " recoveries=" + (run.Recoveries == null ? "<none>" : string.Join(" | ", run.Recoveries))
+                            + " error=" + (run.Error ?? "<none>")
+                            + " content=" + (run.Content ?? "<none>"));
+
+                        // Proven by the run's recovery note: if the model stops calling tools before the last round,
+                        // the limit is never reached and the guard does not run.
+                        Assert.IsTrue(
+                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("reached the round limit (" + RoundLimitProbeMaxRounds + ")", StringComparison.Ordinal) >= 0),
+                            "No round limit recovery in run '" + run.RunId + "'. "
+                            + "Either recovery did not fire, or the model answered without a tool call "
+                            + "(probe inconclusive - re-run before suspecting the feature).");
+
+                        Assert.IsTrue(run.Success, "The run must end with an answer, not fail: " + (run.Error ?? "<no error>"));
+                        Assert.DoesNotMatchRegex(
+                            new Regex("exceeded maximum rounds"),
+                            run.Error ?? string.Empty,
+                            "The hard stop is only for tool calls in the extra round.");
+                        Assert.AreEqual(RoundLimitProbeMaxRounds + 1, run.Rounds,
+                            "Expected the configured rounds plus one extra round without tools.");
+                        Assert.Contains("ROUND_LIMIT_PROBE_DONE", run.Content ?? string.Empty,
+                            "The extra round must end with the text answer.");
+                        // Partial result: the round 1 search was executed, so its value must reach the answer.
+                        Assert.Contains(alphaValue, run.Content ?? string.Empty,
+                            "The answer must report the result gathered in round 1 (" + RoundLimitAlphaKey + ").");
+                        // The last-round search was not executed, so its value cannot be known.
+                        Assert.DoesNotContain(betaValue, run.Content ?? string.Empty,
+                            "The last-round call must not run, so " + RoundLimitBetaKey + " cannot be in the answer.");
+                    }
+                    finally
+                    {
+                        client.Dispose();
+                    }
+                }
+                finally
+                {
+                    TryKill(vs);
+                }
+            }
+        }
+
+        // ---------------------------------------------------------------------
         // Build benchmark (build_subagent) on the build fixture
         //
         // Building LMLocal.sln inside the experimental instance would rebuild the extension that runs in it,
@@ -783,7 +909,7 @@ line six - foxtrot";
         }
 
         [TestMethod]
-        [Ignore("Disable to run benchmark")]
+        //[Ignore("Disable to run benchmark")]
         public async Task Run_Knowledge_Benchmark()
         {
             var fixturePath = GetKnowledgeFixtureSolutionPath();
@@ -1466,6 +1592,7 @@ line six - foxtrot";
         internal const string A108Text = "Include";
 
         internal const string ReaderCodeDir = @"LMLocal.Tests.E2E.VSIX\Fixtures\ReaderCode\";
+        internal const string ReviewCodeDir = @"LMLocal.Tests.E2E.VSIX\Fixtures\ReviewCode\";
         private const string ChatHistoryManagerFile = @"LMLocal\Application\Chat\ChatHistoryManager.cs";
         private const string HistoryCompactorFile = @"LMLocal\Application\Chat\HistoryCompactor.cs";
 

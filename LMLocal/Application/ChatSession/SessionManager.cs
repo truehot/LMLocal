@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
@@ -44,8 +45,11 @@ namespace LMLocal.Application.ChatSession
         private readonly IChatSessionOrchestrator _orchestrator;
         private readonly ISearchResultCache _searchCache;
         private readonly ISubAgentsConfigManager _subAgentsConfigManager;
+        private readonly IAttentionNotifier _attentionNotifier;
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
         private volatile bool _isSessionRunning = false;
+
+        private volatile bool _stopRequested;
         private long _sessionId;
 
         public bool IsSessionRunning => _isSessionRunning;
@@ -55,11 +59,13 @@ namespace LMLocal.Application.ChatSession
         public SessionManager(
             IChatSessionOrchestrator orchestrator,
             ISearchResultCache searchCache,
-            ISubAgentsConfigManager subAgentsConfigManager)
+            ISubAgentsConfigManager subAgentsConfigManager,
+            IAttentionNotifier attentionNotifier)
         {
             _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
             _subAgentsConfigManager = subAgentsConfigManager ?? throw new ArgumentNullException(nameof(subAgentsConfigManager));
+            _attentionNotifier = attentionNotifier ?? throw new ArgumentNullException(nameof(attentionNotifier));
         }
 
         /// <summary>
@@ -100,12 +106,13 @@ namespace LMLocal.Application.ChatSession
 
                 Interlocked.Increment(ref _sessionId);
                 _isSessionRunning = true;
+                _stopRequested = false;
                 InternalLogger.Info("SessionManager: Starting new session");
-
-                await _subAgentsConfigManager.RefreshAsync(cancellationToken).ConfigureAwait(false);
 
                 try
                 {
+                    await _subAgentsConfigManager.RefreshAsync(cancellationToken).ConfigureAwait(false);
+
                     await _orchestrator.RunSessionAsync(
                         context,
                         onMessage,
@@ -117,6 +124,11 @@ namespace LMLocal.Application.ChatSession
                 {
                     _isSessionRunning = false;
                     InternalLogger.Info("SessionManager: Session ended");
+
+                    if (!_stopRequested)
+                    {
+                        _attentionNotifier.RequestAttention();
+                    }
                 }
             }
             finally
@@ -151,6 +163,7 @@ namespace LMLocal.Application.ChatSession
             try
             {
                 InternalLogger.Info("SessionManager: Stopping current session");
+                _stopRequested = true;
                 _orchestrator.StopSession();
                 return true;
             }

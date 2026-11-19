@@ -162,6 +162,56 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public void Prune_ReplaceFileLinesEdits_RemovesContentOfEveryItemAndKeepsLineNumbers()
+        {
+            var arguments = new JObject
+            {
+                { "file_path", "src/A.cs" },
+                { "edits", new JArray
+                    {
+                        new JObject { { "start_line", 40 }, { "old_lines", Body(3) }, { "new_lines", Body(4) } },
+                        new JObject { { "start_line", 10 }, { "old_lines", Body(2) }, { "new_lines", "" } }
+                    }
+                }
+            };
+            var messages = new List<ChatMessage>
+            {
+                new ChatMessage("user", "do the work"),
+                new ChatMessage("assistant", null)
+                {
+                    ToolCalls = new List<ToolCall>
+                    {
+                        new ToolCall
+                        {
+                            Id = "e1",
+                            Type = "function",
+                            Function = new FunctionCallDetails { Name = "replace_file_lines", Arguments = arguments.ToString(Newtonsoft.Json.Formatting.None) }
+                        }
+                    }
+                },
+                new ChatMessage("tool", "{\"success\":true}", "e1")
+            };
+
+            var result = ToolHistoryPruner.Prune(messages, Options(), FlatCost, 0);
+
+            var call = ((List<ToolCall>)result.Messages[1].ToolCalls).Single();
+            var pruned = JObject.Parse(call.Function.Arguments);
+            var items = (JArray)pruned["edits"];
+
+            Assert.That(items.Count, Is.EqualTo(2));
+            foreach (JObject item in items.Cast<JObject>())
+            {
+                Assert.That(item.Property("old_lines"), Is.Null, call.Function.Arguments);
+                Assert.That(item.Property("new_lines"), Is.Null, call.Function.Arguments);
+            }
+            Assert.That(items.Select(i => i.Value<int>("start_line")), Is.EqualTo(new[] { 40, 10 }));
+            Assert.That(pruned.Value<string>("file_path"), Is.EqualTo("src/A.cs"));
+            Assert.That(pruned.Value<bool>(ToolHistoryPruner.PrunedKey), Is.True);
+            // 3 + 4 + 2 lines, plus the empty new_lines of the deletion (counted as in a single call).
+            Assert.That(pruned.Value<int>(ToolHistoryPruner.LinesKey), Is.GreaterThanOrEqualTo(9));
+        }
+
+        [Test]
         public void Prune_NewestRoundGetsStageA_OlderRoundsReachStageB()
         {
             var history = History(4, 200);

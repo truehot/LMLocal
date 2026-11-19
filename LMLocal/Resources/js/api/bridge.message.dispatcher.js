@@ -107,6 +107,10 @@ class BridgeMessageDispatcher {
                 this._handler.handleSnapshotFilesChanged(data);
                 break;
 
+            case 'RateLimitWait':
+                this._handler.handleRateLimitWait(data);
+                break;
+
             default:
                 console.warn('[BridgeMessageDispatcher] Unknown message type:', data.Type);
         }

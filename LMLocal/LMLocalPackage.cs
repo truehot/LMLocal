@@ -85,6 +85,9 @@ namespace LMLocal
             var closeGuard = ServiceConfiguration.GetService<ICloseWhileGeneratingGuard>();
             closeGuard.Initialize(); // owned and disposed by the DI container in ServiceConfiguration.Cleanup()
 
+            // Flash the taskbar button when a session finishes in the background.
+            ServiceConfiguration.GetService<ITaskbarAttentionNotifier>().Initialize(JoinableTaskFactory, DisposalToken);
+
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
             await SendToLMFromEditorCommand.InitializeAsync(this);

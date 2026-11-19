@@ -47,9 +47,6 @@ namespace LMLocal.Application.ChatSessionStream
             if (status.HasValue && Contains(RejectStatuses, status.Value))
                 return false;
 
-            if (status == 413)
-                return true;
-
             if (IsContentFilter(result.FinishReason))
                 return false;
 
@@ -108,9 +105,6 @@ namespace LMLocal.Application.ChatSessionStream
 
             var info = exception.ErrorInfo;
             int? status = exception.HttpStatusCode ?? info?.Code;
-
-            if (status == 413)
-                return true;
 
             if (status.HasValue && Contains(RejectStatuses, status.Value))
                 return false;

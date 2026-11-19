@@ -26,10 +26,17 @@
     <Compile Remove="Fixtures\BuildFixture\**" />
     <None Remove="Fixtures\BuildFixture\**" />
     <EmbeddedResource Remove="Fixtures\BuildFixture\**" />
+    <!-- run_tests fixture: a separate solution opened by IpcRunTestsToolTests, never part of this assembly. -->
+    <Compile Remove="Fixtures\TestRunFixture\**" />
+    <None Remove="Fixtures\TestRunFixture\**" />
+    <EmbeddedResource Remove="Fixtures\TestRunFixture\**" />
     <!-- Reader benchmark fixtures: frozen C# text read by code_reader_subagent, never compiled.
          Kept as project items so find_files sees them (the SDK drops *.cs from None by default). -->
     <Compile Remove="Fixtures\ReaderCode\**" />
     <None Include="Fixtures\ReaderCode\**\*.cs" />
+    <!-- Reviewer benchmark fixture (A4.1): the frozen deliverable under review, never compiled. -->
+    <Compile Remove="Fixtures\ReviewCode\**" />
+    <None Include="Fixtures\ReviewCode\**\*.cs" />
     <None Include="Fixtures\reader-ranges-fixture.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

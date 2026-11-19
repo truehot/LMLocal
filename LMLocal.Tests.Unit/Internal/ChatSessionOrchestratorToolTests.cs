@@ -63,9 +63,10 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount == 1)
@@ -99,7 +100,7 @@ namespace LMLocal.Tests.Unit.Internal
                     });
 
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>())).ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(true);
             _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -143,9 +144,10 @@ namespace LMLocal.Tests.Unit.Internal
                 It.IsAny<List<ToolResultMessage>>(),
                 It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                 It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                 It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount == 1)
@@ -179,7 +181,7 @@ namespace LMLocal.Tests.Unit.Internal
                     });
             // When tool executed, return error
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", UserMessage = "failed" });
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", UserMessage = "failed" });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -222,11 +224,12 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
                 .Returns<GenerateStreamContext, List<ToolResultMessage>,
                     Func<TextStreamChunk, TokenGenerationStats, Task>,
-                    Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                    Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         // Each generation returns the exact same tool call
                         var result = new StreamCompletionResult
@@ -251,7 +254,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -301,11 +304,12 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
                 .Returns<GenerateStreamContext, List<ToolResultMessage>,
                     Func<TextStreamChunk, TokenGenerationStats, Task>,
-                    Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                    Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount <= 3)
@@ -347,7 +351,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -394,11 +398,12 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
                 .Returns<GenerateStreamContext, List<ToolResultMessage>,
                     Func<TextStreamChunk, TokenGenerationStats, Task>,
-                    Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                    Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount <= 3)
@@ -442,7 +447,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -474,6 +479,94 @@ namespace LMLocal.Tests.Unit.Internal
                 "Expected ChatSessionComplete when the identical call is not consecutive");
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionError), Is.False,
                 "No ChatSessionError expected when calls are not consecutive duplicates");
+        }
+
+        /// <summary>
+        /// Stop pressed while a tool is running cancels the session token. The snapshot batch must
+        /// still be closed, otherwise _isBatching stays true in memory and every later Discard/Accept
+        /// in the Changes panel throws "Cannot perform ... while a batch is active" until VS restart.
+        /// </summary>
+        [Test]
+        public async Task StopDuringToolCall_ClosesSnapshotBatch_WithNonCancelledToken()
+        {
+            var cts = new CancellationTokenSource();
+            var messages = new List<WebView2ScriptMessage>();
+
+            _chatServiceMock.Setup(s => s.GenerateStreamAsync(
+                It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
+                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
+                It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
+                It.IsAny<CancellationToken>()))
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
+                    {
+                        var result = new StreamCompletionResult
+                        {
+                            StopReason = StreamStopReason.Completed,
+                            ErrorMessage = null,
+                            FinishReason = "tool_calls",
+                            ToolCalls = new[]
+                            {
+                                new ToolCallRecord
+                                {
+                                    CallId = "call1",
+                                    FunctionName = "write_file",
+                                    ArgumentsJson = "{\"file\":\"a.txt\"}"
+                                }
+                            }
+                        };
+
+                        if (onComplete != null)
+                            await onComplete(result).ConfigureAwait(false);
+                    });
+
+            _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
+
+            // Reproduces what Stop does from the UI thread: the token is cancelled while the tool
+            // runs and the tool surfaces OperationCanceledException.
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(),
+                    It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                .Returns((ToolCallRecord call, CancellationToken toolCt, IProgress<ToolActivityEvent> progress,
+                        ToolExecutionBudget budget) =>
+                    {
+                        cts.Cancel();
+                        return Task.FromException<ToolExecutionResult>(new OperationCanceledException(toolCt));
+                    });
+
+            _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
+
+            var orchestrator = CreateOrchestrator();
+
+            Task OnMessage(WebView2ScriptMessage msg)
+            {
+                messages.Add(msg);
+                return Task.CompletedTask;
+            }
+
+            var context = new GenerateStreamContext { Prompt = "prompt", ModelId = "m" };
+
+            await orchestrator.RunSessionAsync(context, OnMessage, cts.Token).ConfigureAwait(false);
+
+            Assert.That(cts.IsCancellationRequested, Is.True, "the test must reproduce a real Stop");
+
+            _snapshotManagerMock.Verify(
+                m => m.BeginBatchAsync(It.IsAny<CancellationToken>()), Times.Once,
+                "the tool round must open exactly one snapshot batch");
+
+            // The important part: cleanup runs with a token that is NOT cancelled, even though the
+            // session token already is at this point.
+            _snapshotManagerMock.Verify(
+                m => m.EndBatchAsync(It.Is<CancellationToken>(t => !t.IsCancellationRequested)), Times.Once,
+                "the snapshot batch must be closed with a non-cancelled token after Stop");
+
+            _snapshotManagerMock.Verify(
+                m => m.CancelBatchAsync(It.IsAny<CancellationToken>()), Times.Never,
+                "cancelling the batch would drop the event/manifest update the Changes panel relies on");
+
+            Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionCancelled), Is.True,
+                "the session should end in the Cancelled state");
         }
     }
 }

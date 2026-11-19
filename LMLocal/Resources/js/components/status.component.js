@@ -31,6 +31,7 @@ class StatusComponent {
             connectBtn: document.getElementById('connect-btn'),
             statusText: document.getElementById('status-text'),
             statusBar: document.getElementById('status-bar'),
+            rateLimitStatus: document.getElementById('rate-limit-status'),
             liveTokenCount: document.getElementById('live-token-count'),
             tokenCountText: document.getElementById('token-number'),
             tokensSpeed: document.getElementById('tokens-speed'),
@@ -177,6 +178,30 @@ class StatusComponent {
                 : '');
     }
 
+    /**
+     * Renders the rate-limit banner.
+     */
+    _updateRateLimitWait(appState, prevAppState) {
+        const wait = appState.rateLimitWait;
+        if (prevAppState && wait === prevAppState.rateLimitWait) return;
+
+        const el = this.elements.rateLimitStatus;
+        if (!el) return;
+
+        if (!wait) {
+            el.textContent = '';
+            el.classList.remove('visible');
+            return;
+        }
+
+        const seconds = Math.max(0, Math.round(Number(wait.delaySeconds) || 0));
+        el.textContent = UIText.STATUS_RATE_LIMIT_WAIT
+            .replace('{attempt}', String(wait.attempt))
+            .replace('{max}', String(wait.maxAttempts))
+            .replace('{seconds}', String(seconds));
+        el.classList.add('visible');
+    }
+
     _updateGeneratingAnimation(appState, prevAppState) {
         const isTerminalState = appSelectors.isTerminal(appState.status);
         if (prevAppState && isTerminalState === appSelectors.isTerminal(prevAppState.status)) return;
@@ -268,6 +293,7 @@ class StatusComponent {
         this._updateConnectionStatus(appState, prevAppState);
         this._updateTokenCounter(appState, prevAppState);
         this._updateStatusText(appState, prevAppState);
+        this._updateRateLimitWait(appState, prevAppState);
         this._updateGeneratingAnimation(appState, prevAppState);
     }
 

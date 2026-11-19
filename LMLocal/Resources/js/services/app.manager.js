@@ -7,6 +7,7 @@ import instructionsStore from '@app/store/instructions.store.js';
 import appDataService from '@app/services/app.data.service.js';
 import { startupManager } from '@app/services/startup.manager.js';
 import { createCallback } from '@app/lib/callback.js';
+import { ReplaceLastMode } from '@app/constants/app.globals.js';
 import bridgeClient from '@app/api/bridge.client.js';
 
 /**
@@ -17,6 +18,7 @@ class AppManager {
     constructor() {
         this.onUserMessagePending = createCallback();
         this.onHistoryLoaded = createCallback();
+        this.onRemoveLastExchange = createCallback();
     }
 
     async onAppInit() {
@@ -66,15 +68,65 @@ class AppManager {
         await appDataService.applyActiveModelInstruction();
     }
 
-    async performSendMessage(text, hasContent, images = []) {
+    /**
+     * Sends a prompt. With replaceLastPrompt (the prompt the chat shows for its last exchange) the prompt replaces
+     * that exchange instead of following it: this is Send while the last prompt is being edited.
+     */
+    async performSendMessage(text, hasContent, images = [], replaceLastPrompt = null) {
         const cleanText = (text || '').trim();
         const hasImages = images && images.length > 0;
         if ((!cleanText && !hasImages) || !appSelectors.canSend(appStore.getState().status)) return false;
 
+        const replacesExchange = typeof replaceLastPrompt === 'string';
+
+        if (replacesExchange) {
+            this.onRemoveLastExchange.emit(false);
+            this._resetAnswerMetrics();
+        }
+
         await this.onUserMessagePending.emit(cleanText, hasImages ? images.slice() : null);
 
-        this._startPromptRound(this._buildPromptRequest(cleanText, hasContent, hasImages ? images : null));
+        const request = this._buildPromptRequest(cleanText, hasContent, hasImages ? images : null);
+        if (replacesExchange) {
+            request.replaceLast = ReplaceLastMode.Exchange;
+            request.replaceLastPrompt = replaceLastPrompt;
+        }
+
+        this._startPromptRound(request);
         return true;
+    }
+
+    /**
+     * Asks the last prompt again with the currently selected model, instructions tab and temperature.
+     * expectedPrompt is the prompt the chat shows, so the backend can refuse when its history ends differently.
+     */
+    performRegenerate(expectedPrompt) {
+        if (!appSelectors.canSend(appStore.getState().status)) return false;
+
+        // The answer goes before the round starts: PROCESSING would otherwise open a second bubble next to it.
+        this.onRemoveLastExchange.emit(true);
+        this._resetAnswerMetrics();
+
+        const request = this._buildPromptRequest('', false, null);
+        request.replaceLast = ReplaceLastMode.Answer;
+        request.replaceLastPrompt = typeof expectedPrompt === 'string' ? expectedPrompt : '';
+
+        this._startPromptRound(request);
+        return true;
+    }
+
+    /**
+     * Reads the history the backend holds now. Used after a refused replacement: the chat already removed messages
+     * the backend kept, so it is drawn again from the history instead of being patched by hand.
+     */
+    async loadCurrentHistory() {
+        try {
+            const session = await appDataService.getCurrentChatHistoryAsync();
+            return session && session.hasSession && Array.isArray(session.messages) ? session.messages : [];
+        } catch (error) {
+            console.error("Failed to reload the chat history:", error);
+            return null;
+        }
     }
 
     /**
@@ -132,6 +184,8 @@ class AppManager {
             accumulatedText: "",
             accumulatedThoughtText: "",
             error: null,
+            // An error that arrives before ChatSessionStart means the backend refused the replacement and changed nothing.
+            replacePending: request.replaceLast ? { mode: request.replaceLast, prompt: request.prompt || '' } : null,
             stoppedByUser: false,
             roundNumber: 0,
             toolCount: 0
@@ -211,6 +265,18 @@ class AppManager {
 
         appStore.setState({ status: AppStatus.IDLE });
         return await this.performClearChat('last-prompt');
+    }
+
+    /**
+     * Drops the numbers of the answer that is being replaced, so they cannot outlive it on the new one.
+     */
+    _resetAnswerMetrics() {
+        appStore.setState({
+            roundTokens: 0,
+            lastAnswerTokens: 0,
+            tokenSpeed: 0,
+            cachedTokens: 0
+        });
     }
 
     /**

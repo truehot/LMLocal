@@ -229,11 +229,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
-        public void AddUserMessage_PreservesMarkdown_WhenCompressionEnabled()
+        public void AddUserMessage_PreservesMarkdown()
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompression = true });
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
             var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
 
             hist.AddUserMessage("**bold** _italic_");

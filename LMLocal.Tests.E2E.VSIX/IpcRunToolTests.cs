@@ -68,21 +68,21 @@ namespace LMLocal.Tests.E2E.VSIX
                         Assert.IsTrue((bool)obj["success"], "create_file should succeed: " + resp);
                         Assert.IsTrue(File.Exists(path), "created file should exist on disk");
 
-                        // read back: each returned entry has explicit line_number and text fields.
+                        // read back: each returned entry is a ["line_number","text"] pair of strings.
                         resp = await SendAsync(client, $"RunTool|read_file_lines|{UriEnc(rel)}|1|10", cts.Token);
                         obj = JObject.Parse(resp);
                         var lines = obj["content"] as JArray;
                         Assert.IsNotNull(lines, "'content' should be an array");
                         Assert.IsGreaterThanOrEqualTo(3, lines.Count, "expected at least the 3 written lines, got: " + lines.Count);
 
-                        var entries = lines.OfType<JObject>().ToList();
-                        Assert.IsGreaterThanOrEqualTo(3, entries.Count, "expected at least 3 line objects");
-                        Assert.AreEqual(1, entries[0]["line_number"].Value<int>());
-                        Assert.AreEqual("line1", entries[0]["text"].Value<string>());
-                        Assert.AreEqual(2, entries[1]["line_number"].Value<int>());
-                        Assert.AreEqual("line2", entries[1]["text"].Value<string>());
-                        Assert.AreEqual(3, entries[2]["line_number"].Value<int>());
-                        Assert.AreEqual("line3", entries[2]["text"].Value<string>());
+                        var entries = lines.OfType<JArray>().ToList();
+                        Assert.IsGreaterThanOrEqualTo(3, entries.Count, "expected at least 3 line pairs");
+                        Assert.AreEqual("1", entries[0][0].Value<string>());
+                        Assert.AreEqual("line1", entries[0][1].Value<string>());
+                        Assert.AreEqual("2", entries[1][0].Value<string>());
+                        Assert.AreEqual("line2", entries[1][1].Value<string>());
+                        Assert.AreEqual("3", entries[2][0].Value<string>());
+                        Assert.AreEqual("line3", entries[2][1].Value<string>());
 
                         // delete_file
                         resp = await SendAsync(client, $"RunTool|delete_file|{UriEnc(rel)}", cts.Token);
@@ -309,16 +309,17 @@ namespace LMLocal.Tests.E2E.VSIX
                 var obj = JObject.Parse(resp);
                 Assert.IsTrue((bool)obj["success"], "read_file_lines should succeed: " + resp);
 
-                var entries = (obj["content"] as JArray)?.OfType<JObject>().ToList()
-                              ?? new System.Collections.Generic.List<JObject>();
+                // Each line is a ["line_number","text"] pair of strings.
+                var entries = (obj["content"] as JArray)?.OfType<JArray>().ToList()
+                              ?? new System.Collections.Generic.List<JArray>();
 
                 foreach (var entry in entries)
-                    texts.Add(entry["text"].Value<string>());
+                    texts.Add(entry[1].Value<string>());
 
                 if (!(obj["has_more_results"]?.Value<bool>() ?? false) || entries.Count == 0)
                     return texts;
 
-                start = entries[entries.Count - 1]["line_number"].Value<int>() + 1;
+                start = int.Parse(entries[entries.Count - 1][0].Value<string>()) + 1;
             }
         }
 

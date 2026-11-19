@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents.ReadRefs;
 using LMLocal.Core.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Tooling
@@ -96,11 +97,9 @@ namespace LMLocal.Infrastructure.Tooling
 
             foreach (var line in lines)
             {
-                if (line is JObject entry)
+                if (ReadFileLines.FileLineEntryConverter.TryParse(line, out var entry))
                 {
-                    var number = entry["line_number"]?.Value<int>() ?? 0;
-                    var text = entry["text"]?.Value<string>() ?? "";
-                    result.Add(new NumberedLine(number, text));
+                    result.Add(new NumberedLine(entry.LineNumber, entry.Text));
                 }
                 else
                 {

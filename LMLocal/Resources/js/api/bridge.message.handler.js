@@ -5,6 +5,7 @@ import sessionStore from '@app/store/session.store.js';
 import changesStore from '@app/store/changes.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
 import { createCallback } from '@app/lib/callback.js';
+import { applyRateLimitWait } from '@app/store/rate.limit.state.js';
 
 class BridgeMessageHandler {
     constructor() {
@@ -12,6 +13,8 @@ class BridgeMessageHandler {
         this.thoughtBuffer = new ChunkBuffer(Config.STREAM_BUFFER_INTERVAL_MS);
         this.onToolRoundStart = createCallback();
         this.onFinalRound = createCallback();
+
+        this.onReplaceRefused = createCallback();
     }
 
     handleCompactionStart() {
@@ -122,7 +125,8 @@ class BridgeMessageHandler {
             status: AppStatus.ERROR,
             error: errorMessage,
             stoppedByUser: true,
-            tokenSpeed: 0
+            tokenSpeed: 0,
+            rateLimitWait: null
         });
     }
 
@@ -130,6 +134,16 @@ class BridgeMessageHandler {
         this.contentBuffer.reset();
         this.thoughtBuffer.reset();
         sessionStore.setState({ toolResultTokens: 0 });
+
+        appStore.setState({ rateLimitWait: null, replacePending: null });
+    }
+
+    /**
+     * Opens or closes the rate-limit banner.
+     */
+    handleRateLimitWait(data) {
+        const next = applyRateLimitWait(appStore.getState(), data);
+        if (next) appStore.setState(next);
     }
 
     handleChatSessionComplete(metadata) {
@@ -153,7 +167,8 @@ class BridgeMessageHandler {
             status: AppStatus.IDLE,
             lastAnswerTokens: contextTokens,
             cachedTokens: metadata.CachedTokens || 0,
-            tokenSpeed: metadata.TokensPerSecond || 0
+            tokenSpeed: metadata.TokensPerSecond || 0,
+            rateLimitWait: null
         });
     }
 
@@ -161,12 +176,20 @@ class BridgeMessageHandler {
         this.contentBuffer.reset();
         this.thoughtBuffer.reset();
 
+        const refusedReplacement = appStore.getState().replacePending;
+
         appStore.setState({
             status: AppStatus.ERROR,
             error: errorMessage,
             stoppedByUser: false,
-            tokenSpeed: 0
+            tokenSpeed: 0,
+            rateLimitWait: null,
+            replacePending: null
         });
+
+        if (refusedReplacement) {
+            this.onReplaceRefused.emit(refusedReplacement, errorMessage);
+        }
     }
 
     handleStreamToolCall(toolCall) {

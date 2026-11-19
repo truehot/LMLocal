@@ -22,6 +22,17 @@ namespace LMLocal.Application.ChatSessionStream
             Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
             Func<StreamCompletionResult, Task> onComplete,
             CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Same as the overload without <paramref name="onRateLimitWait"/>, but reports rate-limit waits through it.
+        /// </summary>
+        Task GenerateStreamAsync(
+            GenerateStreamContext context,
+            List<ToolResultMessage> toolResults,
+            Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
+            Func<StreamCompletionResult, Task> onComplete,
+            Func<RateLimitWaitInfo, Task> onRateLimitWait,
+            CancellationToken cancellationToken);
     }
 
     internal class ChatStreamService : IChatStreamService
@@ -38,11 +49,22 @@ namespace LMLocal.Application.ChatSessionStream
             _calibration = calibration ?? throw new ArgumentNullException(nameof(calibration));
         }
 
+        public Task GenerateStreamAsync(
+            GenerateStreamContext context,
+            List<ToolResultMessage> toolResults,
+            Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
+            Func<StreamCompletionResult, Task> onComplete,
+            CancellationToken cancellationToken)
+        {
+            return GenerateStreamAsync(context, toolResults, onChunk, onComplete, null, cancellationToken);
+        }
+
         public async Task GenerateStreamAsync(
             GenerateStreamContext context,
             List<ToolResultMessage> toolResults,
             Func<TextStreamChunk, TokenGenerationStats, Task> onChunk,
             Func<StreamCompletionResult, Task> onComplete,
+            Func<RateLimitWaitInfo, Task> onRateLimitWait,
             CancellationToken cancellationToken)
         {
 
@@ -65,6 +87,7 @@ namespace LMLocal.Application.ChatSessionStream
                     ModelId = context.ModelId,
                     Temperature = context.Temperature,
                     OnChunk = onChunk,
+                    OnRateLimitWait = onRateLimitWait,
                     Calibration = _calibration
                 };
 

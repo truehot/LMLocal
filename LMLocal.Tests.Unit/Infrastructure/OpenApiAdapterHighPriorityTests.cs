@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Security;
 using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.Autocompletions;
 using LMLocal.Infrastructure.Tooling;
 using Moq;
 using Newtonsoft.Json;
@@ -346,6 +348,141 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(capturedBody, Is.Not.Null.And.Not.Empty);
             Assert.That(capturedBody, Does.Contain("\"tools\""));
             Assert.That(capturedBody, Does.Contain("search"));
+        }
+
+        // --- retry-after header propagation (rate-limit handling) ---
+
+        private static OpenApiAdapter CreateAdapterForResponse(HttpResponseMessage response)
+        {
+            var client = new HttpClient(new FakeHandler(response));
+            var wrapper = new TestHttpClientWrapper(client);
+
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.Current).Returns(new AppSettings());
+
+            return new OpenApiAdapter(
+                wrapper,
+                mockSettings.Object,
+                new ApiRequestBuilder(mockSettings.Object, EmptyQueueProviderMock().Object),
+                new Mock<ITemporaryHttpClientFactory>().Object);
+        }
+
+        [Test]
+        public void SendChatStreamingAsync_BodyHintSmallerThanHeader_TakesHeader()
+        {
+            var json = "{\"error\":{\"message\":\"rate limited\",\"metadata\":{\"retry_after_seconds\":5}}}";
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(30));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendChatStreamingAsync(
+                new MessageContext(new ChatMessage[0]), new ModelContext("test-model"), CancellationToken.None));
+
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(30.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Header));
+        }
+
+        [Test]
+        public void SendChatStreamingAsync_BodyHintLargerThanHeader_KeepsBody()
+        {
+            var json = "{\"error\":{\"message\":\"rate limited\",\"metadata\":{\"retry_after_seconds\":30}}}";
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(5));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendChatStreamingAsync(
+                new MessageContext(new ChatMessage[0]), new ModelContext("test-model"), CancellationToken.None));
+
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(30.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Body));
+        }
+
+        [Test]
+        public void SendChatStreamingAsync_429WithHeaderOnly_FillsHint()
+        {
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"rate limited\"}}", Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(42));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendChatStreamingAsync(
+                new MessageContext(new ChatMessage[0]), new ModelContext("test-model"), CancellationToken.None));
+
+            Assert.That(ex.HttpStatusCode, Is.EqualTo(429));
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(42.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Header));
+        }
+
+        [Test]
+        public void SendChatAsync_429WithHeader_FillsHint()
+        {
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"rate limited\"}}", Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(12));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendChatAsync(
+                new MessageContext(new ChatMessage[0]), new ModelContext("test-model"), CancellationToken.None));
+
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(12.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Header));
+        }
+
+        [Test]
+        public void ListModelsRawAsync_429WithHeader_FillsHint()
+        {
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"rate limited\"}}", Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(7));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.ListModelsRawAsync(
+                "/v1/models", "http://localhost:1234", "key", CancellationToken.None));
+
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(7.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Header));
+        }
+
+        [Test]
+        public void SendCompletionAsync_429WithHeader_FillsHint()
+        {
+            var response = new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent("{\"error\":{\"message\":\"rate limited\"}}", Encoding.UTF8, "application/json")
+            };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromSeconds(9));
+
+            var adapter = CreateAdapterForResponse(response);
+
+            var context = new CompletionContext
+            {
+                ModelId = "test-model",
+                Prompt = "abc",
+                BaseUrl = "http://localhost:1234",
+                ApiKey = "key"
+            };
+
+            var ex = Assert.ThrowsAsync<ApiException>(async () => await adapter.SendCompletionAsync(context, CancellationToken.None));
+
+            Assert.That(ex.ErrorInfo.RetryAfterSeconds, Is.EqualTo(9.0));
+            Assert.That(ex.ErrorInfo.RetryAfterSource, Is.EqualTo(RetryAfterSource.Header));
         }
     }
 }

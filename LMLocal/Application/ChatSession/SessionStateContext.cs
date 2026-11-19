@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
+using LMLocal.Application.ChatSessionStream;
 using LMLocal.Core.Models;
 
 namespace LMLocal.Application.ChatSession
@@ -64,5 +66,11 @@ namespace LMLocal.Application.ChatSession
         /// Cancellation token for the session. Used to propagate cancellation to service methods.
         /// </summary>
         public CancellationToken SessionCancellationToken { get; set; }
+
+        /// <summary>
+        /// Sink for rate-limit wait notifications. Null when the caller passed no message callback, i.e. there is
+        /// nothing to show. Application-level delegate so this state never depends on a WebView delivery mechanism.
+        /// </summary>
+        public Func<RateLimitWaitInfo, Task> RateLimitWaitSink { get; set; }
     }
 }

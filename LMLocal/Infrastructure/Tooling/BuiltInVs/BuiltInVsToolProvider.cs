@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
@@ -45,7 +46,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
         /// <summary>
         /// Executes a tool with the given parameters from LLM response.
         /// </summary>
-        Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken);
+        Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken, ToolExecutionBudget budget = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its parameters.
@@ -56,11 +57,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
         /// Gets completion message for a tool based on its execution result.
         /// </summary>
         string GetCompletionMessage(string toolName, object result);
+
+        /// <summary>
+        /// Returns the external watchdog duration for a built-in tool, or null when the tool declares no ceiling.
+        /// </summary>
+        TimeSpan? GetToolTimeout(string toolName);
     }
 
     /// <summary>
     /// Provider for Visual Studio built-in tools.
-    /// Handles filtering of tools based on configuration.
     /// </summary>
     internal class BuiltInVsToolProvider : IBuiltInVsToolProvider
     {
@@ -165,7 +170,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
         }
 
-        public async Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken)
+        public async Task<object> ExecuteAsync(string toolName, Dictionary<string, object> parameters, CancellationToken cancellationToken, ToolExecutionBudget budget = null)
         {
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
@@ -173,7 +178,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             if (!_toolsByName.TryGetValue(toolName, out var tool))
                 throw new ArgumentException($"Unknown tool: '{toolName}'", nameof(toolName));
 
-            var result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken).ConfigureAwait(false);
+            var limits = (tool as IBuiltInToolTimeoutLimits)?.TimeoutLimits;
+            var applied = ResolveAppliedOrThrow(toolName, limits, budget);
+            LogTimeout(toolName, limits, budget, applied);
+
+            object result;
+            if (applied.HasValue && tool is IBuiltInToolAppliedTimeout budgetAware)
+            {
+                result = await budgetAware
+                    .ExecuteAsync(parameters ?? new Dictionary<string, object>(), applied.Value, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                result = await tool.ExecuteAsync(parameters ?? new Dictionary<string, object>(), cancellationToken).ConfigureAwait(false);
+            }
 
             if (tool.AccessLevel == ToolAccessLevel.FullAccess)
             {
@@ -183,6 +202,45 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
 
             return result;
         }
+
+        /// <summary>
+        /// Resolves how long the tool may run: <c>min(Default, Available − Grace)</c>; a spent budget throws
+        /// <see cref="ToolBudgetExhaustedException"/> and the tool is not started.
+        /// </summary>
+        private static TimeSpan? ResolveAppliedOrThrow(string toolName, ToolExecutionLimits limits, ToolExecutionBudget budget)
+        {
+            if (limits == null)
+                return null;
+
+            if (ToolTimeoutPolicy.IsBudgetExhausted(limits, budget?.Available))
+            {
+                int left = Math.Max(0, ToolTimeoutPolicy.ToWholeSeconds(
+                    ToolTimeoutPolicy.EffectiveAvailable(limits, budget.Available)));
+                throw new ToolBudgetExhaustedException(
+                    $"Tool '{toolName}' was not started: agent budget exhausted ({left} s left). Answer with what you have.");
+            }
+
+            return ToolTimeoutPolicy.ResolveApplied(limits, budget?.Available);
+        }
+
+        /// <summary>
+        /// One line per long-running tool start: <c>requested/default/max</c> were four numbers nobody could join after
+        /// the fact, so the applied and external values are logged together with the input they came from.
+        /// </summary>
+        private static void LogTimeout(string toolName, ToolExecutionLimits limits, ToolExecutionBudget budget, TimeSpan? applied)
+        {
+            if (limits == null)
+                return;
+
+            InternalLogger.Info(
+                $"tool={toolName} default={FormatSeconds(limits.DefaultTimeout)} available={FormatSeconds(budget?.Available)} "
+                + $"applied={FormatSeconds(applied)} external={FormatSeconds(ToolTimeoutPolicy.ResolveExternal(limits))}");
+        }
+
+        private static string FormatSeconds(TimeSpan? value)
+            => value.HasValue
+                ? ((int)Math.Round(value.Value.TotalSeconds, MidpointRounding.AwayFromZero)).ToString() + "s"
+                : "none";
 
         public string GetProcessingMessage(string toolName, Dictionary<string, object> parameters)
         {
@@ -202,6 +260,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             }
 
             return "Completed";
+        }
+
+        public TimeSpan? GetToolTimeout(string toolName)
+        {
+            if (string.IsNullOrEmpty(toolName) || !_toolsByName.TryGetValue(toolName, out var tool))
+                return null;
+
+            if (tool is IBuiltInToolTimeoutLimits limited)
+                return ToolTimeoutPolicy.ResolveExternal(limited.TimeoutLimits);
+
+            return null;
         }
     }
 }

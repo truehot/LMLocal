@@ -381,12 +381,6 @@ namespace LMLocal.Infrastructure.Settings
             {
                 settings.Theme = AppTheme.Dark;
             }
-
-            // Migration: the "Clean whitespace in history" feature was removed from the UI.
-            if (settings != null)
-            {
-                settings.EnableHistoryCompression = false;
-            }
         }
 
         private bool TryValidateSettings(AppSettings settings, out System.Collections.Generic.List<string> errors)

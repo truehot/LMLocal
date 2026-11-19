@@ -38,7 +38,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(observed, Is.Not.Null);
 
             observed = null;
-            var toSave = new AppSettings { LmStudioBaseUrl = "HTTP://EXAMPLE.COM", AutoLoadOnStartup = loaded.AutoLoadOnStartup, EnableHistoryCompression = loaded.EnableHistoryCompression, EnableHistoryCompaction = loaded.EnableHistoryCompaction, Theme = loaded.Theme, StreamInactivityTimeoutSeconds = loaded.StreamInactivityTimeoutSeconds, EnableChatLogging = loaded.EnableChatLogging };
+            var toSave = new AppSettings { LmStudioBaseUrl = "HTTP://EXAMPLE.COM", AutoLoadOnStartup = loaded.AutoLoadOnStartup, EnableHistoryCompaction = loaded.EnableHistoryCompaction, Theme = loaded.Theme, StreamInactivityTimeoutSeconds = loaded.StreamInactivityTimeoutSeconds, EnableChatLogging = loaded.EnableChatLogging };
             await manager.SaveAsync(toSave);
             Assert.That(manager.Current.LmStudioBaseUrl, Is.EqualTo("HTTP://EXAMPLE.COM"));
             Assert.That(observed, Is.Null);
@@ -89,6 +89,23 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var b = new AppSettings { TrustedServerCertificatePath = "C:\\certs\\b.cer" };
             Assert.That(a.Equals(b), Is.False);
             Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void AppSettings_Equals_IncludesRateLimitSettings()
+        {
+            var a = new AppSettings();
+            var b = new AppSettings();
+
+            Assert.That(a.EnableRateLimitHandling, Is.False, "rate-limit retry is off by default");
+            Assert.That(a.Equals(b), Is.True);
+            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
+
+            b.EnableRateLimitHandling = true;
+            Assert.That(a.Equals(b), Is.False);
+
+            b.EnableRateLimitHandling = false;
+            Assert.That(a.Equals(b), Is.True);
         }
     }
 }

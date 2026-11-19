@@ -820,6 +820,44 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Snapshot
             Assert.DoesNotThrowAsync(async () => await manager.CancelBatchAsync(CancellationToken.None));
         }
 
+        [Test]
+        public async Task EndBatchAsync_WithCancellationTokenNone_ClosesBatch_AndAllowsRollback()
+        {
+            _fileSystemMock.Setup(fs => fs.FileExists(_testPaths.ManifestPath)).Returns(false);
+
+            var manager = CreateManager();
+            await manager.BeginBatchAsync(CancellationToken.None);
+            await manager.EndBatchAsync(CancellationToken.None);
+
+            Assert.That(manager.IsBatchActive, Is.False, "EndBatchAsync must close the batch");
+            Assert.DoesNotThrowAsync(async () => await manager.RollbackAllAsync(CancellationToken.None));
+        }
+
+        [Test]
+        public async Task EndBatchAsync_WithCancelledToken_Throws_AndKeepsBatchActive()
+        {
+            _fileSystemMock.Setup(fs => fs.FileExists(_testPaths.ManifestPath)).Returns(false);
+
+            var manager = CreateManager();
+            await manager.BeginBatchAsync(CancellationToken.None);
+
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+
+                Assert.That(async () => await manager.EndBatchAsync(cts.Token),
+                    Throws.InstanceOf<OperationCanceledException>(),
+                    "a cancelled token fails the lock acquisition before _isBatching is reset");
+
+                Assert.That(manager.IsBatchActive, Is.True,
+                    "the batch stays open: callers such as ChatSessionOrchestrator must pass CancellationToken.None");
+
+                Assert.That(async () => await manager.RollbackAllAsync(CancellationToken.None),
+                    Throws.InstanceOf<InvalidOperationException>(),
+                    "this is the error the Changes panel used to hit after Stop");
+            }
+        }
+
         #endregion
 
         #region RollbackAllAsync Tests

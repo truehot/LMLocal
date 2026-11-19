@@ -10,7 +10,6 @@ class SettingsStoreClass extends BaseStoreClass {
             KnowledgeBasePaths: "./; ./docs",
             ApiKey: "",
             AutoLoadOnStartup: true,
-            EnableHistoryCompression: false,
             EnableHistoryCompaction: false,
             Theme: 0,
             StreamInactivityTimeoutSeconds: 20,
@@ -23,7 +22,9 @@ class SettingsStoreClass extends BaseStoreClass {
             EnableCodeCollapse: false,
             OpenToolFilesInEditor: false,
             PreventCloseWhileGenerating: true,
-            ShowTokenStats: false
+            FlashTaskbarOnCompletion: true,
+            ShowTokenStats: false,
+            EnableRateLimitHandling: false
         });
     }
 }

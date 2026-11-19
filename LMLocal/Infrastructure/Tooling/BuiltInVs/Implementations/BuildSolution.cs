@@ -9,6 +9,7 @@ using EnvDTE;
 using EnvDTE80;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.Tooling.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
@@ -19,22 +20,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     internal interface IBuildSolution : IBuiltInTool { }
 
-    internal class BuildSolution : IBuildSolution
+    internal class BuildSolution : IBuildSolution, IBuiltInToolAppliedTimeout
     {
         private readonly IVsDependencies _vsDependencies;
         public ToolAccessLevel AccessLevel => ToolAccessLevel.Execution;
 
         public string ToolName => "build_solution";
 
-        /// <summary>
-        /// Default cap (seconds) for waiting on a build result. Protects against hung builds / modal dialogs blocking the tool forever.
-        /// </summary>
-        private const int DefaultBuildTimeoutSeconds = 600;
+        public ToolExecutionLimits TimeoutLimits { get; } = new ToolExecutionLimits(
+            TimeSpan.FromSeconds(DefaultBuildTimeoutSeconds));
 
         /// <summary>
-        /// Upper bound for the wait (seconds): <c>Task.Delay</c> throws for a delay longer than 2147483 seconds (~24.8 days), and by then the build is already running.
+        /// Default wait (seconds) for a build result.
         /// </summary>
-        private const int MaxTimeoutSeconds = 2147483;
+        private const int DefaultBuildTimeoutSeconds = 600;
 
         /// <summary>
         /// Initial wait (ms) before the first build-output stabilization poll.
@@ -76,8 +75,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
         }
 
-        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
+        public Task<object> ExecuteAsync(Dictionary<string, object> parameters, CancellationToken cancellationToken = default)
+            => ExecuteAsync(parameters, TimeoutLimits.DefaultTimeout, cancellationToken);
+
+        public async Task<object> ExecuteAsync(Dictionary<string, object> parameters, TimeSpan appliedTimeout, CancellationToken cancellationToken)
         {
+            // A sub-second budget still waits one second: a zero delay would drop the wait entirely.
+            int timeoutSeconds = Math.Max(1, ToolTimeoutPolicy.ToWholeSeconds(appliedTimeout));
+
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
 
             if (!_vsDependencies.IsSolutionOpen)
@@ -96,10 +101,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             string projectName = null;
             if (parameters != null && parameters.TryGetValue("project_name", out var v) && v != null)
                 projectName = Convert.ToString(v);
-
-            int timeoutSeconds = DefaultBuildTimeoutSeconds;
-            if (parameters != null && parameters.TryGetValue("timeout_seconds", out var t) && t != null && int.TryParse(Convert.ToString(t), out int parsed) && parsed > 0)
-                timeoutSeconds = Math.Min(parsed, MaxTimeoutSeconds);
 
             Project selectedProject = null;
             string projectUniqueName = null;
@@ -121,6 +122,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (string.IsNullOrEmpty(projectUniqueName))
                     return ErrorResponse($"Project '{projectName}' has no buildable UniqueName.", solutionName, solutionPath);
             }
+
+            var buildConfiguration = ProjectConfigurationReader.ReadActive(dte, selectedProject);
 
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             BuildEvents buildEvents = dte.Events.BuildEvents;
@@ -165,14 +168,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     else
                     {
-                        if (!(dte.Solution.SolutionBuild.ActiveConfiguration is SolutionConfiguration2 activeConfig) || string.IsNullOrEmpty(activeConfig.Name))
+                        if (string.IsNullOrEmpty(buildConfiguration.SolutionConfigurationKey))
                             return ErrorResponse("No active solution configuration is available.", solutionName, solutionPath);
 
-                        string solutionConfiguration = activeConfig.Name;
-                        if (!string.IsNullOrEmpty(activeConfig.PlatformName))
-                            solutionConfiguration += "|" + activeConfig.PlatformName;
-
-                        dte.Solution.SolutionBuild.BuildProject(solutionConfiguration, projectUniqueName, false);
+                        dte.Solution.SolutionBuild.BuildProject(buildConfiguration.SolutionConfigurationKey, projectUniqueName, false);
                     }
 
                     Task<bool> buildTask = tcs.Task;
@@ -261,6 +260,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         SolutionPath = solutionPath,
                         ProjectName = selectedProjectName,
                         ProjectUniqueName = projectUniqueName,
+                        Configuration = buildConfiguration.SolutionConfigurationKey,
+                        ProjectConfiguration = buildConfiguration.ProjectConfigurationName,
+                        TimeoutSecondsApplied = timeoutSeconds,
                         Messages = messages,
                         ErrorMessage = errorDetail
                     };
@@ -630,7 +632,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Builds the currently opened VS solution asynchronously, or a single project when 'project_name' is specified. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status and any compilation errors with file/line/column details. Result is json.",
+                Description = "Builds the currently opened VS solution asynchronously in the active solution configuration, or a single project when 'project_name' is specified. Use after making code changes to verify they compile. Fails if no solution is open, or a build is already in progress. Returns build status, the configuration that was built, and any compilation errors with file/line/column details. Result is json.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -640,11 +642,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             Type = "string",
                             Description = "Project to build instead of the whole solution. Accepts the project name, unique name, project file name, or the path to its .csproj (relative to the solution or absolute). Omit it to build the whole solution."
-                        },
-                        ["timeout_seconds"] = new ToolDetails
-                        {
-                            Type = "integer",
-                            Description = "Optional maximum time (seconds) to wait for the build before returning a timeout error. Default: 600."
                         }
                     },
                     Required = new List<string>()
@@ -669,6 +666,22 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("project_unique_name")]
         public string ProjectUniqueName { get; set; }
+
+        /// <summary>
+        /// Active solution configuration the build ran in (<c>Release|Any CPU</c>).
+        /// </summary>
+        [JsonProperty("configuration", NullValueHandling = NullValueHandling.Ignore)]
+        public string Configuration { get; set; }
+
+        /// <summary>
+        /// Project configuration the solution configuration mapped the built project to (<c>Release</c>); set only when
+        /// a single project was built.
+        /// </summary>
+        [JsonProperty("project_configuration", NullValueHandling = NullValueHandling.Ignore)]
+        public string ProjectConfiguration { get; set; }
+
+        [JsonProperty("timeout_seconds_applied", NullValueHandling = NullValueHandling.Ignore)]
+        public int? TimeoutSecondsApplied { get; set; }
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }

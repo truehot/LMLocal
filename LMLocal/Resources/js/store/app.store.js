@@ -25,6 +25,8 @@ class AppStoreClass extends BaseStoreClass {
             toolGroupId: "",
             toolGroupTotal: 0,
             toolGroupCompleted: 0,
+            rateLimitWait: null,
+            replacePending: null,  // { mode, prompt } of a regenerate/edit request until ChatSessionStart
         });
     }
 }

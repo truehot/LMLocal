@@ -31,6 +31,11 @@ namespace LMLocal.Core.Models
         public double? RetryAfterSeconds { get; set; }
 
         /// <summary>
+        /// Where <see cref="RetryAfterSeconds"/> came from; <see cref="RetryAfterSource.None"/> when the server sent no hint.
+        /// </summary>
+        public RetryAfterSource RetryAfterSource { get; set; }
+
+        /// <summary>
         /// Provider that returned the error (from metadata.provider_name).
         /// </summary>
         public string Provider { get; set; }

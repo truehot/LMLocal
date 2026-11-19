@@ -159,6 +159,8 @@ public class StreamErrorAndStopTests : AppTestBase
 
         // A stopped answer never completed, so it must not offer a copy action.
         await Expect(Page.Locator(".ai-message .message-copy-btn")).ToHaveCountAsync(0, new() { Timeout = 3000 });
-        await Expect(Page.Locator(".ai-message .message-actions")).ToHaveCountAsync(0);
+
+        // Regenerate is the one action a stopped answer does get: it shares the actions panel with Copy.
+        await Expect(Page.Locator(".ai-message .message-regenerate-btn")).ToHaveCountAsync(1, new() { Timeout = 3000 });
     }
 }

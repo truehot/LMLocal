@@ -88,9 +88,10 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount == 1)
@@ -129,8 +130,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>>(async (call, ct, progress) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>(async (call, ct, progress, budget) =>
                 {
                     var now = Interlocked.Increment(ref active);
                     TrackMax(ref max, now);
@@ -179,8 +180,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>>((call, ct, progress) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progress, budget) =>
                 {
                     if (call.FunctionName == "agent_b")
                         return Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Error = "boom", UserMessage = "boom" });
@@ -223,8 +224,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>>((call, ct, progressSink) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progressSink, budget) =>
                     Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Result = "ok", CompletionMessage = "done" }));
 
             var orchestrator = CreateOrchestrator();
@@ -285,9 +286,10 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<List<ToolResultMessage>>(),
                     It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
                     It.IsAny<Func<StreamCompletionResult, Task>>(),
+                    It.IsAny<Func<RateLimitWaitInfo, Task>>(),
                     It.IsAny<CancellationToken>()))
-                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, CancellationToken>(
-                    async (gctx, toolResults, onChunk, onComplete, ct) =>
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
                     {
                         callCount++;
                         if (callCount == 1)
@@ -316,8 +318,8 @@ namespace LMLocal.Tests.Unit.Internal
                     });
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>>((call, ct, progress) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progress, budget) =>
                     Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Result = "ok", CompletionMessage = "done" }));
 
             var orchestrator = CreateOrchestrator();
