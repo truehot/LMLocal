@@ -5,6 +5,7 @@ using LMLocal.Application.ChatSession;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.WebView;
 using Moq;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ namespace LMLocal.Tests.Unit.Internal
             var config = new Mock<ISubAgentsConfigManager>();
             config.Setup(c => c.RefreshAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object);
+            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object, new Mock<ITodoTool>().Object);
 
             var first = manager.TryStartSessionAsync(new GenerateStreamContext { Prompt = "one", ModelId = "m" }, _ => Task.CompletedTask, CancellationToken.None);
 
@@ -77,7 +78,7 @@ namespace LMLocal.Tests.Unit.Internal
             var config = new Mock<ISubAgentsConfigManager>();
             config.Setup(c => c.RefreshAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object);
+            var manager = new SessionManager(orchestrator.Object, cache.Object, config.Object, new Mock<IAttentionNotifier>().Object, new Mock<ITodoTool>().Object);
 
             var first = manager.TryStartSessionAsync(new GenerateStreamContext { Prompt = "first", ModelId = "m" }, _ => Task.CompletedTask, CancellationToken.None);
             await Task.Delay(50);

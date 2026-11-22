@@ -31,6 +31,7 @@ import { ToolsDialog } from '@app/dialogs/tools.dialog.js';
 import { SubAgentsDialog } from '@app/dialogs/subagents.dialog.js';
 import { AutocompletionsDialog } from '@app/dialogs/autocompletions.dialog.js';
 import { ChatHistoryDialog } from '@app/dialogs/chat.history.dialog.js';
+import { UsageStatsDialog } from '@app/dialogs/usage.stats.dialog.js';
 
 import { providerResolver } from '@app/lib/provider.resolver.js';
 import toast from '@app/lib/toast.js';
@@ -91,6 +92,18 @@ class AppController {
         this._initialized = false;
     }
 
+    /**
+     * Opens the Usage & Stats dialog. The menu item and the context bar share this entry point.
+     */
+    async _openUsageStatsDialog() {
+        const usageDialog = new UsageStatsDialog();
+        usageDialog.onLoadStats.on(async (period) => {
+            return await appDataService.getUsageStatsAsync(period);
+        });
+        menuComponent.hideMenu();
+        await usageDialog.show();
+    }
+
     _attachEvents() {
         this._appStoreListener = (state, prev) => {
             statusComponent.updateAppState(state, prev);
@@ -136,6 +149,10 @@ class AppController {
         });
 
         themeComponent.setup();
+
+        toolbarComponent.onUsageClick.on(async () => {
+            await this._openUsageStatsDialog();
+        });
 
         inputComponent.onClick.on(async (text, hasActiveContent, images) => {
             const isGenerating = appSelectors.isBusy(appStore.getState().status);
@@ -308,6 +325,9 @@ class AppController {
                     });
                     menuComponent.hideMenu();
                     await chatHistoryDialog.show();
+                    return true;
+                case 'open-usage-stats':
+                    await this._openUsageStatsDialog();
                     return true;
                 case 'open-tools':
                     const toolsDialog = new ToolsDialog();

@@ -103,7 +103,6 @@ class AppManager {
     performRegenerate(expectedPrompt) {
         if (!appSelectors.canSend(appStore.getState().status)) return false;
 
-        // The answer goes before the round starts: PROCESSING would otherwise open a second bubble next to it.
         this.onRemoveLastExchange.emit(true);
         this._resetAnswerMetrics();
 

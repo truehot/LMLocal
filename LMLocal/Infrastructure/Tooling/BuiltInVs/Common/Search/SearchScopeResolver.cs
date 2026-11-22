@@ -138,10 +138,36 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         {
             string generic = $"Path not found: '{path}'. path must be an existing file or folder inside the solution directory, or a project name. A bare file name is not a path: resolve it with find_files first.";
 
+            var (fileName, candidates) = await FindFilesByNameAsync(trimmed, solutionDir, cancellationToken).ConfigureAwait(false);
+            if (fileName == null)
+                return generic;
+
+            if (candidates.Count == 0)
+                return $"File not found: '{path}'. No file named '{fileName}' exists anywhere in the solution.";
+
+            if (candidates.Count == 1)
+                return $"Path not found: '{path}'. The file '{fileName}' exists at '{candidates[0]}': call again with that path.";
+
+            var shown = candidates.Take(MaxNameCandidates).Select(c => "'" + c + "'");
+            string more = candidates.Count > MaxNameCandidates ? $" and {candidates.Count - MaxNameCandidates} more" : string.Empty;
+            return $"Path not found: '{path}'. Files named '{fileName}' exist at: {string.Join(", ", shown)}{more}. Call again with the right one.";
+        }
+
+        /// <summary>
+        /// Looks a file up by its name anywhere in the solution: a wrong folder is the usual reason a path does not exist.
+        /// </summary>
+        public async Task<(string FileName, IReadOnlyList<string> Candidates)> FindFilesByNameAsync(
+            string path, string solutionDir, CancellationToken cancellationToken = default)
+        {
+            var none = ((string)null, (IReadOnlyList<string>)new string[0]);
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrEmpty(solutionDir))
+                return none;
+
+            string trimmed = path.Trim().Trim('"', '\'').Trim();
             string link = FileLinkResolver.NormalizeLink(trimmed);
             string fileName = link == null ? null : Path.GetFileName(link);
             if (string.IsNullOrEmpty(fileName) || string.IsNullOrEmpty(Path.GetExtension(fileName)))
-                return generic;
+                return none;
 
             List<string> files;
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
@@ -153,7 +179,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    return generic;
+                    return none;
                 }
             }
 
@@ -167,15 +193,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                 .ThenBy(r => r, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            if (candidates.Count == 0)
-                return $"File not found: '{path}'. No file named '{fileName}' exists anywhere in the solution.";
-
-            if (candidates.Count == 1)
-                return $"Path not found: '{path}'. The file '{fileName}' exists at '{candidates[0]}': call again with that path.";
-
-            var shown = candidates.Take(MaxNameCandidates).Select(c => "'" + c + "'");
-            string more = candidates.Count > MaxNameCandidates ? $" and {candidates.Count - MaxNameCandidates} more" : string.Empty;
-            return $"Path not found: '{path}'. Files named '{fileName}' exist at: {string.Join(", ", shown)}{more}. Call again with the right one.";
+            return (fileName, candidates);
         }
 
         /// <summary>

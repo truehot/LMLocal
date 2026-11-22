@@ -130,8 +130,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>(async (call, ct, progress, budget) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget, LMLocal.Application.Usage.UsageCallContext>(async (call, ct, progress, budget, usage) =>
                 {
                     var now = Interlocked.Increment(ref active);
                     TrackMax(ref max, now);
@@ -180,8 +180,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progress, budget) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget, LMLocal.Application.Usage.UsageCallContext>((call, ct, progress, budget, usage) =>
                 {
                     if (call.FunctionName == "agent_b")
                         return Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Error = "boom", UserMessage = "boom" });
@@ -224,8 +224,8 @@ namespace LMLocal.Tests.Unit.Internal
             SetupTwoAgentRound();
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progressSink, budget) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget, LMLocal.Application.Usage.UsageCallContext>((call, ct, progressSink, budget, usage) =>
                     Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Result = "ok", CompletionMessage = "done" }));
 
             var orchestrator = CreateOrchestrator();
@@ -318,8 +318,8 @@ namespace LMLocal.Tests.Unit.Internal
                     });
 
             _toolManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
-                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget>((call, ct, progress, budget) =>
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
+                .Returns<ToolCallRecord, CancellationToken, IProgress<ToolActivityEvent>, ToolExecutionBudget, LMLocal.Application.Usage.UsageCallContext>((call, ct, progress, budget, usage) =>
                     Task.FromResult(new ToolExecutionResult { ToolName = call.FunctionName, Result = "ok", CompletionMessage = "done" }));
 
             var orchestrator = CreateOrchestrator();

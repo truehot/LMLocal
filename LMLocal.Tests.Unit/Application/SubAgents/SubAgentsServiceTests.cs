@@ -143,7 +143,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Returns(true);
 
             _toolExecutionManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult
                 {
                     ToolId = "call_1",
@@ -203,7 +203,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Returns(true);
 
             _toolExecutionManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
 
             var response = await CreateService(loopRecoveryEnabled: true)
@@ -267,7 +267,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Returns(true);
 
             _toolExecutionManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_1", ToolName = "read_file_lines", Result = "file text" });
 
             var response = await CreateService(loopRecoveryEnabled: true)
@@ -294,7 +294,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(response.Error, Does.Contain("maximum rounds"));
 
             _toolExecutionManagerMock.Verify(
-                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()),
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()),
                 Times.Never,
                 "A tool that is not in the SubAgent queue must never be executed.");
         }
@@ -364,7 +364,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(response.Content, Is.EqualTo("found"));
 
             _toolExecutionManagerMock.Verify(
-                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()),
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()),
                 Times.Never,
                 "An aborted call must not run.");
 
@@ -464,7 +464,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             _settingsManagerMock.SetupGet(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
             AllowTool("find_files");
             _toolExecutionManagerMock
-                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()))
+                .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_A.cs", ToolName = "find_files", Result = "src\\A.cs" });
 
             var requests = SetupRounds(FindFilesRound("A.cs"), FindFilesRound("B.cs"), CompletedRound("A.cs is in src; B.cs was not checked."));
@@ -478,7 +478,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(response.Recoveries[0], Is.EqualTo("SubAgent reached the round limit (2) and answered from the results gathered so far."));
 
             _toolExecutionManagerMock.Verify(
-                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()),
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()),
                 Times.Once,
                 "Only the first round's call runs: the call of the last round has no round left for its result.");
 
@@ -611,7 +611,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<ToolQueue>(),
-                    It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<ToolExecutionBudget>(),
+                    It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_A.cs", ToolName = "find_files", Result = "src\\A.cs" });
 
             var requests = SetupRounds(FindFilesRound("A.cs"), CompletedRound("A.cs is in src."));
@@ -644,7 +645,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<ToolQueue>(),
-                    It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<ToolExecutionBudget>(),
+                    It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_A.cs", ToolName = "find_files", Result = "src\\A.cs" });
 
             var requests = SetupRounds(FindFilesRound("A.cs"), CompletedRound("done"));
@@ -667,7 +669,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<ToolQueue>(),
-                    It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<ToolExecutionBudget>(),
+                    It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { ToolId = "call_A.cs", ToolName = "find_files", Result = "src\\A.cs" });
 
             // After the first tool round the 1 s budget is spent, so the next round has no tools; the model calls one anyway.
@@ -681,7 +684,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(response.Error, Does.Contain("agent budget exhausted"));
 
             _toolExecutionManagerMock.Verify(
-                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>()),
+                t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()),
                 Times.Once,
                 "Only the first round's call runs: the budget-forced final answer round must not execute tool calls.");
         }

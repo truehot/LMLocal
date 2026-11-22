@@ -90,6 +90,19 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public async Task Files_WrongFolderOfExistingFile_NamesTheRealPath()
+        {
+            Directory.CreateDirectory(Path.Combine(_tempDir, "sub"));
+            File.WriteAllText(Path.Combine(_tempDir, "sub", "c.txt"), "c1\n");
+
+            var response = await ReadFilesAsync(new JArray(Range(@"other\c.txt", 1, 1)));
+
+            Assert.That(response.Files[0].Success, Is.False);
+            Assert.That(response.Files[0].ErrorMessage, Does.StartWith("File not found: "));
+            Assert.That(response.Files[0].ErrorMessage, Does.Contain(@"The file 'c.txt' exists at 'sub\c.txt': call again with that path."));
+        }
+
+        [Test]
         public async Task Files_AllFailed_IsNotSuccess()
         {
             var response = await ReadFilesAsync(new JArray(Range("missing.txt", 1, 5)));

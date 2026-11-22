@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
@@ -16,8 +15,7 @@ using static LMLocal.Core.Common.Pluralizer;
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 {
     /// <summary>
-    /// Deterministic search over past chat-history sessions. Returns one best-matching turn per session
-    /// (session title + matched question heading + markdown snippet).
+    /// Deterministic search over past chat-history sessions.
     /// </summary>
     internal interface ISearchChatHistory : IBuiltInTool
     {
@@ -185,7 +183,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 TimestampUtc = session.TimestampUtc,
                 SessionId = session.SessionId,
                 TurnIndex = score.TurnIndex,
-                SessionTitle = ChatLogSerializer.TruncatePrompt(session.Title),
+                SessionTitle = PromptText.TruncatePrompt(session.Title),
                 Timestamp = session.TimestampUtc == DateTime.MinValue ? null : session.TimestampUtc.ToString("o"),
                 Role = score.Role,
                 Heading = TruncateHeading(score.Heading),
@@ -198,7 +196,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// </summary>
         private static string TruncateHeading(string heading)
         {
-            string truncated = ChatLogSerializer.Truncate(heading, ChatHistoryScorer.MaxHeadingLength);
+            string truncated = PromptText.Truncate(heading, ChatHistoryScorer.MaxHeadingLength);
 
             if (heading != null && heading.Length > ChatHistoryScorer.MaxHeadingLength)
             {

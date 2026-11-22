@@ -215,7 +215,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result[0].CustomBaseUrl, Is.EqualTo("http://localhost:1234"));
             Assert.That(result[1].CustomBaseUrl, Is.EqualTo("http://localhost:11434"));
             Assert.That(result[2].CustomBaseUrl, Is.EqualTo("http://localhost:1337"));
-            Assert.That(result[3].CustomBaseUrl, Is.EqualTo("http://localhost:8080"));
+            Assert.That(result[3].CustomBaseUrl, Is.EqualTo("http://localhost:9931"));
             Assert.That(result[4].CustomBaseUrl, Is.EqualTo("http://localhost:8888/"));
             Assert.That(result[5].CustomBaseUrl, Is.EqualTo(string.Empty));
         }

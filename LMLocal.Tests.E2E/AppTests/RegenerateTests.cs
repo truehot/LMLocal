@@ -70,12 +70,15 @@ public class RegenerateTests : AppTestBase
         await Expect(Page.Locator(".ai-message")).ToHaveCountAsync(1);
         await Expect(Page.Locator(".user-message")).ToHaveCountAsync(1);
 
-        Assert.That(await ReplaceLastCallsAsync(), Is.EqualTo(new[] { "", "answer" }),
-            "Regenerate must be one bridge call marked as replacing the answer");
-        Assert.That(await LastPromptAsync(), Is.Empty,
-            "The prompt already sits in the history; regenerating must not send it again");
-        Assert.That(await ResetCallsAsync(), Is.Empty,
-            "The exchange is replaced inside the session, not by a separate history reset");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await ReplaceLastCallsAsync(), Is.EqualTo(["", "answer"]),
+                    "Regenerate must be one bridge call marked as replacing the answer");
+            Assert.That(await LastPromptAsync(), Is.Empty,
+                "The prompt already sits in the history; regenerating must not send it again");
+            Assert.That(await ResetCallsAsync(), Is.Empty,
+                "The exchange is replaced inside the session, not by a separate history reset");
+        }
     }
 
     [Test]
@@ -188,10 +191,13 @@ public class RegenerateTests : AppTestBase
         await Expect(Page.Locator(".ai-message")).ToHaveCountAsync(1);
         await Expect(EditBanner).ToBeHiddenAsync(new() { Timeout = 3000 });
 
-        Assert.That(await ReplaceLastCallsAsync(), Has.Length.EqualTo(2));
-        Assert.That((await ReplaceLastCallsAsync())[1], Is.EqualTo("exchange"),
-            "Sending in edit mode must replace the exchange, not append to it");
-        Assert.That(await LastPromptAsync(), Is.EqualTo("Hello, corrected"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await ReplaceLastCallsAsync(), Has.Length.EqualTo(2));
+            Assert.That((await ReplaceLastCallsAsync())[1], Is.EqualTo("exchange"),
+                "Sending in edit mode must replace the exchange, not append to it");
+            Assert.That(await LastPromptAsync(), Is.EqualTo("Hello, corrected"));
+        }
     }
 
     [Test]
@@ -438,5 +444,62 @@ public class RegenerateTests : AppTestBase
 
         await Expect(AiMessage.Locator(".message-regenerate-btn")).ToBeEnabledAsync(new() { Timeout = 3000 });
         await Expect(UserMessage.Locator(".message-edit-btn")).ToBeEnabledAsync();
+    }
+
+    // ---------- The banner is the header of the field, whatever the field holds ----------
+
+    private ILocator ExpandedInputWrapper => Page.Locator(".input-wrapper.expanded");
+
+    /// <summary>
+    /// The top and the bottom of an element, so a test can tell a header from a box placed beside the field.
+    /// </summary>
+    private Task<double[]> EdgesAsync(string selector) =>
+        Page.EvaluateAsync<double[]>(
+            "sel => { const r = document.querySelector(sel).getBoundingClientRect(); return [r.top, r.bottom]; }",
+            selector);
+
+    [Test]
+    [Category("Regenerate")]
+    public async Task Edit_ClearAllText_BannerStaysAboveTheInput()
+    {
+        await StartAsync("webview-mock-regenerate.js");
+
+        await SendPromptAsync("Hello");
+        await WaitForIdleAsync();
+
+        await OpenEditModeAsync();
+        await Expect(EditBanner).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        // Erasing the prompt must not collapse the field: the banner would end up beside the textarea.
+        await PromptInput.FillAsync("");
+
+        await Expect(ExpandedInputWrapper).ToHaveCountAsync(1);
+        await Expect(EditBanner).ToBeVisibleAsync();
+
+        var banner = await EdgesAsync(".edit-prompt-banner");
+        var field = await EdgesAsync("#userInput");
+        Assert.That(banner[1], Is.LessThanOrEqualTo(field[0] + 1), "The banner must stay above the empty field");
+    }
+
+    [Test]
+    [Category("Regenerate")]
+    public async Task Edit_ClearAllTextThenEscape_InputCollapses()
+    {
+        await StartAsync("webview-mock-regenerate.js");
+
+        await SendPromptAsync("Hello");
+        await WaitForIdleAsync();
+
+        await OpenEditModeAsync();
+        await Expect(EditBanner).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        await PromptInput.FillAsync("");
+        await Expect(ExpandedInputWrapper).ToHaveCountAsync(1);
+
+        await PromptInput.PressAsync("Escape");
+
+        // The mode leaves with the banner, and nothing keeps the empty field expanded any more.
+        await Expect(EditBanner).ToBeHiddenAsync(new() { Timeout = 3000 });
+        await Expect(ExpandedInputWrapper).ToHaveCountAsync(0);
     }
 }

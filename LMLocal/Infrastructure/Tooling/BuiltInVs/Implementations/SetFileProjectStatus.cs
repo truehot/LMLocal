@@ -63,6 +63,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
             }
 
+            if (!FileProjectSettings.TryParse(parameters, out FileProjectSettings settings, out string settingsError))
+                return ErrorResponse(settingsError);
+            if (settings.HasAny && !include)
+                return ErrorResponse($"'{FileProjectSettings.BuildActionParameter}', '{FileProjectSettings.CopyToOutputParameter}' and '{FileProjectSettings.IncludeInVsixParameter}' apply only when include is true.");
+
             string solutionDir = _vsDependencies.GetSolutionDirectory();
             if (string.IsNullOrEmpty(solutionDir))
                 return ErrorResponse("Solution directory not available.");
@@ -141,7 +146,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 try
                 {
                     results[i] = include
-                        ? IncludeOne(targetProject, absolutePaths[i], changed, i)
+                        ? IncludeOne(targetProject, absolutePaths[i], changed, i, settings)
                         : await ExcludeOneAsync(targetProject, absolutePaths[i], changed, i, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex)
@@ -183,29 +188,38 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                            && _fileSystem.FileExists(absolutePath);
         }
 
-        private IncludeExcludeResponse IncludeOne(Project project, string absolutePath, List<int> changed, int index)
+        private IncludeExcludeResponse IncludeOne(Project project, string absolutePath, List<int> changed, int index, FileProjectSettings settings)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            if (FindProjectItem(project, absolutePath) != null)
+            ProjectItem item = FindProjectItem(project, absolutePath);
+            bool alreadyIncluded = item != null;
+            if (!alreadyIncluded)
             {
-                return new IncludeExcludeResponse
-                {
-                    Success = true,
-                    FilePath = absolutePath,
-                    Message = "File already included in the project."
-                };
+                item = project.ProjectItems.AddFromFile(absolutePath);
+                changed.Add(index);
             }
 
-            project.ProjectItems.AddFromFile(absolutePath);
-            changed.Add(index);
-
-            return new IncludeExcludeResponse
+            var response = new IncludeExcludeResponse
             {
                 Success = true,
                 FilePath = absolutePath,
-                Message = "File included successfully."
+                Message = alreadyIncluded ? "File already included in the project." : "File included successfully."
             };
+
+            if (settings != null && settings.HasAny)
+            {
+                var failures = ProjectItemSettingsWriter.Apply(_vsDependencies.GetSolution(), project, item, absolutePath, settings);
+                if (!changed.Contains(index))
+                    changed.Add(index);
+
+                if (failures.Count == 0)
+                    response.Message += " Set " + settings.Describe() + ".";
+                else
+                    response.Warning = "Could not set: " + string.Join("; ", failures) + ".";
+            }
+
+            return response;
         }
 
         /// <summary>
@@ -250,7 +264,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (results.Length == 1)
             {
                 if (warning != null)
-                    results[0].Warning = warning;
+                    results[0].Warning = string.IsNullOrEmpty(results[0].Warning) ? warning : results[0].Warning + " " + warning;
                 return results[0];
             }
 
@@ -440,7 +454,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Adds an existing file to the specified .csproj or .vcxproj project. REQUIRED when a file must be registered in a project. If the task requires adding a new .cs file to a project, first use create_file if the file does not exist, then MUST use this tool to add it to the project. Do NOT manually edit the .csproj or .vcxproj XML, ItemGroup, Compile Include, or project file entries to accomplish this. This rule applies especially for legacy .csproj projects that use explicit <Compile Include=\"...\" /> entries. Use include=false only when removing the file from the project and deleting it from disk. Both file_path and project_path are required; the project file must exist. Several files for the same project: one call with comma-separated paths in file_path.",
+                Description = "Adds an existing file to the specified .csproj or .vcxproj project. REQUIRED when a file must be registered in a project. If the task requires adding a new .cs file to a project, first use create_file if the file does not exist, then MUST use this tool to add it to the project. Do NOT manually edit the .csproj or .vcxproj XML, ItemGroup, Compile Include, or project file entries to accomplish this. This rule applies especially for legacy .csproj projects that use explicit <Compile Include=\"...\" /> entries. Use include=false only when removing the file from the project and deleting it from disk. Both file_path and project_path are required; the project file must exist. Several files for the same project: one call with comma-separated paths in file_path. A file that the extension package must carry (a js, css, html or json resource) needs the three optional settings in this same call: build_action, copy_to_output and include_in_vsix; they also update a file that is already in the project.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -466,6 +480,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             Type = "array",
                             Description = "Optional: more paths as an array.",
                             Items = new ToolDetails { Type = "string" }
+                        },
+                        [FileProjectSettings.BuildActionParameter] = new ToolDetails
+                        {
+                            Type = "string",
+                            Description = "Optional item type of the added file(s): Compile, Content, None or EmbeddedResource. Only with include=true."
+                        },
+                        [FileProjectSettings.CopyToOutputParameter] = new ToolDetails
+                        {
+                            Type = "string",
+                            Description = "Optional CopyToOutputDirectory of the added file(s): Never, Always or PreserveNewest. Only with include=true."
+                        },
+                        [FileProjectSettings.IncludeInVsixParameter] = new ToolDetails
+                        {
+                            Type = "boolean",
+                            Description = "Optional: true to pack the file(s) into the VSIX package (IncludeInVSIX). Only with include=true."
                         }
                     },
                     Required = new List<string> { "file_path", "project_path" }

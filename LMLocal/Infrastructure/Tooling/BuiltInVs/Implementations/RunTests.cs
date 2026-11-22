@@ -179,6 +179,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 TestRunOutput = output,
                 ErrorMessage = errorMessage,
                 TimeoutSecondsApplied = appliedTimeoutSeconds,
+                Filter = TestArgumentsBuilder.DescribeFilter(filter),
                 Configuration = buildConfiguration.ProjectConfigurationName,
                 Platform = buildConfiguration.ProjectPlatformName,
                 TestAssembly = testAssembly,
@@ -421,6 +422,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         ? "no test statistics available"
                         : Shorten(resp.ErrorMessage, CompletionErrorMaxChars);
 
+                if (!string.IsNullOrEmpty(resp.Filter))
+                    stats += $" (filter: '{resp.Filter}')";
+
                 return (resp.Success ? "Tests passed." : "Tests failed.") + " " + stats;
             }
             return "Test passed.";
@@ -431,7 +435,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Runs the project's pre-built test assembly in the configuration the active solution configuration maps the project to - the same configuration build_solution builds - and returns summary statistics plus failure details (not the full log). It does not build the project; run build_solution first when you change code, otherwise the existing build is tested. Use 'filter' to run only tests whose name matches; together with 'filter', 'include_full_output': true returns the complete console log.",
+                Description = "Runs the project's pre-built test assembly in the configuration the active solution configuration maps the project to - the same configuration build_solution builds - and returns summary statistics plus failure details (not the full log). It does not build the project; run build_solution first when you change code, otherwise the existing build is tested. Use 'filter' to run only tests whose name matches; together with 'filter', 'include_full_output': true returns the complete console log. The response's 'filter' is the filter that was applied; when it is absent, the whole project ran.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -472,6 +476,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("timeout_seconds_applied", NullValueHandling = NullValueHandling.Ignore)]
         public int? TimeoutSecondsApplied { get; set; }
+
+        /// <summary>
+        /// Filter the run actually used (names separated by spaces); absent for a full unfiltered run, so a filtered
+        /// total is never mistaken for the whole project.
+        /// </summary>
+        [JsonProperty("filter", NullValueHandling = NullValueHandling.Ignore)]
+        public string Filter { get; set; }
 
         /// <summary>
         /// Project configuration the run used (<c>Debug</c>, <c>Release</c>) - the one the active solution configuration

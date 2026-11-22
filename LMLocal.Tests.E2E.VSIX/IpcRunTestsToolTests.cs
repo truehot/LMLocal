@@ -45,9 +45,9 @@ namespace LMLocal.Tests.E2E.VSIX
                     Assert.AreEqual(2, (int)obj["passed_tests"], "passed_tests: " + obj);
 
                     string output = (string)obj["test_run_output"] ?? string.Empty;
-                    StringAssert.Contains(output, "Failed Fails_WithKnownMessage", "the failed test must be named");
-                    StringAssert.Contains(output, "expected-failure-marker", "the failure message must be in the summary");
-                    Assert.IsFalse(output.Contains("Retry_AfterFailedSave_Passes"),
+                    Assert.Contains("Failed Fails_WithKnownMessage", output, "the failed test must be named");
+                    Assert.Contains("expected-failure-marker", output, "the failure message must be in the summary");
+                    Assert.DoesNotContain("Retry_AfterFailedSave_Passes", output,
                         "a passed test with 'Failed' in its name must not be reported: " + output);
                     Assert.IsFalse(Regex.IsMatch(output, @"^\s*Passed\s", RegexOptions.Multiline),
                         "passed results must not be in the failure summary: " + output);
@@ -118,7 +118,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 command += "|" + Uri.EscapeDataString(filter);
 
             string resp = await client.SendCommandAsync(command, ToolTimeout, ct);
-            Assert.IsTrue(resp != null && resp.StartsWith("{"), "run_tests should return JSON: " + resp);
+            Assert.IsTrue(resp?.StartsWith("{"), "run_tests should return JSON: " + resp);
             return JObject.Parse(resp);
         }
 
@@ -158,7 +158,7 @@ namespace LMLocal.Tests.E2E.VSIX
         {
             try
             {
-                if (process != null && !process.HasExited)
+                if (process?.HasExited == false)
                     process.Kill();
 
                 process?.Dispose();

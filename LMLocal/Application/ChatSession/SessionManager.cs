@@ -6,6 +6,7 @@ using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.WebView;
 
 namespace LMLocal.Application.ChatSession
@@ -46,6 +47,7 @@ namespace LMLocal.Application.ChatSession
         private readonly ISearchResultCache _searchCache;
         private readonly ISubAgentsConfigManager _subAgentsConfigManager;
         private readonly IAttentionNotifier _attentionNotifier;
+        private readonly ITodoTool _todoTool;
         private readonly SemaphoreSlim _sessionLock = new SemaphoreSlim(1, 1);
         private volatile bool _isSessionRunning = false;
 
@@ -60,12 +62,14 @@ namespace LMLocal.Application.ChatSession
             IChatSessionOrchestrator orchestrator,
             ISearchResultCache searchCache,
             ISubAgentsConfigManager subAgentsConfigManager,
-            IAttentionNotifier attentionNotifier)
+            IAttentionNotifier attentionNotifier,
+            ITodoTool todoTool)
         {
             _orchestrator = orchestrator ?? throw new ArgumentNullException(nameof(orchestrator));
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
             _subAgentsConfigManager = subAgentsConfigManager ?? throw new ArgumentNullException(nameof(subAgentsConfigManager));
             _attentionNotifier = attentionNotifier ?? throw new ArgumentNullException(nameof(attentionNotifier));
+            _todoTool = todoTool ?? throw new ArgumentNullException(nameof(todoTool));
         }
 
         /// <summary>
@@ -102,6 +106,7 @@ namespace LMLocal.Application.ChatSession
                     return false;
                 }
 
+                _todoTool.Reset();
                 _searchCache.Clear();
 
                 Interlocked.Increment(ref _sessionId);

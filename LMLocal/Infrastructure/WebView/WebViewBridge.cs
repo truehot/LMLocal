@@ -151,7 +151,7 @@ namespace LMLocal.Infrastructure.WebView
         }
 
         /// <summary>
-        /// Reads the active document and formats it as a Markdown fenced code block. 
+        /// Reads the active document and formats it as a Markdown fenced code block.
         /// </summary>
         private async Task<string> GetIncludedContentAsync()
         {

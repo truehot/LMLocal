@@ -840,6 +840,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
             Assert.That(resp.MatchedWithNormalization, Is.True);
             Assert.That(resp.IsNoOp, Is.False);
+            // The line is rewritten, but the ZWSP rides in the leading run taken from the file: reported as kept.
+            Assert.That(resp.InvisibleCharacters, Is.EqualTo(new[] { "line 1: U+200B kept" }));
             _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
                 AbsolutePath, "\u200B    /// <summary> changed",
                 Encoding.UTF8, false, It.IsAny<CancellationToken>()));
@@ -853,7 +855,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 startLine: 1, oldLines: "/// <summary>", newLines: "/// <summary> changed"));
             var message = _tool.GetCompletionMessage(result);
             Assert.That(message, Is.EqualTo(
-                "1 line replaced (matched ignoring first-line indentation, matched after character normalization)."));
+                "1 line replaced (matched ignoring first-line indentation, matched after character normalization, invisible characters on 1 line)."));
         }
 
         [Test]

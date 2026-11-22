@@ -14,5 +14,10 @@ namespace LMLocal.Core.Common
         /// Maximum total size of the included content, in bytes (200 KB).
         /// </summary>
         public const int MaxTotalContentBytes = 200 * 1024;
+
+        /// <summary>
+        /// Maximum number of Error List entries included in a single prompt.
+        /// </summary>
+        public const int MaxErrorListEntries = 10;
     }
 }

@@ -217,7 +217,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             var expectedResult = new SubAgentsRunResponse { Success = true, Content = "done" };
 
             _subAgentsToolSourceMock.Setup(s => s.ToolExists("researcher")).Returns(true);
-            _subAgentsToolSourceMock.Setup(s => s.ExecuteAsync("researcher", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>()))
+            _subAgentsToolSourceMock.Setup(s => s.ExecuteAsync("researcher", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(expectedResult);
 
             var result = _router.ExecuteAsync("researcher", new Dictionary<string, object>(), CancellationToken.None).GetAwaiter().GetResult();

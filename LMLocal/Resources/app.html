@@ -82,6 +82,14 @@
                     </svg>
                     Chat History...
                 </button>
+                <button data-action="open-usage-stats">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
+                        <line x1="12" y1="13.5" x2="12" y2="6.5" />
+                        <line x1="8" y1="13.5" x2="8" y2="2.5" />
+                        <line x1="4" y1="13.5" x2="4" y2="9.5" />
+                    </svg>
+                    Usage &amp; Stats...
+                </button>
                 <button data-action="open-tools">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px; flex-shrink: 0;">
                         <circle cx="6" cy="4.5" r="2.5" />
@@ -138,7 +146,30 @@
          role="log"
          aria-live="polite"
          aria-relevant="additions"
-         aria-atomic="false">
+         aria-atomic="false"></div>
+
+    <div id="chat-empty-state" class="chat-empty-state" aria-hidden="true">
+        <div class="chat-empty-logo">
+            <svg class="chat-empty-logo-svg" viewBox="0 0 80 80" fill="none">
+                <rect class="chat-empty-diamond" x="40" y="6" width="48" height="48" rx="3"
+                      transform="rotate(45 40 6)" stroke-width="1.5"/>
+                <g class="chat-empty-antenna">
+                    <line x1="40" y1="16" x2="40" y2="25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    <circle class="chat-empty-antenna-tip" cx="40" cy="14" r="3.5"/>
+                </g>
+                <rect x="19" y="34" width="4" height="9" rx="1.5" fill="currentColor"/>
+                <rect x="57" y="34" width="4" height="9" rx="1.5" fill="currentColor"/>
+                <rect x="23" y="26" width="34" height="25" rx="6" stroke="currentColor" stroke-width="3"/>
+                <rect x="28" y="32" width="24" height="12" rx="3" fill="currentColor"/>
+                <path d="M33 44 L31 48 L37 44 Z" fill="currentColor"/>
+                <circle class="chat-empty-dot chat-empty-dot-1" cx="34.5" cy="38" r="1.6" fill="var(--bg-color)"/>
+                <circle class="chat-empty-dot chat-empty-dot-2" cx="40" cy="38" r="1.6" fill="var(--bg-color)"/>
+                <circle class="chat-empty-dot chat-empty-dot-3" cx="45.5" cy="38" r="1.6" fill="var(--bg-color)"/>
+            </svg>
+        </div>
+        <div class="chat-empty-title">LM Local</div>
+        <div class="chat-empty-subtitle">Local &amp; cloud AI coding assistant</div>
+        <div class="chat-empty-disclaimer">AI can <del>love to</del> <ins>make</ins> mistakes</div>
     </div>
 
     <div id="global-changes-panel" class="changes-panel-component hidden">
@@ -164,6 +195,13 @@
     </div>
 
     <div class="scroll-spacer"></div>
+
+    <div id="debug-stop-banner" class="debug-stop-banner hidden">
+        <span class="debug-stop-icon" aria-hidden="true">&#9889;</span>
+        <span id="debug-stop-caption" class="debug-stop-caption" aria-live="polite"></span>
+        <button type="button" id="debug-stop-explain" class="debug-stop-explain">Explain</button>
+        <button type="button" id="debug-stop-dismiss" class="debug-stop-dismiss" title="Hide until the next stop" aria-label="Hide until the next stop">&#10005;</button>
+    </div>
 
     <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="rate-limit-status" aria-live="polite"></span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
 
@@ -370,8 +408,8 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="EnableChatLogging">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Save chat history</span>
-                            <span class="checkbox-description">Saves all conversations to disk. Required for session recovery. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code></span>
+                            <span class="checkbox-title">Save chat history &amp; stats</span>
+                            <span class="checkbox-description">Saves all conversations and their token usage to disk. Required for session recovery and for Usage &amp; Stats. You can find logs in <code>%LOCALAPPDATA%\LMLocalChat\ChatHistory\</code> and usage in <code>%LOCALAPPDATA%\LMLocalChat\Usage\</code></span>
                         </span>
                     </label>
                 </div>
@@ -457,6 +495,18 @@
                             <span class="checkbox-title">Flash taskbar when done</span>
                             <span class="checkbox-description">
                                 Flashes the Visual Studio taskbar icon when an AI request finishes while Visual Studio is in the background.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+                <div class="settings-group checkbox-group">
+                    <label class="checkbox-container">
+                        <input type="checkbox" data-setting="EnableDebuggerContext">
+                        <span class="checkbox-content-wrapper">
+                            <span class="checkbox-title">Explain debugger stops</span>
+                            <span class="checkbox-description">
+                                Shows an Explain banner above the chat input when Visual Studio stops in Break Mode on a
+                                breakpoint or an exception. The context of the stop is sent to the chat only when you click Explain.
                             </span>
                         </span>
                     </label>
@@ -971,7 +1021,7 @@
                     <label class="checkbox-container">
                         <input type="checkbox" data-setting="Enabled" id="autocompletions-dialog-enable-checkbox">
                         <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Enable autocompletions (beta)</span>
+                            <span class="checkbox-title">Enable autocompletions</span>
                             <span class="checkbox-description">
                                 Real‑time code prediction as you type. The AI analyzes both the code before and after the cursor (Fill-In-the-Middle) and suggests the next line or block. Suggestions appear as ghost text – press  to accept.
                             </span>
@@ -1044,6 +1094,39 @@
             <div class="modal-footer">
                 <button type="button" id="autocompletions-back-btn" class="btn-secondary">Back</button>
             </div>
+        </div>
+    </dialog>
+
+    <dialog id="usage-stats-dialog" class="model-modal">
+        <div class="modal-header">
+            <span>Usage &amp; Stats</span>
+        </div>
+
+        <div class="modal-toolbar">
+            <div class="toolbar-left usage-period-nav" id="usage-period-nav">
+                <button type="button" class="btn-small usage-period-btn active" data-period="current">Current</button>
+                <button type="button" class="btn-small usage-period-btn" data-period="today">Today</button>
+                <button type="button" class="btn-small usage-period-btn" data-period="yesterday" title="Yesterday">Yday</button>
+                <button type="button" class="btn-small usage-period-btn" data-period="3d">3d</button>
+                <button type="button" class="btn-small usage-period-btn" data-period="7d">7d</button>
+                <button type="button" class="btn-small usage-period-btn" data-period="30d">30d</button>
+            </div>
+            <button id="usage-refresh-btn" class="ui-icon-btn" title="Refresh">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.53 2.3A6.995 6.995 0 0 0 8 1a7 7 0 1 0 7 7h-1.5a5.5 5.5 0 1 1-1.39-3.64l-1.24 1.24H15V1.47l-1.35 1.35z" /></svg>
+            </button>
+        </div>
+
+        <div class="modal-container">
+            <div id="usage-stats-container" class="usage-stats-list">
+                <div class="loading-placeholder">
+                    <div class="spinner"></div>
+                    <span>Loading usage...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button id="usage-stats-close" class="btn-secondary">Close</button>
         </div>
     </dialog>
 

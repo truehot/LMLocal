@@ -114,12 +114,39 @@ class BridgeClient {
         return JSON.parse(res);
     }
 
+    _getUsageHost() {
+        return window.__usageOverride ?? window.chrome?.webview?.hostObjects?.usage;
+    }
+
+    async _callUsage(method, ...args) {
+        const host = this._getUsageHost();
+        if (!host || typeof host[method] !== 'function') {
+            throw new Error(`Usage method ${method} is unavailable`);
+        }
+        return host[method](...args);
+    }
+
+    /**
+     * Token usage statistics of one selection: "current", "today", "yesterday", "3d", "7d" or "30d".
+     */
+    async getUsageStatsAsync(period) {
+        const res = await this._callUsage("GetUsageStatsAsync", period);
+        return JSON.parse(res);
+    }
+
     async copyToClipboardAsync(text) {
         return await this._callHostController("CopyToClipboardAsync", text);
     }
 
     async focusAsync() {
         return await this._callHostController("FocusAsync");
+    }
+
+    /**
+     * Asks the host to collect the context of the current debugger stop and send it to the chat.
+     */
+    async explainDebugStopAsync() {
+        return await this._callHostController("ExplainDebugStopAsync");
     }
 
     _getSettingsHost() {

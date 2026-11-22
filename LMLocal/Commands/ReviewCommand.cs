@@ -1,3 +1,5 @@
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Commands
@@ -14,6 +16,11 @@ namespace LMLocal.Commands
         protected override string PromptInstruction =>
             "Review the following code. Identify potential bugs, security issues, performance problems, and code smells. Provide specific, actionable recommendations.";
 
-        private ReviewCommand(AsyncPackage package, OleMenuCommandService commandService) : base(package, commandService) { }
+        private ReviewCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
+            : base(package, commandService, sessionManager, instructionsManager) { }
     }
 }

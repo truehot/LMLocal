@@ -22,7 +22,6 @@ namespace LMLocal.Infrastructure.Streaming
         private readonly ISettingsManager _settingsManager;
         private readonly IToolCallArgumentsGuard _argumentsGuard;
 
-        /// <param name="argumentsGuard">Optional; when it rejects the arguments of a tool call, reading stops and the call is marked invalid.</param>
         public StreamProcessor(
             ITokenSpeedCalculator tokenSpeedCalculator,
             ISettingsManager settingsManager,

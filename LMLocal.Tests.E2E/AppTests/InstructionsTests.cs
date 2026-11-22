@@ -480,8 +480,6 @@ public class InstructionsTests : AppTestBase
         await Expect(promptBox).ToHaveValueAsync(shippedPrompt);
         await Expect(enabled).Not.ToBeCheckedAsync();
         await Expect(resetBtn).ToBeDisabledAsync();
-
-        
     }
 
     [Test]

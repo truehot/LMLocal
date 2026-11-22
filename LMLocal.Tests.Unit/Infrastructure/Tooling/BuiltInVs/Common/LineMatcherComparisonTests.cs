@@ -63,6 +63,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [TestCase("-", "\u2014", TestName = "Canonical_Same_EmDash")]
         [TestCase("\"q\"", "\u201Cq\u201D", TestName = "Canonical_Same_TypographicQuotes")]
         [TestCase("X ", "X\u00A0", TestName = "Canonical_Same_TrailingNoBreakSpace")]
+        [TestCase("ab", "a\u00ADb", TestName = "Canonical_Same_SoftHyphenDropped")]
+        [TestCase("Key = \"\"", "Key = \"\uFFFF\"", TestName = "Canonical_Same_NoncharacterDropped")]
+        [TestCase("ab", "a\u202Eb", TestName = "Canonical_Same_BidiOverrideDropped")]
         public void LinesEqualCanonical_KeepsTrimEndSemantics(string left, string right)
         {
             Assert.That(LineMatcher.LinesEqualCanonical(left, right), Is.True);

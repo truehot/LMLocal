@@ -107,5 +107,23 @@ namespace LMLocal.Tests.Unit.Infrastructure
             b.EnableRateLimitHandling = false;
             Assert.That(a.Equals(b), Is.True);
         }
+
+        [Test]
+        public void AppSettings_Equals_IncludesDebuggerContextSetting()
+        {
+            var a = new AppSettings();
+            var b = new AppSettings();
+
+            Assert.That(a.EnableDebuggerContext, Is.False, "the debugger banner is off by default");
+            Assert.That(a.Equals(b), Is.True);
+            Assert.That(a.GetHashCode(), Is.EqualTo(b.GetHashCode()));
+
+            b.EnableDebuggerContext = true;
+            Assert.That(a.Equals(b), Is.False);
+            Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+
+            b.EnableDebuggerContext = false;
+            Assert.That(a.Equals(b), Is.True);
+        }
     }
 }

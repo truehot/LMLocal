@@ -105,16 +105,15 @@ namespace LMLocal.Tests.E2E.VSIX
         }
 
         /// <summary>
-        /// A1.8 tests pagination only while its term has more matching lines than one page of
-        /// search_file_content can hold (max_results is capped at 500). Runs without VS or LM Studio.
+        /// A1.8 tests the cursor only while its term fills more than two pages of the max_results its task names,
+        /// so the last match is on page 3 or later. Runs without VS or LM Studio.
         /// </summary>
         [TestMethod]
-        public void ExplorerPagingScenario_NeedsSecondPage()
+        public void ExplorerPagingScenario_NeedsThreePages()
         {
-            const int maxPageSize = 500;
             var count = MatchingLines(A108File, A108Text).Count;
-            Assert.IsGreaterThan(maxPageSize, count,
-                $"A1.8: '{A108Text}' has {count} matching lines in {A108File}; it must exceed {maxPageSize} so the last match is on page 2.");
+            Assert.IsGreaterThan(2 * A108PageSize, count,
+                $"A1.8: '{A108Text}' has {count} matching lines in {A108File}; it must exceed {2 * A108PageSize} so the last match is on page 3 or later.");
         }
 
         /// <summary>
@@ -127,7 +126,7 @@ namespace LMLocal.Tests.E2E.VSIX
         public void Scenarios_MatchCurrentSources()
         {
             var root = Path.GetDirectoryName(GetSolutionPath());
-            foreach (var s in BuildScenarios())
+            foreach (var s in BuildExplorerScenarios().Concat(BuildReviewerArchitectScenarios()))
             {
                 foreach (var m in s.Mutations)
                 {
@@ -148,6 +147,107 @@ namespace LMLocal.Tests.E2E.VSIX
                 RevertMutations(ApplyMutations(fixtureRoot, s));
         }
 
+        /// <summary>
+        /// Location scoring reads "path:line" places out of an answer and never its words: a reference expanded by the runner
+        /// ("path:12: `text`"), a range, a comma list, the compiler form "path(line,col)". A "name.cs:99" inside the quoted source text
+        /// of an expanded reference is not a location. Runs without VS or LM Studio.
+        /// </summary>
+        [TestMethod]
+        public void ExtractLocations_ReadsReferencesRangesListsAndCompilerForm()
+        {
+            var content = string.Join("\n",
+                "1. LMLocal\\A\\B.cs:12: `var x = other.cs:99;`",
+                "- @LMLocal\\A\\C.cs:5-9",
+                "LMLocal/A/D.cs:3,7,11",
+                "error CS0103: D:\\Work\\fx\\BuildFixture.Lib\\Calculator.cs(9,31): The name does not exist",
+                "Plain prose without any location.");
+
+            var found = ExtractLocations(content).Select(l => l.ToString()).ToList();
+
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    @"LMLocal\A\B.cs:12",
+                    @"LMLocal\A\C.cs:5-9",
+                    @"LMLocal\A\D.cs:3",
+                    @"LMLocal\A\D.cs:7",
+                    @"LMLocal\A\D.cs:11",
+                    @"D:\Work\fx\BuildFixture.Lib\Calculator.cs:9"
+                },
+                found);
+        }
+
+        /// <summary>
+        /// A range marker is expanded by the runner into "File: path, lines a-b" and a four-backtick block with the source lines.
+        /// The header is a location (the lines read); a "name.cs:12" inside the block is code, not a location. A block of three
+        /// backticks is the model's own text and is read as usual.
+        /// </summary>
+        [TestMethod]
+        public void ExtractLocations_ReadsRangeHeadersAndSkipsRunnerBlocks()
+        {
+            var content = string.Join("\n",
+                @"File: LMLocal\Application\Chat\ToolHistoryPruner.cs, lines 49-49",
+                "````csharp",
+                "    // see other.cs:77 and Foo.cs:5-9",
+                "    internal static class ToolHistoryPruner",
+                "````",
+                @"LMLocal\Application\Chat\HistoryCompactor.cs:276: `var pruned = ToolHistoryPruner.Prune(`",
+                "```",
+                @"LMLocal\A\B.cs:3",
+                "```");
+
+            var found = ExtractLocations(content).Select(l => l.ToString()).ToList();
+
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    @"LMLocal\Application\Chat\ToolHistoryPruner.cs:49",
+                    @"LMLocal\Application\Chat\HistoryCompactor.cs:276",
+                    @"LMLocal\A\B.cs:3"
+                },
+                found);
+        }
+
+        [TestMethod]
+        public void SamePath_AcceptsAPathCutToItsLastFolders()
+        {
+            Assert.IsTrue(SamePath(@"Persistence\ChatLogSerializer.cs", @"LMLocal\Infrastructure\Persistence\ChatLogSerializer.cs"));
+            Assert.IsTrue(SamePath(@"D:\Work\fx\BuildFixture.Lib\Calculator.cs", @"BuildFixture.Lib\Calculator.cs"));
+            Assert.IsTrue(SamePath(@".\LMLocal\A.cs", @"LMLocal\A.cs"));
+            Assert.IsFalse(SamePath(@"Other\ChatLogSerializer.cs", @"LMLocal\Infrastructure\Persistence\ChatLogSerializer.cs"));
+            Assert.IsFalse(SamePath(string.Empty, @"LMLocal\A.cs"));
+
+            string path;
+            int line;
+            SplitExpectedLocation(@"LMLocal\A.cs:42", out path, out line);
+            Assert.AreEqual(@"LMLocal\A.cs", path);
+            Assert.AreEqual(42, line);
+            SplitExpectedLocation(@"docs\plan.md", out path, out line);
+            Assert.AreEqual(@"docs\plan.md", path);
+            Assert.AreEqual(0, line);
+        }
+
+        /// <summary>
+        /// The rewritten and new scenarios are judged by locations: each must carry a location expectation, and none may
+        /// ask for a "yes" (the answer words are not a check). Runs without VS or LM Studio.
+        /// </summary>
+        [TestMethod]
+        public void LocationScenarios_AreJudgedByLocationsNotByYes()
+        {
+            var all = BuildExplorerScenarios().Concat(BuildReviewerArchitectScenarios()).Concat(BuildBuildScenarios()).Concat(BuildKnowledgeScenarios()).ToList();
+            foreach (var id in new[] { "A1.2", "A1.3", "A1.5", "A1.16", "A1.30", "A1.32", "A1.33", "A1.34", "B1.2", "A8.2" })
+            {
+                var s = all.Single(x => x.Id == id);
+                Assert.IsTrue(
+                    s.ExpectedLocations.Length > 0 || s.ExpectedLocationsAny.Length > 0 || s.ExpectNoLocations || s.ForbiddenLocationPaths.Length > 0,
+                    id + ": a location scenario needs a location expectation");
+            }
+
+            foreach (var s in all)
+                Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(s.Prompt, @"(?i)\byes\b"),
+                    s.Id + ": the prompt must not ask for a yes");
+        }
+
         [TestMethod]
         public void KnowledgeFixture_IsPresentAndScenariosMatchIt()
         {
@@ -156,6 +256,12 @@ namespace LMLocal.Tests.E2E.VSIX
             var targetText = File.ReadAllText(Path.Combine(docs, target + ".md"));
             var others = Directory.GetFiles(docs, "*.md").Where(f => Path.GetFileNameWithoutExtension(f) != target).ToList();
             Assert.IsGreaterThanOrEqualTo(2, others.Count, "A8.1 needs distractor documents next to the target one.");
+
+            // A8.2 expects the plan and the conventions documents in the fixture.
+            var a82 = BuildKnowledgeScenarios().Single(s => s.Id == "A8.2");
+            foreach (var expected in a82.ExpectedLocations)
+                Assert.IsTrue(File.Exists(Path.Combine(Path.GetDirectoryName(GetKnowledgeFixtureSolutionPath()), expected)),
+                    "A8.2 expected document is missing from the fixture: " + expected);
 
             // The decision evidence is in the target document only, so naming a distractor cannot pass A8.1.
             var a81 = BuildKnowledgeScenarios().Single(s => s.Id == "A8.1");

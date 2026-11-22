@@ -9,7 +9,7 @@ using Newtonsoft.Json.Linq;
 namespace LMLocal.Infrastructure.LlmApi
 {
     /// <summary>
-    /// Parses error responses from LLM APIs into structured 
+    /// Parses error responses from LLM APIs into structured
     /// </summary>
     internal static class ApiErrorParser
     {

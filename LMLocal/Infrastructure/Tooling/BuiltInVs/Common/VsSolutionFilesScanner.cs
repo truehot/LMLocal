@@ -227,8 +227,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
         /// <summary>
         /// Matches a file name against a pattern that may contain '*' wildcards.
-        /// Supports multiple '*' in any position. Uses sequential search for each part.
-        /// If pattern has no '*', performs a case-insensitive substring match.
         /// </summary>
         private static bool MatchesPattern(string fileName, string pattern)
         {
@@ -274,6 +272,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 var p = part.Trim();
                 if (string.IsNullOrEmpty(p)) continue;
+
+                if (p == "*" || p == "*.*" || p == ".*") return null;
+                if (p.StartsWith("*.")) p = p.Substring(1);
+
                 if (!p.StartsWith(".")) p = "." + p;
                 set.Add(p);
             }

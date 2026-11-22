@@ -14,7 +14,7 @@ namespace LMLocal.Application.SubAgents
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Runs a group of SubAgent tool calls concurrently, bounded to at most <c>maxParallel</c> in flight, and returns their outcomes in input order. 
+    /// Runs a group of SubAgent tool calls concurrently, bounded to at most <c>maxParallel</c> in flight, and returns their outcomes in input order.
     /// </summary>
     internal interface ISubAgentsParallelRunner
     {

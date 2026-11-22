@@ -6,19 +6,23 @@ import { createScrollManager } from '@app/lib/scroll.manager.js';
 import { createUserMessage } from '@app/chat/user.message.js';
 import { createAiMessage } from '@app/chat/ai.message.js';
 import { createAiCollapsibleMessage } from '@app/chat/ai.collapsible.message.js';
+import { buildHistoryCotNote, collectCotModel } from '@app/chat/history.note.js';
 import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
 import { PipelineBuilder } from '@app/chat/chat.pipeline.builder.js';
 import {
     attachCopyAction,
     attachExchangeActions,
+    attachMessageTime,
     detachExchangeActions,
     getCopySource,
     getMessageSource,
     isServicePromptText,
+    refreshMessageTime,
     setExchangeActionsDisabled,
     COPY_ACTION_SELECTOR,
     EDIT_ACTION_SELECTOR,
+    MESSAGE_TIME_SELECTOR,
     REGENERATE_ACTION_SELECTOR
 } from '@app/chat/message.actions.js';
 
@@ -45,7 +49,6 @@ class ChatController {
         this._sessionStartedAt = 0;
         this.pipelineBuilder = null;
         this._pendingFinishPromise = null;
-        // True while the input edits the last prompt: the buttons of the last exchange stay disabled.
         this._editDimmed = false;
     }
 
@@ -330,6 +333,7 @@ class ChatController {
             case AppStatus.IDLE:
                 if (this.currentAi && appSelectors.isGenerating(prev.status)) {
                     attachCopyAction(this.currentAi.root, state.accumulatedText);
+                    attachMessageTime(this.currentAi.root, new Date());
                     this.currentAi.stopLoadingIndicator();
 
                     const awaitFinalize = () =>
@@ -392,15 +396,27 @@ class ChatController {
             });
     }
 
+    /**
+     * Refreshes the relative time of the hovered answer.
+     */
+    _onContainerHover = (e) => {
+        const time = e.target.closest('.ai-message')?.querySelector(MESSAGE_TIME_SELECTOR);
+        if (time) refreshMessageTime(time);
+    };
+
     _attachEvents() {
         if (this.container) {
             this.container.addEventListener('click', this._onContainerClick);
+            this.container.addEventListener('mouseover', this._onContainerHover);
+            this.container.addEventListener('focusin', this._onContainerHover);
         }
     }
 
     _detachEvents() {
         if (this.container) {
             this.container.removeEventListener('click', this._onContainerClick);
+            this.container.removeEventListener('mouseover', this._onContainerHover);
+            this.container.removeEventListener('focusin', this._onContainerHover);
         }
     }
 
@@ -603,29 +619,34 @@ class ChatController {
     renderHistory(messages) {
         if (!this.container || !messages || messages.length === 0) return;
 
-        var stepCount = 0;
-        var pending = [];
+        let stepCount = 0;
+        let cotModels = [];
+        let pending = [];
 
-        for (var i = 0; i < messages.length; i++) {
-            var msg = messages[i];
+        for (let i = 0; i < messages.length; i++) {
+            let msg = messages[i];
             if (!msg || !msg.role) continue;
 
             if (msg.role === 'user') {
                 stepCount = 0;
+                cotModels = [];
                 createUserMessage(msg.content || '', this.container, this.scrollManager);
             } else if (msg.role === 'assistant') {
-                var hasTools = msg.toolCalls && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0;
+                let hasTools = msg.toolCalls && Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0;
+
+                collectCotModel(cotModels, msg.modelId);
 
                 if (hasTools) {
                     stepCount++;
                 } else {
-                    var content = msg.content || '';
-                    if (stepCount > 0) {
-                        const stepsText = stepCount + ' step' + (stepCount !== 1 ? 's' : '') + ' taken (history)';
-                        content = '`' + stepsText + '`\n\n' + content;
+                    let content = msg.content || '';
+                    let note = buildHistoryCotNote(cotModels, stepCount);
+                    if (note) {
+                        content = '`' + note + '`\n\n' + content;
                     }
-                    pending.push(this._renderHistoryFinal(content, msg.content || ''));
+                    pending.push(this._renderHistoryFinal(content, msg.content || '', msg.timestamp));
                     stepCount = 0;
+                    cotModels = [];
                 }
             }
         }
@@ -645,8 +666,8 @@ class ChatController {
     /**
      * Renders a historical answer.
      */
-    _renderHistoryFinal(content, rawContent) {
-        var localAi = createAiMessage(
+    _renderHistoryFinal(content, rawContent, timestamp) {
+        let localAi = createAiMessage(
             this.container,
             this.highlightParser,
             this.pipelineBuilder.createImmediate(this.markdownParser),
@@ -654,6 +675,7 @@ class ChatController {
         );
         localAi.updateStreaming(content);
         attachCopyAction(localAi.root, rawContent);
+        attachMessageTime(localAi.root, timestamp);
         return localAi.finishStreaming();
     }
 }

@@ -1,7 +1,11 @@
 using System;
 using System.Text;
+using LMLocal.Infrastructure.Persistence;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
+using Moq;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -119,6 +123,37 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var summary = RunTests.Summarize(Result(0, output), true, TimeSpan.FromSeconds(600));
 
             Assert.That(summary.Output, Does.Contain("===== STDOUT ====="));
+        }
+
+        private static RunTests CreateTool()
+            => new RunTests(Mock.Of<IVsDependencies>(), Mock.Of<IPathResolver>(), Mock.Of<IFileSystem>());
+
+        [Test]
+        public void CompletionMessage_FilteredRun_NamesTheFilter()
+        {
+            // A filtered total (92) was once reported as if it were the whole project (3446).
+            var resp = new RunProjectTestsResponse { Success = true, TotalTests = 92, PassedTests = 92, Filter = "PromptTextTests ChatLogSerializerTests" };
+
+            Assert.That(CreateTool().GetCompletionMessage(resp),
+                Is.EqualTo("Tests passed. Total: 92, Passed: 92 (filter: 'PromptTextTests ChatLogSerializerTests')"));
+        }
+
+        [Test]
+        public void CompletionMessage_UnfilteredRun_HasNoFilterNote()
+        {
+            var resp = new RunProjectTestsResponse { Success = true, TotalTests = 3, PassedTests = 3 };
+
+            Assert.That(CreateTool().GetCompletionMessage(resp), Is.EqualTo("Tests passed. Total: 3, Passed: 3"));
+        }
+
+        [Test]
+        public void Response_FilterIsSerializedOnlyWhenSet()
+        {
+            string filtered = JsonConvert.SerializeObject(new RunProjectTestsResponse { Filter = "A B" });
+            string unfiltered = JsonConvert.SerializeObject(new RunProjectTestsResponse());
+
+            Assert.That(filtered, Does.Contain("\"filter\":\"A B\""));
+            Assert.That(unfiltered, Does.Not.Contain("\"filter\""));
         }
     }
 }

@@ -325,14 +325,14 @@ namespace LMLocal.Tests.E2E.VSIX
         {
             try
             {
-                if (process != null && !process.HasExited)
+                if (process?.HasExited == false)
                     process.Kill();
 
-                process.Dispose();
+                process?.Dispose();
             }
             catch
             {
-                throw;
+                // Best effort cleanup.
             }
         }
 

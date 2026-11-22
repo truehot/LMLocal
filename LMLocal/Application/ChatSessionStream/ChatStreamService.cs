@@ -77,7 +77,7 @@ namespace LMLocal.Application.ChatSessionStream
                 var request = new StreamRoundRequest
                 {
                     History = _history,
-                    IsToolRound = toolResults != null && toolResults.Count > 0,
+                    IsToolRound = toolResults?.Count > 0,
                     IsContextOverflowRetry = context.IsContextOverflowRetry,
                     ToolResults = toolResults,
                     Prompt = context.Prompt,

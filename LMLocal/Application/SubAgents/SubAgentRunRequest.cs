@@ -24,5 +24,17 @@ namespace LMLocal.Application.SubAgents
         public List<string> AllowedTools { get; set; }
         public IReadOnlyCollection<string> ExcludedAgentNames { get; set; }
         public IProgress<ToolActivityEvent> Progress { get; set; }
+
+        /// <summary>
+        /// Session of the MAIN chat this run belongs to. The service logs runs to its own session, so the parent id is
+        /// passed in; null for a run started outside a chat (IPC).
+        /// </summary>
+        public string ParentSessionId { get; set; }
+
+        /// <summary>Id of the user request that started the run; ties the run to the main record and its compactions.</summary>
+        public string RequestId { get; set; }
+
+        /// <summary>One of <see cref="LMLocal.Core.Models.Usage.UsageOrigins"/>; null means a chat request.</summary>
+        public string Origin { get; set; }
     }
 }

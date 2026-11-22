@@ -55,6 +55,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing
         }
 
         /// <summary>
+        /// A normalized filter as the model writes it (names separated by spaces), or null when there is none.
+        /// </summary>
+        public static string DescribeFilter(string normalizedFilter)
+        {
+            if (string.IsNullOrEmpty(normalizedFilter))
+                return null;
+
+            return string.Join(" ", normalizedFilter.Split(new[] { FilterTermSeparator }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        /// <summary>
         /// VSTest filter expression for a normalized filter: one <c>FullyQualifiedName~</c> condition per name, OR-ed.
         /// </summary>
         private static string BuildFilterExpression(string filter)

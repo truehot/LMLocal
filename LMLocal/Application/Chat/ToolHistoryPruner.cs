@@ -196,7 +196,8 @@ namespace LMLocal.Application.Chat
             replaced = new ChatMessage(message.Role, message.Content, message.ToolCallId)
             {
                 ToolCalls = prunedCalls,
-                ModelId = message.ModelId
+                ModelId = message.ModelId,
+                Timestamp = message.Timestamp
             };
             return true;
         }
@@ -461,7 +462,8 @@ namespace LMLocal.Application.Chat
             return new ChatMessage(message.Role, content, message.ToolCallId)
             {
                 ToolCalls = message.ToolCalls,
-                ModelId = message.ModelId
+                ModelId = message.ModelId,
+                Timestamp = message.Timestamp
             };
         }
 

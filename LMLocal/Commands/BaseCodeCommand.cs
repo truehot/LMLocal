@@ -1,17 +1,16 @@
 using System;
 using System.ComponentModel.Design;
 using System.Reflection;
-using EnvDTE;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.ChatSession;
-using LMLocal.Infrastructure.DependencyInjection;
+using LMLocal.Core.Common;
 using Microsoft.VisualStudio.Shell;
 using Task = System.Threading.Tasks.Task;
 
 namespace LMLocal.Commands
 {
     /// <summary>
-    /// Base class for context menu commands that inject code into LM Local chat and automatically send it with a predefined prompt instruction.
+    /// Base class for context menu commands that inject content into LM Local chat and automatically send it with a predefined prompt instruction.
     /// </summary>
     internal abstract class BaseCodeCommand
     {
@@ -28,11 +27,15 @@ namespace LMLocal.Commands
         private readonly ISessionManager _sessionManager;
         private readonly IInstructionsManager _instructionsManager;
 
-        protected BaseCodeCommand(AsyncPackage package, OleMenuCommandService commandService)
+        protected BaseCodeCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
         {
             _package = package ?? throw new ArgumentNullException(nameof(package));
-            _sessionManager = ServiceConfiguration.GetService<ISessionManager>();
-            _instructionsManager = ServiceConfiguration.GetService<IInstructionsManager>();
+            _sessionManager = sessionManager;
+            _instructionsManager = instructionsManager;
 
             var menuCommandID = new CommandID(CommandSet, CommandId);
 
@@ -42,7 +45,15 @@ namespace LMLocal.Commands
             commandService.AddCommand(menuItem);
         }
 
-        public static async Task InitializeAsync<T>(AsyncPackage package)
+        /// <summary>
+        /// True while a chat session is generating; commands are disabled then.
+        /// </summary>
+        protected bool IsSessionRunning => _sessionManager?.IsSessionRunning ?? false;
+
+        public static async Task InitializeAsync<T>(
+            AsyncPackage package,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
             where T : BaseCodeCommand
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
@@ -52,29 +63,31 @@ namespace LMLocal.Commands
                 _ = (T)Activator.CreateInstance(typeof(T),
                     BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.CreateInstance,
                     null,
-                    new object[] { package, commandService },
+                    new object[] { package, commandService, sessionManager, instructionsManager },
                     null);
             }
         }
 
-        private void OnBeforeQueryStatus(object sender, EventArgs e)
+        protected virtual void OnBeforeQueryStatus(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
             if (sender is OleMenuCommand menuCommand)
             {
-                bool isBusy = _sessionManager?.IsSessionRunning ?? false;
                 menuCommand.Visible = true;
-                menuCommand.Enabled = !isBusy;
+                menuCommand.Enabled = !IsSessionRunning;
             }
         }
 
-        private void Execute(object sender, EventArgs e)
+        /// <summary>
+        /// Builds the prompt that is injected into the chat, or null/empty when there is nothing to send.
+        /// </summary>
+        protected virtual string BuildPrompt()
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
             string filePath = CodeCommandHelper.GetActiveDocumentPath();
-            if (filePath == null) return;
+            if (filePath == null) return null;
 
             string relativePath = CodeCommandHelper.GetRelativePath(filePath);
             string selectedText = CodeCommandHelper.GetSelectedText();
@@ -84,9 +97,27 @@ namespace LMLocal.Commands
                 filePath,
                 relativePath);
 
-            if (string.IsNullOrWhiteSpace(codeBlock)) return;
+            if (string.IsNullOrWhiteSpace(codeBlock)) return null;
 
-            string fullPrompt = $"{PromptInstruction}\n\n{codeBlock}";
+            return $"{PromptInstruction}\n\n{codeBlock}";
+        }
+
+        private void Execute(object sender, EventArgs e)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            string fullPrompt;
+            try
+            {
+                fullPrompt = BuildPrompt();
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"Code command 0x{CommandId:X4}: failed to build the prompt: {ex.Message}");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(fullPrompt)) return;
 
             _ = _package.JoinableTaskFactory.RunAsync(async () =>
             {
@@ -101,7 +132,7 @@ namespace LMLocal.Commands
                     }
                     catch (Exception ex)
                     {
-                        Core.Common.InternalLogger.Warn(
+                        InternalLogger.Warn(
                             $"Failed to resolve instruction '{InstructionDisplayName}': {ex.Message}");
                     }
                 }

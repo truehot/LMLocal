@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Architecture (layering) tests. They read LMLocal.dll as IL via NetArchTest (Mono.Cecil),
+    so they check real type dependencies (fields, signatures, method bodies), not using directives.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>7.3</LangVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <SonarQubeTestProject>True</SonarQubeTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="NUnit" Version="4.5.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+    <PackageReference Include="NetArchTest.Rules" Version="1.3.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build order + copies LMLocal.dll next to the tests; the tests read it by path, not by loading types. -->
+    <ProjectReference Include="..\LMLocal\LMLocal.csproj" />
+  </ItemGroup>
+
+</Project>

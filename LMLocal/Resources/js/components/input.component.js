@@ -88,7 +88,8 @@ class InputComponent {
         const hasText = this.elements.userInput?.value?.length > 0;
         const hasImages = this._images.length > 0;
         const isResized = this._isResized();
-        if (hasText || hasImages || isResized) {
+
+        if (hasText || hasImages || isResized || this._editMode) {
             this.elements.inputWrapper?.classList.add('expanded');
         } else {
             this.elements.inputWrapper?.classList.remove('expanded');
@@ -747,6 +748,8 @@ class InputComponent {
         }
 
         wrapper.classList.toggle('editing-prompt', !!visible);
+
+        this._syncExpandedState();
     }
 
     _ensureEditBanner() {
@@ -763,9 +766,19 @@ class InputComponent {
         text.className = 'edit-prompt-text';
         text.textContent = UIText.EDIT_BANNER_TEXT;
 
+        const meta = document.createElement('div');
+        meta.className = 'edit-prompt-meta';
+
+        const sub = document.createElement('span');
+        sub.className = 'edit-prompt-sub';
+        sub.textContent = UIText.EDIT_BANNER_SUBTEXT;
+
         const hint = document.createElement('span');
         hint.className = 'edit-prompt-hint hidden';
         hint.textContent = UIText.EDIT_BANNER_DRAFT_HINT;
+
+        meta.appendChild(sub);
+        meta.appendChild(hint);
 
         const cancel = document.createElement('button');
         cancel.type = 'button';
@@ -780,7 +793,7 @@ class InputComponent {
         });
 
         banner.appendChild(text);
-        banner.appendChild(hint);
+        banner.appendChild(meta);
         banner.appendChild(cancel);
 
         wrapper.insertBefore(banner, wrapper.firstChild);

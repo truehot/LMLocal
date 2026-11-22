@@ -1,3 +1,5 @@
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Commands
@@ -13,6 +15,11 @@ namespace LMLocal.Commands
 
         protected override string PromptInstruction => "Fix any bugs in the following code. Provide the corrected version and explain what bugs were found and how they were resolved.";
 
-        private BugFixCommand(AsyncPackage package, OleMenuCommandService commandService) : base(package, commandService) { }
+        private BugFixCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
+            : base(package, commandService, sessionManager, instructionsManager) { }
     }
 }

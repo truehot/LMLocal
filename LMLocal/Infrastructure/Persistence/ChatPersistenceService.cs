@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Application.Abstractions.Ports;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Infrastructure.Persistence
@@ -384,7 +383,7 @@ namespace LMLocal.Infrastructure.Persistence
                         if (string.IsNullOrWhiteSpace(line)) continue;
 
                         JObject obj;
-                        try { obj = JObject.Parse(line); }
+                        try { obj = ChatLogSerializer.ParseLine(line); }
                         catch { continue; }
 
                         parsed.Add(obj);
@@ -404,68 +403,6 @@ namespace LMLocal.Infrastructure.Persistence
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Scans jsonl chat files and returns lightweight summaries of the last <paramref name="limit"/> sessions, each containing the first user message (truncated), timestamp, and message count.
-        /// </summary>
-        public async Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogSerializer.DefaultSessionListLimit, CancellationToken cancellationToken = default)
-        {
-            if (limit <= 0) return new List<ChatSessionSummary>();
-
-            var files = await ReadJsonlFilesAsync(cancellationToken).ConfigureAwait(false);
-
-            if (files.Count == 0) return new List<ChatSessionSummary>();
-
-            var sessionData = new Dictionary<string, SessionAccumulator>(StringComparer.Ordinal);
-            int sequence = 0;
-
-            foreach (var file in files)
-            {
-                foreach (JObject obj in file.Lines)
-                {
-                    string sessionId = obj.Value<string>("session_id");
-                    if (string.IsNullOrEmpty(sessionId)) continue;
-
-                    string entryType = obj.Value<string>("type");
-                    if (entryType == "session_start") continue;
-
-                    string role = obj.Value<string>("role");
-                    string timestamp = obj.Value<string>("timestamp") ?? string.Empty;
-                    string content = obj.Value<object>("content")?.ToString() ?? string.Empty;
-
-                    if (!sessionData.TryGetValue(sessionId, out var entry))
-                    {
-                        entry = new SessionAccumulator { Timestamp = timestamp, Sequence = ++sequence };
-                        sessionData[sessionId] = entry;
-                    }
-
-                    entry.MessageCount++;
-
-                    if (string.IsNullOrEmpty(entry.Timestamp))
-                        entry.Timestamp = timestamp;
-
-                    if (string.Equals(role, "user", StringComparison.OrdinalIgnoreCase))
-                    {
-                        entry.Prompt = ChatLogSerializer.TruncatePrompt(content);
-                    }
-                }
-            }
-
-            var summaries = sessionData
-                .OrderByDescending(kvp => kvp.Value.Timestamp, StringComparer.Ordinal)
-                .ThenByDescending(kvp => kvp.Value.Sequence)
-                .Take(limit)
-                .Select(kvp => new ChatSessionSummary
-                {
-                    SessionId = kvp.Key,
-                    Prompt = kvp.Value.Prompt ?? string.Empty,
-                    Timestamp = kvp.Value.Timestamp ?? string.Empty,
-                    MessageCount = kvp.Value.MessageCount
-                })
-                .ToList();
-
-            return summaries;
         }
 
         /// <summary>
@@ -558,7 +495,7 @@ namespace LMLocal.Infrastructure.Persistence
                     log.Entries.Add(new ChatLogEntry
                     {
                         Message = chatMessage,
-                        TimestampUtc = ParseTimestamp(obj)
+                        TimestampUtc = ChatLogSerializer.ParseTimestamp(obj)
                     });
                 }
             }
@@ -569,20 +506,6 @@ namespace LMLocal.Infrastructure.Persistence
             return new List<ChatSessionLog>(bySession.Values);
         }
 
-        /// <summary>
-        /// Parses the "timestamp" field of a jsonl line (ISO-8601 round-trip) into UTC, or <see cref="DateTime.MinValue"/> when absent/unparsable.
-        /// </summary>
-        private static DateTime ParseTimestamp(JObject obj)
-        {
-            string timestamp = obj.Value<string>("timestamp");
-            if (!string.IsNullOrEmpty(timestamp)
-                && DateTime.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime parsed))
-            {
-                return parsed.ToUniversalTime();
-            }
-
-            return DateTime.MinValue;
-        }
 
         /// <summary>
         /// Parsed JSON lines of a single jsonl file, kept in forward line order.
@@ -594,15 +517,5 @@ namespace LMLocal.Infrastructure.Persistence
             public List<JObject> Lines { get; set; }
         }
 
-        /// <summary>
-        /// Mutable accumulator used while building session summaries from jsonl files.
-        /// </summary>
-        private sealed class SessionAccumulator
-        {
-            public string Prompt { get; set; }
-            public string Timestamp { get; set; }
-            public int MessageCount { get; set; }
-            public int Sequence { get; set; }
-        }
     }
 }

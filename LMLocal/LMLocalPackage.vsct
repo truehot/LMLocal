@@ -88,6 +88,11 @@
       <Group guid="guidLMLocalPackageCmdSet" id="SolutionExplorerSolutionGroup" priority="0x0200">
         <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_SOLNNODE"/>
       </Group>
+
+      <!-- Context menu group inside the Error List context menu (IDM_VS_CTXT_ERRORLIST) -->
+      <Group guid="guidLMLocalPackageCmdSet" id="ErrorListContextGroup" priority="0x0100">
+        <Parent guid="guidSHLMainMenu" id="IDM_VS_CTXT_ERRORLIST"/>
+      </Group>
     </Groups>
 
     <!--Buttons section. -->
@@ -224,6 +229,16 @@
         </Strings>
       </Button>
 
+      <!-- Error List context menu: explains the selected entries -->
+      <Button guid="guidLMLocalPackageCmdSet" id="cmdidExplainError" priority="0x100" type="Button">
+        <Parent guid="guidLMLocalPackageCmdSet" id="ErrorListContextGroup" />
+        <Icon guid="guidMyIconSet" id="iconLMLocal" />
+        <CommandFlag>DynamicVisibility</CommandFlag>
+        <Strings>
+          <ButtonText>Explain Error with LM Local</ButtonText>
+        </Strings>
+      </Button>
+
     </Buttons>
 
     <!--The bitmaps section is used to define the bitmaps that are used for the commands.-->
@@ -310,6 +325,10 @@
       <IDSymbol name="cmdidSendToLMFromSE_Folder" value="0x0209" />
       <IDSymbol name="cmdidSendToLMFromSE_Project" value="0x020A" />
       <IDSymbol name="cmdidSendToLMFromSE_Solution" value="0x020B" />
+
+      <!-- Error List context menu group/command IDs -->
+      <IDSymbol name="ErrorListContextGroup" value="0x1033" />
+      <IDSymbol name="cmdidExplainError" value="0x020E" />
     </GuidSymbol>
   </Symbols>
 </CommandTable>

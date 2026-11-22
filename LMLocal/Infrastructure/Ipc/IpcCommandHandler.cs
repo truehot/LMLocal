@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models.Usage;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling;
@@ -314,7 +315,8 @@ internal static class IpcCommandHandler
                     TimeoutSeconds = agent.TimeoutSeconds ?? config.TimeoutSeconds,
                     ProviderType = !string.IsNullOrWhiteSpace(agent.ProviderType) ? agent.ProviderType : config.ProviderType,
                     BaseUrl = !string.IsNullOrWhiteSpace(agent.CustomBaseUrl) ? agent.CustomBaseUrl : config.CustomBaseUrl,
-                    ApiKey = !string.IsNullOrWhiteSpace(agent.CustomApiKey) ? agent.CustomApiKey : config.CustomApiKey
+                    ApiKey = !string.IsNullOrWhiteSpace(agent.CustomApiKey) ? agent.CustomApiKey : config.CustomApiKey,
+                    Origin = UsageOrigins.Ipc
                 };
 
                 // A subagent that owns write tools records file snapshots too, and SnapshotManager
@@ -327,7 +329,7 @@ internal static class IpcCommandHandler
                 if (NeedsSnapshotBatch(agent.AllowedTools))
                 {
                     snapshotManager = ServiceConfiguration.GetService<ISnapshotManager>();
-                    if (snapshotManager != null && !snapshotManager.IsBatchActive)
+                    if (snapshotManager?.IsBatchActive == false)
                     {
                         await package.JoinableTaskFactory.SwitchToMainThreadAsync(token);
                         await snapshotManager.BeginBatchAsync(token).ConfigureAwait(false);
@@ -339,7 +341,7 @@ internal static class IpcCommandHandler
                 try
                 {
                     var response = await subAgentService.ExecutePromptAsync(request, token);
-                    runSucceeded = response != null && response.Success;
+                    runSucceeded = response?.Success == true;
 
                     var json = JsonConvert.SerializeObject(response, new JsonSerializerSettings
                     {

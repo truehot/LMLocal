@@ -100,7 +100,7 @@ namespace LMLocal.Tests.Unit.Internal
                     });
 
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>())).ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>())).ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(true);
             _compactorMock.Setup(c => c.CompactIfNeededAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -181,7 +181,7 @@ namespace LMLocal.Tests.Unit.Internal
                     });
             // When tool executed, return error
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("processing");
-            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", UserMessage = "failed" });
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>())).ReturnsAsync(new ToolExecutionResult { Error = "failed", UserMessage = "failed" });
 
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -254,7 +254,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -351,7 +351,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -447,7 +447,7 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>()))
                 .Returns("processing");
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(),
-                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
@@ -527,9 +527,9 @@ namespace LMLocal.Tests.Unit.Internal
             // Reproduces what Stop does from the UI thread: the token is cancelled while the tool
             // runs and the tool surfaces OperationCanceledException.
             _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(),
-                    It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .Returns((ToolCallRecord call, CancellationToken toolCt, IProgress<ToolActivityEvent> progress,
-                        ToolExecutionBudget budget) =>
+                        ToolExecutionBudget budget, LMLocal.Application.Usage.UsageCallContext usage) =>
                     {
                         cts.Cancel();
                         return Task.FromException<ToolExecutionResult>(new OperationCanceledException(toolCt));

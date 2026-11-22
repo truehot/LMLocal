@@ -1,3 +1,5 @@
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Commands
@@ -11,6 +13,11 @@ namespace LMLocal.Commands
         protected override string PromptInstruction =>
             "Add XML documentation comments (///) for all public members and a summary for the file/class";
 
-        private AddSummaryCommand(AsyncPackage package, OleMenuCommandService commandService) : base(package, commandService) { }
+        private AddSummaryCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
+            : base(package, commandService, sessionManager, instructionsManager) { }
     }
 }

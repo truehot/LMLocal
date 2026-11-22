@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 namespace LMLocal.Application.SubAgents
 {
     /// <summary>
-    /// Runs isolated "SubAgent" prompts. 
+    /// Runs isolated "SubAgent" prompts
     /// </summary>
     internal interface ISubAgentsService
     {

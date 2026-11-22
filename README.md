@@ -41,6 +41,7 @@
 - [Smart Workflows & Best Practices](#content--smart-workflows--best-practices)
 - [Auto-Completions](#content--auto-completions)
 - [Context Menu Commands](#content--context-menu-commands)
+- [Explain Debugger Stops](#content--explain-debugger-stops)
 - [Model Context Protocol (MCP) Support](#content--model-context-protocol-mcp-support)
 - [How to Configure MCP Servers](#content--how-to-configure-mcp-servers)
 - [Troubleshooting](#content--troubleshooting)
@@ -51,15 +52,13 @@
 <a id="content--core-features"></a>
 ## ⚡ Core Features
 
-- **💬 Chat & Agentic Actions** – In‑IDE chat with streaming, agentic file edits, builds/tests, and manual rollback via the Changes panel.
-- **🤖 Subagents** – Specialised [subagents](#content--subagents) for code search, reading, symbol analysis, planning, builds/tests, and review, each with its own prompt, toolset, and model — so the work can be split across models (default subagent model: a small local `google_gemma-4-e4b-it`). The main model gets compact results instead of raw tool output, which keeps its context lean and usually reduces its token usage.
-- **🌐 Local & Cloud LLMs** – Works with Ollama, LM Studio, Jan, Llama.cpp, Unsloth, and any OpenAI‑compatible API.
+- **💬 Chat & Agentic Actions** – In‑IDE chat that can edit files, build and run tests; every change is shown in the Changes panel with one‑click rollback. Read‑only by default.
+- **🌐 Local & Cloud LLMs** – Works with LM Studio, Ollama, Jan, Llama.cpp, Unsloth and cloud providers with an OpenAI‑compatible API.
+- **🤖 Subagents** – Specialised [subagents](#content--subagents) for code search, builds/tests, history lookup, architecture and review, each with its own model; the main model gets compact results and uses fewer tokens.
+- **🐞 Explain Errors & Debugger Stops** – Explain selected Error List entries or the current breakpoint/exception in one click.
+- **⌨️ Inline Autocompletions** – Multiline ghost-text suggestions at the end of a line from a local FIM model.
+- **📂 Workspace Context** – Attach the active file with `+`, or send a selection, files or open tabs from the context menus.
 - **🔌 MCP Extensibility** – Add external tools via Model Context Protocol (stdio/http).
-- **📂 Flexible Workspace Context** – Quickly pass code to the AI: use the **`+`** button to attach the active file in the background, or right-click to send specific text selections.
-- **🧩 Reasoning, Roles & Efficiency** – Expandable thoughts, collapsible tool calls, custom system presets, token optimization (summarization, live stats).
-- **⚙️ Built-in Provider Integrations** – Pre-configured internal handlers for specific AI platforms (including Ollama, Groq, OpenRouter, Google AI Studio and DeepSeek). The extension natively manages each provider's protocol variations and stream parsing — enter your target API Base URL and personal API Key to connect.
-- **💾 Persistent & Reliable** – Auto‑connects on startup, restores your last session from local logs, provides a chat history dialog to browse and restore previous sessions, centralized settings.
-- **🔄 Hot-Swappable LLMs** – Switch between local models or cloud providers on the fly without clearing the chat. The new model seamlessly continues the conversation using the existing history and context.
 
 
 
@@ -72,11 +71,11 @@ To use LM Local, you need:
 - [x] **An AI Backend / Provider** (choose one):
   * **Cloud Providers:** Any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Google AI Studio, etc. — requires an API key).
   * **Local Engines** (must be installed and running with a loaded model):
-    * **LM Studio** (local server at `http://127.0.0.1:1234`)
-    * **Ollama** (local server at `http://127.0.0.1:11434`)
-    * **Jan** (local server at `http://127.0.0.1:1337`)
-    * **Llama.cpp** (local server at `http://127.0.0.1:8080`)
-    * **Unsloth** (local server at `http://127.0.0.1:8888`)
+    * **LM Studio** (local server at `http://localhost:1234`)
+    * **Ollama** (local server at `http://localhost:11434`)
+    * **Jan** (local server at `http://localhost:1337`)
+    * **Llama.cpp** (local server at `http://localhost:9931`)
+    * **Unsloth** (local server at `http://localhost:8888`)
 
 
 
@@ -107,11 +106,11 @@ To use LM Local, you need:
 3. **Configure Your Provider:** 
    * Click the menu icon (**`…`**) and open **Settings...**.
    * Under the **AI Provider** section, select your preferred backend from the dropdown menu:
-     * **LM Studio (local)** – Automatically targets `http://127.0.0.1:1234`
-     * **Ollama (local)** – Automatically targets `http://127.0.0.1:11434`
-     * **Jan (local)** – Automatically targets `http://127.0.0.1:1337`
-     * **Llama.cpp (local)** – Automatically targets `http://127.0.0.1:8080`
-     * **Unsloth (local)** – Automatically targets `http://127.0.0.1:8888`
+     * **LM Studio (local)** – Automatically targets `http://localhost:1234`
+     * **Ollama (local)** – Automatically targets `http://localhost:11434`
+     * **Jan (local)** – Automatically targets `http://localhost:1337`
+     * **Llama.cpp (local)** – Automatically targets `http://localhost:9931`
+     * **Unsloth (local)** – Automatically targets `http://localhost:8888`
      * **OpenAI compatible (custom)** – Allows you to supply a custom base URL and authorization keys for remote endpoints or custom gateways.
    * *Note: Choosing a local provider automatically configures the correct default port and endpoint structure. For local Microsoft Foundry, select `OpenAI compatible` and use `http://127.0.0.1:<port>` (where `<port>` is your active service port).*
    * *Tip: If you have multiple providers, it is recommended to set them up first via the "Providers..." menu option.*
@@ -176,11 +175,13 @@ To use LM Local, you need:
 - 🔗 **Clickable File Links** – File paths in answers open the file in the editor.
 - ↕️ **Collapse Large Code Blocks** – Limits the height of long code snippets with a scrollbar and an expand option.
 - 🎭 **Role-Based Presets (Instructions)** – A window with pre-defined AI presets. You can customize each preset's system prompt and temperature, or toggle them on/off.
-- ⌨️ **AI Inline Autocompletions (Beta)** – AI‑powered multiline completion. When your cursor is at the end of a line, a local FIM model suggests a continuation of up to 10 lines as grey ghost text. Keep typing to follow the suggestion, press Tab to accept the whole block, Esc to dismiss. Completions are available only at line endings.
+- ⌨️ **AI Inline Autocompletions** – AI‑powered multiline completion. When your cursor is at the end of a line, a local FIM model suggests a continuation of up to 10 lines as grey ghost text. Keep typing to follow the suggestion, press Tab to accept the whole block, Esc to dismiss. Completions are available only at line endings.
 - 📄 **Drag & Drop Files** – Drag source files, logs, or configs directly into the chat input area. Text files are automatically wrapped in a markdown code fence with the correct language tag and a file-name comment hint. Supports up to **10 files** at once (200 KB max each) — `.cs`, `.json`, `.js`, `.ts`, `.html`, `.css`, `.md`, `.py`, `.xml`, `.yaml`, and many more.
 - 🖼️ **Image Attachments** – Paste (`Ctrl+V`) or drag-and-drop images into the chat input for vision-capable models (JPEG/PNG, up to 3 per message, ~4 MB each). Images are **not** compressed and are **not** saved to history.
 - ↕️ **Resizable Panels** – Drag the grip above the input or above the Changes panel to adjust their height.
 - 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
+- 📊 **Usage & Stats** – Token usage, time and speed for today, recent days or the current session, split by model and by main chat / subagents.
+- 🕒 **Message Time** – Each answer shows when it arrived; hover for the full date.
 - 🛡️ **Protect Running AI Requests** - Prevents accidental loss of work: if you close Visual Studio (close button, Alt+F4 or File → Exit) or sign out / shut down Windows while an AI request is still running, a confirmation dialog in the current Visual Studio theme offers **Keep working**, **Stop request** (stops the request, Visual Studio stays open) or **Stop and exit**. Closing the dialog (Esc or ✕) keeps Visual Studio open. A forced Windows shutdown or ending the process from Task Manager is not intercepted. Can be turned off in Settings under **Protect running AI requests**.
 
 ### Context & Solution Awareness
@@ -192,6 +193,7 @@ To use LM Local, you need:
 - 🧠 **Thought/Reasoning Support** – Support for reasoning models; "thoughts" are displayed in expandable blocks.
 - 🛡️ **Smart History Buffering** – Automatically removes the oldest messages from the chat UI once the history exceeds 200 entries to prevent rendering lag, without affecting the underlying conversation data.
 - 🎯 **Context Menu Integration** – Right-click context menu command ("Send to LM Local") that copies text directly into the chat prompt without auto-submitting. If text is highlighted, it sends the selection; if nothing is selected, it falls back to sending the entire active document.
+- 🐞 **Explain Debugger Stops** – Optional (Settings → `Explain debugger stops`). When Visual Studio stops on a breakpoint or an exception, an **Explain** banner appears above the chat input; one click sends the exception chain, stack and simple locals to the chat. See [Explain Debugger Stops](#content--explain-debugger-stops).
 - 🔄 **Quick Tool Mode Toggle** – Dropdown next to the input box to switch between No tools, Read only, and Read & Write for the current session without opening Settings.
 
 ### Efficiency & Token Management
@@ -343,7 +345,7 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `read_file_lines` | Reads a specific range of lines. | All | – |
 | `search_file_content` | Searches for a text string (case‑insensitive) inside solution files. | All | – |
 | `search_solution_knowledge` | Searches Markdown files in predefined folders of the solution. | Markdown (.md) | Folders are configured in Settings → `Knowledge base paths`. |
-| `search_chat_history` | Searches over past chat-history sessions. | - | Requires `Save chat history` enabled. |
+| `search_chat_history` | Searches over past chat-history sessions. | - | Requires `Save chat history & stats` enabled. |
 | `get_active_document` | Returns the path and full text of the currently open document. | All | – |
 | `replace_file_content` | Replaces the entire content of a file with the provided text. | All | Automatic syntax check applies * |
 | `replace_file_lines` | Replaces a range of lines (by numbers) with new content. | All | Automatic syntax check applies * |
@@ -559,7 +561,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 | `customApiKey` | string | | root default | |
 | `model` | string | ✅ | root default | required unless root `model` set |
 | `temperature` | number [0..2] | | root default | |
-| `timeoutSeconds` | int `>=0` | | root default | `0` disables watchdog |
+| `timeoutSeconds` | int `>=0` | | root default | `0` disables watchdog. Also limits the agent's tools: a build or test run gets only the agent's remaining time (in the main chat they use their own 10-minute limit), so raise it for long builds or test suites. |
 | `maxRounds` | int `>=1` | | root default | tool-call loop cap |
 | `maxTokens` | int `>=1` | | root default | output cap |
 | `reasoningEffort` | string | | root default | `none`/`low`/`medium`/`high` |
@@ -592,14 +594,8 @@ Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable S
 
 1. **Defensive Prompting is Mandatory:** You **must** use a strict system prompt with explicit planning steps and verification loops, or be prepared to switch to a larger model.
 2. **Fine-Tuning Option:** Fine-tuning the model (e.g., via LoRA/QLoRA) on task-specific function-calling datasets builds native adherence to tool schemas.
-3. **Testing via Benchmark:** You can clone the repository and run **`Run_Full_Benchmark`** in debug mode. The codebase includes minimal scenarios for most predefined agents (explorer, reviewer, edit, architect, context retriever) to check basic functionality.
-
-> ⏱️ **Important for models <8B:** Because `Run_Full_Benchmark` executes against a live `lmlocal` solution in real time, it runs **relatively slowly**. **Run the benchmark multiple times** rather than just once to account for model variance and verify how reliably your custom prompts or fine-tuned models handle real workloads across multiple attempts.
 
 ---
-
-**Beta note:** schema may evolve.
-
 
 
 <a id="content--ai-instructions--modes"></a>
@@ -639,14 +635,15 @@ The **Chat History** dialog (accessible from the top‑right menu **`…`** → 
 ### How it works
 
 - The dialog lists the **last 200 chat sessions** found in the local `.jsonl` log files (up to **50 hourly log files** are scanned).
-- Each entry shows the first user message (truncated to 200 characters), a timestamp, and the total number of messages in that session.
+- Each entry shows the last user message (truncated to 200 characters), the models used, a timestamp, and the number of messages in that session.
+- The filter searches by prompt text and by model name.
 - Click **Load** on any session to restore it into the chat window.
 
 ### Important details
 
 | Detail | Description |
 |---|---|
-| **Save chat history must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Save chat history** is turned off in Settings, no sessions will appear. |
+| **Save chat history & stats must be ON** | The dialog reads from `%LOCALAPPDATA%\LMLocalChat\ChatHistory\`. If **Save chat history & stats** is turned off in Settings, no sessions will appear (and **Usage & Stats** records nothing). |
 | **Loading a session forks it** | When you load a past session, the extension **creates a brand‑new session** initialized with that session's message history. Your continuation is saved under a new session ID — the original session remains untouched. |
 
 
@@ -746,7 +743,7 @@ When you just need to generate straightforward boilerplate, repetitive CRUD meth
 * **Fine-Tune Small Models (<8B) for Structured Tasks:** If small local models struggle with tool calling, looping, or complex JSON schema adherence, fine-tune them (e.g., via LoRA/QLoRA) on task-specific function-calling datasets. Fine-tuning builds native schema adherence into light models, making them faster and more reliable for background tasks and subagents without needing heavy system prompts.
 
 <a id="content--auto-completions"></a>
-## Auto-Completions (Beta)
+## Auto-Completions
 
 Provides **multiline ghost completions** (inline grey text code suggestions) that appear when your cursor is at the end of a line, powered by Fill-in-the-Middle (FIM) prompting on local base models.
 
@@ -788,8 +785,8 @@ For optimal results, use base models trained natively on Fill-in-the-Middle (FIM
 <a id="content--context-menu-commands"></a>
 ## Context Menu Commands
 
-LM Local adds two groups of commands to Visual Studio — in the **code editor** context menu
-and in the **Solution Explorer** context menu. All commands open the LM Local chat window
+LM Local adds commands to the context menus of the **code editor**, **Solution Explorer**,
+**document tabs** and the **Error List**. All commands open the LM Local chat window
 (if not already visible) and inject the relevant content.
 
 
@@ -843,6 +840,47 @@ If the command's instruction mode is unchecked, or the **"AI Instructions..."** 
 
 > **Note:** Both commands are capped at **10 files** with full content and **200 KB** total; further files appear as `(content truncated)` markers. Build output folders (`bin`, `obj`, `.git`, `node_modules`, etc.) and binary/image files are skipped, and both commands are disabled while a chat session is running.
 
+
+### Error List Context Menu (right-click an entry)
+
+| Command | Behavior |
+|---|---|
+| **Explain Error with LM Local** | Auto-sends the selected Error List entries (errors, warnings or messages) with a request to explain what each one means, what most likely causes it and how to fix it. The fix is described, not applied. Selects the **Explain** instruction tab. |
+
+> **Note:** You can select several entries at once — up to **10** are sent, the rest are mentioned as "more entries not shown". The model reads the code around each reported location by itself. The command is disabled while nothing is selected or a chat session is running.
+
+
+<a id="content--explain-debugger-stops"></a>
+## 🐞 Explain Debugger Stops
+
+When Visual Studio stops in Break Mode, LM Local can show a one-line **Explain** banner right above the chat status bar. One click sends the context of the stop to the chat, and the model explains the cause.
+
+### How to use
+
+1. Open **Settings...** and tick **`Explain debugger stops`** (off by default), then click **Save**.
+2. Keep the **LM Local Chat** window open and start debugging (**F5**).
+   > 💡 Visual Studio keeps a separate window layout for debug mode. The first time you debug, the LM Local Chat window may not be where you docked it: drag it to the place you want once (the same way as in [Getting Started](#content--getting-started)), and Visual Studio will remember it for debug mode.
+3. When the debugger stops on a **breakpoint** or an **exception**, the banner appears, for example `Breakpoint hit · OrderService.cs:42` or `Exception thrown · OrderService.cs:42`.
+4. Click **Explain**. The prompt is sent to the chat automatically and the banner disappears. Click **✕** to hide the banner until the next stop.
+
+The banner is hidden as soon as the program continues (**F5**), steps (**F10** / **F11**) or debugging is stopped. Steps never show the banner.
+
+### What is sent
+
+The context is read only when you click **Explain**, because most of it is available only in Break Mode:
+
+- the stop reason and the location (file and line, relative to the solution);
+- for an exception: its type and message, and up to 3 levels of `InnerException` (the innermost one is treated as the root cause);
+- up to 5 stack frames and up to 20 local variables of the current frame.
+
+Limits and privacy:
+
+- Values are read only for simple types (numbers, `bool`, `string`, `Guid`, `DateTime`, ...). Objects, collections and enums are sent with the name and type only, so the debugged program is not asked to run any of its own code to print them.
+- Local variables whose name contains `password`, `passwd`, `secret`, `token`, `apikey`, `api_key` or `connectionstring` are sent as `<hidden>`. Other values, such as a string with a secret in an innocently named variable, are not filtered.
+- Values are cut to 200 characters, exception messages to 500. Reading is limited to about 3 seconds.
+- The model is asked only to **explain** the cause and describe the fix. It is told not to apply changes.
+
+> 💡 If Visual Studio leaves Break Mode between the click and the read (for example you pressed F5), nothing is sent.
 
 <a id="content--model-context-protocol-mcp-support"></a>
 ## 🌐 Model Context Protocol (MCP) Support
@@ -956,11 +994,12 @@ Model Context Protocol .NET SDK — Use this official Microsoft SDK to build and
 | Issue | Solution |
 | :--- | :--- |
 | **No model shown** | Ensure a model is fully loaded in the LM Studio "Server" tab. |
-| **Connection Error** | Check if the LM Studio Server is **ON** at `http://127.0.0.1:1234`. Click **`↻`** to retry. |
+| **Connection Error** | Check if the LM Studio Server is **ON** at `http://localhost:1234`. Click **`↻`** to retry. |
 | **UI Lag** | Restart the tool window or check your local machine resources (CPU/GPU). |
 | **MCP server not detected** | Verify that MCP is enabled in **MCP Extensions…** dialog, check your JSON configuration syntax, and ensure the server process or URL is accessible. |
 | **Autocompletions not showing** | Make sure autocompletions are enabled in **Autocompletions…** dialog, and that you have selected a model that supports Fill‑in‑the‑Middle (FIM) – see the list of verified models in the Auto‑Completions section. Suggestions appear only at the end of a line, and not while the IntelliSense list or an IntelliCode/Copilot suggestion is already shown. |
 | **Built‑in tools not being invoked** | Check that the global **Enable built‑in AI tools (read‑only)** and/or **Enable built‑in AI tools (write/modify)** checkboxes are ticked in Settings. Also verify that the specific tool is not disabled in the **Built‑in Tools…** dialog. |
+| **Explain banner does not appear on a stop** | Tick **Explain debugger stops** in Settings and keep the LM Local Chat window open while debugging (debug mode has its own window layout, so dock the window once while debugging). The banner appears only in Break Mode on a breakpoint or an exception, not on steps (F10/F11). |
 | **Response blocked by content filter** | Rephrase the request. |
 | **Response truncated - token limit reached** | Increase Context Length in LM Studio model settings or split the task into smaller parts. |
 | **`image_url` variant error** ("unknown variant `image_url`, expected `text`") | The loaded model does **not** support vision/multimodal inputs – it only accepts `text` messages. **Do not include image attachments in your request**. If you need image understanding, switch to a multimodal model (e.g., LLaVA, Qwen-VL, or any model with vision capabilities). |
@@ -988,6 +1027,7 @@ The following configuration files are stored there:
 | `mcp.json` | MCP server configuration. |
 | `ChatHistory\` | Chat session logs (history dialog, session restore). |
 | `SubAgentsLogs\` | Sub Agent session logs. |
+| `Usage\` | Token usage records for the Usage & Stats dialog. |
 | `Snapshots\` | Internal backups used by the Changes panel to revert edits. |
 | `WebViewData\` | WebView2 browser data of the chat window. |
 

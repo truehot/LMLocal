@@ -93,9 +93,9 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
         [JsonProperty("tools", NullValueHandling = NullValueHandling.Ignore)]
         public List<OpenAiToolDefinition> Tools { get; set; }
 
-        /// <summary>Controll if tool can call function, 
-        /// none means the model will not call any tool and instead generates a message. 
-        /// auto means the model can pick between generating a message or calling one or more tools. 
+        /// <summary>Controll if tool can call function,
+        /// none means the model will not call any tool and instead generates a message.
+        /// auto means the model can pick between generating a message or calling one or more tools.
         /// required means the model must call one or more tools. </summary>
         [JsonProperty("tool_choice", NullValueHandling = NullValueHandling.Ignore)]
         public object ToolChoice { get; set; }
@@ -211,7 +211,7 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
         public string Name { get; set; }
 
         /// <summary>
-        /// Arguments comes as json string in the request, and it's the responsibility of the client to parse it according to the function definition. 
+        /// Arguments comes as json string in the request, and it's the responsibility of the client to parse it according to the function definition.
         /// </summary>
         [JsonProperty("arguments")]
         public string Arguments { get; set; }

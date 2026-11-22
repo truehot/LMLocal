@@ -92,7 +92,9 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             var tool = new SetFileProjectStatus(
                 Mock.Of<IVsDependencies>(), Mock.Of<IPathResolver>(), Mock.Of<ISnapshotManager>(), Mock.Of<IFileSystem>());
 
-            Assert.That(PositionalOrder(tool.GetToolInfo()), Is.EqualTo(new[] { "file_path", "project_path", "include", "file_paths" }));
+            // The first four positions are unchanged; the file settings were appended after them.
+            Assert.That(PositionalOrder(tool.GetToolInfo()),
+                Is.EqualTo(new[] { "file_path", "project_path", "include", "file_paths", "build_action", "copy_to_output", "include_in_vsix" }));
         }
     }
 }

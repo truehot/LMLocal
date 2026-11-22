@@ -1,3 +1,5 @@
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Commands
@@ -13,6 +15,11 @@ namespace LMLocal.Commands
         protected override string PromptInstruction =>
             "Generate unit tests for the following code. Use the testing framework that best matches this project. Cover edge cases and happy path.";
 
-        private AddUnitTestsCommand(AsyncPackage package, OleMenuCommandService commandService) : base(package, commandService) { }
+        private AddUnitTestsCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
+            : base(package, commandService, sessionManager, instructionsManager) { }
     }
 }

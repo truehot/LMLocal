@@ -218,8 +218,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         [Test]
         public void Parse_BoldMarker_IsAcceptedAndConsumed()
         {
-            // The prompt wraps the marker in Markdown bold (**@path:lines**); the parser must accept it and
-            // consume the surrounding asterisks so the whole span is replaced (not just the inner marker).
             const string text = "**@file.cs:1-10**";
             var markers = FileRefMarker.ParseAll(text);
 

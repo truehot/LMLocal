@@ -1,3 +1,5 @@
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Commands
@@ -14,6 +16,11 @@ namespace LMLocal.Commands
         protected override string PromptInstruction =>
             "Suggest improvements for the following code. Focus on performance, readability, maintainability, and adherence to C# best practices. Provide specific code examples for each improvement.";
 
-        private ImproveCommand(AsyncPackage package, OleMenuCommandService commandService) : base(package, commandService) { }
+        private ImproveCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager,
+            IInstructionsManager instructionsManager)
+            : base(package, commandService, sessionManager, instructionsManager) { }
     }
 }

@@ -6,6 +6,7 @@ using LMLocal.Application.ChatSession;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
+using LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations;
 using LMLocal.Infrastructure.WebView;
 using Moq;
 using NUnit.Framework;
@@ -27,7 +28,7 @@ namespace LMLocal.Tests.Unit.Internal
             orchestratorMock.Setup(o => o.RunSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<System.Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
                 .Returns(() => tcs.Task);
 
-            var manager = new SessionManager(orchestratorMock.Object, cacheMock.Object, subAgentsConfigMock.Object, new Mock<IAttentionNotifier>().Object);
+            var manager = new SessionManager(orchestratorMock.Object, cacheMock.Object, subAgentsConfigMock.Object, new Mock<IAttentionNotifier>().Object, new Mock<ITodoTool>().Object);
 
             var ctx = new GenerateStreamContext { Prompt = "p", ModelId = "m" };
 
@@ -152,14 +153,13 @@ namespace LMLocal.Tests.Unit.Internal
                 .Returns(Task.CompletedTask);
 
             var attention = new Mock<IAttentionNotifier>();
-            var manager = new SessionManager(orchestrator.Object, new Mock<ISearchResultCache>().Object, config.Object, attention.Object);
+            var manager = new SessionManager(orchestrator.Object, new Mock<ISearchResultCache>().Object, config.Object, attention.Object, new Mock<ITodoTool>().Object);
 
             Assert.ThrowsAsync<InvalidOperationException>(async () =>
                 await manager.TryStartSessionAsync(Context("first"), _ => Task.CompletedTask, CancellationToken.None).ConfigureAwait(false));
 
             Assert.That(manager.IsSessionRunning, Is.False);
 
-            // The failed start must not block the next one as "already running".
             Assert.That(
                 await manager.TryStartSessionAsync(Context("second"), _ => Task.CompletedTask, CancellationToken.None).ConfigureAwait(false),
                 Is.True);
@@ -168,16 +168,34 @@ namespace LMLocal.Tests.Unit.Internal
                 Times.Once);
         }
 
+        [Test]
+        public async Task SessionStart_ResetsTodoTool()
+        {
+            var orchestrator = new Mock<IChatSessionOrchestrator>();
+            orchestrator
+                .Setup(o => o.RunSessionAsync(It.IsAny<GenerateStreamContext>(), It.IsAny<Func<WebView2ScriptMessage, Task>>(), It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+
+            var todoTool = new Mock<ITodoTool>();
+            var manager = CreateManager(orchestrator, new Mock<IAttentionNotifier>(), todoTool);
+
+            Assert.That(await manager.TryStartSessionAsync(Context("hi"), _ => Task.CompletedTask, CancellationToken.None).ConfigureAwait(false), Is.True);
+
+            todoTool.Verify(t => t.Reset(), Times.Once);
+        }
+
         private static SessionManager CreateManager(
             Mock<IChatSessionOrchestrator> orchestrator,
-            Mock<IAttentionNotifier> attention)
+            Mock<IAttentionNotifier> attention,
+            Mock<ITodoTool> todoTool = null)
         {
             var cache = new Mock<ISearchResultCache>();
 
             var config = new Mock<ISubAgentsConfigManager>();
             config.Setup(c => c.RefreshAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-            return new SessionManager(orchestrator.Object, cache.Object, config.Object, attention.Object);
+            return new SessionManager(orchestrator.Object, cache.Object, config.Object, attention.Object,
+                (todoTool ?? new Mock<ITodoTool>()).Object);
         }
 
         private static GenerateStreamContext Context(string prompt) => new GenerateStreamContext { Prompt = prompt, ModelId = "m" };

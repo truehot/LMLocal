@@ -23,6 +23,7 @@ class SettingsStoreClass extends BaseStoreClass {
             OpenToolFilesInEditor: false,
             PreventCloseWhileGenerating: true,
             FlashTaskbarOnCompletion: true,
+            EnableDebuggerContext: false,
             ShowTokenStats: false,
             EnableRateLimitHandling: false
         });

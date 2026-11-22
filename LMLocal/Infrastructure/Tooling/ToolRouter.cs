@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
@@ -70,7 +71,8 @@ namespace LMLocal.Infrastructure.Tooling
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
             IProgress<ToolActivityEvent> progress = null,
-            ToolExecutionBudget budget = null)
+            ToolExecutionBudget budget = null,
+            UsageCallContext context = null)
         {
             if (string.IsNullOrEmpty(toolName))
                 throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
@@ -93,7 +95,7 @@ namespace LMLocal.Infrastructure.Tooling
 
             if (_subAgentsToolSource.ToolExists(toolName))
             {
-                return await _subAgentsToolSource.ExecuteAsync(toolName, parameters, cancellationToken, progress).ConfigureAwait(false);
+                return await _subAgentsToolSource.ExecuteAsync(toolName, parameters, cancellationToken, progress, context).ConfigureAwait(false);
             }
 
             throw new ArgumentException($"Unknown tool: '{toolName}'.", nameof(toolName));

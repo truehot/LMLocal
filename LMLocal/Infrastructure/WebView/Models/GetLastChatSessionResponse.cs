@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
@@ -31,5 +32,19 @@ namespace LMLocal.Infrastructure.WebView.Models
 
         [JsonProperty("toolCalls")]
         public object ToolCalls { get; set; }
+
+        /// <summary>
+        /// Id of the model that produced this message; omitted for roles that carry no model (user, tool)
+        /// and for messages restored from logs written before the model id was persisted.
+        /// </summary>
+        [JsonProperty("modelId", NullValueHandling = NullValueHandling.Ignore)]
+        public string ModelId { get; set; }
+
+        /// <summary>
+        /// Time the message was created (UI only); omitted for messages restored from logs written before the time was
+        /// persisted.
+        /// </summary>
+        [JsonProperty("timestamp", NullValueHandling = NullValueHandling.Ignore)]
+        public DateTime? Timestamp { get; set; }
     }
 }

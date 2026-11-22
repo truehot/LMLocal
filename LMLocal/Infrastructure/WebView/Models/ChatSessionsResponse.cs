@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 
 namespace LMLocal.Infrastructure.WebView.Models
@@ -28,5 +28,9 @@ namespace LMLocal.Infrastructure.WebView.Models
 
         [JsonProperty("messageCount")]
         public int MessageCount { get; set; }
+
+        /// <summary>Models that produced the session's answers, in order of first use (may be empty).</summary>
+        [JsonProperty("models")]
+        public List<string> Models { get; set; } = new List<string>();
     }
 }

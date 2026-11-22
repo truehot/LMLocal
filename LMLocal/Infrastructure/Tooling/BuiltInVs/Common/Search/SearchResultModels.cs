@@ -97,13 +97,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
         public string Note { get; set; }
 
-        /// <summary>Number of this page; set only when the result has more than one page.</summary>
-        [JsonProperty("page", NullValueHandling = NullValueHandling.Ignore)]
-        public int? Page { get; set; }
-
-        /// <summary>Total page count at this page size; set only when the result has more than one page.</summary>
-        [JsonProperty("total_pages", NullValueHandling = NullValueHandling.Ignore)]
-        public int? TotalPages { get; set; }
+        /// <summary>Which page this is: "page 2 of 3" (pages of matches). Only data.</summary>
+        [JsonProperty("showing", NullValueHandling = NullValueHandling.Ignore)]
+        public string Showing { get; set; }
 
         [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
         public string NextPageToken { get; set; }
@@ -119,6 +115,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
+
+        /// <summary>Set when the page_token could not be used as given.</summary>
+        [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+        public string Warning { get; set; }
     }
 
     /// <summary>
@@ -137,13 +137,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
         public string Note { get; set; }
 
-        /// <summary>Number of this page; set only when the result has more than one page.</summary>
-        [JsonProperty("page", NullValueHandling = NullValueHandling.Ignore)]
-        public int? Page { get; set; }
-
-        /// <summary>Total page count at this page size; set only when the result has more than one page.</summary>
-        [JsonProperty("total_pages", NullValueHandling = NullValueHandling.Ignore)]
-        public int? TotalPages { get; set; }
+        /// <summary>Which page this is: "page 2 of 4" (pages of distinct texts). Only data.</summary>
+        [JsonProperty("showing", NullValueHandling = NullValueHandling.Ignore)]
+        public string Showing { get; set; }
 
         [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
         public string NextPageToken { get; set; }
@@ -159,12 +155,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
+
+        /// <summary>Set when the page_token could not be used as given.</summary>
+        [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+        public string Warning { get; set; }
     }
 
     /// <summary>
-    /// Response for a call with 'texts': one block per searched text, in request order. Each block is a
-    /// <see cref="SearchResultsResponse"/> (grouping = file) or <see cref="SearchTextGroupResponse"/> (grouping = text)
-    /// with <c>Text</c> set and its own totals, note and next_page_token.
+    /// Response for a call with 'texts': one block per searched text, in request order.
     /// </summary>
     public class SearchMultiTermResponse
     {

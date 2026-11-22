@@ -37,7 +37,7 @@ namespace LMLocal.Infrastructure.Providers
             (0, ModelProvider.LmStudio, "http://localhost:1234"),
             (1, ModelProvider.Ollama,   "http://localhost:11434"),
             (2, ModelProvider.Jan,      "http://localhost:1337"),
-            (4, ModelProvider.LlamaCpp, "http://localhost:8080"),
+            (4, ModelProvider.LlamaCpp, "http://localhost:9931"),
             (5, ModelProvider.Unsloth,  "http://localhost:8888/"),
             (3, ModelProvider.OpenAi,   string.Empty),
         };

@@ -88,3 +88,41 @@ export function formatDuration(ms) {
     const remMinutes = minutes % 60;
     return `${hours}${UIText.TEXT_TIME_HOURS} ${remMinutes}${UIText.TEXT_TIME_MINUTES}`;
 }
+
+const relativeTime = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'narrow' });
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Difference in local calendar days, so `yesterday` means yesterday on the wall clock and not 24 hours back.
+ */
+function calendarDaysBetween(from, to) {
+    const startOfDay = day => new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    return Math.round((startOfDay(to) - startOfDay(from)) / DAY_MS);
+}
+
+/**
+ * Short label of a message time: `now`, `5m ago`, `3h ago`, `yesterday`, `4d ago` for the last week, then the date
+ * (`18 Nov`, with the year when it is not the current one).
+ */
+export function formatMessageTime(date, now = new Date()) {
+    const value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return '';
+
+    const elapsed = Math.max(0, now.getTime() - value.getTime());
+
+    if (elapsed < MINUTE_MS) return relativeTime.format(0, 'second');
+    if (elapsed < HOUR_MS) return relativeTime.format(-Math.floor(elapsed / MINUTE_MS), 'minute');
+    if (elapsed < DAY_MS) return relativeTime.format(-Math.floor(elapsed / HOUR_MS), 'hour');
+
+    const days = calendarDaysBetween(value, now);
+
+    if (days <= 1) return relativeTime.format(-1, 'day');
+    if (days < 7) return relativeTime.format(-days, 'day');
+
+    return value.getFullYear() === now.getFullYear()
+        ? value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+        : value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}

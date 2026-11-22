@@ -601,9 +601,9 @@
             border-left: 2px solid var(--accent-color);
         }
 
-    #instructions-dialog .tab-btn.inactive {
-        opacity: 0.5;
-    }
+        #instructions-dialog .tab-btn.inactive {
+            opacity: 0.5;
+        }
 
     #instructions-dialog .modal-body {
         flex: 1;
@@ -783,83 +783,83 @@
         gap: 8px;
     }
 
-    #instructions-dialog .tab-delete-btn {
-        background: none;
-        border: none;
-        padding: 2px 4px;
-        border-radius: 3px;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--muted-color);
-        transition: background-color 0.1s ease, color 0.1s ease;
+#instructions-dialog .tab-delete-btn {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted-color);
+    transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+    #instructions-dialog .tab-delete-btn:hover {
+        background-color: var(--stop-bg, rgba(199, 80, 80, 0.08));
+        color: var(--stop-text, #e07a7a);
     }
 
-        #instructions-dialog .tab-delete-btn:hover {
-            background-color: var(--stop-bg, rgba(199, 80, 80, 0.08));
-            color: var(--stop-text, #e07a7a);
-        }
-
-        #instructions-dialog .tab-delete-btn svg {
-            display: block;
-            width: 14px;
-            height: 14px;
-        }
-
-    #instructions-dialog .tab-reset-btn {
-        background: none;
-        border: none;
-        padding: 2px 4px;
-        border-radius: 3px;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--muted-color);
-        transition: background-color 0.1s ease, color 0.1s ease, opacity 0.1s ease;
+    #instructions-dialog .tab-delete-btn svg {
+        display: block;
+        width: 14px;
+        height: 14px;
     }
 
-        #instructions-dialog .tab-reset-btn:hover:not(:disabled) {
-            background-color: var(--hover-bg-alpha);
-            color: var(--text-color);
-        }
+#instructions-dialog .tab-reset-btn {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted-color);
+    transition: background-color 0.1s ease, color 0.1s ease, opacity 0.1s ease;
+}
 
-        #instructions-dialog .tab-reset-btn:disabled {
-            opacity: 0.35;
-            cursor: default;
-        }
-
-        #instructions-dialog .tab-reset-btn svg {
-            display: block;
-            width: 14px;
-            height: 14px;
-        }
-
-
-    #instructions-dialog .group-header-row input[type="checkbox"] {
-        appearance: none !important;
-        -webkit-appearance: none !important;
-        width: 16px !important;
-        height: 16px !important;
-        border: 1px solid var(--border-color);
-        background: var(--input-bg);
-        border-radius: 3px;
-        cursor: pointer;
-        display: grid;
-        place-content: center;
+    #instructions-dialog .tab-reset-btn:hover:not(:disabled) {
+        background-color: var(--hover-bg-alpha);
+        color: var(--text-color);
     }
 
-        #instructions-dialog .group-header-row input[type="checkbox"]:checked {
-            background-color: var(--accent-color) !important;
-            border-color: var(--accent-color) !important;
-        }
+    #instructions-dialog .tab-reset-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
 
-            #instructions-dialog .group-header-row input[type="checkbox"]:checked::before {
-                content: "✔";
-                color: #fff;
-                font-size: 10px;
-            }
+    #instructions-dialog .tab-reset-btn svg {
+        display: block;
+        width: 14px;
+        height: 14px;
+    }
+
+
+#instructions-dialog .group-header-row input[type="checkbox"] {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    width: 16px !important;
+    height: 16px !important;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    border-radius: 3px;
+    cursor: pointer;
+    display: grid;
+    place-content: center;
+}
+
+    #instructions-dialog .group-header-row input[type="checkbox"]:checked {
+        background-color: var(--accent-color) !important;
+        border-color: var(--accent-color) !important;
+    }
+
+        #instructions-dialog .group-header-row input[type="checkbox"]:checked::before {
+            content: "✔";
+            color: #fff;
+            font-size: 10px;
+        }
 
 #instructions-dialog .settings-group.collapsible-group:has(input:checked) .settings-label {
     color: var(--accent-color);
@@ -3029,6 +3029,19 @@
     color: var(--muted-color);
 }
 
+#chat-history-dialog .chat-history-model {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 170px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background-color: var(--hover-bg-alpha);
+    font-family: Consolas, "Courier New", monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 #chat-history-dialog .chat-history-load {
     flex-shrink: 0;
     min-width: 60px;
@@ -3089,4 +3102,388 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* ===== Usage & Stats dialog ===== */
+
+#usage-stats-dialog.model-modal {
+    background-color: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0;
+    width: 520px;
+    height: 600px;
+    max-height: 90vh;
+    box-shadow: 0 10px 30px var(--overlay-shadow);
+    overflow: hidden;
+    margin: auto;
+    flex-direction: column;
+}
+
+    #usage-stats-dialog.model-modal[open] {
+        display: flex;
+    }
+
+    #usage-stats-dialog.model-modal::backdrop {
+        background: var(--overlay-shadow);
+        backdrop-filter: blur(1px);
+    }
+
+#usage-stats-dialog .modal-header {
+    padding: 10px 12px;
+    background-color: var(--top-bar-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--strong-text);
+    font-size: 14px;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+#usage-stats-dialog .modal-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-color);
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+#usage-stats-dialog .usage-period-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-grow: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+#usage-stats-dialog .usage-period-btn {
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted-color);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+    #usage-stats-dialog .usage-period-btn:hover {
+        background-color: var(--hover-bg-alpha);
+        color: var(--text-color);
+    }
+
+    #usage-stats-dialog .usage-period-btn.active {
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--border-color);
+        color: var(--strong-text);
+        font-weight: 600;
+    }
+
+#usage-stats-dialog .modal-container {
+    padding: 0;
+    flex: 1;
+    overflow-y: auto;
+    background-color: var(--bg-color);
+    display: flex;
+    flex-direction: column;
+}
+
+#usage-stats-dialog .usage-stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 10px 12px;
+}
+
+/* Cards share the look of the model and history list items. */
+#usage-stats-dialog .usage-card {
+    background-color: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 10px 12px;
+}
+
+#usage-stats-dialog .usage-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+
+#usage-stats-dialog .usage-summary-meta {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--strong-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#usage-stats-dialog .usage-summary-peak {
+    font-size: 12px;
+    color: var(--muted-color);
+    font-variant-numeric: tabular-nums;
+}
+
+#usage-stats-dialog .usage-block {
+    display: flex;
+    flex-direction: column;
+}
+
+#usage-stats-dialog .usage-block-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-color);
+}
+
+#usage-stats-dialog .usage-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 60px 48px 56px;
+    align-items: center;
+    gap: 8px;
+}
+
+#usage-stats-dialog .usage-block-title.usage-grid {
+    padding-bottom: 6px;
+    margin-bottom: 2px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+#usage-stats-dialog .usage-col {
+    text-align: right;
+}
+
+#usage-stats-dialog .usage-row {
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+    #usage-stats-dialog .usage-row + .usage-row {
+        border-top: 1px solid var(--table-zebra);
+    }
+
+#usage-stats-dialog .usage-row-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+#usage-stats-dialog .usage-row-label {
+    color: var(--strong-text);
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#usage-stats-dialog .usage-num {
+    text-align: right;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#usage-stats-dialog .usage-extra {
+    color: var(--muted-color);
+}
+
+/* Inline label, the same chip as the model in Chat History. */
+#usage-stats-dialog .usage-badge {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 170px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background-color: var(--hover-bg-alpha);
+    color: var(--muted-color);
+    font-size: 11px;
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#usage-stats-dialog .usage-row-caption {
+    font-size: 11px;
+    color: var(--muted-color);
+    margin-top: -2px;
+    padding-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#usage-stats-dialog .usage-failed {
+    color: var(--danger-color);
+}
+
+#usage-stats-dialog #usage-session-filter {
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    outline: none;
+    letter-spacing: normal;
+    text-transform: none;
+    max-width: 140px;
+}
+
+    #usage-stats-dialog #usage-session-filter:focus {
+        border-color: var(--accent-color);
+    }
+
+#usage-stats-dialog .usage-day {
+    margin-top: 4px;
+}
+
+#usage-stats-dialog .usage-day-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 2px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+}
+
+    #usage-stats-dialog .usage-day-header:hover {
+        background-color: var(--hover-bg-alpha);
+    }
+
+#usage-stats-dialog .usage-day-caret,
+#usage-stats-dialog .usage-session-caret {
+    color: var(--muted-color);
+    font-size: 10px;
+    width: 10px;
+    flex-shrink: 0;
+}
+
+#usage-stats-dialog .usage-day-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted-color);
+    letter-spacing: 0.04em;
+}
+
+#usage-stats-dialog .usage-day-values {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted-color);
+    font-family: Consolas, "Courier New", monospace;
+}
+
+#usage-stats-dialog .usage-session-card {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 6px 0 0 0;
+    background-color: var(--surface-bg);
+    cursor: pointer;
+}
+
+    #usage-stats-dialog .usage-session-card:hover {
+        background-color: var(--hover-bg-alpha);
+        border-color: var(--muted-color);
+    }
+
+#usage-stats-dialog .usage-session-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+#usage-stats-dialog .usage-session-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--strong-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#usage-stats-dialog .usage-session-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted-color);
+    margin-left: 14px;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+}
+
+#usage-stats-dialog .usage-session-detail {
+    margin-top: 6px;
+    padding-left: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+    #usage-stats-dialog .usage-session-detail .usage-card {
+        background: none;
+        border: none;
+        border-radius: 0;
+        padding: 0;
+    }
+
+#usage-stats-dialog .usage-hidden {
+    display: none;
+}
+
+#usage-stats-dialog .loading-placeholder,
+#usage-stats-dialog .empty-placeholder,
+#usage-stats-dialog .error-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--muted-color);
+    gap: 12px;
+    text-align: center;
+}
+
+#usage-stats-dialog .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-color);
+    border-top: 2px solid var(--accent-color);
+    border-radius: 50%;
+    animation: ch_history_spin 1s linear infinite;
+}
+
+#usage-stats-dialog .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: var(--panel-bg);
+    border-top: 1px solid var(--border-color);
+    box-sizing: border-box;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.context-bar-wrapper {
+    cursor: pointer;
 }

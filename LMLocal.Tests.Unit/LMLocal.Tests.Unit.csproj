@@ -87,6 +87,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Application\Changes\UnifiedDiffBuilderTests.cs" />
+    <Compile Include="Application\ChatSessionSummaryBuilderTests.cs" />
     <Compile Include="Application\SubAgents\FileContentRendererTests.cs" />
     <Compile Include="Application\SubAgents\FileRefMarkerTests.cs" />
     <Compile Include="Application\SubAgents\ReadLedgerTests.cs" />
@@ -102,14 +103,25 @@
     <Compile Include="Application\SubAgents\SubAgentsRawPersistenceTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsReasoningEffortTests.cs" />
     <Compile Include="Application\SubAgents\SubAgentsServiceTests.cs" />
+    <Compile Include="Application\Usage\UsageAccumulatorTests.cs" />
+    <Compile Include="Application\Usage\UsageAggregatorTests.cs" />
+    <Compile Include="Application\Usage\UsageRecordingTests.cs" />
+    <Compile Include="Application\Usage\SubAgentUsageRecordingTests.cs" />
+    <Compile Include="Application\Usage\UsageStatsServiceTests.cs" />
     <Compile Include="Commands\CodeCommandHelperTests.cs" />
+    <Compile Include="Core\Common\DebugStopPolicyTests.cs" />
+    <Compile Include="Core\Common\DebugStopPromptBuilderTests.cs" />
+    <Compile Include="Core\Common\DebugStopTextTests.cs" />
+    <Compile Include="Core\Common\ErrorListPromptBuilderTests.cs" />
     <Compile Include="Core\Common\ExceptionFormatterTests.cs" />
     <Compile Include="Core\Common\LineSplitterTests.cs" />
     <Compile Include="Core\Common\OpenDocumentsPromptBuilderTests.cs" />
     <Compile Include="Core\Common\SourceFileExtensionsTests.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimatorTests.cs" />
     <Compile Include="Core\MarkdownCodeBlockFormatterTests.cs" />
+    <Compile Include="Core\Models\DebugStopInfoTests.cs" />
     <Compile Include="Core\Models\ModelDefinitionTests.cs" />
+    <Compile Include="Core\PromptTextTests.cs" />
     <Compile Include="Infrastructure\AppSettingsEqualityTests.cs" />
     <Compile Include="Infrastructure\AutocompletionsControllerTests.cs" />
     <Compile Include="Infrastructure\AzureModelResponseConverterTests.cs" />
@@ -189,6 +201,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestArgumentsBuilderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Testing\TestOutputParserTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolPaginationTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\SearchResultCacheTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\BuildSolutionParseTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ChatHistoryScorerTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FileToolsReadReplaceRoundTripTests.cs" />
@@ -200,6 +213,7 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReadFileLinesTotalLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\RunTestsSummaryTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchFileContentTextsTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\TodoWriteTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ToolParameterOrderTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiffTests.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsTests.cs" />
@@ -220,11 +234,19 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\ReplaceFileLinesTests.cs" />
     <Compile Include="Infrastructure\Tooling\ToolQueueProviderTests.cs" />
     <Compile Include="Infrastructure\Tooling\ToolTimeoutPolicyTests.cs" />
+    <Compile Include="Infrastructure\UsageStoreTests.cs" />
+    <Compile Include="Infrastructure\WebView\UsageStatsMapperTests.cs" />
     <Compile Include="Infrastructure\Vs\FileLinkResolverTests.cs" />
     <Compile Include="Infrastructure\Vs\TestUiThreadGuard.cs" />
     <Compile Include="Infrastructure\Vs\ToolRouterTests.cs" />
     <Compile Include="Infrastructure\Vs\VsSolutionFilesScannerTests.cs" />
     <Compile Include="Infrastructure\Vs\SearchScopeResolverTests.cs" />
+    <Compile Include="Infrastructure\Vs\MissingFileHintTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoPagingTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetSymbolInfoJsPagingTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\FindFilesPagingTests.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\SearchFileContentPagingTests.cs" />
+    <Compile Include="Infrastructure\Vs\FileProjectSettingsTests.cs" />
     <Compile Include="Infrastructure\WebView\FileLinksControllerTests.cs" />
     <Compile Include="Infrastructure\WebView\SerializingMessageSinkTests.cs" />
     <Compile Include="Infrastructure\WebView\ToolActivityForwarderTests.cs" />

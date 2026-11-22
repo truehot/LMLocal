@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.WebView.Initialization;
 using Microsoft.VisualStudio.Imaging.Interop;
@@ -28,7 +29,8 @@ namespace LMLocal
             this.BitmapImageMoniker = new ImageMoniker { Guid = ImagesGuid, Id = 1 };
 
             var initializer = ServiceConfiguration.GetService<IWebViewInitializer>();
-            _control = new MainWindowControl(initializer);
+            var debuggerContextService = ServiceConfiguration.GetService<IDebuggerContextService>();
+            _control = new MainWindowControl(initializer, debuggerContextService);
             this.Content = _control;
 
             _control.PreviewKeyDown += OnControlPreviewKeyDown;

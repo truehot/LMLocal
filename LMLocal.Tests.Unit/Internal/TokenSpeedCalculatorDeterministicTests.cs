@@ -1,19 +1,32 @@
 using System;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.Streaming;
-using LMLocal.Infrastructure.Time;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit
 {
+    /// <summary>
+    /// Fixed clock for tests. The zone defaults to UTC, so a test about local days never depends on the machine's zone.
+    /// </summary>
     internal class FakeTimeProvider : ITimeProvider
     {
         private long _ticks;
-        public FakeTimeProvider(long initialTicks)
+        public FakeTimeProvider(long initialTicks, TimeZoneInfo localTimeZone = null)
         {
             _ticks = initialTicks;
+            LocalTimeZone = localTimeZone ?? TimeZoneInfo.Utc;
+        }
+
+        public FakeTimeProvider(DateTime utcNow, TimeZoneInfo localTimeZone = null)
+            : this(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc).Ticks, localTimeZone)
+        {
         }
 
         public long UtcNowTicks() => _ticks;
+
+        public DateTime UtcNow => new DateTime(_ticks, DateTimeKind.Utc);
+
+        public TimeZoneInfo LocalTimeZone { get; set; }
 
         public void Advance(TimeSpan ts) => _ticks += ts.Ticks;
     }

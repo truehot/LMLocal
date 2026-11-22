@@ -13,8 +13,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes
     internal static class TypeInspector
     {
         internal const int MaxMembersPerCategory = 100;
-
-        /// <param name="toRelativePath">Maps an absolute source path to the solution-relative form.</param>
         internal static TypeInspectionResult Inspect(INamedTypeSymbol symbol, string projectName, Func<string, string> toRelativePath)
         {
             if (toRelativePath == null) throw new ArgumentNullException(nameof(toRelativePath));
@@ -179,7 +177,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.InspectTypes
             private readonly string _typeFile;
             private readonly Func<string, string> _toRelativePath;
 
-            /// <param name="typeFile">Absolute file of the type; null for a type from a referenced assembly.</param>
             public MemberLocator(string typeFile, Func<string, string> toRelativePath)
             {
                 _typeFile = typeFile;

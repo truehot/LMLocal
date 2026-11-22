@@ -7,6 +7,7 @@ using LMLocal.Application.ChatSession;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.ModelsList;
 using LMLocal.Application.SubAgents;
+using LMLocal.Application.Usage;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Autocompletions;
@@ -39,10 +40,11 @@ using LMLocal.Infrastructure.WebView.Environment;
 using LMLocal.Infrastructure.WebView.Hosting;
 using LMLocal.Infrastructure.WebView.Initialization;
 using LMLocal.Infrastructure.WebView.Navigation;
+using LMLocal.Infrastructure.Time;
 using Microsoft.Extensions.DependencyInjection;
 namespace LMLocal.Infrastructure.DependencyInjection
 {
-
+    /// <summary>
     /// Central configuration point for the dependency injection container.
     /// </summary>
     public static class ServiceConfiguration
@@ -98,6 +100,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ISettingsManager, SettingsManager>();
             services.AddSingleton<IRecentModelsManager, RecentModelsManager>();
             services.AddSingleton<IPathResolver, PathResolver>();
+            services.AddSingleton<IMissingFileHint, MissingFileHint>();
             services.AddSingleton<IVsDependencies, VsDependencies>();
             services.AddSingleton<IUiThreadGuard, VsUiThreadGuard>();
             services.AddSingleton<ISearchResultCache, SearchResultCache>();
@@ -105,6 +108,8 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<ICloseWhileGeneratingGuard, CloseWhileGeneratingGuard>();
             services.AddSingleton<ITaskbarAttentionNotifier, TaskbarAttentionNotifier>();
             services.AddSingleton<IAttentionNotifier>(sp => sp.GetRequiredService<ITaskbarAttentionNotifier>());
+            services.AddSingleton<IDebuggerContextTracker, DebuggerContextService>();
+            services.AddSingleton<IDebuggerContextService>(sp => sp.GetRequiredService<IDebuggerContextTracker>());
             services.AddSingleton<IAutocompletionsConfigManager, AutocompletionsConfigManager>();
 
             services.AddTransient<ISolutionFileProvider, SolutionFileProvider>();
@@ -140,6 +145,10 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, SearchKnowledge>();
             services.AddTransient<IBuiltInTool, SearchChatHistory>();
 
+            services.AddSingleton<TodoWrite>();
+            services.AddSingleton<ITodoTool>(sp => sp.GetRequiredService<TodoWrite>());
+            services.AddSingleton<IBuiltInTool>(sp => sp.GetRequiredService<TodoWrite>());
+
             services.AddTransient<IGetActiveDocument, GetActiveDocument>();
 
             services.AddSingleton<IFileSystem, DefaultFileSystem>();
@@ -161,6 +170,16 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IChatPersistenceFactory, ChatPersistenceServiceFactory>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
             services.AddSingleton<IChatHistoryService, ChatHistoryService>();
+            services.AddSingleton<ITimeProvider, SystemTimeProvider>();
+            services.AddSingleton<UsageStore>(sp => new UsageStore(
+                sp.GetRequiredService<ISettingsManager>(),
+                sp.GetRequiredService<IFileSystem>(),
+                sp.GetRequiredService<IFileLockManager>(),
+                () => sp.GetRequiredService<IVsDependencies>().GetSolutionDirectory(),
+                sp.GetRequiredService<ITimeProvider>()));
+            services.AddSingleton<IUsageReader>(sp => sp.GetRequiredService<UsageStore>());
+            services.AddSingleton<IUsageRecorder>(sp => sp.GetRequiredService<UsageStore>());
+            services.AddSingleton<IUsageStatsService, UsageStatsService>();
             services.AddSingleton<IToolCallArgumentsGuardFactory, ToolCallArgumentsGuardFactory>();
             services.AddTransient<IStreamProcessorFactory, StreamProcessorFactory>();
 
@@ -185,7 +204,9 @@ namespace LMLocal.Infrastructure.DependencyInjection
                 () => sp.GetRequiredService<IToolExecutionManager>(),
                 sp.GetRequiredService<IToolQueueProvider>(),
                 sp.GetRequiredService<IToolCallLoopDetector>(),
-                sp.GetRequiredService<IChatPersistenceFactory>()));
+                sp.GetRequiredService<IChatPersistenceFactory>(),
+                SubAgentsService.DefaultLoopRecoveryEnabled,
+                sp.GetRequiredService<IUsageRecorder>()));
             services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
@@ -226,9 +247,13 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IFileLinksController>(sp => new FileLinksController(sp.GetRequiredService<IFileLinkResolver>()));
             services.AddSingleton<IAutocompletionsController>(sp => new AutocompletionsController(sp.GetRequiredService<IAutocompletionsConfigManager>(), sp.GetRequiredService<IAutocompletionsService>(), sp.GetRequiredService<IModelsListService>()));
             services.AddSingleton<IChatSessionController>(sp => new ChatSessionController(sp.GetRequiredService<IChatHistoryManager>()));
-            services.AddSingleton<IWebViewHostController, WebViewHostController>();
+            services.AddSingleton<IUsageController>(sp => new UsageController(sp.GetRequiredService<IUsageStatsService>(), sp.GetRequiredService<IChatHistoryManager>(), sp.GetRequiredService<ISettingsManager>()));
+            services.AddSingleton<IWebViewHostController>(sp => new WebViewHostController(
+                sp.GetRequiredService<IDebuggerContextService>(),
+                sp.GetRequiredService<IVsDependencies>(),
+                sp.GetRequiredService<IPathResolver>(),
+                () => ChatInjectionService.Instance));
         }
-
 
         /// <summary>
         /// Retrieves a registered service from the container.

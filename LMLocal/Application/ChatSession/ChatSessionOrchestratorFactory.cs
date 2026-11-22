@@ -1,8 +1,10 @@
 using System;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 
 namespace LMLocal.Application.ChatSession
@@ -25,6 +27,9 @@ namespace LMLocal.Application.ChatSession
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly ISubAgentsParallelPolicy _parallelPolicy;
         private readonly ISubAgentsParallelRunner _parallelRunner;
+        private readonly IActiveModelContext _activeModelContext;
+        private readonly ISettingsManager _settingsManager;
+        private readonly IUsageRecorder _usageRecorder;
 
         public ChatSessionOrchestratorFactory(
             IChatStreamService chatService,
@@ -34,7 +39,10 @@ namespace LMLocal.Application.ChatSession
             ISnapshotManager snapshotManager,
             IToolCallLoopDetector loopDetector,
             ISubAgentsParallelPolicy parallelPolicy,
-            ISubAgentsParallelRunner parallelRunner)
+            ISubAgentsParallelRunner parallelRunner,
+            IActiveModelContext activeModelContext,
+            ISettingsManager settingsManager,
+            IUsageRecorder usageRecorder)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
             _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
@@ -44,6 +52,9 @@ namespace LMLocal.Application.ChatSession
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _parallelPolicy = parallelPolicy ?? throw new ArgumentNullException(nameof(parallelPolicy));
             _parallelRunner = parallelRunner ?? throw new ArgumentNullException(nameof(parallelRunner));
+            _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
+            _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
+            _usageRecorder = usageRecorder ?? throw new ArgumentNullException(nameof(usageRecorder));
         }
 
         public IChatSessionOrchestrator CreateOrchestrator()
@@ -56,7 +67,10 @@ namespace LMLocal.Application.ChatSession
                 _snapshotManager,
                 _loopDetector,
                 _parallelPolicy,
-                _parallelRunner);
+                _parallelRunner,
+                _activeModelContext,
+                _settingsManager,
+                _usageRecorder);
         }
     }
 }

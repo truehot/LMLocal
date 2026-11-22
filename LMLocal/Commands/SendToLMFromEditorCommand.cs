@@ -1,9 +1,7 @@
 using System;
 using System.ComponentModel.Design;
-using EnvDTE;
 using LMLocal.Application.ChatSession;
 using LMLocal.Core.Common;
-using LMLocal.Infrastructure.DependencyInjection;
 using Microsoft.VisualStudio.Shell;
 using Task = System.Threading.Tasks.Task;
 
@@ -20,10 +18,13 @@ namespace LMLocal.Commands
         private readonly AsyncPackage _package;
         private readonly ISessionManager _sessionManager;
 
-        private SendToLMFromEditorCommand(AsyncPackage package, OleMenuCommandService commandService)
+        private SendToLMFromEditorCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager)
         {
             _package = package ?? throw new ArgumentNullException(nameof(package));
-            _sessionManager = ServiceConfiguration.GetService<ISessionManager>();
+            _sessionManager = sessionManager;
 
             var menuCommandID = new CommandID(CommandSet, CommandId);
 
@@ -33,13 +34,13 @@ namespace LMLocal.Commands
             commandService.AddCommand(menuItem);
         }
 
-        public static async Task InitializeAsync(AsyncPackage package)
+        public static async Task InitializeAsync(AsyncPackage package, ISessionManager sessionManager)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
 
             if (await package.GetServiceAsync(typeof(IMenuCommandService)) is OleMenuCommandService commandService)
             {
-                new SendToLMFromEditorCommand(package, commandService);
+                new SendToLMFromEditorCommand(package, commandService, sessionManager);
             }
         }
 

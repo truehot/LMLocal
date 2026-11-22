@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using EnvDTE;
 using LMLocal.Core.Common;
-using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
 using Microsoft.VisualStudio.Shell;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects

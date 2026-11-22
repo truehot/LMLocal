@@ -13,7 +13,7 @@ using Newtonsoft.Json.Linq;
 namespace LMLocal.Infrastructure.Instructions
 {
     /// <summary>
-    /// Reads the built-in instruction tabs from the static JSON resource that ships with the extension (<c>Resources/json/instruction-tabs.json</c>). 
+    /// Reads the built-in instruction tabs from the static JSON resource that ships with the extension (<c>Resources/json/instruction-tabs.json</c>).
     /// </summary>
     internal sealed class FileInstructionDefaultsProvider : IInstructionDefaultsProvider
     {

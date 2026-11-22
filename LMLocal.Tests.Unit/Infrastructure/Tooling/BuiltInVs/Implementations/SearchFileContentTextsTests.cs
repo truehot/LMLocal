@@ -292,7 +292,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             foreach (SearchResultsResponse block in result.Terms.Cast<SearchResultsResponse>())
             {
                 Assert.That(block.Results.Sum(r => r.MatchCount), Is.EqualTo(250), block.Text);
-                Assert.That(block.NextPageToken, Is.EqualTo("250"), block.Text);
+                Assert.That(block.NextPageToken, Does.Match(@"^r\d+:250$"), block.Text);
             }
         }
 
@@ -335,7 +335,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             var first = (SearchMultiTermResponse)await tool.ExecuteAsync(new Dictionary<string, object> { ["texts"] = new JArray("Alpha", "Beta") });
             var block = first.Terms.Cast<SearchResultsResponse>().First();
-            Assert.That(block.NextPageToken, Is.EqualTo("25"));
+            Assert.That(block.NextPageToken, Does.Match(@"^r\d+:25$"));
 
             var next = (SearchResultsResponse)await tool.ExecuteAsync(new Dictionary<string, object> { ["text"] = "Alpha", ["page_token"] = block.NextPageToken });
             Assert.That(next.Results.Sum(r => r.MatchCount), Is.EqualTo(5));

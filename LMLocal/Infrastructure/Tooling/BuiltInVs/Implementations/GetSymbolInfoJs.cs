@@ -33,6 +33,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsSolutionFilesScanner _solutionFilesScanner;
         private readonly ISearchResultCache _searchCache;
         private readonly IFileSystem _fileSystem;
+        private readonly IMissingFileHint _missingFileHint;
         private readonly IJsConfigResolver _configResolver;
 
         private const int MaxTotalReferences = 5000;
@@ -58,7 +59,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             IVsSolutionFilesScanner solutionFilesScanner,
             ISearchResultCache searchCache,
             IFileSystem fileSystem,
-            IJsConfigResolver configResolver)
+            IJsConfigResolver configResolver,
+            IMissingFileHint missingFileHint = null)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
@@ -66,6 +68,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             _searchCache = searchCache ?? throw new ArgumentNullException(nameof(searchCache));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _configResolver = configResolver ?? throw new ArgumentNullException(nameof(configResolver));
+            _missingFileHint = missingFileHint ?? new MissingFileHint(pathResolver, fileSystem);
         }
 
         public ToolDefinition GetToolInfo()
@@ -83,9 +86,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "file_path", new ToolDetails { Type = "string", Description = "Limit search to a specific file (relative or absolute path). When set, only that file is scanned (real scope), no full-solution scan." } },
                         { "include_references", new ToolDetails { Type = "boolean", Description = "Whether to include calls/references. Default true." } },
                         { "max_references", new ToolDetails { Type = "integer", Description = "Number of references per page (page size). Default 50, max 200." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for the next page of references." } }
+                        { "page_token", new ToolDetails { Type = "string", Description = "The value of next_page_token from the previous response, copied exactly; never a value that no response returned. The page is taken from that result, so symbol_name and file_path may be left out. Pass 'last' (together with the same symbol_name and file_path) to get the last page of references, 'first' for the first." } }
                     },
-                    Required = new List<string> { "symbol_name" }
+                    Required = new List<string>()
                 }
             };
         }
@@ -94,10 +97,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-                var (symbolName, filePathParam, includeReferences, pageSize, pageToken, error) =
+                var selection = PageSelection.From(parameters);
+                if (selection.Error != null)
+                    return Error(selection.Error, null);
+
+                if (selection.IsCursor)
+                {
+                    JsSymbolInfoResponse entry = null;
+                    bool found = _searchCache.TryGetById(selection.Id, out CachedToolResults<JsSymbolInfoResponse> byId)
+                        && (entry = byId.AllResults?.FirstOrDefault()) != null;
+                    string entrySymbol = found ? (byId.Subject ?? entry.SymbolName) : null;
+                    string callName = parameters != null && parameters.TryGetValue("symbol_name", out object nameObj) && nameObj is string ns && !string.IsNullOrWhiteSpace(ns) ? ns.Trim() : null;
+                    selection.Resolve(found, found && (callName == null || entrySymbol == null || string.Equals(callName, entrySymbol, StringComparison.OrdinalIgnoreCase)));
+
+                    if (selection.UseEntry)
+                    {
+                        int entryPageSize = ReadPageSize(parameters);
+                        return BuildResponse(entry, selection.Offset(entryPageSize, entry.References?.Count ?? 0), entryPageSize, selection.Id, null);
+                    }
+                }
+
+                var (symbolName, filePathParam, includeReferences, pageSize, _, error) =
                                     ExtractAndValidateParameters(parameters);
                 if (!string.IsNullOrEmpty(error))
-                    return Error(error, symbolName);
+                    return Error(selection.WithPagingHint(error), symbolName);
 
                 if (!_vsDependencies.IsSolutionOpen)
                     return Error("No solution is currently open.", symbolName);
@@ -110,7 +133,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absolutePath))
                         return Error($"Cannot resolve file path: {filePathParam}", symbolName);
                     if (!_fileSystem.FileExists(absolutePath))
-                        return Error($"File not found: {absolutePath}", symbolName);
+                        return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePathParam, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), symbolName);
                     targetFilePath = absolutePath;
                 }
 
@@ -155,15 +178,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string configHash = config?.ConfigHash ?? "";
                 string configFilePath = config?.ConfigFilePath ?? "";
 
-                int skip = ToolPagination.ParseOffset(pageToken, pageSize);
-
                 string cacheKey = BuildCacheKey(symbolName, filePathParam, includeReferences, configHash, configFilePath);
                 if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<JsSymbolInfoResponse> cached))
                 {
                     var cachedInfo = cached.AllResults.FirstOrDefault();
                     if (cachedInfo != null)
                     {
-                        return BuildResponse(cachedInfo, skip, pageSize);
+                        return BuildResponse(cachedInfo, selection.Offset(pageSize, cachedInfo.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), selection.Warning);
                     }
                 }
 
@@ -174,11 +195,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var cacheEntry = new CachedToolResults<JsSymbolInfoResponse>
                 {
                     AllResults = new List<JsSymbolInfoResponse> { fullResult },
-                    ItemsScanned = 1
+                    ItemsScanned = 1,
+                    Subject = symbolName
                 };
                 _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
-                return BuildResponse(fullResult, skip, pageSize);
+                return BuildResponse(fullResult, selection.Offset(pageSize, fullResult.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), selection.Warning);
             }
             catch (OperationCanceledException)
             {
@@ -191,10 +213,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
         }
 
-        private JsSymbolInfoResponse BuildResponse(JsSymbolInfoResponse fullResult, int skip, int pageSize)
+        /// <summary>max_references as the page size (default and bounds as in <see cref="ExtractAndValidateParameters"/>).</summary>
+        private static int ReadPageSize(Dictionary<string, object> parameters)
+        {
+            if (parameters != null && parameters.TryGetValue("max_references", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
+                return Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+            return DefaultPageSize;
+        }
+
+        private JsSymbolInfoResponse BuildResponse(JsSymbolInfoResponse fullResult, int skip, int pageSize, string cacheId, string warning)
         {
             var pagedRefs = fullResult.References?.Skip(skip).Take(pageSize).ToList() ?? new List<JsReferenceItem>();
-            string nextToken = ToolPagination.NextToken(skip + pagedRefs.Count, fullResult.References?.Count ?? 0);
+            int totalReferences = fullResult.References?.Count ?? 0;
+            string nextToken = ToolPagination.NextToken(skip + pagedRefs.Count, totalReferences, cacheId);
 
             return new JsSymbolInfoResponse
             {
@@ -203,11 +234,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 Definitions = fullResult.Definitions ?? new List<JsDefinitionItem>(),
                 References = pagedRefs,
                 Files = BuildFileGroups(fullResult.Definitions ?? new List<JsDefinitionItem>(), pagedRefs, fullResult.Importers ?? new List<JsImporterLink>()),
-                TotalReferences = fullResult.References?.Count ?? 0,
+                TotalReferences = totalReferences,
+                Showing = ToolPagination.Describe(skip, pagedRefs.Count, totalReferences, nextToken != null, pageSize),
                 NextPageToken = nextToken,
                 HasMoreResults = nextToken != null || fullResult.HasMoreResults,
                 DefinitionChain = fullResult.DefinitionChain ?? new List<JsImportChainLink>(),
-                Importers = fullResult.Importers ?? new List<JsImporterLink>()
+                Importers = fullResult.Importers ?? new List<JsImporterLink>(),
+                Warning = warning
             };
         }
 
@@ -777,6 +810,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public List<JsFileGroup> Files { get; set; }
             [JsonProperty("total_references")]
             public int TotalReferences { get; set; }
+            /// <summary>Which page this is: "page 2 of 3". Only data.</summary>
+            [JsonProperty("showing", NullValueHandling = NullValueHandling.Ignore)]
+            public string Showing { get; set; }
             [JsonProperty("next_page_token", NullValueHandling = NullValueHandling.Ignore)]
             public string NextPageToken { get; set; }
             [JsonProperty("has_more_results")]
@@ -785,6 +821,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public List<JsImportChainLink> DefinitionChain { get; set; }
             [JsonProperty("importers")]
             public List<JsImporterLink> Importers { get; set; }
+            /// <summary>Set when the page_token could not be used as given.</summary>
+            [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+            public string Warning { get; set; }
         }
 
         #endregion

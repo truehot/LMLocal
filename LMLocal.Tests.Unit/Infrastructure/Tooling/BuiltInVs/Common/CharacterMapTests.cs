@@ -35,7 +35,18 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         [TestCase("a\uFEFFb", "ab", TestName = "Canonicalize_ContentBom_IsDeleted")]
         [TestCase("a\u200Db", "a\u200Db", TestName = "Canonicalize_ZeroWidthJoiner_IsKept")]
         [TestCase("a\u200Cb", "a\u200Cb", TestName = "Canonicalize_ZeroWidthNonJoiner_IsKept")]
-        [TestCase("a\u00ADb", "a\u00ADb", TestName = "Canonicalize_SoftHyphen_IsKept")]
+        [TestCase("a\u00ADb", "ab", TestName = "Canonicalize_SoftHyphen_IsDeleted")]
+        [TestCase("a\u2060b", "ab", TestName = "Canonicalize_WordJoiner_IsDeleted")]
+        [TestCase("a\u200Eb\u200F", "ab", TestName = "Canonicalize_DirectionMarks_AreDeleted")]
+        [TestCase("a\u202Eb\u202C", "ab", TestName = "Canonicalize_BidiOverride_IsDeleted")]
+        [TestCase("a\u2066b\u2069", "ab", TestName = "Canonicalize_BidiIsolate_IsDeleted")]
+        [TestCase("a\uFFFDb", "ab", TestName = "Canonicalize_ReplacementCharacter_IsDeleted")]
+        [TestCase("a\uFFFFb", "ab", TestName = "Canonicalize_NoncharacterFFFF_IsDeleted")]
+        [TestCase("a\uFDD0b", "ab", TestName = "Canonicalize_NoncharacterFDD0_IsDeleted")]
+        [TestCase("a\uD83F\uDFFFb", "ab", TestName = "Canonicalize_SupplementaryNoncharacter_IsDeletedAsAPair")]
+        [TestCase("a\u0007b\u001Bc\u0000d", "abcd", TestName = "Canonicalize_C0Controls_AreDeleted")]
+        [TestCase("a\u007Fb\u0090c", "abc", TestName = "Canonicalize_DelAndC1Controls_AreDeleted")]
+        [TestCase("a\tb", "a\tb", TestName = "Canonicalize_Tab_IsKept")]
         [TestCase("\u0438\u0306", "\u0439", TestName = "Canonicalize_NfdCyrillic_IsComposed")]
         [TestCase("a\U0001F41Bb", "a\U0001F41Bb", TestName = "Canonicalize_Emoji_IsKept")]
         public void Canonicalize_MapsTableCharacters(string input, string expected)
@@ -114,6 +125,56 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
             Assert.That(result, Is.Not.Null);
         }
 
+        [TestCase("ab\uFFFFc", TestName = "Canonicalize_NoncharacterFFFF_DoesNotThrow")]
+        [TestCase("\uFFFE", TestName = "Canonicalize_NoncharacterFFFE_DoesNotThrow")]
+        [TestCase("a\uFDD0b", TestName = "Canonicalize_NoncharacterFDD0_DoesNotThrow")]
+        [TestCase("a\uD83F\uDFFFb", TestName = "Canonicalize_SupplementaryNoncharacter_DoesNotThrow")]
+        [TestCase("Key = \"\uFFFF\" \u2014 x", TestName = "Canonicalize_NoncharacterWithMapping_DoesNotThrow")]
+        public void Canonicalize_NeverThrowsOnNoncharacter(string input)
+        {
+            // A plan once quoted a sort key "\uFFFF" literally; every replace_file_lines on that file failed.
+            string result = null;
+            Assert.DoesNotThrow(() => result = CharacterMap.Canonicalize(input));
+            Assert.That(result, Is.Not.Null);
+        }
+
+        [Test]
+        public void Canonicalize_Noncharacter_IsDeletedBeforeNfc()
+        {
+            // Deleted first, so NFC runs on the rest: the combining accent is still composed.
+            Assert.That(CharacterMap.Canonicalize("e\u0301\u00A0\uFFFF"), Is.EqualTo("\u00E9 "));
+        }
+
+        [Test]
+        public void Canonicalize_EveryCodePoint_NeverThrows()
+        {
+            // Every BMP code point (lone surrogates included) and both noncharacters of every plane, mid-text and next
+            // to a combining accent so the NFC branch is reached.
+            for (int cp = 0; cp <= 0xFFFF; cp++)
+            {
+                string input = "e\u0301" + (char)cp + "x";
+                Assert.DoesNotThrow(() => CharacterMap.Canonicalize(input), $"U+{cp:X4}");
+            }
+
+            for (int plane = 1; plane <= 16; plane++)
+            {
+                foreach (int cp in new[] { (plane << 16) | 0xFFFE, (plane << 16) | 0xFFFF })
+                {
+                    string input = "e\u0301" + char.ConvertFromUtf32(cp) + "x";
+                    Assert.That(CharacterMap.Canonicalize(input), Is.EqualTo("\u00E9x"), $"U+{cp:X}");
+                }
+            }
+        }
+
+        [Test]
+        public void Canonicalize_AsciiControl_IsDeletedEvenWithoutNonAscii()
+        {
+            Assert.That(CharacterMap.Canonicalize("a\u0007b"), Is.EqualTo("ab"));
+
+            string withTab = "a\tb";
+            Assert.That(CharacterMap.Canonicalize(withTab), Is.SameAs(withTab));
+        }
+
         [Test]
         public void Canonicalize_LoneSurrogate_SkipsNfcButKeepsReplacements()
         {
@@ -172,13 +233,36 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common
         {
             Assert.That(CharacterMap.Fallback('\u200B'), Is.Empty);
             Assert.That(CharacterMap.Fallback('\uFEFF'), Is.Empty);
+            Assert.That(CharacterMap.Fallback('\uFFFF'), Is.Empty);
+            Assert.That(CharacterMap.Fallback('\u202E'), Is.Empty);
+        }
+
+        [TestCase(0x200B)] [TestCase(0xFEFF)] [TestCase(0x00AD)] [TestCase(0x2060)] [TestCase(0x200E)] [TestCase(0x200F)]
+        [TestCase(0x202A)] [TestCase(0x202E)] [TestCase(0x2066)] [TestCase(0x2069)] [TestCase(0xFFFD)] [TestCase(0xFFFE)]
+        [TestCase(0xFFFF)] [TestCase(0xFDD0)] [TestCase(0xFDEF)] [TestCase(0x0000)] [TestCase(0x0007)] [TestCase(0x000B)]
+        [TestCase(0x000C)] [TestCase(0x001F)] [TestCase(0x007F)] [TestCase(0x0080)] [TestCase(0x009F)]
+        public void IsDeleted_InvisibleCharacter_IsDeleted(int codePoint)
+        {
+            Assert.That(CharacterMap.IsDeleted((char)codePoint), Is.True, $"U+{codePoint:X4}");
+            Assert.That(CharacterMap.IsDeletedCodePoint(codePoint), Is.True, $"U+{codePoint:X4}");
         }
 
         [Test]
-        public void IsDeleted_CoversOnlyZeroWidthSpaceAndBom()
+        public void IsDeletedCodePoint_SupplementaryNoncharacter_IsDeleted_OtherSupplementaryIsNot()
         {
-            Assert.That(CharacterMap.IsDeleted('\u200B'), Is.True);
-            Assert.That(CharacterMap.IsDeleted('\uFEFF'), Is.True);
+            Assert.That(CharacterMap.IsDeletedCodePoint(0x1FFFF), Is.True);
+            Assert.That(CharacterMap.IsDeletedCodePoint(0x10FFFE), Is.True);
+            Assert.That(CharacterMap.IsDeletedCodePoint(0x1F41B), Is.False);
+        }
+
+        [Test]
+        public void IsDeleted_KeepsLineStructureSpacesAndJoiners()
+        {
+            Assert.That(CharacterMap.IsDeleted('\t'), Is.False);
+            Assert.That(CharacterMap.IsDeleted('\n'), Is.False);
+            Assert.That(CharacterMap.IsDeleted('\r'), Is.False);
+            Assert.That(CharacterMap.IsDeleted('a'), Is.False);
+            Assert.That(CharacterMap.IsDeleted('\u00E9'), Is.False);
             Assert.That(CharacterMap.IsDeleted('\u2028'), Is.False);
             Assert.That(CharacterMap.IsDeleted('\u0085'), Is.False);
             Assert.That(CharacterMap.IsDeleted('\u200C'), Is.False);

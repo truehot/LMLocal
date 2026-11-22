@@ -199,5 +199,69 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That((bool)result["hasSession"], Is.False);
             Assert.That(result["messages"], Has.Count.EqualTo(0));
         }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_MessageWithModel_ReturnsModelId()
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.LoadLastSessionAsync())
+                .ReturnsAsync(new List<ChatMessage>
+                {
+                    new ChatMessage("user", "hello"),
+                    new ChatMessage("assistant", "hi") { ModelId = "qwen3-coder" }
+                });
+
+            var json = await _controller.GetLastChatSessionAsync();
+            var result = JObject.Parse(json);
+
+            Assert.That((string)result["messages"][1]["modelId"], Is.EqualTo("qwen3-coder"));
+            Assert.That(result["messages"][0]["modelId"], Is.Null, "user messages carry no model");
+        }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_MessageWithoutModel_OmitsModelId()
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.LoadLastSessionAsync())
+                .ReturnsAsync(new List<ChatMessage> { new ChatMessage("assistant", "legacy answer") });
+
+            var json = await _controller.GetLastChatSessionAsync();
+            var message = (JObject)JObject.Parse(json)["messages"][0];
+
+            Assert.That(message.ContainsKey("modelId"), Is.False,
+                "an unknown model must not be serialized at all, so legacy logs keep the old payload shape");
+        }
+
+        [Test]
+        public async Task GetChatSessionsAsync_ReturnsSessionModels()
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.GetChatSessionsAsync(It.IsAny<int>()))
+                .ReturnsAsync(new List<ChatSessionSummary>
+                {
+                    new ChatSessionSummary
+                    {
+                        SessionId = "s1",
+                        Prompt = "hello",
+                        Timestamp = "2025-01-01T00:00:00Z",
+                        MessageCount = 2,
+                        Models = new List<string> { "alpha", "beta" }
+                    },
+                    new ChatSessionSummary
+                    {
+                        SessionId = "s2",
+                        Prompt = "legacy",
+                        Timestamp = "2025-01-01T00:00:00Z",
+                        MessageCount = 1
+                    }
+                });
+
+            var json = await _controller.GetChatSessionsAsync();
+            var result = JObject.Parse(json);
+
+            Assert.That(result["sessions"][0]["models"].ToObject<List<string>>(), Is.EqualTo(new[] { "alpha", "beta" }));
+            Assert.That(result["sessions"][1]["models"].ToObject<List<string>>(), Is.Empty,
+                "sessions without model information must still serialize an empty list");
+        }
     }
 }

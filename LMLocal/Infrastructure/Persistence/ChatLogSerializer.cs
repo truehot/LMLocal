@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
@@ -14,14 +16,8 @@ namespace LMLocal.Infrastructure.Persistence
     /// </summary>
     internal static class ChatLogSerializer
     {
-        /// <summary>Maximum length of a session prompt shown in the history dialog before truncation. The dialog clamps prompt text to two lines via CSS, so longer prompts are already clipped visually; this keeps the stored/transferred prompt compact.</summary>
-        internal const int MaxPromptLength = 200;
-
         /// <summary>Maximum number of jsonl files scanned when loading or listing sessions.</summary>
         internal const int MaxJsonlFilesToScan = 100;
-
-        /// <summary>Default limit for the session list returned by GetChatSessionsAsync.</summary>
-        internal const int DefaultSessionListLimit = ChatLogConstants.DefaultSessionListLimit;
 
         /// <summary>
         /// Builds the consistent hourly file name: yyyyMMdd_HH_label.jsonl.
@@ -32,7 +28,7 @@ namespace LMLocal.Infrastructure.Persistence
         }
 
         /// <summary>
-        /// Serializes a ChatMessage into a JSON line with type, session_id, and timestamp.
+        /// Serializes a ChatMessage into a JSON line with type, session_id, timestamp and created_at.
         /// </summary>
         internal static string BuildMessageLine(ChatMessage message, string sessionId, DateTime utcNow)
         {
@@ -50,6 +46,7 @@ namespace LMLocal.Infrastructure.Persistence
                 { "type", "message" },
                 { "session_id", sessionId },
                 { "timestamp", utcNow.ToString("o") },
+                { "created_at", (message.Timestamp ?? utcNow).ToString("o") },
                 { "role", message.Role },
                 { "content", content },
                 { "tool_call_id", message.ToolCallId },
@@ -85,6 +82,9 @@ namespace LMLocal.Infrastructure.Persistence
                 string role = obj.Value<string>("role");
                 object content = obj["content"]?.ToObject<object>();
                 string toolCallId = obj.Value<string>("tool_call_id");
+                DateTime created = ParseTimestamp(obj, "created_at");
+                if (created == DateTime.MinValue)
+                    created = ParseTimestamp(obj);
 
                 List<ToolCall> toolCalls = null;
                 var toolCallsToken = obj["tool_calls"];
@@ -96,7 +96,8 @@ namespace LMLocal.Infrastructure.Persistence
                 return new ChatMessage(role ?? "unknown", content, toolCallId)
                 {
                     ToolCalls = toolCalls,
-                    ModelId = obj.Value<string>("model_id")
+                    ModelId = obj.Value<string>("model_id"),
+                    Timestamp = created == DateTime.MinValue ? (DateTime?)null : created
                 };
             }
             catch (Exception ex)
@@ -107,22 +108,29 @@ namespace LMLocal.Infrastructure.Persistence
         }
 
         /// <summary>
-        /// Truncates a session prompt to MaxPromptLength chars, appending an ellipsis when truncated.
+        /// Parses one JSON Lines entry.
         /// </summary>
-        internal static string TruncatePrompt(string content) => Truncate(content, MaxPromptLength);
-
-        /// <summary>
-        /// Truncates <paramref name="content"/> to <paramref name="maxLength"/> chars, appending an ellipsis when truncated.
-        /// </summary>
-        internal static string Truncate(string content, int maxLength)
+        internal static JObject ParseLine(string line)
         {
-            if (string.IsNullOrEmpty(content)) return string.Empty;
-            if (maxLength < 0) throw new ArgumentOutOfRangeException(nameof(maxLength));
-
-            return content.Length > maxLength
-                ? content.Substring(0, maxLength) + "..."
-                : content;
+            using (var reader = new JsonTextReader(new StringReader(line)) { DateParseHandling = DateParseHandling.None })
+            {
+                return JObject.Load(reader);
+            }
         }
 
+        /// <summary>
+        /// Reads a time field of an entry as UTC, or <see cref="DateTime.MinValue"/> when it is absent or unparsable.
+        /// </summary>
+        internal static DateTime ParseTimestamp(JObject obj, string field = "timestamp")
+        {
+            string timestamp = obj.Value<string>(field);
+            if (!string.IsNullOrEmpty(timestamp)
+                && DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset parsed))
+            {
+                return parsed.UtcDateTime;
+            }
+
+            return DateTime.MinValue;
+        }
     }
 }

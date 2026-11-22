@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Application.Tool
@@ -19,12 +19,12 @@ namespace LMLocal.Application.Tool
         /// Executes a tool call against an explicit queue. <paramref name="budget"/> passes the caller's remaining time
         /// to long-running tools; null means unlimited.
         /// </summary>
-        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null);
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null, UsageCallContext context = null);
 
         /// <summary>
         /// Executes a tool call in the main chat context, streaming progress steps.
         /// </summary>
-        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null);
+        Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null, UsageCallContext context = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its tool call.
@@ -51,15 +51,15 @@ namespace LMLocal.Application.Tool
             _toolQueueProvider = toolQueueProvider ?? throw new ArgumentNullException(nameof(toolQueueProvider));
         }
 
-        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, ToolQueue queue, ToolExecutionBudget budget = null, UsageCallContext context = null)
         {
-            return ExecuteCoreAsync(toolCall, ct, queue, null, budget);
+            return ExecuteCoreAsync(toolCall, ct, queue, null, budget, context);
         }
 
-        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null)
+        public Task<ToolExecutionResult> ExecuteToolAsync(ToolCallRecord toolCall, CancellationToken ct, IProgress<ToolActivityEvent> progress, ToolExecutionBudget budget = null, UsageCallContext context = null)
         {
             var queue = _toolQueueProvider.GetMainQueue();
-            return ExecuteCoreAsync(toolCall, ct, queue, progress, budget);
+            return ExecuteCoreAsync(toolCall, ct, queue, progress, budget, context);
         }
 
         private async Task<ToolExecutionResult> ExecuteCoreAsync(
@@ -67,7 +67,8 @@ namespace LMLocal.Application.Tool
             CancellationToken ct,
             ToolQueue queue,
             IProgress<ToolActivityEvent> progress,
-            ToolExecutionBudget budget)
+            ToolExecutionBudget budget,
+            UsageCallContext context)
         {
             if (toolCall == null)
             {
@@ -104,7 +105,7 @@ namespace LMLocal.Application.Tool
                     parameters = jsonObj.ToObject<Dictionary<string, object>>();
                 }
 
-                if (queue == null || !queue.Allows(toolCall.FunctionName))
+                if (queue?.Allows(toolCall.FunctionName) != true)
                 {
                     var errorMsg = $"Tool '{toolCall.FunctionName}' not found or not allowed in the current context";
                     InternalLogger.Warn($"ToolExecutionManager: {errorMsg}");
@@ -122,12 +123,13 @@ namespace LMLocal.Application.Tool
                     parameters,
                     ct,
                     progress,
-                    budget).ConfigureAwait(false);
+                    budget,
+                    context).ConfigureAwait(false);
 
                 var completionMessage = _toolRouter.GetCompletionMessage(toolCall.FunctionName, result);
 
                 var outcome = result as IToolExecutionOutcome;
-                if (outcome != null && !outcome.Success)
+                if (outcome?.Success == false)
                 {
                     var outcomeError = string.IsNullOrWhiteSpace(outcome.Error)
                         ? $"Tool '{toolCall.FunctionName}' failed without a message."

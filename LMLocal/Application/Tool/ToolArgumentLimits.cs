@@ -11,6 +11,12 @@ namespace LMLocal.Application.Tool
         internal const int SimpleToolMaxLength = 4000;
         internal const int ShortTaskSubAgentMaxLength = 8000;
 
+        /// <summary>
+        /// todo_write: the largest valid list is about 4.7k chars of
+        /// JSON, more than <see cref="SimpleToolMaxLength"/>; the rest is room for escaped characters.
+        /// </summary>
+        internal const int TodoWriteMaxLength = 6000;
+
         private static readonly Dictionary<string, int> MaxLengths = Build();
 
         /// <summary>
@@ -43,6 +49,8 @@ namespace LMLocal.Application.Tool
             {
                 limits.Add(name, ShortTaskSubAgentMaxLength);
             }
+
+            limits.Add("todo_write", TodoWriteMaxLength);
 
             return limits;
         }

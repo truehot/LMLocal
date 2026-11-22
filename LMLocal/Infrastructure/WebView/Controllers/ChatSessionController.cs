@@ -79,7 +79,8 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                         SessionId = s.SessionId,
                         Prompt = s.Prompt,
                         Timestamp = s.Timestamp,
-                        MessageCount = s.MessageCount
+                        MessageCount = s.MessageCount,
+                        Models = s.Models
                     }).ToList()
                 };
                 return response.ToJson();
@@ -125,7 +126,9 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                     Role = m.Role,
                     Content = m.Content,
                     ToolCallId = m.ToolCallId,
-                    ToolCalls = m.ToolCalls
+                    ToolCalls = m.ToolCalls,
+                    ModelId = m.ModelId,
+                    Timestamp = m.Timestamp
                 }).ToList()
             };
             return response.ToJson();

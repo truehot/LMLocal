@@ -1,3 +1,5 @@
+using System;
+
 namespace LMLocal.Core.Models
 {
     public class ChatMessage
@@ -26,6 +28,12 @@ namespace LMLocal.Core.Models
         /// Id of the model that produced this assistant message.
         /// </summary>
         public string ModelId { get; set; }
+
+        /// <summary>
+        /// Time the message was created, in UTC. Persisted as created_at so it survives a rewrite of the history;
+        /// UI only, it is never sent to the model.
+        /// </summary>
+        public DateTime? Timestamp { get; set; }
 
         public ChatMessage(string role, object content, string toolCallId = null)
         {

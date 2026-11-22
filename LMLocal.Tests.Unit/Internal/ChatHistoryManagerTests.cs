@@ -1068,6 +1068,31 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public void ReplaceHistory_Success_SummaryPairCarriesCreationTime()
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+
+            manager.AddUserMessage("a");
+            manager.AddAssistantMessage("b");
+
+            var before = System.DateTime.UtcNow;
+            var result = manager.ReplaceHistoryAndPersistAsync("compacted summary", null, expectedSize: 2).GetAwaiter().GetResult();
+            var after = System.DateTime.UtcNow;
+
+            Assert.That(result, Is.True);
+            var history = manager.GetHistoryCopy();
+            Assert.That(history.Count, Is.EqualTo(2));
+
+            Assert.That(history[0].Timestamp, Is.Not.Null,
+                "the summary is drawn as an answer, so it needs its time before the history is reloaded from the log");
+            Assert.That(history[0].Timestamp.Value, Is.InRange(before, after));
+            Assert.That(history[1].Timestamp, Is.EqualTo(history[0].Timestamp),
+                "the request and its answer are one exchange and share the moment");
+        }
+
+        [Test]
         public void ReplaceHistory_Success_NullSummary_OnlyAddsRecent()
         {
             var mockSettings = new Mock<ISettingsManager>();

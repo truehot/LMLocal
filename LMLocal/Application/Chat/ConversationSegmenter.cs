@@ -50,7 +50,7 @@ namespace LMLocal.Application.Chat
             for (int i = messages.Count - 1; i >= 0; i--)
             {
                 var message = messages[i];
-                if (message != null && message.Role == "user")
+                if (message?.Role == "user")
                     return i;
             }
 
@@ -113,7 +113,7 @@ namespace LMLocal.Application.Chat
 
                 int end = i;
                 int j = i + 1;
-                while (j < messages.Count && messages[j] != null && messages[j].Role == "tool")
+                while (j < messages.Count && messages[j]?.Role == "tool")
                 {
                     end = j;
                     j++;

@@ -186,7 +186,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
                     int caretPos = caret.Position.Position;
 
                     var config = await GetConfigAsync(ct).ConfigureAwait(false);
-                    int debounceMs = config != null && config.DebounceDelayMs > 0
+                    int debounceMs = config?.DebounceDelayMs > 0
                         ? config.DebounceDelayMs
                         : SuggestionTagger.DefaultDebounceDelayMs;
                     bool singleLinePreview = config?.SingleLinePreview ?? true;

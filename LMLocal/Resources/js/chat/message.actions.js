@@ -1,11 +1,8 @@
 ﻿import { Icons, UIText } from '@app/constants/app.globals.js';
+import { formatMessageTime } from '@app/lib/formatting.js';
 
 /**
  * Per-message actions: copy on every message, plus regenerate (answer) and edit (prompt) on the last exchange.
- *
- * The raw markdown of a message is kept next to its DOM node, so the controller never has to
- * rebuild it from the rendered markup (markdown syntax is already lost there) and never has to
- * re-read it from the backend.
  */
 const copySources = new WeakMap();
 
@@ -15,18 +12,17 @@ const copySources = new WeakMap();
 export const COPY_ACTION_SELECTOR = '.message-copy-btn';
 export const REGENERATE_ACTION_SELECTOR = '.message-regenerate-btn';
 export const EDIT_ACTION_SELECTOR = '.message-edit-btn';
+export const MESSAGE_TIME_SELECTOR = '.message-time';
 
 const ACTIONS_CLASS = 'message-actions';
 
 /**
  * Placeholder the log keeps instead of the images of a user message.
- * Mirrors LMLocal.Core.Common.ChatMessagePlaceholders.FormatImagePlaceholder / IsImagePlaceholder.
  */
 const IMAGE_PLACEHOLDER = /^\[[1-9]\d* images? attached - not available in this session\]$/;
 
 /**
  * User messages the backend writes itself.
- * Mirror ChatMessagePlaceholders.SummaryRequest and ChatMessagePlaceholders.ForcedSummaryUser.
  */
 const SUMMARY_REQUEST = 'Provide a brief summary of our previous session to continue.';
 const FORCED_SUMMARY_PLACEHOLDER = 'Summary of the earlier part of this session:';
@@ -78,6 +74,39 @@ export function attachCopyAction(messageEl, text) {
 }
 
 /**
+ * Recomputes the relative label of a time element from the moment it was created.
+ */
+export function refreshMessageTime(timeEl) {
+    if (!timeEl || !timeEl.dataset?.time) return;
+
+    const label = formatMessageTime(timeEl.dataset.time);
+    if (label) timeEl.textContent = label;
+}
+
+/**
+ * Attaches the time of an answer to its action panel: relative to now on the panel, the full date in its tooltip.
+ */
+export function attachMessageTime(messageEl, date) {
+    if (!messageEl || !date) return;
+
+    const value = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(value.getTime())) return;
+
+    const actions = ensureActions(messageEl);
+
+    let time = actions.querySelector(MESSAGE_TIME_SELECTOR);
+    if (!time) {
+        time = document.createElement('span');
+        time.className = 'message-time';
+        actions.appendChild(time);
+    }
+
+    time.dataset.time = value.toISOString();
+    time.title = value.toLocaleString([], { hourCycle: 'h23' });
+    refreshMessageTime(time);
+}
+
+/**
  * Attaches the regenerate button to an answer and the edit button to its prompt. Either node may be missing.
  */
 export function attachExchangeActions(aiEl, userEl) {
@@ -108,8 +137,7 @@ export function detachExchangeActions(container) {
 }
 
 /**
- * Enables or disables the exchange actions of the container. A disabled button explains why in its tooltip; an
- * enabled one gets its own tooltip back.
+ * Enables or disables the exchange actions of the container.
  */
 export function setExchangeActionsDisabled(container, disabled) {
     if (!container) return;

@@ -24,7 +24,6 @@ namespace LMLocal.Tests.E2E.VSIX
 
         private const string Explorer = "code_explorer_subagent";
         private const string Reviewer = "reviewer_subagent";
-        private const string Editor = "edit_subagent";
         private const string Architect = "architect_subagent";
         private const string Retriever = "context_retriever_subagent";
 
@@ -54,6 +53,25 @@ namespace LMLocal.Tests.E2E.VSIX
             public string[] MustAppearExactlyOnce = new string[0];
             public bool ExpectNotFound;
             public bool CheckRefusal = true;
+
+            // ---- Location scoring: the answer is judged by "path:line" locations against ground truth computed from the repository; no words are read. ----
+            // Every entry must be found in the answer. "relative\path:line" needs a location of that file covering the line
+            // (a single line or a range); "relative\path" needs only the file (its last two path segments appear in the answer).
+            public string[] ExpectedLocations = new string[0];
+            // Alternative locations (OR-sets): each inner array is a group, and one location of every group must be found in the answer.
+            // Every location of a group also counts as allowed for CheckForeignLocations.
+            public string[][] ExpectedLocationsAny = new string[0][];
+            // Locations that are acceptable but not required (used with CheckForeignLocations).
+            public string[] AllowedLocations = new string[0];
+            // True => a location in the answer that matches neither ExpectedLocations nor AllowedLocations is a hard failure (invented place).
+            public bool CheckForeignLocations;
+            // True => the answer must contain no location at all (the searched thing does not exist).
+            public bool ExpectNoLocations;
+            // Any location in one of these files is a hard failure (a claim about a file that is false).
+            public string[] ForbiddenLocationPaths = new string[0];
+            // > 0 => a range longer than this many lines does not cover a "path:line" expectation. Without it a marker over the whole file
+            // ("path:1-9999") would cover every expected line of a search scenario. 0 = any range covers its lines.
+            public int MaxCoverLines;
 
             // ---- edit_subagent fixture (Temp\AgentProbe under the solution root) ----
             // Only the A5 block sets these fields; while it is compiled out (EDIT_SUBAGENT_BENCHMARK) they keep
@@ -228,16 +246,6 @@ line four - delta
 line five - echo
 line six - foxtrot";
 
-        private static Scenario ScEdit(string id, string prompt)
-        {
-            return new Scenario
-            {
-                Id = id,
-                AgentId = Editor,
-                Prompt = prompt,
-                WithFixture = true
-            };
-        }
 
         /// <summary>
         /// Builds an expected file content from a seed by exact replacement. Throws when the seed
@@ -269,49 +277,58 @@ line six - foxtrot";
         // Scenario list (prompts and expectations are in English)
         // ---------------------------------------------------------------------
 
+        /// <summary>code_explorer_subagent (A1.x): the reader scenarios, on LMLocal.sln itself. Its list is the method right below.</summary>
+        [TestMethod]
+        [DynamicData(nameof(GetIterations))]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_Explorer_Benchmark(int iteration)
+        {
+            await RunSolutionBenchmarkAsync(BuildExplorerScenarios(), iteration, "benchmark-report-");
+        }
+
         /// <summary>
-        /// Builds the main benchmark list. Every expectation taken from live code goes through LineOf, LineAt,
-        /// MatchingLines, Ev, EvFile or Absent, which throw when the code no longer matches, so
+        /// Builds the code_explorer_subagent list (A1.x, the reader: find, search, read, symbols). Every expectation taken from live code
+        /// goes through LineOf, LineAt, MatchingLines, Ev, EvFile or Absent, which throw when the code no longer matches, so
         /// <c>SubAgentBenchmarkSelfTests.Scenarios_MatchCurrentSources</c> catches drift without a model run.
         /// </summary>
-        internal static List<Scenario> BuildScenarios()
+        internal static List<Scenario> BuildExplorerScenarios()
         {
             var list = new List<Scenario>();
             var guid = Guid.NewGuid().ToString("N").Substring(0, 12);
             // ---- A.1 code_explorer_subagent: discovery, reading, symbols (30) ----
 
-            list.Add(Sc("A1.1", Explorer,
-                "Search for the exact identifier GetAsync in the solution. Report yes if the returned results include GetAsync and report the returned total count.",
-                "yes"));
+            var a12 = Sc("A1.2", Explorer,
+                "Find the file named ChatLogSerializer.cs and report its path.");
+            EvFile(@"LMLocal\Infrastructure\Persistence\ChatLogSerializer.cs"); // throws when the file moved: the expectation is fixed before a model run
+            a12.ExpectedLocations = new[] { @"LMLocal\Infrastructure\Persistence\ChatLogSerializer.cs" };
+            list.Add(a12);
 
-            list.Add(Sc("A1.2", Explorer,
-                "Find the file named ChatLogSerializer.cs. Report yes if the returned path includes Persistence.",
-                "yes"));
+            var a13 = Sc("A1.3", Explorer,
+                "Search for the exact XML text PackageReference Include=\"Microsoft.CodeAnalysis\" and report every matched line with file:line.");
+            a13.ExpectedLocations = LocationsOf("PackageReference Include=\"Microsoft.CodeAnalysis\"", ".csproj", ".").ToArray();
+            a13.CheckForeignLocations = true;
+            a13.MaxCoverLines = 3;
+            a13.MustNotContain = new[] { "@LMLocal" };
+            list.Add(a13);
 
-            list.Add(Sc("A1.3", Explorer,
-                "Search for the exact XML text PackageReference Include=\"Microsoft.CodeAnalysis\". Report yes if the returned result is a PackageReference to Microsoft.CodeAnalysis.",
-                "yes"));
+            var a15 = Sc("A1.5", Explorer,
+                $"Search for the literal text bench-{guid}-{guid} and report where it occurs, if anywhere.");
+            a15.ExpectNoLocations = true;
+            a15.CheckRefusal = false;
+            list.Add(a15);
 
-            list.Add(Sc("A1.4", Explorer,
-                "Search for the exact identifier ConsolidateLastExchangeAsync with project filter LMLocal. Report yes if the returned results belong to project LMLocal.",
-                "yes"));
-
-            list.Add(Sc("A1.5", Explorer,
-                $"Search for the literal text bench-{guid}-{guid}. Report yes if the search tool returned zero matches.",
-                "yes"));
-
-            list.Add(Sc("A1.6", Explorer,
-                "Search for the exact text using Newtonsoft. Retrieve all returned pages. Report yes if the final result contains the complete returned result list and the reported total count.",
-                "yes"));
-
-            list.Add(Sc("A1.7", Explorer,
-                "Get the solution overview and report `yes` if returned project list doen't contain LMLocal.Web.",
-                "yes"));
+            // Only a soft check: the answer is a list of project names, not locations.
+            var a17 = Sc("A1.7", Explorer,
+                "Get the solution overview and list the projects of the solution.");
+            EvFile(@"LMLocal.Tests.Unit\LMLocal.Tests.Unit.csproj");
+            a17.SoftMustContain = new[] { "LMLocal.Tests.Unit" };
+            a17.SoftMustNotContain = new[] { "LMLocal.Web" };
+            list.Add(a17);
 
             var a108Lines = MatchingLines(A108File, A108Text);
             var a108Last = a108Lines[a108Lines.Count - 1];
             var a108 = Sc("A1.8", Explorer,
-                "In " + A108File + " search for the exact text " + A108Text + " and retrieve every page of results. Report the total number of matching lines and the last matched line with its text.",
+                "In " + A108File + " search for the exact text " + A108Text + " with max_results " + A108PageSize + " and retrieve every page of results. Report the total number of matching lines and the last matched line with its text.",
                 a108Lines.Count.ToString(),
                 A108File + ":" + a108Last + ": `" + LineAt(A108File, a108Last) + "`");
             a108.MustNotContain = new[] { "@LMLocal" };
@@ -383,9 +400,14 @@ line six - foxtrot";
                 Ev(ReaderCodeDir + "HistoryLedger.cs", "MergeLastExchangeAsync")));
 
 
-            list.Add(Sc("A1.16", Explorer,
-                "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs and return `yes` if not found.",
-                "yes"));
+            // The file does not exist: the answer must name no location. How the absence is worded is not checked.
+            EvMissing(@"LMLocal\Infrastructure\Persistence\NoSuchSerializer.cs");
+            var a116 = Sc("A1.16", Explorer,
+                "Read LMLocal/Infrastructure/Persistence/NoSuchSerializer.cs. If the file does not exist, say so.");
+            a116.ExpectNoLocations = true;
+            a116.CheckRefusal = false;
+            a116.SkipInventedPathCheck = true;
+            list.Add(a116);
 
             var a117 = ScVerbatim("A1.17", Explorer,
                 "Read the file at exact path LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-truth-fixture.md and return it verbatim.",
@@ -479,15 +501,107 @@ line six - foxtrot";
             a129.MustContainAny = new[] { new[] { Ev(@"LMLocal\Infrastructure\LlmApi\ApiRequestBuilder.cs", "ToolCalls", fileNameOnly: true), "ApiRequestBuilder" } };
             list.Add(a129);
 
+            // A1.30 was judged by words ("reference", the method name). Since 2026-11-21 it is judged by the place: either the line that takes the
+            // final assistant message out of the fragment or the line that puts it into the new list unchanged; both decide the answer.
             var a130 = Sc("A1.30", Explorer,
-                "Inspect ConsolidateLastExchangeAsync and determine whether the ToolCalls of the final assistant message in the consolidated fragment are copied by reference or reconstructed. Read the actual source before answering.",
-                Ev(ChatHistoryManagerFile, "ConsolidateLastExchangeAsync"), "ToolCalls");
-            a130.MustContainAny = new[] { new[] { "reference", "same instance", "reused", "not reconstructed" } };
+                "Inspect ConsolidateLastExchangeAsync and determine whether the ToolCalls of the final assistant message in the consolidated fragment are copied by reference or reconstructed. Read the actual source before answering and quote the deciding lines with file:line.");
+            a130.ExpectedLocationsAny = new[]
+            {
+                new[]
+                {
+                    ChatHistoryManagerFile + ":" + LineOf(ChatHistoryManagerFile, "var finalAssistant = fragment[fragment.Count - 1];"),
+                    ChatHistoryManagerFile + ":" + LineOf(ChatHistoryManagerFile, "finalAssistant")
+                }
+            };
+            // A marker over the whole method or file must not count as "the deciding line".
+            a130.MaxCoverLines = 25;
             list.Add(a130);
 
             list.Add(Sc("A1.31", Explorer,
                 "Find the C# method AddAssistantMessage in LMLocal/Application/Chat/ChatHistoryManager.cs. It has an interface declaration and two concrete overloads. Select the concrete implementation overload that accepts IReadOnlyList<ToolCallRecord> and return its declaration line together with its full implementation body.",
                 "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "normalizedArguments")));
+
+            // ---- Added 2026-11-21 from the real requests of 2026-11-20 (Docs\subagent-benchmark-scenarios-plan.md, section 6.3). ----
+            // Judged by locations against ground truth from the repository, not by words of the answer.
+
+            // A1.32 - a batch of six items of different types in one request (64% of the real explorer requests had four or more items).
+            // Items 1-2 are checked by the lines the runner expands from the markers; items 3-5 by locations; item 6 must not
+            // produce a location: CheckForeignLocations rejects every location outside the expected ones.
+            const string a132Factory = @"LMLocal\Application\Tool\ToolMessageFactory.cs";
+            var a132Decl = LocationsOf("internal static class ToolHistoryPruner", ".cs", @"LMLocal\Application");
+            var a132Calls = LocationsOf("ToolHistoryPruner.Prune(", ".cs", "LMLocal");
+            var a132Text = LocationsOf("PrunedKey", ".cs", @"LMLocal\Application\Chat");
+            var a132 = ScVerbatim("A1.32", Explorer,
+                "Answer all six items in one report:\n"
+                + "1. Read " + a132Factory + " and return it verbatim.\n"
+                + "2. Read LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md lines 11-15 and return them verbatim with their line numbers.\n"
+                + "3. Where is the class ToolHistoryPruner declared? Report file:line with the declaration line text.\n"
+                + "4. Search only in project LMLocal: which places call ToolHistoryPruner.Prune? Report file:line with the matched line text for every call site.\n"
+                + "5. Search the folder LMLocal\\Application\\Chat for the exact text PrunedKey and report every matched line with file:line and its text.\n"
+                + $"6. Search the entire solution for the literal text bench-{guid}-q6 and report every hit, or state clearly that there are none.",
+                Ev(a132Factory, "public static ChatMessage CreateFromToolResult(ToolResultMessage toolResult)"),
+                "reader-ranges-fixture.md, lines 11-15",
+                "RANGE-ANCHOR-A1-OPEN",
+                "RANGE-ANCHOR-A1-CLOSE");
+            a132.ExpectedLocations = a132Decl.Concat(a132Calls).Concat(a132Text).Distinct().ToArray();
+            // Items 1-2 are whole files or ranges the runner expands as "File: path, lines a-b": those two files may appear with any lines.
+            a132.AllowedLocations = new[] { a132Factory, @"LMLocal.Tests.E2E.VSIX\Fixtures\reader-ranges-fixture.md" };
+            a132.CheckForeignLocations = true;
+            // Items 3-5 are single matched lines: a range over a whole file must not cover them.
+            a132.MaxCoverLines = 3;
+            a132.MustNotContain = new[] { "@LMLocal" };
+            list.Add(a132);
+
+            // A1.33 - verify a claim that is true (22% of the real items were checks of a claim about the code). The call line is the one expected location.
+            const string a133File = @"LMLocal\Application\ChatSessionStream\StreamingRoundService.cs";
+            var a133 = Sc("A1.33", Explorer,
+                "Verify that ToolMessageFactory.CreateFromToolResult is called from StreamingRoundService. Quote the call line with file:line.");
+            a133.ExpectedLocations = new[] { a133File + ":" + LineOf(a133File, "pendingToolMessages.Add(ToolMessageFactory.CreateFromToolResult(toolResult));") };
+            a133.MustNotContain = new[] { "@LMLocal" };
+            a133.MaxCoverLines = 3;
+            list.Add(a133);
+
+            // A1.34 - verify a claim that is false: SubAgentsService.cs never mentions ToolHistoryPruner (the pruner is used by HistoryCompactor only).
+            // Absent throws when the folder starts to mention it. No location in SubAgentsService.cs may be named; the wording of the denial is not checked.
+            const string a134File = @"LMLocal\Application\SubAgents\SubAgentsService.cs";
+            Absent(@"LMLocal\Application\SubAgents", "ToolHistoryPruner");
+            var a134 = Sc("A1.34", Explorer,
+                "Verify that SubAgentsService.cs uses ToolHistoryPruner. Quote the line with file:line, or say clearly that it does not.");
+            a134.ForbiddenLocationPaths = new[] { a134File };
+            a134.CheckRefusal = false;
+            list.Add(a134);
+
+            // A1.35 - a stale path (the 2026-11-20 logs had 24 failed read_file_lines, 19 of them for a file that exists in another folder).
+            // The file lives in the ChatSession subfolder; the lines come from the real file, expanded by the runner.
+            const string a135Stale = @"LMLocal\Application\ChatSessionState.cs";
+            const string a135Real = @"LMLocal\Application\ChatSession\ChatSessionState.cs";
+            EvMissing(a135Stale);
+            var a135 = ScVerbatim("A1.35", Explorer,
+                "Read " + a135Stale + " and return its first 10 lines with their line numbers.",
+                "ChatSessionState.cs, lines 1-10",
+                LineAt(a135Real, 1),
+                LineAt(a135Real, 6));
+            list.Add(a135);
+
+            return list;
+        }
+
+        /// <summary>reviewer_subagent (A4.x) and architect_subagent (A6.x), on LMLocal.sln itself. Its list is the method right below.</summary>
+        [TestMethod]
+        [DynamicData(nameof(GetIterations))]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_ReviewerArchitect_Benchmark(int iteration)
+        {
+            await RunSolutionBenchmarkAsync(BuildReviewerArchitectScenarios(), iteration, "reviewer-architect-benchmark-report-");
+        }
+
+        /// <summary>
+        /// Builds the reviewer_subagent (A4.x) and architect_subagent (A6.x) list. They answer with a structured review or a design,
+        /// not with locations, so they run apart from the explorer list.
+        /// </summary>
+        internal static List<Scenario> BuildReviewerArchitectScenarios()
+        {
+            var list = new List<Scenario>();
 
             // The deliverable is a frozen fixture, so every code claim can be checked with read_file_lines / search_file_content.
             // Build and test results cannot be checked with the reviewer tools, hence PARTIAL is a valid outcome.
@@ -553,6 +667,19 @@ line six - foxtrot";
             return list;
         }
 
+        /// <summary>context_retriever_subagent (A8.x), on the knowledge fixture. Its list is the method right below.</summary>
+        [TestMethod]
+        [DynamicData(nameof(GetIterations))]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_Knowledge_Benchmark(int iteration)
+        {
+            // iteration only gives GetIterations its rows: each row is a separate run with its own VS instance and report.
+            var fixturePath = GetKnowledgeFixtureSolutionPath();
+            AssertKnowledgeBaseReachesFixtureDocs(Path.GetDirectoryName(fixturePath));
+
+            await RunFixtureBenchmarkAsync(fixturePath, BuildKnowledgeScenarios(), "knowledge-benchmark-report-");
+        }
+
         /// <summary>
         /// context_retriever_subagent scenarios on Fixtures\KnowledgeFixture: its docs\ folder is the knowledge base.
         /// Until 2026-11-11 A8.1 ran on LMLocal's own docs\, which change every day; the benchmark analysis of A8.1
@@ -573,6 +700,15 @@ line six - foxtrot";
                 "set-file-project-status-reload");
             a81.MustContainAny = new[] { new[] { "from disk", "source of truth" } };
             list.Add(a81);
+
+            // A8.2 (added 2026-11-21) - the most common real retriever request (8 of 9 on 2026-11-20): find the active plan and the
+            // conventions of a task. The two documents are the expected locations (file level); the answer wording is not checked.
+            // The distractor documents of A8.1 are a soft finding only.
+            var a82 = Sc("A8.2", Retriever,
+                "Find the active implementation plan for the chat export feature and the project conventions that apply to it. Report the source documents.");
+            a82.ExpectedLocations = new[] { @"docs\chat-export-plan.md", @"docs\project-conventions.md" };
+            a82.SoftMustNotContain = new[] { "set-file-project-status-batch", "create-file-open-documents" };
+            list.Add(a82);
 
             return list;
         }
@@ -642,7 +778,7 @@ line six - foxtrot";
                         // text: the model can confidently answer without repeating a single call,
                         // so a content-only assertion would pass while the branch under test never ran.
                         Assert.IsTrue(
-                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("repeated tool call loop", StringComparison.Ordinal) >= 0),
+                            run.Recoveries?.Any(r => r.IndexOf("repeated tool call loop", StringComparison.Ordinal) >= 0),
                             "No loop recovery in run '" + run.RunId + "'. "
                             + "Either recovery did not fire, or the model never repeated the call "
                             + "(probe inconclusive - re-run before suspecting the feature).");
@@ -726,7 +862,7 @@ line six - foxtrot";
                         // Proven by the run's recovery notes, not by the answer: the model may skip the marker
                         // on its first answer, and then the guard never runs.
                         Assert.IsTrue(
-                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("unresolved ref markers", StringComparison.Ordinal) >= 0),
+                            run.Recoveries?.Any(r => r.IndexOf("unresolved ref markers", StringComparison.Ordinal) >= 0) == true,
                             "No unresolved ref marker recovery in run '" + run.RunId + "'. "
                             + "Either recovery did not fire, or the model's first answer had no marker "
                             + "(probe inconclusive - re-run before suspecting the feature).");
@@ -830,7 +966,7 @@ line six - foxtrot";
                         // Proven by the run's recovery note: if the model stops calling tools before the last round,
                         // the limit is never reached and the guard does not run.
                         Assert.IsTrue(
-                            run.Recoveries != null && run.Recoveries.Any(r => r.IndexOf("reached the round limit (" + RoundLimitProbeMaxRounds + ")", StringComparison.Ordinal) >= 0),
+                            run.Recoveries?.Any(r => r.IndexOf("reached the round limit (" + RoundLimitProbeMaxRounds + ")", StringComparison.Ordinal) >= 0) == true,
                             "No round limit recovery in run '" + run.RunId + "'. "
                             + "Either recovery did not fire, or the model answered without a tool call "
                             + "(probe inconclusive - re-run before suspecting the feature).");
@@ -873,6 +1009,23 @@ line six - foxtrot";
 
         private const string Builder = "build_subagent";
 
+        /// <summary>build_subagent (B1.x), on the build fixture. Its list is the method right below.</summary>
+        [TestMethod]
+        [DynamicData(nameof(GetIterations))]
+        [Ignore("Disable to run benchmark")]
+        public async Task Run_Build_Benchmark(int iteration)
+        {
+            // iteration only gives GetIterations its rows: each row is a separate run with its own VS instance and report.
+            AssertWriteToolsEnabled();
+
+            var fixturePath = GetBuildFixtureSolutionPath();
+
+            // Outputs of an earlier run must not let the first scenario pass without a real build.
+            CleanBuildFixtureOutputs(Path.GetDirectoryName(fixturePath));
+
+            await RunFixtureBenchmarkAsync(fixturePath, BuildBuildScenarios(), "build-benchmark-report-");
+        }
+
         internal static List<Scenario> BuildBuildScenarios()
         {
             var list = new List<Scenario>();
@@ -891,31 +1044,47 @@ line six - foxtrot";
             b11.MustNotContain = new[] { "error CS" };
             list.Add(b11);
 
+            // B1.2 - a compile error (added 2026-11-21): on 2026-11-20 two of 42 real build runs returned an empty answer after compile errors.
+            // The ground truth is the place of the error: the compiler reports it as Calculator.cs(line,col). The wording of the answer is not checked,
+            // so an empty answer fails because it names no location.
+            const string calc = @"BuildFixture.Lib\Calculator.cs";
+            var b12 = Sc("B1.2", Builder,
+                "Build the solution and report every compiler error verbatim with file and line.");
+            b12.Mutations.Add(new FileMutation(calc, "return a + b;", "return a + undefinedName;"));
+            b12.ExpectedLocations = new[] { calc + ":" + FixtureLineOf(calc, "return a + b;") };
+            list.Add(b12);
+
+            // B1.3 - failing tests: with Add returning a - b both Add tests fail and the Describe test passes. The test names are identifiers
+            // copied from the test output (not phrasing); a listed passing test is only a soft finding.
+            var b13 = Sc("B1.3", Builder,
+                "Build the solution and run all unit tests in the project BuildFixture.Tests. Report every failing test with its full name and error message.",
+                "Add_ReturnsSum", "Add_WithNegative_ReturnsSum");
+            b13.Mutations.Add(new FileMutation(calc, "return a + b;", "return a - b;"));
+            b13.MustNotContain = new[] { "error CS" };
+            b13.SoftMustNotContain = new[] { "Describe_PrefixesValue" };
+            list.Add(b13);
+
+            // B1.4 - tests with a filter (21 of 42 real build runs): FormatTests.cs says a filter by CalculatorTests runs 2 of the 3 tests.
+            // The answer format of build_subagent is not fixed, so the counts are only a soft check; the hard checks are a successful build and no compile error.
+            var b14 = Sc("B1.4", Builder,
+                "Build the solution and run only the tests of the project BuildFixture.Tests whose name contains CalculatorTests. Report how many tests ran and how many passed.");
+            b14.MustNotContain = new[] { "error CS" };
+            b14.SoftMustContainAny = new[]
+            {
+                new[] { "Total: 2", "Total tests: 2", "2 total", "2 tests", "Passed: 2", "2 passed", "passed 2", "all 2", "Total = 2" }
+            };
+            list.Add(b14);
+
+            // B1.5 - a compile error when tests were also asked for (added 2026-11-21): both empty answers of 2026-11-20 (08:45:33, 08:45:39)
+            // came from "build + run tests with a filter" tasks with a failed build; gemma ended with a 1-token empty reply right after the failed
+            // build_solution. The same failed build with a build-only task (B1.2) was answered. Scored like B1.2, by the place of the error.
+            var b15 = Sc("B1.5", Builder,
+                "Build the solution and then run the tests of the project BuildFixture.Tests whose name contains CalculatorTests. Report the build result with every compiler error (file and line) and the test results.");
+            b15.Mutations.Add(new FileMutation(calc, "return a + b;", "return a + undefinedName;"));
+            b15.ExpectedLocations = new[] { calc + ":" + FixtureLineOf(calc, "return a + b;") };
+            list.Add(b15);
+
             return list;
-        }
-
-        [TestMethod]
-        [Ignore("Disable to run benchmark")]
-        public async Task Run_Build_Benchmark()
-        {
-            AssertWriteToolsEnabled();
-
-            var fixturePath = GetBuildFixtureSolutionPath();
-
-            // Outputs of an earlier run must not let the first scenario pass without a real build.
-            CleanBuildFixtureOutputs(Path.GetDirectoryName(fixturePath));
-
-            await RunFixtureBenchmarkAsync(fixturePath, BuildBuildScenarios(), "build-benchmark-report-");
-        }
-
-        [TestMethod]
-        //[Ignore("Disable to run benchmark")]
-        public async Task Run_Knowledge_Benchmark()
-        {
-            var fixturePath = GetKnowledgeFixtureSolutionPath();
-            AssertKnowledgeBaseReachesFixtureDocs(Path.GetDirectoryName(fixturePath));
-
-            await RunFixtureBenchmarkAsync(fixturePath, BuildKnowledgeScenarios(), "knowledge-benchmark-report-");
         }
 
         /// <summary>
@@ -989,10 +1158,11 @@ line six - foxtrot";
             }
         }
 
-        [TestMethod]
-        [DynamicData(nameof(GetIterations))]
-        [Ignore("Disable to run benchmark")]
-        public async Task Run_Full_Benchmark(int iteration)
+        /// <summary>
+        /// Opens LMLocal.sln in a new Experimental VS instance and runs <paramref name="scenarios"/> on it, one after another.
+        /// The report is saved next to LMLocal.sln as <paramref name="reportPrefix"/> + a time stamp.
+        /// </summary>
+        private async Task RunSolutionBenchmarkAsync(List<Scenario> scenarios, int iteration, string reportPrefix)
         {
             // Requires a running LM Studio + an Experimental VS instance; never auto-run.
             if (iteration != 1)
@@ -1026,7 +1196,7 @@ line six - foxtrot";
                         await CommitSnapshotAsync(client, cts.Token);
 
                         // 2) Run every scenario sequentially on the same VS instance.
-                        foreach (var scenario in BuildScenarios())
+                        foreach (var scenario in scenarios)
                         {
                             if (cts.IsCancellationRequested) break;
 
@@ -1053,7 +1223,7 @@ line six - foxtrot";
                             await Task.Delay(1000, cts.Token);
                         }
 
-                        SaveReport(results, root);
+                        SaveReport(results, root, reportPrefix);
                         await CommitSnapshotAsync(client, cts.Token);
                         TryDeleteFixture(root);
 
@@ -1320,6 +1490,10 @@ line six - foxtrot";
                     }
                 }
             }
+
+            // Location scoring: independent of the "not found" wording above, the answer's path:line locations are compared with the
+            // ground truth taken from the repository.
+            EvaluateLocations(s, content, violations);
 
             // Invented-path cross-check (only for non-mutating scenarios).
             if (notFoundMarker)
@@ -1589,7 +1763,11 @@ line six - foxtrot";
         // A frozen fixture, not LMLocal.csproj: the live project file grows with every new source file, and
         // on 2026-11-13 a shift from 573 to 582 matching lines changed the model's answer.
         internal const string A108File = @"LMLocal.Tests.E2E.VSIX\Fixtures\explorer-paging-fixture.xml";
-        internal const string A108Text = "Include";
+        // A1.8 tests walking the cursor, not reading a long list: a narrow term (91 lines, last asset-290 on line 1167) in small
+        // pages gives 4 pages. "Include" (582 lines, max_results 500) put every line into the context, and on 2026-11-21 the model
+        // listed them all in its answer until the 240 s timeout.
+        internal const string A108Text = "asset-2";
+        internal const int A108PageSize = 25;
 
         internal const string ReaderCodeDir = @"LMLocal.Tests.E2E.VSIX\Fixtures\ReaderCode\";
         internal const string ReviewCodeDir = @"LMLocal.Tests.E2E.VSIX\Fixtures\ReviewCode\";
@@ -1711,7 +1889,7 @@ line six - foxtrot";
 
         /// <summary>
         /// Returns true if a file with the same directory + base name exists in the
-        /// solution but with a different extension (e.g. "LMLocal\\LMLocal.cs" -> the real "LMLocal\\LMLocal.csproj"). 
+        /// solution but with a different extension (e.g. "LMLocal\\LMLocal.cs" -> the real "LMLocal\\LMLocal.csproj").
         /// </summary>
         private static bool HasRealFileWithDifferentExtension(string solutionRoot, string path, string realExtension)
         {
@@ -1761,6 +1939,294 @@ line six - foxtrot";
                     (v.IndexOf('\\') >= 0 || v.IndexOf('/') >= 0))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        // ---------------------------------------------------------------------
+        // Location scoring (path:line against ground truth; no words are read)
+        // ---------------------------------------------------------------------
+
+        /// <summary>One place named by an answer: a file and a line range (a single line has Start == End; no line = 0).</summary>
+        internal sealed class AnswerLocation
+        {
+            public string Path;
+            public int Start;
+            public int End;
+
+            public override string ToString()
+            {
+                return Start == 0 ? Path : Start == End ? Path + ":" + Start : Path + ":" + Start + "-" + End;
+            }
+        }
+
+        // path:line, path:a-b, path:12,40,52 (also with a leading '@') and the compiler form path(line[,col]).
+        private static readonly Regex LocationRegex = new Regex(
+            @"(?<![\w.\\/\-])@?(?<path>(?:[A-Za-z]:[\\/])?(?:[\w.\-]+[\\/])*[\w.\-]+\.[A-Za-z0-9]{1,6})"
+            + @"(?::(?<a>\d+)(?:-(?<b>\d+))?(?<more>(?:,\d+)*)|\((?<pl>\d+)(?:,\d+)?\))(?!\d)",
+            RegexOptions.Compiled);
+
+        // "File: path, lines a-b": a range marker expanded by the runner (FileContentRenderer.AppendRefContentBlock).
+        private static readonly Regex RangeHeaderRegex = new Regex(
+            @"^\s*File:\s+(?<path>\S.*?\.[A-Za-z0-9]{1,6}),\s+lines\s+(?<a>\d+)-(?<b>\d+)\s*$",
+            RegexOptions.Compiled);
+
+        // The runner fences an expanded range with four backticks (a model writes three).
+        private static readonly Regex RunnerFenceRegex = new Regex(@"^\s*`{4,}", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Extracts the locations an answer names. When a line starts with a location followed by ": `text`" (a reference
+        /// expanded by the runner), the quoted text is ignored, so a "name.cs:12" inside the quoted source line is not
+        /// taken for a location.
+        /// </summary>
+        internal static List<AnswerLocation> ExtractLocations(string content)
+        {
+            var result = new List<AnswerLocation>();
+            if (string.IsNullOrEmpty(content)) return result;
+
+            var inRunnerBlock = false;
+            foreach (var line in content.Replace("\r\n", "\n").Split('\n'))
+            {
+                // The block the runner puts under a "File: path, lines a-b" header (a fence of four backticks) is source text:
+                // a "name.cs:12" inside it is code, not a location.
+                if (RunnerFenceRegex.IsMatch(line))
+                {
+                    inRunnerBlock = !inRunnerBlock;
+                    continue;
+                }
+
+                if (inRunnerBlock) continue;
+
+                // A range marker expanded by the runner: "File: path, lines a-b" (the lines read by read_file_lines).
+                var header = RangeHeaderRegex.Match(line);
+                if (header.Success)
+                {
+                    var a0 = int.Parse(header.Groups["a"].Value);
+                    var b0 = int.Parse(header.Groups["b"].Value);
+                    result.Add(new AnswerLocation
+                    {
+                        Path = NormalizeLocationPath(header.Groups["path"].Value),
+                        Start = Math.Min(a0, b0),
+                        End = Math.Max(a0, b0)
+                    });
+                    continue;
+                }
+
+                var matches = LocationRegex.Matches(line).Cast<Match>().ToList();
+                if (matches.Count == 0) continue;
+
+                var first = matches[0];
+                var quoted = Regex.IsMatch(line.Substring(first.Index + first.Length), @"^\s*:\s*`");
+                foreach (var m in matches)
+                {
+                    if (quoted && m != first) continue;
+
+                    var path = NormalizeLocationPath(m.Groups["path"].Value);
+                    if (m.Groups["pl"].Success)
+                    {
+                        var l = int.Parse(m.Groups["pl"].Value);
+                        result.Add(new AnswerLocation { Path = path, Start = l, End = l });
+                        continue;
+                    }
+
+                    var a = int.Parse(m.Groups["a"].Value);
+                    var b = m.Groups["b"].Success ? int.Parse(m.Groups["b"].Value) : a;
+                    result.Add(new AnswerLocation { Path = path, Start = Math.Min(a, b), End = Math.Max(a, b) });
+                    foreach (var extra in m.Groups["more"].Value.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var e = int.Parse(extra);
+                        result.Add(new AnswerLocation { Path = path, Start = e, End = e });
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static string NormalizeLocationPath(string path)
+        {
+            var p = (path ?? string.Empty).Trim().Replace('/', '\\');
+            while (p.StartsWith(".\\", StringComparison.Ordinal)) p = p.Substring(2);
+            return p;
+        }
+
+        /// <summary>The two paths name the same file: equal, or one is a trailing part of the other (a path cut to its last folders).</summary>
+        internal static bool SamePath(string a, string b)
+        {
+            a = NormalizeLocationPath(a);
+            b = NormalizeLocationPath(b);
+            if (a.Length == 0 || b.Length == 0) return false;
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
+                || a.EndsWith("\\" + b, StringComparison.OrdinalIgnoreCase)
+                || b.EndsWith("\\" + a, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Splits "relative\path:line" into the path and the line (0 when the entry names only a file).</summary>
+        internal static void SplitExpectedLocation(string entry, out string path, out int line)
+        {
+            var m = Regex.Match(entry ?? string.Empty, @"^(?<p>.*\.[A-Za-z0-9]{1,6}):(?<l>\d+)$");
+            if (m.Success)
+            {
+                path = m.Groups["p"].Value;
+                line = int.Parse(m.Groups["l"].Value);
+            }
+            else
+            {
+                path = entry ?? string.Empty;
+                line = 0;
+            }
+        }
+
+        private static bool Covers(AnswerLocation found, string path, int line, int maxCoverLines = 0)
+        {
+            if (!SamePath(found.Path, path)) return false;
+            if (line == 0) return true;
+            if (maxCoverLines > 0 && found.End - found.Start + 1 > maxCoverLines) return false;
+            return found.Start <= line && line <= found.End;
+        }
+
+        /// <summary>The last two segments of a path ("folder\file.cs"), used to recognise a file named without its full path.</summary>
+        private static string LastSegments(string path)
+        {
+            var parts = NormalizeLocationPath(path).Split('\\');
+            return parts.Length <= 2 ? string.Join("\\", parts) : string.Join("\\", parts.Skip(parts.Length - 2));
+        }
+
+        private static void EvaluateLocations(Scenario s, string content, List<Violation> violations)
+        {
+            var any = s.ExpectedLocations.Length > 0 || s.ExpectedLocationsAny.Length > 0 || s.ForbiddenLocationPaths.Length > 0 || s.ExpectNoLocations || s.CheckForeignLocations;
+            if (!any) return;
+
+            var found = ExtractLocations(content);
+            var flat = (content ?? string.Empty).Replace('/', '\\');
+
+            foreach (var entry in s.ExpectedLocations)
+            {
+                string path;
+                int line;
+                SplitExpectedLocation(entry, out path, out line);
+
+                var ok = found.Any(f => Covers(f, path, line, s.MaxCoverLines));
+                if (!ok && line == 0)
+                {
+                    // A file named without a line: its path (at least the last two segments) or its file name is in the answer.
+                    ok = flat.IndexOf(LastSegments(path), StringComparison.OrdinalIgnoreCase) >= 0
+                        || flat.IndexOf(Path.GetFileName(NormalizeLocationPath(path)), StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+
+                if (!ok)
+                {
+                    violations.Add(new Violation("missing_location: " + entry, true));
+                }
+            }
+
+            foreach (var group in s.ExpectedLocationsAny)
+            {
+                var ok = group.Any(entry =>
+                {
+                    string path;
+                    int line;
+                    SplitExpectedLocation(entry, out path, out line);
+                    return found.Any(f => Covers(f, path, line, s.MaxCoverLines));
+                });
+
+                if (!ok)
+                {
+                    violations.Add(new Violation("missing_location: one of " + string.Join(" | ", group), true));
+                }
+            }
+
+            if (s.ExpectNoLocations)
+            {
+                foreach (var f in found.Take(3))
+                {
+                    violations.Add(new Violation("unexpected_location: " + f, true));
+                }
+            }
+
+            foreach (var forbidden in s.ForbiddenLocationPaths)
+            {
+                foreach (var f in found.Where(x => SamePath(x.Path, forbidden)).Take(3))
+                {
+                    violations.Add(new Violation("forbidden_location: " + f, true));
+                }
+            }
+
+            if (s.CheckForeignLocations)
+            {
+                var allowed = s.ExpectedLocations.Concat(s.ExpectedLocationsAny.SelectMany(g => g)).Concat(s.AllowedLocations).ToList();
+                foreach (var f in found)
+                {
+                    var known = allowed.Any(entry =>
+                    {
+                        string path;
+                        int line;
+                        SplitExpectedLocation(entry, out path, out line);
+                        return Covers(f, path, line, s.MaxCoverLines);
+                    });
+                    if (!known)
+                    {
+                        violations.Add(new Violation("foreign_location: " + f, true));
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// "relative\path:line" of every line, in the solution-relative files or folders, that contains <paramref name="text"/>
+        /// (case-insensitive substring, like search_file_content). <paramref name="extension"/> limits a folder scan (e.g. ".cs").
+        /// Read at run time; throws when nothing matches, so a stale expectation fails before a model run.
+        /// </summary>
+        internal static List<string> LocationsOf(string text, string extension, params string[] relativePaths)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            var result = new List<string>();
+            foreach (var relative in relativePaths)
+            {
+                var full = Path.GetFullPath(Path.Combine(root, relative));
+                var files = File.Exists(full)
+                    ? new List<string> { full }
+                    : Directory.EnumerateFiles(full, "*" + (extension ?? string.Empty), SearchOption.AllDirectories).ToList();
+
+                foreach (var file in files)
+                {
+                    var sep = Path.DirectorySeparatorChar;
+                    if (file.Contains(sep + "bin" + sep) || file.Contains(sep + "obj" + sep)) continue;
+
+                    var lines = File.ReadAllLines(file);
+                    for (var i = 0; i < lines.Length; i++)
+                    {
+                        if (lines[i].IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            result.Add(file.Substring(root.TrimEnd(sep).Length + 1) + ":" + (i + 1));
+                        }
+                    }
+                }
+            }
+
+            if (result.Count == 0)
+                throw new InvalidOperationException("'" + text + "' not found in " + string.Join(", ", relativePaths));
+            return result;
+        }
+
+        /// <summary>1-based number of the first line of a build-fixture file (relative to the fixture folder) whose trimmed text equals <paramref name="trimmedLine"/>.</summary>
+        internal static int FixtureLineOf(string fixtureRelativePath, string trimmedLine)
+        {
+            var root = Path.GetDirectoryName(GetBuildFixtureSolutionPath());
+            var lines = File.ReadAllLines(Path.Combine(root, fixtureRelativePath));
+            for (var i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Trim() == trimmedLine) return i + 1;
+            }
+
+            throw new InvalidOperationException("'" + trimmedLine + "' not found in " + fixtureRelativePath);
+        }
+
+        /// <summary>Returns <paramref name="relativePath"/> after checking that no such file exists (a scenario about a stale path).</summary>
+        internal static string EvMissing(string relativePath)
+        {
+            var root = Path.GetDirectoryName(GetSolutionPath());
+            if (File.Exists(Path.Combine(root, relativePath)))
+                throw new InvalidOperationException("Benchmark expects a missing file, but it exists now: " + relativePath);
+            return relativePath;
         }
 
         private static string Truncate(string content)
@@ -1991,7 +2457,7 @@ line six - foxtrot";
         {
             try
             {
-                if (process != null && !process.HasExited)
+                if (process?.HasExited == false)
                 {
                     process.Kill();
                 }

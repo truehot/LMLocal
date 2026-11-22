@@ -296,4 +296,147 @@ public partial class ChatHistoryDialogTests : AppTestBase
         await Expect(cards.First.Locator(".chat-history-prompt"))
             .ToContainTextAsync("How do I refactor this class to use dependency injection?");
     }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_Cards_ShowModelBadge()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var dialog = Page.Locator("#chat-history-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 3000 });
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        // One model: shown as is
+        await Expect(cards.First.Locator(".chat-history-model"))
+            .ToHaveTextAsync("qwen3-coder", new() { Timeout = 3000 });
+
+        // Several models: collapsed to "<first> +N", the full list lives in the tooltip
+        var multiModelCard = cards.Nth(1);
+        await Expect(multiModelCard.Locator(".chat-history-model"))
+            .ToHaveTextAsync("qwen3-coder +1");
+        await Expect(multiModelCard.Locator(".chat-history-model"))
+            .ToHaveAttributeAsync("title", "qwen3-coder, deepseek-chat");
+
+        // Legacy session without model information: no badge at all
+        await Expect(cards.Nth(2).Locator(".chat-history-model"))
+            .ToHaveCountAsync(0);
+    }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_Filter_MatchesModelIds()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        // "deepseek-chat" appears only in the model list of the second session, never in a prompt
+        await Page.Locator("#chat-history-filter-input").FillAsync("deepseek-chat");
+
+        await Expect(cards).ToHaveCountAsync(1, new() { Timeout = 3000 });
+        await Expect(cards.First.Locator(".chat-history-prompt"))
+            .ToContainTextAsync("CS1061");
+    }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_LoadedSession_ShowsModelInStepsNote()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        // Load the session whose second answer was produced by a tool round
+        await cards.First.Locator(".chat-history-load").ClickAsync();
+        await Expect(Page.Locator("#chat-history-dialog")).ToBeHiddenAsync(new() { Timeout = 5000 });
+
+        await Expect(Page.Locator("#chat-container"))
+            .ToContainTextAsync("qwen3-coder · 1 step taken (history)", new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_LoadedSession_ShowsModelWithoutSteps()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        await cards.First.Locator(".chat-history-load").ClickAsync();
+        await Expect(Page.Locator("#chat-history-dialog")).ToBeHiddenAsync(new() { Timeout = 5000 });
+
+        // The first answer needed no tool round: the model alone is shown, still marked as restored history.
+        await Expect(Page.Locator(".ai-message").First)
+            .ToContainTextAsync("qwen3-coder (history)", new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_LoadedSession_ListsEveryModelOfTheCot()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        // Second session: the model was switched between the tool round and the answer.
+        await cards.Nth(1).Locator(".chat-history-load").ClickAsync();
+        await Expect(Page.Locator("#chat-history-dialog")).ToBeHiddenAsync(new() { Timeout = 5000 });
+
+        await Expect(Page.Locator("#chat-container"))
+            .ToContainTextAsync("qwen3-coder, deepseek-chat · 1 step taken (history)", new() { Timeout = 5000 });
+    }
+
+    [Test]
+    [Category("ChatHistory")]
+    public async Task ChatHistory_LoadedLegacySession_HasNoModelNote()
+    {
+        await GotoWithMockAsync("webview-mock-chat-history.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action=\"open-chat-history\"]").ClickAsync();
+
+        var cards = Page.Locator("#chat-history-container .chat-history-card");
+        await Expect(cards).ToHaveCountAsync(3, new() { Timeout = 3000 });
+
+        // Third session stands for a log written before model ids were persisted: no model, no steps, no note.
+        await cards.Nth(2).Locator(".chat-history-load").ClickAsync();
+        await Expect(Page.Locator("#chat-history-dialog")).ToBeHiddenAsync(new() { Timeout = 5000 });
+
+        await Expect(Page.Locator("#chat-container .ai-message")).ToHaveCountAsync(1, new() { Timeout = 5000 });
+        await Expect(Page.Locator("#chat-container")).Not.ToContainTextAsync("(history)");
+    }
 }

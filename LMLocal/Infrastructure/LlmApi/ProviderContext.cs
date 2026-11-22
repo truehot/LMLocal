@@ -1,7 +1,7 @@
 namespace LMLocal.Infrastructure.LlmApi
 {
     /// <summary>
-    /// Explicit provider connection for a single chat request. 
+    /// Explicit provider connection for a single chat request.
     /// </summary>
     internal class ProviderContext
     {

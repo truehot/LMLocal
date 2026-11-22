@@ -370,7 +370,8 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<IProgress<ToolActivityEvent>>(),
-                    It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<ToolExecutionBudget>(),
+                    It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult
                 {
                     ToolId = "call_1",
@@ -471,7 +472,8 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<ToolCallRecord>(),
                     It.IsAny<CancellationToken>(),
                     It.IsAny<IProgress<ToolActivityEvent>>(),
-                    It.IsAny<ToolExecutionBudget>()))
+                    It.IsAny<ToolExecutionBudget>(),
+                    It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult
                 {
                     ToolId = "call_1",

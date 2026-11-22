@@ -74,10 +74,13 @@
     <Compile Include="Application\Abstractions\Ports\IChatInjectionService.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatPersistenceFactory.cs" />
     <Compile Include="Application\Abstractions\Ports\IChatPersistenceService.cs" />
+    <Compile Include="Application\Abstractions\Ports\IDebuggerContextService.cs" />
     <Compile Include="Application\Abstractions\Ports\IInstructionDefaultsProvider.cs" />
     <Compile Include="Application\Abstractions\Ports\IInstructionsManager.cs" />
     <Compile Include="Application\Abstractions\Ports\IToolResultMarkdownFormatter.cs" />
     <Compile Include="Application\Abstractions\Ports\IToolRouter.cs" />
+    <Compile Include="Application\Abstractions\Ports\IUsageReader.cs" />
+    <Compile Include="Application\Abstractions\Ports\IUsageRecorder.cs" />
     <Compile Include="Application\Autocompletions\AutocompletionsService.cs" />
     <Compile Include="Application\Autocompletions\CompletionContext.cs" />
     <Compile Include="Application\Changes\DiffModels.cs" />
@@ -93,9 +96,11 @@
     <Compile Include="Application\ChatSessionStream\GemmaToolCallArgumentsGuard.cs" />
     <Compile Include="Application\ChatSessionStream\ToolCallArgumentsGuardFactory.cs" />
     <Compile Include="Application\Chat\ChatHistoryService.cs" />
+    <Compile Include="Application\Chat\ChatSessionSummaryBuilder.cs" />
     <Compile Include="Application\Chat\ContentTextExtractor.cs" />
     <Compile Include="Application\Chat\ContextBudget.cs" />
     <Compile Include="Application\Chat\ConversationSegmenter.cs" />
+    <Compile Include="Application\Chat\Normalization\HistoryNormalizer.cs" />
     <Compile Include="Application\Chat\SummaryInputFormatter.cs" />
     <Compile Include="Application\Chat\ToolHistoryPruner.cs" />
     <Compile Include="Application\ModelsList\TestConnectionResult.cs" />
@@ -128,21 +133,47 @@
     <Compile Include="Application\Tool\ToolExecutionBudget.cs" />
     <Compile Include="Application\Tool\ToolMessageFactory.cs" />
     <Compile Include="Application\Tool\ToolResultTokenEstimator.cs" />
+    <Compile Include="Application\Usage\IUsageStatsService.cs" />
+    <Compile Include="Application\Usage\UsageAccumulator.cs" />
+    <Compile Include="Application\Usage\UsageAggregator.cs" />
+    <Compile Include="Application\Usage\UsageCallContext.cs" />
+    <Compile Include="Application\Usage\UsageOutcomeMapper.cs" />
+    <Compile Include="Application\Usage\UsageIds.cs" />
+    <Compile Include="Application\Usage\UsagePeriods.cs" />
+    <Compile Include="Application\Usage\UsageRequestScope.cs" />
+    <Compile Include="Application\Usage\UsageStats.cs" />
+    <Compile Include="Application\Usage\UsageStatsService.cs" />
+    <Compile Include="Commands\ExplainErrorCommand.cs" />
     <Compile Include="Commands\SendActiveFilesCommand.cs" />
     <Compile Include="Commands\SendAllOpenFilesCommand.cs" />
     <Compile Include="Commands\VisibleDocumentsHelper.cs" />
     <Compile Include="Core\Common\ChatLogConstants.cs" />
     <Compile Include="Core\Common\ChatMessagePlaceholders.cs" />
+    <Compile Include="Core\Common\DebugStopPolicy.cs" />
+    <Compile Include="Core\Common\DebugStopPromptBuilder.cs" />
+    <Compile Include="Core\Common\DebugStopText.cs" />
+    <Compile Include="Core\Common\ErrorListEntry.cs" />
+    <Compile Include="Core\Common\ErrorListPromptBuilder.cs" />
     <Compile Include="Core\Common\LineSplitter.cs" />
     <Compile Include="Core\Common\OpenDocumentsPromptBuilder.cs" />
     <Compile Include="Core\Common\PromptContentLimits.cs" />
+    <Compile Include="Core\Common\PromptText.cs" />
     <Compile Include="Core\Common\StreamedTokenEstimator.cs" />
     <Compile Include="Core\Common\TaskObserver.cs" />
     <Compile Include="Core\Models\ChatSessionSummary.cs" />
+    <Compile Include="Core\Models\DebugExceptionInfo.cs" />
+    <Compile Include="Core\Models\DebugLocalVariable.cs" />
+    <Compile Include="Core\Models\DebugStackFrameInfo.cs" />
+    <Compile Include="Core\Models\DebugStopContext.cs" />
+    <Compile Include="Core\Models\DebugStopInfo.cs" />
     <Compile Include="Core\Models\ModelProfileLookup.cs" />
     <Compile Include="Core\Models\RetryAfterSource.cs" />
     <Compile Include="Core\Models\ToolDefinition.cs" />
     <Compile Include="Core\Models\ToolQueue.cs" />
+    <Compile Include="Core\Models\Usage\UsageOrigins.cs" />
+    <Compile Include="Core\Models\Usage\UsageOutcome.cs" />
+    <Compile Include="Core\Models\Usage\UsageRecord.cs" />
+    <Compile Include="Core\Models\Usage\UsageSource.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\GhostLinesTagger.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineCompletionBackend.cs" />
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionManagerProvider.cs" />
@@ -150,11 +181,16 @@
     <Compile Include="Infrastructure\Autocompletions\InlineCompletion\InlineSuggestionSourceProvider.cs" />
     <Compile Include="Infrastructure\Persistence\ChatPersistenceServiceFactory.cs" />
     <Compile Include="Infrastructure\Persistence\FileEncodingDetector.cs" />
+    <Compile Include="Infrastructure\Persistence\UsageRecordSerializer.cs" />
+    <Compile Include="Infrastructure\Persistence\UsageStore.cs" />
     <Compile Include="Infrastructure\Tooling\Abstractions\ToolExecutionLimits.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Abstractions\IBuiltInToolTimeoutLimits.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CanonicalWindowCache.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\CharacterMap.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\FileLinkResolver.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\MissingFileHint.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\FileProjectSettings.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\ProjectItemSettingsWriter.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\Projects\ProjectBuildConfiguration.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\PrunedContentGuard.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\IToolFileOpenResult.cs" />
@@ -163,11 +199,15 @@
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\ToolFileOpener.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\GetChangesDiff.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Common\TestRunSummary.cs" />
+    <Compile Include="Infrastructure\Tooling\BuiltInVs\Implementations\TodoWrite.cs" />
     <Compile Include="Infrastructure\Tooling\BuiltInVs\Snapshot\ChangesService.cs" />
     <Compile Include="Infrastructure\Tooling\ToolTimeoutPolicy.cs" />
+    <Compile Include="Infrastructure\VisualStudio\DebuggerContextService.cs" />
     <Compile Include="Infrastructure\VisualStudio\TaskbarAttentionNotifier.cs" />
     <Compile Include="Infrastructure\WebView\Controllers\FileLinksController.cs" />
+    <Compile Include="Infrastructure\WebView\Controllers\UsageController.cs" />
     <Compile Include="Infrastructure\WebView\Messaging\BoundedMessageNotifier.cs" />
+    <Compile Include="Infrastructure\WebView\Models\UsageStatsResponse.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2CompactionEndMessage.cs" />
     <Compile Include="Infrastructure\WebView\Models\WebView2RateLimitWaitMessage.cs" />
     <Compile Include="Infrastructure\WebView\Navigation\ExternalUriLauncher.cs" />
@@ -391,6 +431,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
+    <Content Include="Resources\js\chat\history.note.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
     <Content Include="Resources\js\chat\tool.status.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
@@ -428,6 +472,10 @@
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
     <Content Include="Resources\js\dialogs\chat.history.dialog.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Resources\js\dialogs\usage.stats.dialog.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <IncludeInVSIX>true</IncludeInVSIX>
     </Content>
@@ -591,6 +639,7 @@
     <Compile Include="Core\Models\StreamCompletionResult.cs" />
     <Compile Include="Infrastructure\Streaming\StreamInactivityWatcher.cs" />
     <Compile Include="Infrastructure\Streaming\StreamProcessor.cs" />
+    <Compile Include="Application\Abstractions\Ports\ITimeProvider.cs" />
     <Compile Include="Infrastructure\Time\SystemTimeProvider.cs" />
     <Compile Include="Core\Models\TokenGenerationStats.cs" />
     <Compile Include="Infrastructure\Streaming\StreamProcessorFactory.cs" />

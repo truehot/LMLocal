@@ -36,6 +36,15 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Common.Testing
             Assert.That(TestArgumentsBuilder.NormalizeFilter(raw), Is.EqualTo(expected));
         }
 
+        [TestCase("ChatHistoryManagerTests|TruncateLastExchange_", "ChatHistoryManagerTests TruncateLastExchange_")]
+        [TestCase("RegenerateTests", "RegenerateTests")]
+        [TestCase(null, null)]
+        [TestCase("", null)]
+        public void DescribeFilter_NamesSeparatedBySpaces(string normalized, string expected)
+        {
+            Assert.That(TestArgumentsBuilder.DescribeFilter(normalized), Is.EqualTo(expected));
+        }
+
         [TestCase("FullyQualifiedName~LMLocal.Tests.E2E.AppTests.RegenerateTests", "LMLocal.Tests.E2E.AppTests.RegenerateTests")]
         [TestCase("fullyqualifiedname~RegenerateTests", "RegenerateTests")]
         [TestCase("FullyQualifiedName=Ns.Tests.One", "Ns.Tests.One")]

@@ -175,6 +175,68 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(result.Content, Does.Contain(SearchPath + ":52:"));
         }
 
+        // A1.25 / A1.32: a marker on the declaration line that get_symbol_info returned in 'definitions' must expand, not trigger a recovery turn.
+        [Test]
+        public async Task ExpandAsync_DeclarationLineFromSymbolDefinitions_IsExpanded()
+        {
+            var evidence = new SubAgentRunEvidence();
+            evidence.Record("get_symbol_info", new GetSymbolInfo.SymbolInfoResponse
+            {
+                Success = true,
+                Definitions = new List<GetSymbolInfo.DefinitionItem>
+                {
+                    new GetSymbolInfo.DefinitionItem { FilePath = @"src\Pruner.cs", Line = 49, EndLine = 482, LineText = "internal static class Pruner" }
+                },
+                References = new List<GetSymbolInfo.ReferenceItem>()
+            });
+
+            var result = await evidence.ExpandAsync(@"@src\Pruner.cs:49", new InMemoryFileSystem(), CancellationToken.None);
+
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.Content, Does.Contain(@"src\Pruner.cs:49:"));
+            Assert.That(result.Content, Does.Contain("internal static class Pruner"));
+        }
+
+        [Test]
+        public async Task ExpandAsync_DeclarationLinesFromSymbolNamesBlocks_AreExpanded()
+        {
+            var evidence = new SubAgentRunEvidence();
+            evidence.Record("get_symbol_info", new GetSymbolInfo.SymbolInfoMultiResponse
+            {
+                Success = true,
+                Symbols = new List<GetSymbolInfo.SymbolDefinitionsBlock>
+                {
+                    new GetSymbolInfo.SymbolDefinitionsBlock
+                    {
+                        SymbolName = "Pruner",
+                        Success = true,
+                        Definitions = new List<GetSymbolInfo.DefinitionItem> { new GetSymbolInfo.DefinitionItem { FilePath = @"src\Pruner.cs", Line = 49, LineText = "internal static class Pruner" } }
+                    }
+                }
+            });
+
+            var result = await evidence.ExpandAsync(@"@src\Pruner.cs:49", new InMemoryFileSystem(), CancellationToken.None);
+
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task ExpandAsync_DefinitionWithoutText_StaysUnresolved()
+        {
+            var evidence = new SubAgentRunEvidence();
+            evidence.Record("get_symbol_info", new GetSymbolInfo.SymbolInfoResponse
+            {
+                Success = true,
+                Definitions = new List<GetSymbolInfo.DefinitionItem> { new GetSymbolInfo.DefinitionItem { FilePath = @"src\Pruner.cs", Line = 49 } },
+                References = new List<GetSymbolInfo.ReferenceItem>()
+            });
+
+            var result = await evidence.ExpandAsync(@"@src\Pruner.cs:49", new InMemoryFileSystem(), CancellationToken.None);
+
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(1));
+        }
+
         [Test]
         public async Task ExpandAsync_UnreadRange_StaysUnresolved()
         {

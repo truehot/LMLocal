@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 
@@ -28,11 +29,11 @@ namespace LMLocal.Infrastructure.SubAgents
             string toolName,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
-            IProgress<ToolActivityEvent> progress = null);
+            IProgress<ToolActivityEvent> progress = null,
+            UsageCallContext context = null);
 
         /// <summary>
         /// Returns the external timeout for the given agent tool.
-        /// Null when the agent is unavailable; <see cref="Timeout.InfiniteTimeSpan"/> when its timeout is off (0).
         /// </summary>
         TimeSpan? GetToolTimeout(string toolName);
 
@@ -81,7 +82,8 @@ namespace LMLocal.Infrastructure.SubAgents
             string toolName,
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
-            IProgress<ToolActivityEvent> progress = null)
+            IProgress<ToolActivityEvent> progress = null,
+            UsageCallContext context = null)
         {
             try
             {
@@ -127,7 +129,10 @@ namespace LMLocal.Infrastructure.SubAgents
                     MaxRounds = agent.MaxRounds,
                     AllowedTools = agent.AllowedTools,
                     ExcludedAgentNames = excludedAgentNames,
-                    Progress = progress
+                    Progress = progress,
+                    ParentSessionId = context != null ? context.SessionId : null,
+                    RequestId = context != null ? context.RequestId : null,
+                    Origin = context != null ? context.Origin : null
                 };
 
                 return await _subAgentsServiceResolver()

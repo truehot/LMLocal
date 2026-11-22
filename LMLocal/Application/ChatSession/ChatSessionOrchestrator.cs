@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Core.Models.Usage;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot;
 using LMLocal.Infrastructure.WebView;
 using LMLocal.Infrastructure.WebView.Messaging;
@@ -55,6 +60,8 @@ namespace LMLocal.Application.ChatSession
         private readonly ISubAgentsParallelPolicy _parallelPolicy;
         private readonly ISubAgentsParallelRunner _parallelRunner;
         private readonly IActiveModelContext _activeModelContext;
+        private readonly ISettingsManager _settingsManager;
+        private readonly IUsageRecorder _usageRecorder;
         private readonly object _resetLock = new object();
 
         private const int MAX_TOOL_ITERATIONS = 9999;
@@ -62,6 +69,9 @@ namespace LMLocal.Application.ChatSession
         private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
         private const int MAX_DUPLICATE_TOOL_ROUNDS = 1;
         private const int MAX_CONTEXT_OVERFLOW_RETRIES = 2;
+
+        /// <summary>Length of the session title written into a usage record.</summary>
+        private const int SessionTitleLength = 80;
 
         private delegate Task<ChatSessionState> StateHandler(
             ChatSessionOrchestrator instance,
@@ -81,7 +91,7 @@ namespace LMLocal.Application.ChatSession
                 { ChatSessionState.ProcessingResult, (self, ctx, gen, msg, ct) => self.HandleProcessingResultStateAsync(ctx, gen, msg, ct) },
                 { ChatSessionState.ExecutingTools, (self, ctx, gen, msg, ct) => self.HandleExecutingToolsStateAsync(ctx, msg, ct) },
                 { ChatSessionState.Completing, (self, ctx, gen, msg, ct) => self.HandleCompletingStateAsync(ctx, msg) },
-                { ChatSessionState.CompactingHistory, (self, ctx, gen, msg, ct) => self.HandleCompactingHistoryStateAsync(gen, msg, ct) },
+                { ChatSessionState.CompactingHistory, (self, ctx, gen, msg, ct) => self.HandleCompactingHistoryStateAsync(ctx, gen, msg, ct) },
                 { ChatSessionState.Error, (self, ctx, gen, msg, ct) => self.HandleErrorStateAsync(ctx, msg) },
                 { ChatSessionState.Cancelled, (self, ctx, gen, msg, ct) => self.HandleCancelledStateAsync(msg) }
             };
@@ -97,7 +107,9 @@ namespace LMLocal.Application.ChatSession
             IToolCallLoopDetector loopDetector,
             ISubAgentsParallelPolicy parallelPolicy,
             ISubAgentsParallelRunner parallelRunner,
-            IActiveModelContext activeModelContext = null)
+            IActiveModelContext activeModelContext = null,
+            ISettingsManager settingsManager = null,
+            IUsageRecorder usageRecorder = null)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
             _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
@@ -108,6 +120,8 @@ namespace LMLocal.Application.ChatSession
             _parallelPolicy = parallelPolicy ?? throw new ArgumentNullException(nameof(parallelPolicy));
             _parallelRunner = parallelRunner ?? throw new ArgumentNullException(nameof(parallelRunner));
             _activeModelContext = activeModelContext;
+            _settingsManager = settingsManager;
+            _usageRecorder = usageRecorder;
         }
 
         public async Task RunSessionAsync(
@@ -137,6 +151,16 @@ namespace LMLocal.Application.ChatSession
                 SessionCancellationToken = sessionToken,
                 RateLimitWaitSink = info => OnRateLimitWaitAsync(rateLimitNotifier, info)
             };
+
+            sessionContext.RequestId = Guid.NewGuid().ToString("N");
+            sessionContext.StartedUtc = DateTime.UtcNow;
+            sessionContext.Title = BuildSessionTitle(context?.Prompt);
+            sessionContext.SessionId = CurrentSessionId();
+
+            var requestStopwatch = Stopwatch.StartNew();
+            var terminalState = ChatSessionState.Terminated;
+
+            UsageRequestScope.Scope usageScope = null;
 
             try
             {
@@ -171,6 +195,8 @@ namespace LMLocal.Application.ChatSession
                     }
                 }
 
+                usageScope = BeginUsageScope(sessionContext, context);
+
                 int stateIterationCount = 0;
 
                 while (sessionContext.CurrentState != ChatSessionState.Terminated)
@@ -204,6 +230,9 @@ namespace LMLocal.Application.ChatSession
 
                         InternalLogger.Info($"ChatSessionOrchestrator: State {sessionContext.CurrentState} -> {nextState}");
 
+                        if (nextState == ChatSessionState.Terminated)
+                            terminalState = sessionContext.CurrentState;
+
                         sessionContext.CurrentState = nextState;
                     }
                     catch (OperationCanceledException)
@@ -234,6 +263,13 @@ namespace LMLocal.Application.ChatSession
                 {
                     InternalLogger.Error($"ChatSessionOrchestrator: Session terminated with error: {sessionContext.LastException.Message}");
                 }
+
+                requestStopwatch.Stop();
+
+                await RecordUsageAsync(sessionContext, terminalState, requestStopwatch.ElapsedMilliseconds, context)
+                    .ConfigureAwait(false);
+
+                usageScope?.Dispose();
             }
         }
 
@@ -330,7 +366,7 @@ namespace LMLocal.Application.ChatSession
 
             if (context.LastResult == null)
             {
-                InternalLogger.Info($"СhatSessionOrchestrator: Generation completed with null result");
+                InternalLogger.Info("СhatSessionOrchestrator: Generation completed with null result");
                 context.LastException = new InvalidOperationException("LastResult is null after generation");
                 return ChatSessionState.Error;
             }
@@ -348,7 +384,7 @@ namespace LMLocal.Application.ChatSession
 
             if (context.LastResult.WasCancelled)
             {
-                InternalLogger.Info($"СhatSessionOrchestrator: Generation was cancelled by user");
+                InternalLogger.Info("СhatSessionOrchestrator: Generation was cancelled by user");
                 return ChatSessionState.Cancelled;
             }
 
@@ -381,7 +417,6 @@ namespace LMLocal.Application.ChatSession
 
         /// <summary>
         /// Handles a provider context-overflow error: compacts the history in memory and schedules a retry.
-        /// Returns null when the result is not a context overflow and normal error handling must continue.
         /// </summary>
         private async Task<ChatSessionState?> HandleContextOverflowAsync(
             SessionStateContext context,
@@ -393,7 +428,9 @@ namespace LMLocal.Application.ChatSession
                     context.LastResult,
                     null,
                     _activeModelContext?.MaxContextLength > 0 ? _activeModelContext.MaxContextLength : (int?)null))
+            {
                 return null;
+            }
 
             InternalLogger.Info("ChatSessionOrchestrator: Context overflow detected, attempting recovery.");
 
@@ -442,7 +479,7 @@ namespace LMLocal.Application.ChatSession
                 return ChatSessionState.Error;
             }
 
-            if (compactedHistory != null && compactedHistory.Count > 0)
+            if (compactedHistory?.Count > 0)
             {
                 await _history.ReplaceHistoryWithNewSessionAsync(compactedHistory).ConfigureAwait(false);
                 context.HistoryCompacted = true;
@@ -503,11 +540,11 @@ namespace LMLocal.Application.ChatSession
                     int identicalRounds = context.ConsecutiveDuplicateToolRounds + 1;
 
                     InternalLogger.Error(
-                        $"ChatSessionOrchestrator: Tool call loop detected. " +
+                        "ChatSessionOrchestrator: Tool call loop detected. " +
                         $"{identicalRounds} identical tool rounds in a row [{names}]. Halting.");
 
                     context.LastException = new InvalidOperationException(
-                        $"Execution halted: the model repeated its previous tool round with identical arguments " +
+                        "Execution halted: the model repeated its previous tool round with identical arguments " +
                         $"({identicalRounds} identical rounds in a row: {names}). " +
                         "It appears to be stuck in a loop; change the request or the arguments to continue.");
 
@@ -525,6 +562,8 @@ namespace LMLocal.Application.ChatSession
 
             context.ConsecutiveToolIterationCount++;
             context.ToolResultsForNextRound.Clear();
+
+            var usageContext = BuildUsageContext(context);
 
             await _snapshotManager.BeginBatchAsync(ct).ConfigureAwait(false);
             try
@@ -579,7 +618,7 @@ namespace LMLocal.Application.ChatSession
                         parallelCalls,
                         async (call, callCt) =>
                         {
-                            var callResult = await RunToolCallAsync(call, onMessage, callCt).ConfigureAwait(false);
+                            var callResult = await RunToolCallAsync(call, onMessage, callCt, usageContext).ConfigureAwait(false);
 
                             int completed = Interlocked.Increment(ref groupCompleted);
                             await onMessage(new WebView2ToolGroupMessage
@@ -615,7 +654,7 @@ namespace LMLocal.Application.ChatSession
                     // A single agent has nothing to overlap with; run it inline.
                     ct.ThrowIfCancellationRequested();
                     var call = allCalls[parallelIdx[0]];
-                    var result = await RunToolCallAsync(call, onMessage, ct).ConfigureAwait(false);
+                    var result = await RunToolCallAsync(call, onMessage, ct, usageContext).ConfigureAwait(false);
                     ordered[parallelIdx[0]] = ToToolResultMessage(call, result);
                 }
 
@@ -623,7 +662,7 @@ namespace LMLocal.Application.ChatSession
                 {
                     ct.ThrowIfCancellationRequested();
                     var call = allCalls[i];
-                    var result = await RunToolCallAsync(call, onMessage, ct).ConfigureAwait(false);
+                    var result = await RunToolCallAsync(call, onMessage, ct, usageContext).ConfigureAwait(false);
                     ordered[i] = ToToolResultMessage(call, result);
                 }
 
@@ -693,7 +732,8 @@ namespace LMLocal.Application.ChatSession
         private async Task<ToolExecutionResult> RunToolCallAsync(
             ToolCallRecord toolCall,
             Func<WebView2ScriptMessage, Task> onMessage,
-            CancellationToken ct)
+            CancellationToken ct,
+            UsageCallContext usageContext)
         {
             var processingMessage = _toolManager.GetProcessingMessage(toolCall);
 
@@ -715,7 +755,7 @@ namespace LMLocal.Application.ChatSession
                 toolCts.CancelAfter(toolTimeout);
 
                 var stepProgress = new ToolActivityForwarder(uiCallId, onMessage);
-                toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress).ConfigureAwait(false);
+                toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress, null, usageContext).ConfigureAwait(false);
 
                 if (toolCts.IsCancellationRequested && !ct.IsCancellationRequested && !toolResult.IsSuccess)
                 {
@@ -765,7 +805,12 @@ namespace LMLocal.Application.ChatSession
 
                 if (!finalResult.WasCancelled && string.IsNullOrEmpty(finalResult.ErrorMessage))
                 {
-                    var (Prompt, Completion, Cached) = SumRequestTokens(context.AllResults);
+                    var usage = new UsageAccumulator();
+                    usage.Add(context.AllResults);
+
+                    int? Prompt = usage.Prompt;
+                    int? Completion = usage.Completion;
+                    int? Cached = usage.Cached;
 
                     var completeMsg = new WebView2SessionCompleteMessage
                     {
@@ -792,47 +837,156 @@ namespace LMLocal.Application.ChatSession
         }
 
         /// <summary>
-        /// Sums prompt, completion and cached prompt tokens across every generation round of the request.
+        /// Writes one usage record for the request, whatever its outcome: a stopped or failed request spent tokens too.
         /// </summary>
-        private static (int? Prompt, int? Completion, int? Cached) SumRequestTokens(
-            IReadOnlyList<StreamCompletionResult> results)
+        private async Task RecordUsageAsync(
+            SessionStateContext sessionContext,
+            ChatSessionState terminalState,
+            long durationMs,
+            GenerateStreamContext generateContext)
         {
-            if (results == null || results.Count == 0)
+            if (_usageRecorder == null || sessionContext == null || sessionContext.AllResults.Count == 0)
+                return;
+
+            try
             {
-                return (null, null, null);
+                var usage = new UsageAccumulator();
+                usage.Add(sessionContext.AllResults);
+
+                UsageOutcome outcome;
+                string error;
+                UsageOutcomeMapper.MapSessionTerminal(
+                    terminalState,
+                    sessionContext.AllResults,
+                    sessionContext.LastException,
+                    sessionContext.LastResult != null ? sessionContext.LastResult.ErrorMessage : null,
+                    out outcome,
+                    out error);
+
+                var settings = _settingsManager != null ? _settingsManager.Current : null;
+
+                var record = new UsageRecord
+                {
+                    Timestamp = sessionContext.StartedUtc,
+                    SessionId = sessionContext.SessionId,
+                    RequestId = sessionContext.RequestId,
+                    Source = UsageSource.Main,
+                    Origin = UsageOrigins.Chat,
+                    Title = sessionContext.Title,
+                    Provider = settings != null ? settings.Provider : null,
+                    BaseUrl = settings != null ? settings.LmStudioBaseUrl : null,
+                    Model = generateContext != null ? generateContext.ModelId : null,
+                    DurationMs = durationMs,
+                    ContextMax = _activeModelContext != null && _activeModelContext.MaxContextLength > 0
+                        ? _activeModelContext.MaxContextLength
+                        : (int?)null,
+                    Outcome = outcome,
+                    Error = error
+                };
+
+                usage.ApplyTo(record);
+
+                await _usageRecorder.AppendAsync(record, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"ChatSessionOrchestrator: failed to record the usage of the request: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Context handed to the tools of this request, so a subagent or a compaction writes its usage under the
+        /// session and the request of the main chat.
+        /// </summary>
+        private UsageCallContext BuildUsageContext(SessionStateContext context)
+        {
+            string sessionId = context != null ? context.SessionId : CurrentSessionId();
+
+            return UsageCallContext.ForChat(sessionId, context != null ? context.RequestId : null);
+        }
+
+        /// <summary>
+        /// Id of the live chat session in the format of the chat log.
+        /// </summary>
+        private string CurrentSessionId() => UsageIds.SessionId(_history?.CurrentSessionId);
+
+        /// <summary>
+        /// Fixes the session and title of the request right before its first round and opens the usage scope for it.
+        /// </summary>
+        private UsageRequestScope.Scope BeginUsageScope(SessionStateContext sessionContext, GenerateStreamContext context)
+        {
+            sessionContext.SessionId = CurrentSessionId();
+            sessionContext.Title = BuildSessionTitle(context?.Prompt);
+
+            return UsageRequestScope.Begin(BuildUsageContext(sessionContext));
+        }
+
+        /// <summary>
+        /// Session title for the stats dialog: the first user message of the session, cut at
+        /// <see cref="SessionTitleLength"/> characters.
+        /// </summary>
+        private string BuildSessionTitle(string requestPrompt)
+        {
+            try
+            {
+                var history = _history != null ? _history.GetHistoryCopy() : null;
+
+                if (history != null)
+                {
+                    foreach (var message in history)
+                    {
+                        if (message == null || !string.Equals(message.Role, "user", StringComparison.Ordinal))
+                            continue;
+
+                        string title = CompactTitle(ContentTextExtractor.ExtractTextContent(message.Content));
+
+                        if (!string.IsNullOrEmpty(title))
+                            return title;
+                    }
+                }
+
+                return CompactTitle(requestPrompt);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"ChatSessionOrchestrator: failed to build the session title: {ex.Message}");
             }
 
-            int prompt = 0;
-            int completion = 0;
-            int cached = 0;
-            bool hasPrompt = false;
-            bool hasCompletion = false;
-            bool hasCached = false;
+            return null;
+        }
 
-            foreach (var result in results)
+        /// <summary>
+        /// Collapses the whitespace of a message into single spaces and cuts it at the title length.
+        /// </summary>
+        private static string CompactTitle(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            var builder = new StringBuilder(SessionTitleLength);
+            bool pendingSpace = false;
+
+            foreach (char symbol in text)
             {
-                if (result?.TokenUsage?.PromptTokens is int promptTokens)
+                if (char.IsWhiteSpace(symbol))
                 {
-                    prompt += promptTokens;
-                    hasPrompt = true;
+                    pendingSpace = builder.Length > 0;
+                    continue;
                 }
 
-                if (result?.TokenUsage?.CompletionTokens is int completionTokens)
+                if (pendingSpace)
                 {
-                    completion += completionTokens;
-                    hasCompletion = true;
+                    builder.Append(' ');
+                    pendingSpace = false;
                 }
 
-                if (result?.TokenUsage?.CachedTokens is int cachedTokens)
-                {
-                    cached += cachedTokens;
-                    hasCached = true;
-                }
+                builder.Append(symbol);
+
+                if (builder.Length >= SessionTitleLength)
+                    break;
             }
 
-            return (hasPrompt ? prompt : (int?)null,
-                    hasCompletion ? completion : (int?)null,
-                    hasCached ? cached : (int?)null);
+            return builder.ToString();
         }
 
         /// <summary>
@@ -860,6 +1014,7 @@ namespace LMLocal.Application.ChatSession
         /// CompactingHistory state: Performs history compaction if needed and sends status messages.
         /// </summary>
         private async Task<ChatSessionState> HandleCompactingHistoryStateAsync(
+            SessionStateContext context,
             GenerateStreamContext generateContext,
             Func<WebView2ScriptMessage, Task> onMessage,
             CancellationToken ct)

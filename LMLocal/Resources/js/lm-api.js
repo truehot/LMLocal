@@ -3,6 +3,9 @@
 /**
  * lm-api.js — host bridge between the VS tool window (C#/WebView2) and the chat UI.
  */
+
+import bridgeClient from '@app/api/bridge.client.js';
+
 const LmApi = {
     /**
      * Replaces the chat input value, resizes, dispatches the 'input' event, focuses and moves the caret to the end.
@@ -53,6 +56,97 @@ const LmApi = {
         if (!el) return false;
         el.focus();
         return true;
+    },
+
+    /**
+     * Shows or hides the debugger stop banner above the status bar.
+     */
+    setDebugStop(payload) {
+        const banner = document.getElementById('debug-stop-banner');
+        if (!banner) return false;
+
+        if (!payload) {
+            banner.classList.add('hidden');
+            delete banner.dataset.stopKey;
+            return true;
+        }
+
+        this._wireDebugStopBanner(banner);
+
+        const caption = document.getElementById('debug-stop-caption');
+        if (caption) caption.textContent = LmApi._formatDebugStopCaption(payload);
+
+        banner.dataset.stopKey = LmApi._debugStopKey(payload);
+        banner.classList.toggle('debug-stop-exception', payload.kind === 'Exception');
+        banner.classList.remove('hidden');
+        return true;
+    },
+
+    /**
+     * Wires the banner buttons once; every push after the first one reuses the handlers.
+     */
+    _wireDebugStopBanner(banner) {
+        if (banner.dataset.wired === 'true') return;
+        banner.dataset.wired = 'true';
+
+        const explainBtn = document.getElementById('debug-stop-explain');
+        if (explainBtn) {
+            explainBtn.addEventListener('click', () => LmApi._explainDebugStop());
+        }
+
+        const dismissBtn = document.getElementById('debug-stop-dismiss');
+        if (dismissBtn) {
+            dismissBtn.addEventListener('click', () => LmApi.setDebugStop(null));
+        }
+    },
+
+    /**
+     * Asks the host to read the full context of the stop and send it to the chat.
+     */
+    async _explainDebugStop() {
+        const banner = document.getElementById('debug-stop-banner');
+        const explainBtn = document.getElementById('debug-stop-explain');
+        if (!banner || !explainBtn || explainBtn.disabled) return;
+
+        const clickedKey = banner.dataset.stopKey;
+        explainBtn.disabled = true;
+
+        let sent = false;
+        try {
+            sent = await bridgeClient.explainDebugStopAsync();
+        } catch (err) {
+            console.error('Failed to request the debugger stop explanation', err);
+        } finally {
+            explainBtn.disabled = false;
+            if (sent === true && banner.dataset.stopKey === clickedKey) LmApi.setDebugStop(null);
+        }
+    },
+
+    /**
+     * Identity of a stop, so that the answer of an older request cannot hide a newer stop.
+     */
+    _debugStopKey(payload) {
+        return [payload.kind, payload.reason, payload.file, payload.line].join('|');
+    },
+
+    /**
+     * "Breakpoint hit · SomeService.cs:42" — what the debugger stopped on, plus the file and the line.
+     */
+    _formatDebugStopCaption(payload) {
+        let caption;
+        if (payload.kind === 'Exception') {
+            caption = payload.reason === 'ExceptionNotHandled' ? 'Unhandled exception' : 'Exception thrown';
+        } else {
+            caption = payload.reason === 'UserBreak' ? 'Break mode' : 'Breakpoint hit';
+        }
+
+        if (payload.file) {
+            const segments = String(payload.file).split(/[\\/]/);
+            const fileName = segments[segments.length - 1];
+            caption += ` · ${fileName}${payload.line ? ':' + payload.line : ''}`;
+        }
+
+        return caption;
     },
 
     /**

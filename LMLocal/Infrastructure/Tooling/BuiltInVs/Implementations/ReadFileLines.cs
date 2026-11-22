@@ -24,8 +24,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private readonly IVsDependencies _vsDependencies;
         private readonly IPathResolver _pathResolver;
         private readonly IFileSystem _fileSystem;
+        private readonly IMissingFileHint _missingFileHint;
 
-        internal const int MaxFiles = 10;
+        internal const int MaxFiles = 20;
 
         /// <summary>Files up to this many lines report total_lines even when the read stops before the end (the rest is read only to count lines).</summary>
         internal const int MaxCountedLines = 20000;
@@ -42,11 +43,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string ToolName => "read_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
 
-        public ReadFileLines(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem)
+        public ReadFileLines(IVsDependencies vsDependencies, IPathResolver pathResolver, IFileSystem fileSystem, IMissingFileHint missingFileHint = null)
         {
             _vsDependencies = vsDependencies ?? throw new ArgumentNullException(nameof(vsDependencies));
             _pathResolver = pathResolver ?? throw new ArgumentNullException(nameof(pathResolver));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _missingFileHint = missingFileHint ?? new MissingFileHint(pathResolver, fileSystem);
         }
 
         public ToolDefinition GetToolInfo()
@@ -136,13 +138,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                    return Error($"File not found: {filePath}", filePath);
+                    return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, filePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
 
                 if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
                     return Error($"File '{absolutePath}' is outside the solution directory '{solutionDir}'. Only files inside the open solution can be read.", filePath);
 
                 if (!_fileSystem.FileExists(absolutePath))
-                    return Error($"File not found: {absolutePath}", filePath);
+                    return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
 
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;

@@ -20,7 +20,7 @@ namespace LMLocal.Infrastructure.HttpWrapper
         /// </summary>
         internal static void EnsureForHost(Uri requestUri)
         {
-            if (requestUri == null || !requestUri.IsAbsoluteUri)
+            if (requestUri?.IsAbsoluteUri != true)
                 return;
 
             ServicePoint servicePoint = ServicePointManager.FindServicePoint(requestUri);

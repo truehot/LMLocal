@@ -9,9 +9,11 @@ using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
 using LMLocal.Application.SubAgents.ReadRefs;
 using LMLocal.Application.Tool;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
+using LMLocal.Core.Models.Usage;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.Persistence;
 
@@ -47,6 +49,7 @@ namespace LMLocal.Application.SubAgents
         private readonly IToolQueueProvider _queueProvider;
         private readonly IToolCallLoopDetector _loopDetector;
         private readonly IChatPersistenceFactory _chatPersistenceFactory;
+        private readonly IUsageRecorder _usageRecorder;
         private readonly string _logsFolder;
         private readonly bool _loopRecoveryEnabled;
 
@@ -58,7 +61,8 @@ namespace LMLocal.Application.SubAgents
             IToolQueueProvider queueProvider,
             IToolCallLoopDetector loopDetector,
             IChatPersistenceFactory chatPersistenceFactory,
-            bool loopRecoveryEnabled = DefaultLoopRecoveryEnabled)
+            bool loopRecoveryEnabled = DefaultLoopRecoveryEnabled,
+            IUsageRecorder usageRecorder = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -68,6 +72,7 @@ namespace LMLocal.Application.SubAgents
             _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _chatPersistenceFactory = chatPersistenceFactory ?? throw new ArgumentNullException(nameof(chatPersistenceFactory));
             _loopRecoveryEnabled = loopRecoveryEnabled;
+            _usageRecorder = usageRecorder;
 
             string appDataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -97,8 +102,21 @@ namespace LMLocal.Application.SubAgents
             int? lastRound = null;
             Guid? chatSessionId = null;
 
-            SubAgentsRunResponse FailRun(SubAgentsRunResponse failed, SubAgentRunRequest failedRequest, string error, int? round)
+            var usageStartedUtc = DateTime.UtcNow;
+            var usage = new UsageAccumulator();
+            var usageOutcome = UsageOutcome.Ok;
+            string usageError = null;
+
+            SubAgentsRunResponse FailRun(
+                SubAgentsRunResponse failed,
+                SubAgentRunRequest failedRequest,
+                string error,
+                int? round,
+                UsageOutcome outcome = UsageOutcome.Error)
             {
+                usageOutcome = outcome;
+                usageError = error;
+
                 InternalLogger.Warn(
                     $"SubAgentsService: run '{failed.RunId}' of '{failedRequest?.AgentName}' failed"
                     + (round.HasValue ? $" at round {round.Value + 1}" : string.Empty)
@@ -206,16 +224,18 @@ namespace LMLocal.Application.SubAgents
                         var roundResult = await _roundService.RunAsync(roundRequest, overallCts.Token).ConfigureAwait(false);
                         var streamResult = roundResult.Stream;
 
+                        usage.Add(streamResult);
+
                         if (cancellationToken.IsCancellationRequested)
                         {
                             return FailRun(
-                                response, request, DescribeCancellation(request, round, toolExecutor.Steps), round);
+                                response, request, DescribeCancellation(request, round, toolExecutor.Steps), round, UsageOutcome.Cancelled);
                         }
 
                         if (overallCts.Token.IsCancellationRequested)
                         {
                             return FailRun(
-                                response, request, DescribeTimeout(request, round), round);
+                                response, request, DescribeTimeout(request, round), round, UsageOutcome.Timeout);
                         }
 
                         switch (roundResult.Outcome)
@@ -230,7 +250,7 @@ namespace LMLocal.Application.SubAgents
 
                             case StreamRoundOutcome.Incomplete:
                                 return FailRun(
-                                    response, request, streamResult.ErrorMessage, round);
+                                    response, request, streamResult.ErrorMessage, round, UsageOutcome.Incomplete);
 
                             case StreamRoundOutcome.ToolCalls:
                                 if (finalAnswerRound && roundRequest.IsToolRound)
@@ -295,8 +315,6 @@ namespace LMLocal.Application.SubAgents
                                 response.Success = true;
                                 response.Rounds = round + 1;
                                 response.ToolsUsed = new List<string>(toolExecutor.UsedTools);
-                                CopyUsage(streamResult, response);
-                                response.TokensPerSecond = streamResult.TokensPerSecond;
 
                                 if (expanded != null)
                                 {
@@ -318,11 +336,11 @@ namespace LMLocal.Application.SubAgents
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return FailRun(
-                        response, request, DescribeCancellation(request, lastRound, null), lastRound);
+                        response, request, DescribeCancellation(request, lastRound, null), lastRound, UsageOutcome.Cancelled);
                 }
 
                 return FailRun(
-                    response, request, DescribeTimeout(request, lastRound), lastRound);
+                    response, request, DescribeTimeout(request, lastRound), lastRound, UsageOutcome.Timeout);
             }
             catch (ApiException ex)
             {
@@ -345,16 +363,74 @@ namespace LMLocal.Application.SubAgents
             {
                 stopwatch.Stop();
                 response.DurationMs = stopwatch.ElapsedMilliseconds;
+
+                ApplyUsage(usage, response);
+
+                await RecordUsageAsync(request, response, usage, usageOutcome, usageError, chatSessionId, usageStartedUtc)
+                    .ConfigureAwait(false);
             }
         }
 
-        private static void CopyUsage(StreamCompletionResult stream, SubAgentsRunResponse response)
+        /// <summary>
+        /// Copies the usage of every round of the run into the response the caller shows.
+        /// </summary>
+        private static void ApplyUsage(UsageAccumulator usage, SubAgentsRunResponse response)
         {
-            if (stream?.TokenUsage != null)
+            if (usage == null || response == null)
+                return;
+
+            response.PromptTokens = usage.Prompt;
+            response.CompletionTokens = usage.Completion;
+            response.TotalTokens = usage.Prompt.HasValue || usage.Completion.HasValue
+                ? (int?)((usage.Prompt ?? 0) + (usage.Completion ?? 0))
+                : null;
+            response.TokensPerSecond = usage.GenMs > 0 ? usage.GenCompletion * 1000d / usage.GenMs : 0d;
+        }
+
+        /// <summary>
+        /// Writes the usage of the run, whatever its outcome: a run that failed after five rounds already spent the
+        /// tokens of those rounds. Never throws, so statistics cannot break a run.
+        /// </summary>
+        private async Task RecordUsageAsync(
+            SubAgentRunRequest request,
+            SubAgentsRunResponse response,
+            UsageAccumulator usage,
+            UsageOutcome outcome,
+            string error,
+            Guid? chatSessionId,
+            DateTime startedUtc)
+        {
+            if (_usageRecorder == null || request == null)
+                return;
+
+            try
             {
-                response.PromptTokens = stream.TokenUsage.PromptTokens;
-                response.CompletionTokens = stream.TokenUsage.CompletionTokens;
-                response.TotalTokens = stream.TokenUsage.TotalTokens;
+                var record = new UsageRecord
+                {
+                    Timestamp = startedUtc,
+                    SessionId = request.ParentSessionId,
+                    RequestId = request.RequestId,
+                    Source = UsageSource.Subagent,
+                    Origin = string.IsNullOrWhiteSpace(request.Origin) ? UsageOrigins.Chat : request.Origin,
+                    Agent = request.AgentName,
+                    RunSessionId = UsageIds.SessionId(chatSessionId),
+                    Provider = request.ProviderType,
+                    BaseUrl = request.BaseUrl,
+                    Model = !string.IsNullOrWhiteSpace(response.Model) ? response.Model : request.Model,
+                    DurationMs = response.DurationMs,
+                    Outcome = outcome,
+                    Error = outcome == UsageOutcome.Ok || outcome == UsageOutcome.Cancelled
+                        ? null
+                        : UsageOutcomeMapper.FirstLine(error)
+                };
+
+                usage.ApplyTo(record);
+
+                await _usageRecorder.AppendAsync(record, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"SubAgentsService: failed to record the usage of run '{response?.RunId}': {ex.Message}");
             }
         }
 

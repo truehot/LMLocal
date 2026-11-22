@@ -110,8 +110,9 @@ namespace LMLocal.Application.Chat
                 var summaryMessages = new List<ChatMessage>();
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
-                    summaryMessages.Add(new ChatMessage("user", ChatMessagePlaceholders.SummaryRequest));
-                    summaryMessages.Add(new ChatMessage("assistant", summary));
+                    DateTime now = DateTime.UtcNow;
+                    summaryMessages.Add(new ChatMessage("user", ChatMessagePlaceholders.SummaryRequest) { Timestamp = now });
+                    summaryMessages.Add(new ChatMessage("assistant", summary) { Timestamp = now });
                 }
 
                 await _chatHistoryManager.ClearAndSaveMessagesAsync(summaryMessages).ConfigureAwait(false);

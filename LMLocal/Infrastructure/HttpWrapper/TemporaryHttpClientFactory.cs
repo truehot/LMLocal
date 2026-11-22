@@ -6,7 +6,7 @@ using LMLocal.Infrastructure.Security;
 namespace LMLocal.Infrastructure.HttpWrapper
 {
     /// <summary>
-    /// Builds a short-lived HttpClient that trusts a single server certificate for a Test Connection probe with an unsaved certificate path. 
+    /// Builds a short-lived HttpClient that trusts a single server certificate for a Test Connection probe with an unsaved certificate path.
     /// </summary>
     internal interface ITemporaryHttpClientFactory
     {

@@ -233,8 +233,10 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public async Task ReplaceLine_WithDroppedInvisibleCharacter_FailsAndLeavesTheFileUntouched()
+        public async Task ReplaceLine_WithDroppedInvisibleCharacter_MatchesAndKeepsItWhenTheLineIsUnchanged()
         {
+            // The tokenizer may drop invisible characters, so old_lines arrives without them: the canonical pass must
+            // still find the line, and an unchanged line is written back from the file (restore), invisible bytes included.
             var read1 = await ReadAllTextsAsync();
             int index = FindLineWithInvisibleCharacter(read1);
             Assert.That(index, Is.GreaterThanOrEqualTo(0),
@@ -245,13 +247,42 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(withoutInvisible, Is.Not.EqualTo(line), "The invisible character must actually be removed.");
 
             var before = File.ReadAllBytes(_workingPath);
-            var response = await ReplaceAsync(index + 1, withoutInvisible, "should not be applied");
+            var response = await ReplaceAsync(index + 1, withoutInvisible, withoutInvisible);
 
-            Assert.That(response.Success, Is.False,
-                "If a character present in the file is missing from old_lines, nothing may match.");
-            Assert.That(response.ErrorMessage, Is.Not.Null.And.Not.Empty);
+            Assert.That(response.Success, Is.True, response.ErrorMessage);
             Assert.That(File.ReadAllBytes(_workingPath), Is.EqualTo(before),
-                "A failed replace must not touch the file.");
+                "The line the model did not change must keep its invisible characters byte-identically.");
+        }
+
+        [Test]
+        public async Task ReplaceLine_WithDroppedInvisibleCharacter_RewrittenLine_ReportsTheRemoval()
+        {
+            // A line the model rewrote is written from new_lines: its invisible character is gone, and the response says so.
+            string special = char.ConvertFromUtf32(0xFFFF);
+            File.WriteAllBytes(_workingPath, Encoding.UTF8.GetBytes("Key = \"" + special + "\"\r\nplain\r\n"));
+
+            var response = await ReplaceAsync(1, "Key = \"\"", "Key = \"x\"");
+
+            Assert.That(response.Success, Is.True, response.ErrorMessage);
+            Assert.That(response.InvisibleCharacters,
+                Is.EqualTo(new[] { "line 1: U+FFFF removed (the line was rewritten from new_lines)" }));
+            var read = await ReadAllTextsAsync();
+            Assert.That(read[0], Is.EqualTo("Key = \"x\""));
+        }
+
+        [Test]
+        public async Task ReplaceLine_WithDroppedZeroWidthJoiner_FailsAndLeavesTheFileUntouched()
+        {
+            // ZWJ is deliberately not deleted (it shapes emoji and scripts), so a line without it does not match.
+            string content = "family \U0001F468\u200D\U0001F469 here\r\nplain\r\n";
+            File.WriteAllBytes(_workingPath, Encoding.UTF8.GetBytes(content));
+            var before = File.ReadAllBytes(_workingPath);
+
+            var response = await ReplaceAsync(1, "family \U0001F468\U0001F469 here", "should not be applied");
+
+            Assert.That(response.Success, Is.False, "A line missing a ZWJ present in the file must not match.");
+            Assert.That(response.ErrorMessage, Is.Not.Null.And.Not.Empty);
+            Assert.That(File.ReadAllBytes(_workingPath), Is.EqualTo(before), "A failed replace must not touch the file.");
         }
 
         // ── 5. Surrogate pairs (emoji) ────────────────────────────────────────
@@ -413,6 +444,76 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(response.Success, Is.True, response.ErrorMessage);
             Assert.That(File.ReadAllBytes(_workingPath), Is.EqualTo(bytes),
                 description + " must survive a no-op replace byte-identically.");
+        }
+
+        // Characters with no visible form that a text file can still carry: noncharacters (.NET Framework NFC throws on
+        // them - every replace_file_lines on a plan holding U+FFFF once failed), C0/C1 controls, bidi and format
+        // characters, U+FFFD and private use. Passed as code points so no escape can be decoded on the way into the source.
+        [TestCase(0xFFFF, "noncharacter U+FFFF", TestName = "EchoEdit_NoncharacterFFFF")]
+        [TestCase(0xFFFE, "noncharacter U+FFFE", TestName = "EchoEdit_NoncharacterFFFE")]
+        [TestCase(0xFDD0, "noncharacter U+FDD0", TestName = "EchoEdit_NoncharacterFDD0")]
+        [TestCase(0x1FFFF, "supplementary noncharacter U+1FFFF", TestName = "EchoEdit_NoncharacterSupplementary")]
+        [TestCase(0x00AD, "soft hyphen", TestName = "EchoEdit_SoftHyphen")]
+        [TestCase(0x0007, "bell", TestName = "EchoEdit_Bell")]
+        [TestCase(0x000B, "vertical tab", TestName = "EchoEdit_VerticalTab")]
+        [TestCase(0x000C, "form feed", TestName = "EchoEdit_FormFeed")]
+        [TestCase(0x001B, "escape", TestName = "EchoEdit_Escape")]
+        [TestCase(0x0090, "C1 control", TestName = "EchoEdit_C1Control")]
+        [TestCase(0x202E, "right-to-left override", TestName = "EchoEdit_RtlOverride")]
+        [TestCase(0x200F, "right-to-left mark", TestName = "EchoEdit_RtlMark")]
+        [TestCase(0x2060, "word joiner", TestName = "EchoEdit_WordJoiner")]
+        [TestCase(0xFFFD, "replacement character", TestName = "EchoEdit_ReplacementCharacter")]
+        [TestCase(0xE000, "private use", TestName = "EchoEdit_PrivateUse")]
+        public async Task MidLineSpecialCharacter_SurvivesNoOpAndRealEdit(int codePoint, string description)
+        {
+            string special = char.ConvertFromUtf32(codePoint);
+            string content = "before" + special + "after\r\nplain\r\n";
+            var bytes = Encoding.UTF8.GetBytes(content);
+            File.WriteAllBytes(_workingPath, bytes);
+
+            var read1 = await ReadAllTextsAsync();
+            Assert.That(read1[0], Is.EqualTo("before" + special + "after"),
+                description + " must be echoed verbatim: " + CodePointsOf(read1[0]));
+
+            var noOp = await ReplaceAsync(1, read1[0], read1[0]);
+            Assert.That(noOp.Success, Is.True, description + ": " + noOp.ErrorMessage);
+            Assert.That(File.ReadAllBytes(_workingPath), Is.EqualTo(bytes),
+                description + " must survive a no-op replace byte-identically.");
+
+            // A real edit of the next line runs the canonical passes over the special line too (the search window).
+            var edit = await ReplaceAsync(2, "plain", "changed");
+            Assert.That(edit.Success, Is.True, description + ": " + edit.ErrorMessage);
+            var read2 = await ReadAllTextsAsync();
+            Assert.That(read2[0], Is.EqualTo("before" + special + "after"), description + " must stay on the untouched line.");
+            Assert.That(read2[1], Is.EqualTo("changed"));
+
+            var dropped = await ReplaceAsync(1, "beforeafter\r\nchanged", "beforeafter\r\nchanged again");
+            if (CharacterMap.IsDeletedCodePoint(codePoint))
+            {
+                // The tokenizer may drop the character: old_lines without it still matches, and a block that leaves the
+                // special line unchanged writes it back from the file.
+                Assert.That(dropped.Success, Is.True, description + " dropped from old_lines: " + dropped.ErrorMessage);
+                Assert.That(dropped.MatchedWithNormalization, Is.True);
+                Assert.That(dropped.InvisibleCharacters, Is.EqualTo(new[] { $"line 1: U+{codePoint:X4} kept (line written back unchanged)" }));
+            }
+            else
+            {
+                // A character the model sees (private use is a glyph in icon fonts) is not deleted: old_lines without
+                // it does not match, and the file is left as it was.
+                Assert.That(dropped.Success, Is.False, description + " must not match when dropped from old_lines.");
+                await ReplaceAsync(2, "changed", "changed again");
+            }
+
+            var read3 = await ReadAllTextsAsync();
+            Assert.That(read3[0], Is.EqualTo("before" + special + "after"),
+                description + " must be restored on the line the model did not change: " + CodePointsOf(read3[0]));
+            Assert.That(read3[1], Is.EqualTo("changed again"));
+
+            // And an edit of the special line itself, copied verbatim.
+            var own = await ReplaceAsync(1, read3[0], read3[0] + " X");
+            Assert.That(own.Success, Is.True, description + ": " + own.ErrorMessage);
+            var read4 = await ReadAllTextsAsync();
+            Assert.That(read4[0], Is.EqualTo("before" + special + "after X"));
         }
 
         // ── 9. EOL matrix ─────────────────────────────────────────────────────

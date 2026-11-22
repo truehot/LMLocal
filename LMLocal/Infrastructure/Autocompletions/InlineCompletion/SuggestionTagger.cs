@@ -98,8 +98,8 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         /// <summary>True while an IntelliSense completion list (legacy or async) is open in this view.</summary>
         private bool IsCompletionActive()
         {
-            return (_completionBroker != null && _completionBroker.IsCompletionActive(_textView)) ||
-                   (_asyncCompletionBroker != null && _asyncCompletionBroker.IsCompletionActive(_textView));
+            return (_completionBroker?.IsCompletionActive(_textView) == true) ||
+                   (_asyncCompletionBroker?.IsCompletionActive(_textView) == true);
         }
 
         /// <summary>
@@ -198,7 +198,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             get
             {
                 var s = _state;
-                return s != null && s.HasValue;
+                return s?.HasValue == true;
             }
         }
 
@@ -278,7 +278,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             CancelOperation();
 
             var oldState = _state;
-            if (oldState == null || !oldState.HasValue) return;
+            if (oldState?.HasValue != true) return;
 
             _state = null;
             _isVisible = false;
@@ -294,7 +294,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
         internal virtual void AcceptSuggestion()
         {
             var state = _state;
-            if (_disposed || state == null || !state.HasValue)
+            if (_disposed || state?.HasValue != true)
                 return;
 
             var suggestion = state.Text;
@@ -375,7 +375,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
 
             var state = _state;
-            if (state != null && state.HasValue && !string.IsNullOrEmpty(state.Text))
+            if (state?.HasValue == true && !string.IsNullOrEmpty(state.Text))
             {
                 if (e.Changes.Count == 1)
                 {
@@ -416,7 +416,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (_disposed || _suppressNextSuggestion) return;
 
             var s = _state;
-            if (s == null || !s.HasValue) return;
+            if (s?.HasValue != true) return;
 
             var p = s.CaretPoint;
             if (p.Snapshot != e.NewSnapshot) return;
@@ -439,7 +439,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             if (_disposed || _suppressNextSuggestion) return;
 
             var s = _state;
-            if (s == null || !s.HasValue) return;
+            if (s?.HasValue != true) return;
 
             if (e.NewPosition.BufferPosition == s.CaretPoint)
             {
@@ -707,9 +707,6 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             return TryConsume(suggestion, inserted, atLineIndentation: false, out remainder);
         }
 
-        /// <param name="atLineIndentation">
-        /// True when only whitespace precedes the insertion on its line.
-        /// </param>
         internal static bool TryConsume(string suggestion, string inserted, bool atLineIndentation, out string remainder)
         {
             if (atLineIndentation && !string.IsNullOrEmpty(inserted) && !string.IsNullOrEmpty(suggestion) &&

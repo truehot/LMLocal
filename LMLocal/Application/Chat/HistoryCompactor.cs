@@ -1,14 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.ChatSessionStream;
+using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
+using LMLocal.Core.Models.Usage;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.ModelsConfig;
@@ -40,6 +43,10 @@ namespace LMLocal.Application.Chat
     internal interface IHistoryCompactor
     {
         bool NeedsCompaction();
+        /// <summary>
+        /// Compacts the history when it has grown past the threshold. The chat request it belongs to comes from
+        /// <see cref="UsageRequestScope"/>, so the tokens of this compaction are recorded under that request.
+        /// </summary>
         Task CompactIfNeededAsync(string modelId, CancellationToken cancellationToken);
 
         /// <summary>
@@ -123,6 +130,7 @@ namespace LMLocal.Application.Chat
         private readonly IActiveModelContext _activeModelContext;
         private readonly IContextCalibration _calibration;
         private readonly IModelsConfigManager _modelsConfigManager;
+        private readonly IUsageRecorder _usageRecorder;
 
         public HistoryCompactor(
             IChatHistoryManager history,
@@ -130,7 +138,8 @@ namespace LMLocal.Application.Chat
             ISettingsManager settingsManager,
             IActiveModelContext activeModelContext,
             IContextCalibration calibration = null,
-            IModelsConfigManager modelsConfigManager = null)
+            IModelsConfigManager modelsConfigManager = null,
+            IUsageRecorder usageRecorder = null)
         {
             _history = history ?? throw new ArgumentNullException(nameof(history));
             _openApiAdapter = openApiAdapter ?? throw new ArgumentNullException(nameof(openApiAdapter));
@@ -138,6 +147,7 @@ namespace LMLocal.Application.Chat
             _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
             _calibration = calibration ?? new ContextCalibration();
             _modelsConfigManager = modelsConfigManager;
+            _usageRecorder = usageRecorder;
         }
 
         private int GetMaxContext()
@@ -388,10 +398,11 @@ namespace LMLocal.Application.Chat
 
             if (hasPast)
             {
+                DateTime now = DateTime.UtcNow;
                 var withPast = new List<ChatMessage>(keep.Count + 3)
                 {
-                    new ChatMessage("user", ForcedSummaryUserPlaceholder),
-                    new ChatMessage("assistant", summary),
+                    new ChatMessage("user", ForcedSummaryUserPlaceholder) { Timestamp = now },
+                    new ChatMessage("assistant", summary) { Timestamp = now },
                     messages[lastUser]
                 };
                 withPast.AddRange(keep);
@@ -401,7 +412,7 @@ namespace LMLocal.Application.Chat
             int firstAssistant = -1;
             for (int i = 0; i < keep.Count; i++)
             {
-                if (keep[i] != null && keep[i].Role == "assistant" && ConversationSegmenter.HasToolCalls(keep[i]))
+                if (keep[i]?.Role == "assistant" && ConversationSegmenter.HasToolCalls(keep[i]))
                 {
                     firstAssistant = i;
                     break;
@@ -434,7 +445,8 @@ namespace LMLocal.Application.Chat
             return new ChatMessage(message.Role, combined, message.ToolCallId)
             {
                 ToolCalls = message.ToolCalls,
-                ModelId = message.ModelId
+                ModelId = message.ModelId,
+                Timestamp = message.Timestamp
             };
         }
 
@@ -554,6 +566,7 @@ namespace LMLocal.Application.Chat
             string formattedInput, string modelId, string systemPrompt, int? maxTokens, string reasoning, bool rejectTruncated,
             CancellationToken ct)
         {
+            UsageCallContext usageContext = ResolveUsageContext();
             var summaryRequest = new List<ChatMessage>
             {
                 new ChatMessage("system", systemPrompt),
@@ -563,9 +576,19 @@ namespace LMLocal.Application.Chat
             var modelContext = new ModelContext(modelId: modelId, temperature: 0.3, maxOutputTokens: maxTokens, reasoning: reasoning);
             var messageContext = new MessageContext(summaryRequest);
 
+            DateTime startedUtc = DateTime.UtcNow;
+            var stopwatch = Stopwatch.StartNew();
+
             try
             {
                 SendChatResponse response = await _openApiAdapter.SendChatAsync(messageContext, modelContext, ct).ConfigureAwait(false);
+
+                stopwatch.Stop();
+                await RecordUsageAsync(
+                        usageContext, response, modelId, startedUtc, stopwatch.ElapsedMilliseconds,
+                        UsageOutcomeMapper.MapCompaction(CompactionOutcome.Success), null)
+                    .ConfigureAwait(false);
+
                 var choice = response?.Choices?.FirstOrDefault(x => x != null);
 
                 if (rejectTruncated && string.Equals(choice?.FinishReason?.Trim(), "length", StringComparison.OrdinalIgnoreCase))
@@ -576,8 +599,24 @@ namespace LMLocal.Application.Chat
 
                 return choice?.Message?.Content?.Trim();
             }
+            catch (OperationCanceledException)
+            {
+                stopwatch.Stop();
+                await RecordUsageAsync(
+                        usageContext, null, modelId, startedUtc, stopwatch.ElapsedMilliseconds,
+                        UsageOutcomeMapper.MapCompaction(CompactionOutcome.Cancelled), null)
+                    .ConfigureAwait(false);
+
+                throw;
+            }
             catch (ApiException ex)
             {
+                stopwatch.Stop();
+                await RecordUsageAsync(
+                        usageContext, null, modelId, startedUtc, stopwatch.ElapsedMilliseconds,
+                        UsageOutcome.Error, ex.Message)
+                    .ConfigureAwait(false);
+
                 _calibration.RecordOverflowError(
                     ex.ErrorInfo?.PromptTokens,
                     ex.ErrorInfo?.ContextLength,
@@ -588,11 +627,76 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
+        /// Request the compaction belongs to.
+        /// </summary>
+        private UsageCallContext ResolveUsageContext()
+        {
+            UsageCallContext scope = UsageRequestScope.Current;
+
+            if (scope != null)
+                return scope;
+
+            return UsageCallContext.ForChat(UsageIds.SessionId(_history?.CurrentSessionId), null);
+        }
+
+        /// <summary>
+        /// Writes the usage of one compaction call, and only when the model was actually asked.
+        /// </summary>
+        private async Task RecordUsageAsync(
+            UsageCallContext usageContext,
+            SendChatResponse response,
+            string modelId,
+            DateTime startedUtc,
+            long durationMs,
+            UsageOutcome outcome,
+            string error)
+        {
+            if (_usageRecorder == null || usageContext == null || string.IsNullOrWhiteSpace(usageContext.SessionId))
+                return;
+
+            try
+            {
+                var usage = response?.Usage;
+                var settings = _settingsManager?.Current;
+
+                var record = new UsageRecord
+                {
+                    Timestamp = startedUtc,
+                    SessionId = usageContext.SessionId,
+                    RequestId = usageContext.RequestId,
+                    Source = UsageSource.Compaction,
+                    Origin = usageContext.EffectiveOrigin,
+                    Provider = settings?.Provider,
+                    BaseUrl = settings?.LmStudioBaseUrl,
+                    Model = modelId,
+                    Rounds = 1,
+                    DurationMs = durationMs,
+                    ContextMax = GetMaxContext(),
+                    Prompt = usage != null ? usage.PromptTokens : (int?)null,
+                    Completion = usage != null ? usage.CompletionTokens : (int?)null,
+                    Cached = usage != null && usage.PromptTokensDetails != null ? usage.PromptTokensDetails.CachedTokens : (int?)null,
+                    Reasoning = usage != null && usage.CompletionTokensDetails != null ? usage.CompletionTokensDetails.ReasoningTokens : (int?)null,
+                    ContextPeak = usage != null ? usage.PromptTokens : (int?)null,
+                    Outcome = outcome,
+                    Error = UsageOutcomeMapper.FirstLine(error)
+                };
+
+                await _usageRecorder.AppendAsync(record, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"HistoryCompactor: failed to record the compaction usage: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Summarizes the past during a forced compaction.
         /// </summary>
         private async Task<string> SummarizeForcedAsync(
             IReadOnlyList<ChatMessage> toSummarize, string modelId, ContextBudget budget, CancellationToken ct)
         {
+            UsageCallContext usageContext = UsageRequestScope.Current;
+
             var (inputLimit, maxTokens) = GetSummaryBudget(budget);
             string reasoning = await GetSummaryReasoningAsync(modelId, ct).ConfigureAwait(false);
 

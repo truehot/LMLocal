@@ -21,14 +21,14 @@ namespace LMLocal.Core.Common
         };
 
         /// <summary>
-        /// Returns true when <paramref name="extension"/> (e.g. ".cs") is a source file for the given <paramref name="language"/>. 
+        /// Returns true when <paramref name="extension"/> (e.g. ".cs") is a source file for the given <paramref name="language"/>.
         /// </summary>
         public static bool IsSourceFile(string extension, string language)
         {
             if (string.IsNullOrEmpty(extension))
                 return false;
 
-            if (language != null && language.IndexOf("C++", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (language?.IndexOf("C++", StringComparison.OrdinalIgnoreCase) >= 0)
                 return Cpp.Contains(extension);
 
             return DotNet.Contains(extension);

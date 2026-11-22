@@ -33,9 +33,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(obj.Value<string>("session_id"), Is.EqualTo("session-1"));
             Assert.That(obj.Value<string>("role"), Is.EqualTo("user"));
             Assert.That(obj.Value<string>("content"), Is.EqualTo("hello"));
-            // Timestamp must be written in ISO 8601 round-trip format. JObject.Parse converts such
-            // strings to DateTime (culture-dependent), so assert on the raw serialized line.
             Assert.That(line, Does.Contain("\"timestamp\":\"2025-02-01T14:30:00.0000000Z\""));
+            Assert.That(line, Does.Contain("\"created_at\":\"2025-02-01T14:30:00.0000000Z\""),
+                "a message created now is written with the creation time it already carries");
         }
 
         [Test]
@@ -125,65 +125,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
-        public void TruncatePrompt_BelowBoundary_ReturnsAsIs()
-        {
-            var content = new string('x', 199);
-
-            Assert.That(ChatLogSerializer.TruncatePrompt(content), Is.EqualTo(content));
-        }
-
-        [Test]
-        public void TruncatePrompt_AtBoundary_ReturnsAsIs()
-        {
-            var content = new string('x', 200);
-
-            Assert.That(ChatLogSerializer.TruncatePrompt(content), Is.EqualTo(content));
-        }
-
-        [Test]
-        public void TruncatePrompt_AboveBoundary_TruncatesWithEllipsis()
-        {
-            var content = new string('x', 201);
-
-            var result = ChatLogSerializer.TruncatePrompt(content);
-
-            Assert.That(result.Length, Is.EqualTo(200 + 3));
-            Assert.That(result.StartsWith(new string('x', 200)));
-            Assert.That(result.EndsWith("..."));
-        }
-
-        [TestCase(null)]
-        [TestCase("")]
-        public void TruncatePrompt_NullOrEmpty_ReturnsEmpty(string content)
-        {
-            Assert.That(ChatLogSerializer.TruncatePrompt(content), Is.EqualTo(string.Empty));
-        }
-
-        [Test]
-        public void Truncate_AboveLimit_TruncatesWithEllipsis()
-        {
-            var content = new string('x', 10);
-
-            var result = ChatLogSerializer.Truncate(content, 4);
-
-            Assert.That(result, Is.EqualTo("xxxx..."));
-        }
-
-        [Test]
-        public void Truncate_AtOrBelowLimit_ReturnsAsIs()
-        {
-            Assert.That(ChatLogSerializer.Truncate("abcd", 4), Is.EqualTo("abcd"));
-            Assert.That(ChatLogSerializer.Truncate("abc", 4), Is.EqualTo("abc"));
-        }
-
-        [TestCase(null)]
-        [TestCase("")]
-        public void Truncate_NullOrEmpty_ReturnsEmpty(string content)
-        {
-            Assert.That(ChatLogSerializer.Truncate(content, 5), Is.EqualTo(string.Empty));
-        }
-
-        [Test]
         public void BuildMessageLine_WithImageParts_WritesPlaceholderNotBase64()
         {
             var parts = new List<ContentPart>
@@ -239,7 +180,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildMessageLine_WithExtraContent_WritesRawObjectNotEscapedString()
         {
-            // extra_content must serialize as a raw JSON object inside tool_calls[i], NOT as a quoted string.
             var toolCalls = new List<ToolCall>
             {
                 new ToolCall
@@ -298,7 +238,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void ParseChatMessage_OldLogWithoutExtraContent_ExtraContentNull()
         {
-            // Pre-feature logs have no extra_content key => ExtraContent must parse to null (not throw).
             var obj = JObject.Parse(
                 "{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"check_flight\",\"arguments\":\"{}\"}}]}");
 
@@ -364,6 +303,104 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             Assert.That(restored, Is.Not.Null);
             Assert.That(restored.ModelId, Is.Null);
+        }
+
+        [Test]
+        public void ParseChatMessage_OldLogWithoutCreatedAt_FallsBackToTimestamp()
+        {
+            // Line written before created_at existed: the only time it has is when it was written.
+            var obj = ChatLogSerializer.ParseLine(
+                "{\"type\":\"message\",\"session_id\":\"s1\",\"role\":\"user\",\"content\":\"hi\",\"timestamp\":\"2025-02-01T14:00:00Z\"}");
+
+            var result = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(result.Timestamp, Is.EqualTo(new DateTime(2025, 2, 1, 14, 0, 0, DateTimeKind.Utc)));
+        }
+
+        [Test]
+        public void ParseChatMessage_WithCreatedAt_PrefersItOverTimestamp()
+        {
+            // A rewritten line: the message was created a day before the line was written.
+            var obj = ChatLogSerializer.ParseLine(
+                "{\"type\":\"message\",\"session_id\":\"s1\",\"role\":\"assistant\",\"content\":\"hi\","
+                + "\"timestamp\":\"2025-02-01T14:00:00Z\",\"created_at\":\"2025-01-31T09:15:00Z\"}");
+
+            var result = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(result.Timestamp, Is.EqualTo(new DateTime(2025, 1, 31, 9, 15, 0, DateTimeKind.Utc)),
+                "the UI must show when the message was created, not when the history was last rewritten");
+        }
+
+        [Test]
+        public void ParseChatMessage_WithoutTimestamp_LeavesItNull()
+        {
+            // Log line written before the field existed.
+            var obj = JObject.Parse("{\"type\":\"message\",\"session_id\":\"s\",\"role\":\"user\",\"content\":\"hi\"}");
+
+            var result = ChatLogSerializer.ParseChatMessage(obj);
+
+            Assert.That(result.Timestamp, Is.Null);
+        }
+
+        [Test]
+        public void BuildMessageLine_SeparatesWrittenTimeFromCreationTime()
+        {
+            var message = new ChatMessage("user", "hi")
+            {
+                Timestamp = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+            };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = ChatLogSerializer.ParseLine(line.Trim());
+
+            Assert.That(obj.Value<string>("timestamp"), Is.EqualTo("2025-02-01T14:30:00.0000000Z"),
+                "timestamp keeps meaning 'when the line was written', which is what orders sessions and searches");
+            Assert.That(obj.Value<string>("created_at"), Is.EqualTo("2025-01-02T03:04:05.0000000Z"),
+                "created_at keeps the creation time of a message across a rewrite of the history");
+        }
+
+        [Test]
+        public void SerializeThenParse_RoundTripsTimestamp()
+        {
+            var message = new ChatMessage("user", "hi")
+            {
+                Timestamp = new DateTime(2025, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+            };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var restored = ChatLogSerializer.ParseChatMessage(ChatLogSerializer.ParseLine(line.Trim()));
+
+            Assert.That(restored.Timestamp, Is.EqualTo(message.Timestamp));
+        }
+
+        [Test]
+        public void ParseLine_DateLikeContent_StaysString()
+        {
+            var obj = ChatLogSerializer.ParseLine(
+                "{\"type\":\"message\",\"session_id\":\"s1\",\"role\":\"user\",\"content\":\"2025-02-01T13:00:00Z\"}");
+
+            Assert.That(obj["content"].Type, Is.EqualTo(JTokenType.String));
+            Assert.That(obj.Value<string>("content"), Is.EqualTo("2025-02-01T13:00:00Z"));
+        }
+
+        [TestCase("2025-02-01T13:00:01Z")]
+        [TestCase("2025-02-01T15:00:01+02:00")]
+        [TestCase("2025-02-01T13:00:01")]
+        public void ParseTimestamp_IsReadAsUtc(string timestamp)
+        {
+            var obj = ChatLogSerializer.ParseLine("{\"timestamp\":\"" + timestamp + "\"}");
+
+            Assert.That(ChatLogSerializer.ParseTimestamp(obj), Is.EqualTo(new DateTime(2025, 2, 1, 13, 0, 1, DateTimeKind.Utc)),
+                "an explicit offset is honoured and a zoneless value is taken as UTC, never as the machine's local time");
+        }
+
+        [TestCase("{\"type\":\"message\"}")]
+        [TestCase("{\"timestamp\":\"not a timestamp\"}")]
+        public void ParseTimestamp_AbsentOrUnparsable_ReturnsMinValue(string line)
+        {
+            var obj = ChatLogSerializer.ParseLine(line);
+
+            Assert.That(ChatLogSerializer.ParseTimestamp(obj), Is.EqualTo(DateTime.MinValue));
         }
     }
 }

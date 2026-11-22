@@ -23,6 +23,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
         public const string SubAgents = "subAgents";
         public const string RecentModels = "recentModels";
         public const string FileLinks = "fileLinks";
+        public const string Usage = "usage";
 
         private readonly IWebViewBridgeFactory _bridgeFactory;
         private readonly IWebViewHostController _hostController;
@@ -38,6 +39,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
         private readonly ISubAgentsController _subAgentsController;
         private readonly IRecentModelsController _recentModelsController;
         private readonly IFileLinksController _fileLinksController;
+        private readonly IUsageController _usageController;
 
         public WebViewHostObjectRegistrar(
             IWebViewBridgeFactory bridgeFactory,
@@ -53,7 +55,8 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             IChatSessionController chatSessionController,
             ISubAgentsController subAgentsController,
             IRecentModelsController recentModelsController,
-            IFileLinksController fileLinksController)
+            IFileLinksController fileLinksController,
+            IUsageController usageController)
         {
             _bridgeFactory = bridgeFactory ?? throw new ArgumentNullException(nameof(bridgeFactory));
             _hostController = hostController ?? throw new ArgumentNullException(nameof(hostController));
@@ -69,6 +72,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             _subAgentsController = subAgentsController ?? throw new ArgumentNullException(nameof(subAgentsController));
             _recentModelsController = recentModelsController ?? throw new ArgumentNullException(nameof(recentModelsController));
             _fileLinksController = fileLinksController ?? throw new ArgumentNullException(nameof(fileLinksController));
+            _usageController = usageController ?? throw new ArgumentNullException(nameof(usageController));
         }
 
         public void Register(IWebViewHostObjectSink sink, Func<Task> focusAction)
@@ -96,6 +100,7 @@ namespace LMLocal.Infrastructure.WebView.Hosting
             sink.AddHostObject(SubAgents, _subAgentsController);
             sink.AddHostObject(RecentModels, _recentModelsController);
             sink.AddHostObject(FileLinks, _fileLinksController);
+            sink.AddHostObject(Usage, _usageController);
         }
     }
 }

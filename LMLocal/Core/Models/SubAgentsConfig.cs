@@ -10,7 +10,7 @@ namespace LMLocal.Core.Models
     public class SubAgentsConfig
     {
         /// <summary>
-        /// Ultimate fallback for <see cref="MaxParallel"/> / <see cref="SubAgentDefinition.MaxParallel"/> when neither the agent nor the top-level config provides a value. 
+        /// Ultimate fallback for <see cref="MaxParallel"/> / <see cref="SubAgentDefinition.MaxParallel"/> when neither the agent nor the top-level config provides a value.
         /// </summary>
         public const int DefaultMaxParallel = 2;
 

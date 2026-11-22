@@ -8,7 +8,6 @@ using EnvDTE;
 using EnvDTE80;
 using LMLocal.Application.ChatSession;
 using LMLocal.Core.Common;
-using LMLocal.Infrastructure.DependencyInjection;
 using Microsoft.VisualStudio.Shell;
 using Task = System.Threading.Tasks.Task;
 
@@ -35,10 +34,13 @@ namespace LMLocal.Commands
         private readonly AsyncPackage _package;
         private readonly ISessionManager _sessionManager;
 
-        private SendToLMFromSolutionExplorerCommand(AsyncPackage package, OleMenuCommandService commandService)
+        private SendToLMFromSolutionExplorerCommand(
+            AsyncPackage package,
+            OleMenuCommandService commandService,
+            ISessionManager sessionManager)
         {
             _package = package ?? throw new ArgumentNullException(nameof(package));
-            _sessionManager = ServiceConfiguration.GetService<ISessionManager>();
+            _sessionManager = sessionManager;
 
             RegisterCommand(commandService, CommandIdItem, Execute);
             RegisterCommand(commandService, CommandIdFolder, Execute);
@@ -54,13 +56,13 @@ namespace LMLocal.Commands
             commandService.AddCommand(menuItem);
         }
 
-        public static async Task InitializeAsync(AsyncPackage package)
+        public static async Task InitializeAsync(AsyncPackage package, ISessionManager sessionManager)
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
 
             if (await package.GetServiceAsync(typeof(IMenuCommandService)) is OleMenuCommandService commandService)
             {
-                new SendToLMFromSolutionExplorerCommand(package, commandService);
+                new SendToLMFromSolutionExplorerCommand(package, commandService, sessionManager);
             }
         }
 
@@ -73,7 +75,6 @@ namespace LMLocal.Commands
                 bool isBusy = _sessionManager?.IsSessionRunning ?? false;
                 menuCommand.Enabled = !isBusy;
 
-                // For Item and Folder commands (both in SolutionExplorerItemGroup), show only the relevant button for the current selection
                 if (menuCommand.CommandID.ID == CommandIdItem || menuCommand.CommandID.ID == CommandIdFolder)
                 {
                     menuCommand.Visible = IsSelectionMatchCommand(menuCommand.CommandID.ID);
@@ -103,7 +104,7 @@ namespace LMLocal.Commands
                 switch (item.Object)
                 {
                     case ProjectItem pi:
-                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
+                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems?.Count > 0);
                         if (isFolder)
                             hasFolder = true;
                         else
@@ -190,7 +191,7 @@ namespace LMLocal.Commands
                 switch (item.Object)
                 {
                     case ProjectItem pi:
-                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
+                        bool isFolder = pi.FileCount == 0 || (pi.ProjectItems?.Count > 0);
                         if (commandId == CommandIdFolder && isFolder)
                             CollectFromProjectItem(pi, result, ref totalBytes);
                         else if (commandId == CommandIdItem && !isFolder)
@@ -225,7 +226,7 @@ namespace LMLocal.Commands
 
             try
             {
-                bool isFolder = pi.FileCount == 0 || (pi.ProjectItems != null && pi.ProjectItems.Count > 0);
+                bool isFolder = pi.FileCount == 0 || (pi.ProjectItems?.Count > 0);
 
                 if (isFolder)
                 {
@@ -306,7 +307,7 @@ namespace LMLocal.Commands
             {
                 try
                 {
-                    bool isFolder = child.ProjectItems != null && child.ProjectItems.Count > 0;
+                    bool isFolder = child.ProjectItems?.Count > 0;
                     if (isFolder)
                     {
                         CollectAllFilesRecursive(child.ProjectItems, allFiles);
@@ -445,7 +446,7 @@ namespace LMLocal.Commands
                     if (IsTreeItemExcluded(item))
                         continue;
 
-                    bool isFolder = item.ProjectItems != null && item.ProjectItems.Count > 0;
+                    bool isFolder = item.ProjectItems?.Count > 0;
                     if (isFolder)
                     {
                         lines.Add($"{indent}{item.Name}/");
@@ -469,7 +470,7 @@ namespace LMLocal.Commands
 
             try
             {
-                bool isFolder = item.ProjectItems != null && item.ProjectItems.Count > 0;
+                bool isFolder = item.ProjectItems?.Count > 0;
                 string fullPath = GetProjectItemFullPath(item);
 
                 if (isFolder)

@@ -104,9 +104,15 @@ export class ChatHistoryDialog {
     _renderSessions() {
         if (!this.el.container) return;
 
+        const filter = this.filterText;
+
         let displayList = this.sessions.filter(session => {
-            const promptMatch = (session.prompt || '').toLowerCase().includes(this.filterText);
-            return promptMatch;
+            const promptMatch = (session.prompt || '').toLowerCase().includes(filter);
+
+            const modelMatch = (session.models || []).some(model =>
+                typeof model === 'string' && model.toLowerCase().includes(filter));
+
+            return promptMatch || modelMatch;
         });
 
         if (displayList.length === 0) {
@@ -126,6 +132,7 @@ export class ChatHistoryDialog {
             const count = session.messageCount || 0;
             const stepLabel = count === 1 ? 'step' : 'steps';
             const sessionId = escapeHtml(session.sessionId);
+            const models = this._renderModelsBadge(session.models);
 
             return `
                 <div class="chat-history-card" data-session-id="${sessionId}">
@@ -134,6 +141,7 @@ export class ChatHistoryDialog {
                         <div class="chat-history-meta">
                             <span class="chat-history-time">${timestamp}</span>
                             <span class="chat-history-count">${count} ${stepLabel}</span>
+                            ${models}
                         </div>
                     </div>
                     <button class="btn-small btn-secondary chat-history-load" type="button">Load</button>
@@ -142,6 +150,20 @@ export class ChatHistoryDialog {
         }).join('');
 
         this.el.container.innerHTML = sessionsHtml;
+    }
+
+    /**
+     * Renders the model badge of a session card; empty string when the log carries no model information.
+     * Long ids are clipped by CSS, the full list stays in the tooltip.
+     */
+    _renderModelsBadge(models) {
+        const list = Array.isArray(models) ? models.filter(model => typeof model === 'string' && model.length > 0) : [];
+        if (list.length === 0) return '';
+
+        const fullList = escapeHtml(list.join(', '));
+        const label = list.length > 1 ? `${list[0]} +${list.length - 1}` : list[0];
+
+        return `<span class="chat-history-model" title="${fullList}">${escapeHtml(label)}</span>`;
     }
 
     _formatTimestamp(timestamp) {

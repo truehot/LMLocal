@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using LMLocal.Application.Abstractions.Ports;
+using LMLocal.Application.ChatSession;
 using LMLocal.Commands;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common;
@@ -85,21 +87,29 @@ namespace LMLocal
             var closeGuard = ServiceConfiguration.GetService<ICloseWhileGeneratingGuard>();
             closeGuard.Initialize(); // owned and disposed by the DI container in ServiceConfiguration.Cleanup()
 
+            // Offer "Explain" above the chat input when the debugger stops in Break Mode.
+            ServiceConfiguration.GetService<IDebuggerContextTracker>().Initialize();
+
             // Flash the taskbar button when a session finishes in the background.
             ServiceConfiguration.GetService<ITaskbarAttentionNotifier>().Initialize(JoinableTaskFactory, DisposalToken);
 
+            // Commands get their dependencies from the composition root: no command resolves services itself.
+            var sessionManager = ServiceConfiguration.GetService<ISessionManager>();
+            var instructionsManager = ServiceConfiguration.GetService<IInstructionsManager>();
+
             await ShowMainWindow.InitializeAsync(this);
             await MainWindowCommand.InitializeAsync(this);
-            await SendToLMFromEditorCommand.InitializeAsync(this);
-            await SendAllOpenFilesCommand.InitializeAsync(this);
-            await SendActiveFilesCommand.InitializeAsync(this);
-            await SendToLMFromSolutionExplorerCommand.InitializeAsync(this);
-            await BaseCodeCommand.InitializeAsync<ReviewCommand>(this);
-            await BaseCodeCommand.InitializeAsync<BugFixCommand>(this);
-            await BaseCodeCommand.InitializeAsync<AddUnitTestsCommand>(this);
-            await BaseCodeCommand.InitializeAsync<AddSummaryCommand>(this);
-            await BaseCodeCommand.InitializeAsync<ImproveCommand>(this);
-            await BaseCodeCommand.InitializeAsync<ExplainCommand>(this);
+            await SendToLMFromEditorCommand.InitializeAsync(this, sessionManager);
+            await SendAllOpenFilesCommand.InitializeAsync(this, sessionManager);
+            await SendActiveFilesCommand.InitializeAsync(this, sessionManager);
+            await SendToLMFromSolutionExplorerCommand.InitializeAsync(this, sessionManager);
+            await BaseCodeCommand.InitializeAsync<ReviewCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<BugFixCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<AddUnitTestsCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<AddSummaryCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<ImproveCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<ExplainCommand>(this, sessionManager, instructionsManager);
+            await BaseCodeCommand.InitializeAsync<ExplainErrorCommand>(this, sessionManager, instructionsManager);
         }
 
         protected override void Dispose(bool disposing)

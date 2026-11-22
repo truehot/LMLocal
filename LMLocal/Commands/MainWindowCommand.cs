@@ -55,7 +55,7 @@ namespace LMLocal
         {
             await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(package.DisposalToken);
 
-            OleMenuCommandService commandService = await package.GetServiceAsync((typeof(IMenuCommandService))) as OleMenuCommandService;
+            OleMenuCommandService commandService = await package.GetServiceAsync(typeof(IMenuCommandService)) as OleMenuCommandService;
             Instance = new MainWindowCommand(package, commandService);
         }
 
@@ -64,7 +64,7 @@ namespace LMLocal
         /// </summary>
         private void Execute(object sender, EventArgs e)
         {
-            _= this.package.JoinableTaskFactory.RunAsync(async delegate
+            _ = this.package.JoinableTaskFactory.RunAsync(async delegate
             {
                 ToolWindowPane window = await this.package.ShowToolWindowAsync(typeof(MainWindow), 0, true, this.package.DisposalToken);
                 if ((null == window) || (null == window.Frame))

@@ -72,5 +72,25 @@ namespace LMLocal.Application.ChatSession
         /// nothing to show. Application-level delegate so this state never depends on a WebView delivery mechanism.
         /// </summary>
         public Func<RateLimitWaitInfo, Task> RateLimitWaitSink { get; set; }
+
+        /// <summary>
+        /// Id of the current user request. Ties the main usage record to the subagents and compactions it started.
+        /// </summary>
+        public string RequestId { get; set; }
+
+        /// <summary>
+        /// Session of the main chat log, read once when the request starts. A compaction inside the request starts a new
+        /// log session, so a later read would spread the records of one request over two sessions.
+        /// </summary>
+        public string SessionId { get; set; }
+
+        /// <summary>UTC time the request started; written into the usage record, so it lands in the day of its start.</summary>
+        public DateTime StartedUtc { get; set; }
+
+        /// <summary>
+        /// First ~80 characters of the first user message of the session, written into every main record so the stats
+        /// dialog never has to read the chat logs.
+        /// </summary>
+        public string Title { get; set; }
     }
 }

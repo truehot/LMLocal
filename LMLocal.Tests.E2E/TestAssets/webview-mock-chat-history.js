@@ -61,18 +61,22 @@
 };
 
 // Pre-built session data for E2E tests
+// "models" mirrors ChatSessionSummary.Models: unique model ids in order of first use.
+// The last session keeps no models on purpose — it stands for a log written before model ids were persisted.
 const __MOCK_SESSIONS = [
     {
         sessionId: "session-aaa-111",
         prompt: "How do I refactor this class to use dependency injection?",
         timestamp: "2025-01-15T10:30:00.000Z",
-        messageCount: 12
+        messageCount: 12,
+        models: ["qwen3-coder"]
     },
     {
         sessionId: "session-bbb-222",
         prompt: "What does the error CS1061 mean and how to fix it?",
         timestamp: "2025-01-14T08:15:00.000Z",
-        messageCount: 5
+        messageCount: 5,
+        models: ["qwen3-coder", "deepseek-chat"]
     },
     {
         sessionId: "session-ccc-333",
@@ -85,17 +89,22 @@ const __MOCK_SESSIONS = [
 const __MOCK_SESSION_MESSAGES = {
     // Two assistant answers, the second one preceded by a tool round, so the chat/copy tests can
     // check that every answer gets its own copy button and that the "steps taken" note is not copied.
+    // modelId mirrors the model_id persisted per message and drives the note of a restored CoT.
     "session-aaa-111": [
         { role: "user", content: "How do I refactor this class to use dependency injection?" },
-        { role: "assistant", content: "**First answer** with `inline` code." },
+        { role: "assistant", content: "**First answer** with `inline` code.", modelId: "qwen3-coder" },
         { role: "user", content: "Now add unit tests for it." },
-        { role: "assistant", content: null, toolCalls: [{ id: "call_1", type: "function", function: { name: "read_file", arguments: "{}" } }] },
+        { role: "assistant", content: null, modelId: "qwen3-coder", toolCalls: [{ id: "call_1", type: "function", function: { name: "read_file", arguments: "{}" } }] },
         { role: "tool", content: "file contents", toolCallId: "call_1" },
-        { role: "assistant", content: "**Second answer** with a list:\n\n- one\n- two" }
+        { role: "assistant", content: "**Second answer** with a list:\n\n- one\n- two", modelId: "qwen3-coder" }
     ],
     "session-bbb-222": [
+        // The model was switched in the middle of the CoT: the tool round ran on qwen3-coder, the answer on
+        // deepseek-chat, so a restored answer must list both.
         { role: "user", content: "What does the error CS1061 mean and how to fix it?" },
-        { role: "assistant", content: "CS1061 means..." }
+        { role: "assistant", content: null, modelId: "qwen3-coder", toolCalls: [{ id: "call_2", type: "function", function: { name: "search_files", arguments: "{}" } }] },
+        { role: "tool", content: "search results", toolCallId: "call_2" },
+        { role: "assistant", content: "CS1061 means...", modelId: "deepseek-chat" }
     ],
     "session-ccc-333": [
         { role: "user", content: "Generate unit tests for the OrderService class" },

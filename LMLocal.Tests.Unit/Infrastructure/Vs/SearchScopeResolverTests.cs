@@ -269,6 +269,34 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             Assert.That(names, Is.EqualTo(new[] { "a.cs", "c.CS" }));
         }
 
+        [TestCase("*")]
+        [TestCase("*.*")]
+        [TestCase(".*")]
+        [TestCase(" * ")]
+        [TestCase(".cs,*")]
+        public async Task Enumerate_WildcardExtensionFilter_MeansNoFilter(string filter)
+        {
+            // A model passes extension_filter "*"; taken literally it matched no file and the search reported zero matches.
+            Create(@"App\a.cs");
+            Create(@"App\Sub\b.md");
+
+            var files = await _resolver.EnumerateFolderFilesAsync(new[] { Path.Combine(_solutionDir, "App") }, filter, 0);
+            var names = files.Select(Path.GetFileName).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+
+            Assert.That(names, Is.EqualTo(new[] { "a.cs", "b.md" }));
+        }
+
+        [Test]
+        public async Task Enumerate_GlobExtensionFilter_IsReadAsTheExtension()
+        {
+            Create(@"App\a.cs");
+            Create(@"App\Sub\b.md");
+
+            var files = await _resolver.EnumerateFolderFilesAsync(new[] { Path.Combine(_solutionDir, "App") }, "*.cs", 0);
+
+            Assert.That(files.Select(Path.GetFileName), Is.EqualTo(new[] { "a.cs" }));
+        }
+
         [Test]
         public async Task Enumerate_StopsAtLimit()
         {

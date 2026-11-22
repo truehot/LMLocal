@@ -3,7 +3,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
+using LMLocal.Core.Models;
 using LMLocal.Infrastructure.WebView.Initialization;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
@@ -21,17 +23,21 @@ namespace LMLocal
         private readonly IWebViewInitializer _initializer;
         private readonly AsyncLazy<CoreWebView2> _webViewLazy;
         private readonly CancellationTokenSource _initCts = new CancellationTokenSource();
+        private readonly IDebuggerContextService _debuggerContextService;
 
-        internal MainWindowControl(IWebViewInitializer initializer)
+        internal MainWindowControl(IWebViewInitializer initializer, IDebuggerContextService debuggerContextService)
         {
             this.InitializeComponent();
             _initializer = initializer ?? throw new ArgumentNullException(nameof(initializer));
+            _debuggerContextService = debuggerContextService ?? throw new ArgumentNullException(nameof(debuggerContextService));
 
             chatBrowser.GotFocus += OnGotFocus;
 
             _webViewLazy = new AsyncLazy<CoreWebView2>(
                 () => _initializer.InitializeAsync(chatBrowser, _initCts.Token),
                 ThreadHelper.JoinableTaskFactory);
+
+            _debuggerContextService.StopChanged += OnDebugStopChanged;
         }
 
         private void OnControlLoaded(object sender, RoutedEventArgs e)
@@ -44,6 +50,8 @@ namespace LMLocal
             try
             {
                 await _webViewLazy.GetValueAsync(_initCts.Token);
+
+                await PushDebugStopAsync();
             }
             catch (OperationCanceledException)
             {
@@ -153,6 +161,67 @@ namespace LMLocal
             await core.ExecuteScriptAsync(script);
         }
 
+        /// <summary>
+        /// The service raises this on the UI thread for every stop that deserves the banner.
+        /// </summary>
+        private void OnDebugStopChanged()
+        {
+            _ = PushDebugStopAsync();
+        }
+
+        /// <summary>
+        /// Sends the current debugger stop (or null when there is none) to the page, which shows or hides
+        /// the "Explain" banner.
+        /// </summary>
+        private async Task PushDebugStopAsync()
+        {
+            if (_disposed)
+                return;
+
+            CoreWebView2 core;
+            try
+            {
+                core = await _webViewLazy.GetValueAsync(_initCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ObjectDisposedException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("WebView2 initialization failed.", ex);
+                return;
+            }
+
+            string payload = "null";
+            DebugStopInfo info = _debuggerContextService.Current;
+            if (info != null)
+            {
+                payload = JsonConvert.SerializeObject(new
+                {
+                    kind = info.Kind.ToString(),
+                    reason = info.Reason.ToString(),
+                    file = info.File,
+                    line = info.Line
+                });
+            }
+
+            try
+            {
+                string result = await core.ExecuteScriptAsync($"window.lmApi?.setDebugStop({payload});");
+                if (result == "null")
+                    InternalLogger.Warn("The page has no window.lmApi yet; the debugger stop was not shown.");
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Warn($"Cannot push the debugger stop to the page: {ex.Message}");
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -163,6 +232,7 @@ namespace LMLocal
             _disposed = true;
             this.Loaded -= OnControlLoaded;
             chatBrowser.GotFocus -= OnGotFocus;
+            _debuggerContextService.StopChanged -= OnDebugStopChanged;
 
             try { _initCts?.Cancel(); }
             catch (ObjectDisposedException ex)

@@ -1,3 +1,4 @@
+using LMLocal.Application.Usage;
 using LMLocal.Application.Tool;
 using System;
 using System.Collections.Generic;
@@ -24,7 +25,8 @@ namespace LMLocal.Application.Abstractions.Ports
             Dictionary<string, object> parameters,
             CancellationToken cancellationToken,
             IProgress<ToolActivityEvent> progress = null,
-            ToolExecutionBudget budget = null);
+            ToolExecutionBudget budget = null,
+            UsageCallContext context = null);
 
         /// <summary>
         /// Gets processing message for a tool based on its parameters.

@@ -62,7 +62,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             startLine = 0;
             endLine = 0;
 
-            if (response == null || !response.Success)
+            if (response?.Success != true)
                 return false;
 
             var content = response.Content;

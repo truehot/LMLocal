@@ -2,6 +2,7 @@ using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -36,7 +37,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// <summary>Several edits of one file in one call; Docs\multi-replace-file-lines-plan.md.</summary>
         internal const string EditsParameter = "edits";
 
-        internal const int MaxEdits = 10;
+        internal const int MaxEdits = 20;
 
         public ReplaceFileLines(
             IVsDependencies vsDependencies,
@@ -61,7 +62,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                               "Set new_lines to an empty string to delete the range. " +
                               "SEVERAL EDITS IN ONE FILE: put them all in 'edits' in ONE call, every start_line and old_lines from the same read, in any order - the tool applies them bottom-up itself. If any edit does not match, nothing is written. Edits must not overlap. " +
                               "If start_line is beyond the current line count, the file is padded with empty lines up to start_line - 1 (at most 50; more is rejected with the real line count). If the old_lines range extends past the end of the file, missing trailing lines are treated as empty strings for comparison only. " +
-                              "If old_lines does not match at start_line, the tool searches nearby lines (±50); a single match is applied there and reported by a flag: auto_corrected=true (exact match), matched_ignoring_first_line_indent=true (first line's indentation ignored; the first line of new_lines is re-indented to match the file), or matched_with_normalization=true (typographic spaces, quotes, dashes and zero-width characters normalized; unchanged lines are kept from the file). The flags only report how the match was found: the change is written. " +
+                              "If old_lines does not match at start_line, the tool searches nearby lines (±50); a single match is applied there and reported by a flag: auto_corrected=true (exact match), matched_ignoring_first_line_indent=true (first line's indentation ignored; the first line of new_lines is re-indented to match the file), or matched_with_normalization=true (typographic spaces, quotes, dashes normalized and invisible characters - zero-width, soft hyphen, bidi marks, control characters, noncharacters such as U+FFFF - ignored; unchanged lines are kept from the file, and invisible_characters lists the invisible characters of the matched lines: kept on lines written back unchanged, removed from lines rewritten from new_lines). The flags only report how the match was found: the change is written. " +
                               "success=false means nothing was written; error_message says why, and candidates list the start lines when old_lines matches several places. Only then re-read the file and retry; after a successful edit you do not need to re-read it. For .cs and .js files the syntax is checked automatically: if syntax_errors is non-empty, the file is saved but the change is not complete - re-read the affected range and fix the errors.",
                 Parameters = new ToolParameters
                 {
@@ -251,6 +252,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (matchedWithNormalization)
                     response.MatchedWithNormalization = true;
 
+                response.InvisibleCharacters = edit.InvisibleCharacters;
+
                 return response;
             }
             catch (OperationCanceledException)
@@ -277,6 +280,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             public bool MatchedIgnoringIndent;
             public bool MatchedWithNormalization;
+            public string[] InvisibleCharacters;
             public bool IsNoOp;
 
             public bool AutoCorrected => AppliedStartLine != RequestedStartLine;
@@ -343,10 +347,57 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 NewLines = newLinesArray,
                 MatchedIgnoringIndent = matchedIgnoringIndent,
                 MatchedWithNormalization = matchedWithNormalization,
+                InvisibleCharacters = matchedWithNormalization
+                    ? DescribeInvisibleCharacters(linesList, removeStart, realCount, newLinesArray)
+                    : null,
                 IsNoOp = hasNewLines
                     && newLinesArray.Length == realCount
                     && RangeEquals(fileLines, removeStart, newLinesArray)
             };
+        }
+
+        /// <summary>
+        /// For a canonical match: the invisible characters (see <see cref="CharacterMap.IsDeleted(char)"/>) on the matched
+        /// file lines, which the model's old_lines did not carry.
+        /// </summary>
+        internal static string[] DescribeInvisibleCharacters(IList<string> fileLines, int removeStart, int realCount, string[] writtenLines)
+        {
+            var notes = new List<string>();
+            for (int i = 0; i < realCount; i++)
+            {
+                string fileLine = fileLines[removeStart + i];
+                var labels = CharacterMap.DescribeDeleted(fileLine);
+                if (labels.Count == 0)
+                    continue;
+
+                string prefix = $"line {removeStart + i + 1}: ";
+                if (writtenLines != null && Array.IndexOf(writtenLines, fileLine) >= 0)
+                {
+                    notes.Add(prefix + string.Join(", ", labels) + " kept (line written back unchanged)");
+                    continue;
+                }
+
+                var kept = labels.Where(label => WrittenLinesContain(writtenLines, label)).ToList();
+                var removed = labels.Where(label => !kept.Contains(label)).ToList();
+                var parts = new List<string>();
+                if (kept.Count > 0)
+                    parts.Add(string.Join(", ", kept) + " kept");
+                if (removed.Count > 0)
+                    parts.Add(string.Join(", ", removed) + " removed (the line was rewritten from new_lines)");
+                notes.Add(prefix + string.Join("; ", parts));
+            }
+
+            return notes.Count == 0 ? null : notes.ToArray();
+        }
+
+        /// <summary>Whether any written line holds the code point of a "U+XXXX" label from <see cref="CharacterMap.DescribeDeleted"/>.</summary>
+        private static bool WrittenLinesContain(string[] writtenLines, string label)
+        {
+            if (writtenLines == null)
+                return false;
+
+            string character = char.ConvertFromUtf32(int.Parse(label.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture));
+            return writtenLines.Any(line => line != null && line.IndexOf(character, StringComparison.Ordinal) >= 0);
         }
 
         /// <summary>One requested edit of an 'edits' call; <see cref="Label"/> names it in messages.</summary>
@@ -362,8 +413,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         /// <summary>
         /// Reads an 'edits' call: file_path plus 'edits' (an array of {start_line, old_lines, new_lines}, or such an array
-        /// serialized into a string). A top-level start_line/old_lines/new_lines, when also passed, becomes the first edit.
-        /// Every edit is validated here, so a bad edit fails the call before the file is read.
+        /// serialized into a string).
         /// </summary>
         internal static (string FilePath, List<EditRequest> Edits, string Error) ExtractEdits(Dictionary<string, object> parameters, object editsObj)
         {
@@ -448,7 +498,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         /// <summary>
         /// Applies all edits of one file from the same read: every edit is resolved first, then they are written bottom-up
-        /// in one write. Nothing is written when any edit does not match or two edits overlap.
+        /// in one write.
         /// </summary>
         private async Task<ReplaceLinesBatchResponse> ReplaceManyAsync(Dictionary<string, object> parameters, object editsObj, CancellationToken cancellationToken)
         {
@@ -491,7 +541,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 var prepared = new List<PreparedEdit>(requests.Count);
                 foreach (var request in requests)
                 {
-                    // Beyond the search window old_lines cannot match anywhere; this also keeps start_line + window from overflowing.
                     if (request.StartLine > fileLines.Length + LineMatcher.MaxSearchWindowLines)
                     {
                         return BatchMatchFailure(reportedPath, request,
@@ -588,6 +637,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 AutoCorrected = p.AutoCorrected ? (bool?)true : null,
                 MatchedIgnoringFirstLineIndent = p.MatchedIgnoringIndent ? (bool?)true : null,
                 MatchedWithNormalization = p.MatchedWithNormalization ? (bool?)true : null,
+                InvisibleCharacters = p.IsNoOp ? null : p.InvisibleCharacters,
                 NoOp = p.IsNoOp ? (bool?)true : null,
                 LinesReplaced = p.IsNoOp ? null : p.NewLines != null ? (int?)p.NewLines.Length : null,
                 LinesRemoved = p.IsNoOp || p.NewLines != null ? null : (int?)p.RealCount
@@ -1070,6 +1120,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     notes.Add("matched ignoring first-line indentation");
                 if (response.MatchedWithNormalization == true)
                     notes.Add("matched after character normalization");
+                if (response.InvisibleCharacters != null)
+                    notes.Add("invisible characters on " + response.InvisibleCharacters.Length + " " +
+                        Pluralizer.Pluralize(response.InvisibleCharacters.Length, "line", "lines"));
                 if (notes.Count > 0)
                     msg += " (" + string.Join(", ", notes) + ")";
                 if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
@@ -1194,7 +1247,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public bool? MatchedWithNormalization { get; set; }
 
         /// <summary>
-        /// Set when old_lines did not match but matched exactly one location after removing one level of JSON escaping. 
+        /// Invisible characters on the matched lines that old_lines did not carry, per line: kept or removed.
+        /// </summary>
+        [JsonProperty("invisible_characters", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] InvisibleCharacters { get; set; }
+
+        /// <summary>
+        /// Set when old_lines did not match but matched exactly one location after removing one level of JSON escaping.
         /// </summary>
         [JsonProperty("old_lines_json_escaped", NullValueHandling = NullValueHandling.Ignore)]
         public bool? OldLinesJsonEscaped { get; set; }
@@ -1283,6 +1342,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("matched_with_normalization", NullValueHandling = NullValueHandling.Ignore)]
         public bool? MatchedWithNormalization { get; set; }
+
+        [JsonProperty("invisible_characters", NullValueHandling = NullValueHandling.Ignore)]
+        public string[] InvisibleCharacters { get; set; }
 
         [JsonProperty("lines_replaced", NullValueHandling = NullValueHandling.Ignore)]
         public int? LinesReplaced { get; set; }

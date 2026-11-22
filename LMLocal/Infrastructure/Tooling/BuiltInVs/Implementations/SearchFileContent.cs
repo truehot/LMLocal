@@ -13,7 +13,6 @@ using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
-using Newtonsoft.Json;
 using static LMLocal.Infrastructure.Tooling.BuiltInVs.Common.VsSolutionFilesScanner;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
@@ -75,7 +74,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { "group_by", new ToolDetails { Type = "string", Description = "'file' (default) groups matches by file. Use 'text' to collapse identical matching lines, reducing duplicate results and pagination; each distinct line still includes all file:line locations." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Exact file extension to narrow the search, as a plain dot-prefixed string with NO wildcard characters — e.g. '.cs', '.csproj', '.js'. Do NOT use glob patterns: pass '.cs', never '*.cs'. If omitted, searches all file types." } },
                         { "path", new ToolDetails { Type = "string", Description = "Optional. Where to search: an existing file (only that file is read; extension_filter does not apply), an existing folder (all text files under it on disk, including files not in any project; bin/obj/.git/node_modules and binaries are skipped), or an exact project name such as 'LMLocal.Tests.Unit' (its folder). Solution-relative or absolute, inside the solution directory. Not a substring filter. A bare file name is not a path: resolve it with find_files first. No wildcards or exclusions ('*', '!'): to search everywhere, omit path. A solution-relative path starts with the project folder: 'MyApp/Services/OrderService.cs', not 'Services/OrderService.cs'." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Pagination token for fetching the next page of results. Use 'next_page_token' from a previous response to continue searching." } },
+                        { "page_token", new ToolDetails { Type = "string", Description = "The value of next_page_token from the previous response, copied exactly; never a value that no response returned. The page is taken from that result, so text, path, extension_filter and group_by may be left out. Pass 'last' (together with the same text and filters) to get the last page, 'first' for the first." } },
                         { "max_results", new ToolDetails { Type = "integer", Description = "Number of results to return per page. Default 25, max 500. Use a larger value for broad or complete searches to reduce pagination." } },
                         { TextsParameter, new ToolDetails { Type = "array", Items = new ToolDetails { Type = "string" }, Description = $"Several literal texts to search in one call (up to {MaxTexts}), each exactly as written, like 'text'. The response has one block per text in 'terms'; max_results applies to each block, and all blocks together return at most {MaxPageSize} matches. Use instead of 'text' when the texts are known up front." } }
                     },
@@ -89,15 +88,43 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             SearchGrouping grouping = SearchGrouping.File;
             try
             {
+                var selection = PageSelection.From(parameters);
+                if (selection.Error != null)
+                    return Error(grouping, selection.Error);
+
+                if (selection.IsCursor)
+                {
+                    var probe = ExtractAndValidateParameters(parameters);
+                    bool severalTexts = probe.Terms != null && probe.Terms.Count > 1;
+                    if (!severalTexts)
+                    {
+                        CachedToolResults<SearchTextGroupResult> textEntry = null;
+                        bool foundFile = _searchCache.TryGetById(selection.Id, out CachedToolResults<SearchResult> fileEntry);
+                        bool foundText = !foundFile && _searchCache.TryGetById(selection.Id, out textEntry);
+                        bool found = foundFile || foundText;
+                        string subject = foundFile ? fileEntry.Subject : foundText ? textEntry.Subject : null;
+                        string callText = probe.Error == null && probe.Terms != null && probe.Terms.Count == 1 ? probe.Terms[0] : null;
+                        selection.Resolve(found, found && (callText == null || subject == null || string.Equals(callText, subject, StringComparison.OrdinalIgnoreCase)));
+
+                        if (selection.UseEntry)
+                        {
+                            int entryPageSize = ReadPageSize(parameters);
+                            if (foundFile)
+                                return BuildFilePageResponse(fileEntry.AllResults, selection.Offset(entryPageSize, CountMatches(fileEntry.AllResults)), entryPageSize, fileEntry.Note, selection.Id, null);
+
+                            return BuildTextPageResponse(textEntry.AllResults, selection.Offset(entryPageSize, textEntry.AllResults?.Count ?? 0), entryPageSize, textEntry.Note, selection.Id, null);
+                        }
+                    }
+                }
+
                 var request = ExtractAndValidateParameters(parameters);
                 grouping = request.Grouping;
                 if (request.Error != null)
-                    return Error(grouping, request.Error);
+                    return Error(grouping, request.Terms == null ? selection.WithPagingHint(request.Error) : request.Error);
 
                 var terms = request.Terms;
-                // Several texts share the page budget: each block gets max_results, but the whole response stays within MaxPageSize.
+
                 int pageSize = request.IsMulti ? Math.Max(1, Math.Min(request.PageSize, MaxPageSize / terms.Count)) : request.PageSize;
-                int offset = ToolPagination.ParseOffset(request.PageToken, pageSize);
 
                 if (!_vsDependencies.IsSolutionOpen)
                     return Error(grouping, "No solution is currently open.");
@@ -114,7 +141,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     scope = resolved;
                 }
 
-                // Every text is cached under the same key as a search for that text alone, so a page_token call with 'text' continues a block.
                 var pages = new object[terms.Count];
                 var uncached = new List<int>();
                 for (int i = 0; i < terms.Count; i++)
@@ -123,11 +149,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (grouping == SearchGrouping.Text)
                     {
                         if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<SearchTextGroupResult> cachedText))
-                            pages[i] = BuildTextPageResponse(cachedText.AllResults, offset, pageSize, cachedText.Note);
+                            pages[i] = BuildTextPageResponse(cachedText.AllResults, selection.Offset(pageSize, cachedText.AllResults?.Count ?? 0), pageSize, cachedText.Note, _searchCache.GetId(cacheKey), selection.Warning);
                     }
                     else if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<SearchResult> cachedFile))
                     {
-                        pages[i] = BuildFilePageResponse(cachedFile.AllResults, offset, pageSize, cachedFile.Note);
+                        pages[i] = BuildFilePageResponse(cachedFile.AllResults, selection.Offset(pageSize, CountMatches(cachedFile.AllResults)), pageSize, cachedFile.Note, _searchCache.GetId(cacheKey), selection.Warning);
                     }
 
                     if (pages[i] == null)
@@ -146,7 +172,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             ExtensionFilter = request.FileExtensions,
                             ReturnRelative = false,
-                            Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
+                            Limit = MaxFilesToScan + 1,
                             IncludeProjects = true
                         };
 
@@ -202,9 +228,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             {
                                 AllResults = groups,
                                 ItemsScanned = allFiles.Count,
-                                Note = note
+                                Note = note,
+                                Subject = terms[i]
                             });
-                            pages[i] = BuildTextPageResponse(groups, offset, pageSize, note);
+                            pages[i] = BuildTextPageResponse(groups, selection.Offset(pageSize, groups?.Count ?? 0), pageSize, note, _searchCache.GetId(cacheKey), selection.Warning);
                         }
                         else
                         {
@@ -212,9 +239,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             {
                                 AllResults = term.Results,
                                 ItemsScanned = allFiles.Count,
-                                Note = note
+                                Note = note,
+                                Subject = terms[i]
                             });
-                            pages[i] = BuildFilePageResponse(term.Results, offset, pageSize, note);
+                            pages[i] = BuildFilePageResponse(term.Results, selection.Offset(pageSize, CountMatches(term.Results)), pageSize, note, _searchCache.GetId(cacheKey), selection.Warning);
                         }
                     }
                 }
@@ -304,10 +332,53 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// <summary>
         /// Builds one page of the full ranked result list.
         /// </summary>
-        internal static SearchResultsResponse BuildFilePageResponse(IReadOnlyList<SearchResult> allResults, int offset, int pageSize, string note)
+        internal static SearchResultsResponse BuildFilePageResponse(IReadOnlyList<SearchResult> allResults, int offset, int pageSize, string note, string cacheId = null, string warning = null)
         {
             var page = SearchResultPaginator.SliceByMatches(allResults, offset, pageSize);
 
+            int totalMatches = CountMatches(allResults);
+
+            int pageMatches = 0;
+            foreach (var result in page)
+                pageMatches += result?.MatchCount ?? 0;
+
+            string nextToken = ToolPagination.NextToken(offset + pageMatches, totalMatches, cacheId);
+
+            return new SearchResultsResponse
+            {
+                Results = page,
+                Note = note,
+                Showing = ToolPagination.Describe(offset, pageMatches, totalMatches, nextToken != null, pageSize),
+                NextPageToken = nextToken,
+                TotalMatches = totalMatches,
+                TotalFiles = allResults?.Count ?? 0,
+                Success = true,
+                Warning = warning
+            };
+        }
+
+        internal static SearchTextGroupResponse BuildTextPageResponse(IReadOnlyList<SearchTextGroupResult> groups, int offset, int pageSize, string note, string cacheId = null, string warning = null)
+        {
+            var page = SearchResultPaginator.SliceByGroups(groups, offset, pageSize);
+            int total = groups?.Count ?? 0;
+            string nextToken = ToolPagination.NextToken(offset + page.Count, total, cacheId);
+
+            return new SearchTextGroupResponse
+            {
+                Results = page,
+                Note = note,
+                Showing = ToolPagination.Describe(offset, page.Count, total, nextToken != null, pageSize),
+                NextPageToken = nextToken,
+                TotalMatches = SearchResultGrouper.CountOccurrences(groups),
+                TotalFiles = SearchResultGrouper.CountDistinctFiles(groups),
+                Success = true,
+                Warning = warning
+            };
+        }
+
+        /// <summary>Number of matches of the whole ranked list: the unit of the offset in grouping = file.</summary>
+        internal static int CountMatches(IReadOnlyList<SearchResult> allResults)
+        {
             int totalMatches = 0;
             if (allResults != null)
             {
@@ -315,41 +386,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     totalMatches += result?.MatchCount ?? 0;
             }
 
-            int pageMatches = 0;
-            foreach (var result in page)
-                pageMatches += result?.MatchCount ?? 0;
-
-            ToolPagination.PageNumbers(offset, pageSize, totalMatches, out int? pageNumber, out int? totalPages);
-
-            return new SearchResultsResponse
-            {
-                Results = page,
-                Note = note,
-                Page = pageNumber,
-                TotalPages = totalPages,
-                NextPageToken = ToolPagination.NextToken(offset + pageMatches, totalMatches),
-                TotalMatches = totalMatches,
-                TotalFiles = allResults?.Count ?? 0,
-                Success = true
-            };
+            return totalMatches;
         }
 
-        internal static SearchTextGroupResponse BuildTextPageResponse(IReadOnlyList<SearchTextGroupResult> groups, int offset, int pageSize, string note)
+        /// <summary>max_results as the page size (default and bounds as in <see cref="ExtractAndValidateParameters"/>).</summary>
+        private static int ReadPageSize(Dictionary<string, object> parameters)
         {
-            var page = SearchResultPaginator.SliceByGroups(groups, offset, pageSize);
-            ToolPagination.PageNumbers(offset, pageSize, groups?.Count ?? 0, out int? pageNumber, out int? totalPages);
-
-            return new SearchTextGroupResponse
-            {
-                Results = page,
-                Note = note,
-                Page = pageNumber,
-                TotalPages = totalPages,
-                NextPageToken = ToolPagination.NextToken(offset + page.Count, groups?.Count ?? 0),
-                TotalMatches = SearchResultGrouper.CountOccurrences(groups),
-                TotalFiles = SearchResultGrouper.CountDistinctFiles(groups),
-                Success = true
-            };
+            if (parameters != null && parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
+                return Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+            return DefaultPageSize;
         }
 
         /// <summary>

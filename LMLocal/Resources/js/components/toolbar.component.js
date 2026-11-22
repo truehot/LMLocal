@@ -9,6 +9,7 @@ class ToolbarComponent {
     constructor() {
         this.elements = {};
         this.onModelNameClick = createCallback();
+        this.onUsageClick = createCallback();
         this.isConnecting = true;
         this.timeoutId = null;
         this._hasShownModelInfo = false;
@@ -268,6 +269,11 @@ class ToolbarComponent {
         await this.onModelNameClick.emitResult();
     };
 
+    _onUsageClick = async (e) => {
+        e.stopPropagation();
+        await this.onUsageClick.emitResult();
+    };
+
     _attachEvents() {
         if (this.elements.modelName) {
             this.elements.modelName.addEventListener('click', this._onModelNameClick);
@@ -276,6 +282,11 @@ class ToolbarComponent {
 
         this.registerTipAnchor(this.elements.barInfoTooltip);
         this.registerTipAnchor(this.elements.modelName);
+
+        if (this.elements.barInfoTooltip) {
+            this.elements.barInfoTooltip.addEventListener('click', this._onUsageClick);
+            this.elements.barInfoTooltip.style.cursor = 'pointer';
+        }
     }
 
     _detachEvents() {
@@ -285,6 +296,10 @@ class ToolbarComponent {
 
         this.unregisterTipAnchor(this.elements.barInfoTooltip);
         this.unregisterTipAnchor(this.elements.modelName);
+
+        if (this.elements.barInfoTooltip) {
+            this.elements.barInfoTooltip.removeEventListener('click', this._onUsageClick);
+        }
 
         this._hideTip();
         clearTimeout(this.timeoutId);

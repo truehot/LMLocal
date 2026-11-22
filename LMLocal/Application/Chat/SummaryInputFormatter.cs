@@ -123,7 +123,7 @@ namespace LMLocal.Application.Chat
                         string body = null;
                         for (int j = i + 1; j < messages.Count; j++)
                         {
-                            if (messages[j] != null && messages[j].Role == "tool" && messages[j].ToolCallId == call.Id)
+                            if (messages[j]?.Role == "tool" && messages[j].ToolCallId == call.Id)
                             {
                                 body = messages[j].Content as string;
                                 describedResults.Add(j);

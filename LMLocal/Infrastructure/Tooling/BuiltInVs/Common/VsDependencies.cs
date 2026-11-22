@@ -127,7 +127,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 try
                 {
-                    
                     _solution.UnadviseSolutionEvents(_solutionEventsCookie);
                 }
                 catch (Exception ex)

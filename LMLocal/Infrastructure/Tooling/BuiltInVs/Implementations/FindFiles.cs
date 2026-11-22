@@ -60,7 +60,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'. Required unless 'file_names', 'extension_filter' or 'project_filter' is passed; with only filters, all files matching them are listed (same as '.')." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Exact file extension to narrow the search, as a plain dot-prefixed string with NO wildcard characters — e.g. '.cs', '.csproj', '.js'. Do NOT use glob patterns: pass '.cs', never '*.cs'. If omitted, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Substring filter applied case-insensitively to project/path components. It is not an exact full project-name match; for example, 'Tests' can match a project such as 'LMLocal.Tests.E2E' when that text occurs in a relevant path component." } },
-                        { "page_token", new ToolDetails { Type = "string", Description = "Page token for next page of results." } },
+                        { "page_token", new ToolDetails { Type = "string", Description = "The value of next_page_token from the previous response, copied exactly; never a value that no response returned. The page is taken from that result, so file_name and the filters may be left out. Pass 'last' (together with the same file_name and filters) to get the last page, 'first' for the first." } },
                         { "max_results", new ToolDetails { Type = "integer", Description = "Number of files to return per page. Default 50, max 500." } },
                         { FileNamesParameter, new ToolDetails { Type = "array", Items = new ToolDetails { Type = "string" }, Description = $"Several file name patterns to find in one call (up to {MaxFileNames}), each like 'file_name'. The response has one block per pattern in 'terms'; max_results applies to each block, and all blocks together return at most {MaxPageSize} files. Use instead of 'file_name' when the names are known up front." } }
                     },
@@ -78,23 +78,42 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
+                var selection = PageSelection.From(parameters);
+                if (selection.Error != null)
+                    return ErrorResponse(selection.Error);
+
+                if (selection.IsCursor)
+                {
+                    var probe = ExtractAndValidateParameters(parameters);
+                    bool severalNames = probe.Names != null && probe.Names.Count > 1;
+                    if (!severalNames)
+                    {
+                        bool found = _searchCache.TryGetById(selection.Id, out CachedToolResults<FileSearchResult> byId);
+                        string callName = probe.Error == null && probe.Names != null && probe.Names.Count == 1 ? probe.Names[0] : null;
+                        selection.Resolve(found, found && (callName == null || byId.Subject == null || string.Equals(callName, byId.Subject, StringComparison.OrdinalIgnoreCase)));
+
+                        if (selection.UseEntry)
+                        {
+                            int entryPageSize = ReadPageSize(parameters);
+                            int entryCount = byId.AllResults?.Count ?? 0;
+                            return BuildPageResponse(byId.AllResults, selection.Offset(entryPageSize, entryCount), entryPageSize, byId.Note, selection.Id, null);
+                        }
+                    }
+                }
+
                 var request = ExtractAndValidateParameters(parameters);
                 if (request.Error != null)
-                    return ErrorResponse(request.Error);
+                    return ErrorResponse(request.Names == null ? selection.WithPagingHint(request.Error) : request.Error);
 
                 var names = request.Names;
-                // Several names share the page budget: each block gets max_results, but the whole response stays within MaxPageSize.
                 int pageSize = request.IsMulti ? Math.Max(1, Math.Min(request.PageSize, MaxPageSize / names.Count)) : request.PageSize;
-                int offset = ToolPagination.ParseOffset(request.PageToken, pageSize);
-
-                // Every name is cached under the same key as a search for that name alone, so a page_token call with 'file_name' continues a block.
                 var pages = new FileSearchResultsResponse[names.Count];
                 var uncached = new List<int>();
                 for (int i = 0; i < names.Count; i++)
                 {
                     string cacheKey = BuildCacheKey(names[i], request.FileExtension, request.ProjectFilter);
                     if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<FileSearchResult> cached))
-                        pages[i] = BuildPageResponse(cached.AllResults, offset, pageSize, cached.Note);
+                        pages[i] = BuildPageResponse(cached.AllResults, selection.Offset(pageSize, cached.AllResults?.Count ?? 0), pageSize, cached.Note, _searchCache.GetId(cacheKey), selection.Warning);
                     else
                         uncached.Add(i);
                 }
@@ -103,7 +122,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 {
                     foreach (int i in uncached)
                     {
-                        // The scanner reads the solution hierarchy on the UI thread (no-op when already there).
                         await ThreadHelper.JoinableTaskFactory.SwitchToMainThreadAsync(cancellationToken);
                         var filter = new EnumerateSolutionFilesFilter
                         {
@@ -111,7 +129,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             ReturnRelative = true,
                             FileName = names[i],
                             ProjectFilter = request.ProjectFilter,
-                            Limit = MaxFilesToScan + 1, // one extra item detects that the cap was hit
+                            Limit = MaxFilesToScan + 1,
                             IncludeProjects = true
                         };
 
@@ -127,10 +145,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         {
                             AllResults = matchingFiles.Select(file => new FileSearchResult { FilePath = file }).ToList(),
                             ItemsScanned = matchingFiles.Count,
-                            Note = note
+                            Note = note,
+                            Subject = names[i]
                         };
-                        _searchCache.Set(BuildCacheKey(names[i], request.FileExtension, request.ProjectFilter), solutionDir, cacheEntry);
-                        pages[i] = BuildPageResponse(cacheEntry.AllResults, offset, pageSize, cacheEntry.Note);
+                        string newKey = BuildCacheKey(names[i], request.FileExtension, request.ProjectFilter);
+                        _searchCache.Set(newKey, solutionDir, cacheEntry);
+                        pages[i] = BuildPageResponse(cacheEntry.AllResults, selection.Offset(pageSize, cacheEntry.AllResults.Count), pageSize, cacheEntry.Note, _searchCache.GetId(newKey), selection.Warning);
                     }
                 }
 
@@ -154,20 +174,31 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// the totals are computed over that whole list, and the token is the offset of the first
         /// item that is not on this page.
         /// </summary>
-        internal static FileSearchResultsResponse BuildPageResponse(IReadOnlyList<FileSearchResult> allResults, int offset, int pageSize, string note)
+        internal static FileSearchResultsResponse BuildPageResponse(IReadOnlyList<FileSearchResult> allResults, int offset, int pageSize, string note, string cacheId = null, string warning = null)
         {
             var all = allResults ?? new List<FileSearchResult>();
             var page = all.Skip(offset).Take(pageSize).ToList();
+            string nextToken = ToolPagination.NextToken(offset + page.Count, all.Count, cacheId);
 
             return new FileSearchResultsResponse
             {
                 Results = page,
                 Note = note,
-                NextPageToken = ToolPagination.NextToken(offset + page.Count, all.Count),
+                NextPageToken = nextToken,
                 TotalFiles = all.Count,
+                Showing = ToolPagination.Describe(offset, page.Count, all.Count, nextToken != null, pageSize),
                 Success = true,
-                ErrorMessage = null
+                ErrorMessage = null,
+                Warning = warning
             };
+        }
+
+        /// <summary>max_results as the page size (default and bounds as in <see cref="ExtractAndValidateParameters"/>).</summary>
+        private static int ReadPageSize(Dictionary<string, object> parameters)
+        {
+            if (parameters != null && parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
+                return Math.Min(Math.Max(maxVal, 1), MaxPageSize);
+            return DefaultPageSize;
         }
 
         internal static string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
@@ -267,7 +298,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (LiteralListParameter.IsMissing(nameObj) && (HasText(parameters, "extension_filter") || HasText(parameters, "project_filter")))
                     nameObj = ListAllFilesName;
 
-                // Single name: unchanged contract.
                 if (!(nameObj is string single))
                     return new FindRequest { Error = $"Parameter '{FileNameParameter}' (or '{FileNamesParameter}') is required and must be a string. To list all files, pass '{ListAllFilesName}'." };
                 names = new List<string> { single };
@@ -348,11 +378,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("total_files")]
             public int TotalFiles { get; set; }
 
+            /// <summary>Which page this is: "page 2 of 3". Only data.</summary>
+            [JsonProperty("showing", NullValueHandling = NullValueHandling.Ignore)]
+            public string Showing { get; set; }
+
             [JsonProperty("success")]
             public bool Success { get; set; }
 
             [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
+
+            /// <summary>Set when the page_token could not be used as given.</summary>
+            [JsonProperty("warning", NullValueHandling = NullValueHandling.Ignore)]
+            public string Warning { get; set; }
         }
 
         /// <summary>

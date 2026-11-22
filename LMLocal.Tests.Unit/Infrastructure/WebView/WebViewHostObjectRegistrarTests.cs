@@ -40,6 +40,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             public Mock<ISubAgentsController> SubAgents { get; } = new Mock<ISubAgentsController>();
             public Mock<IRecentModelsController> RecentModels { get; } = new Mock<IRecentModelsController>();
             public Mock<IFileLinksController> FileLinks { get; } = new Mock<IFileLinksController>();
+            public Mock<IUsageController> Usage { get; } = new Mock<IUsageController>();
 
             public Fixture()
             {
@@ -64,7 +65,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                     ChatSession.Object,
                     SubAgents.Object,
                     RecentModels.Object,
-                    FileLinks.Object);
+                    FileLinks.Object,
+                    Usage.Object);
             }
         }
 
@@ -84,7 +86,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                 {
                     "bridge", "host", "instructions", "providers", "tools", "settings",
                     "mcp", "models", "modelsConfig", "autocompletions", "chatSession", "subAgents", "recentModels",
-                    "fileLinks"
+                    "fileLinks", "usage"
                 }));
         }
 
@@ -137,6 +139,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             AssertRegistered(sink, "chatSession", fixture.ChatSession.Object);
             AssertRegistered(sink, "subAgents", fixture.SubAgents.Object);
             AssertRegistered(sink, "recentModels", fixture.RecentModels.Object);
+            AssertRegistered(sink, "usage", fixture.Usage.Object);
         }
 
         [Test]
@@ -181,7 +184,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
                     fixture.ChatSession.Object,
                     fixture.SubAgents.Object,
                     fixture.RecentModels.Object,
-                    fixture.FileLinks.Object),
+                    fixture.FileLinks.Object,
+                    fixture.Usage.Object),
                 Throws.TypeOf<ArgumentNullException>());
         }
 

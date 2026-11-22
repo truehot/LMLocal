@@ -154,6 +154,8 @@ namespace LMLocal.Tests.Unit
             public Task<List<ChatMessage>> LoadSessionByIdAsync(string sessionId) => Task.FromResult(new List<ChatMessage>());
             public Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages) => Task.CompletedTask;
 
+            public System.Guid? CurrentSessionId => null;
+
             public void ReplaceHistoryInMemory(IEnumerable<ChatMessage> messages)
             {
                 throw new NotImplementedException();

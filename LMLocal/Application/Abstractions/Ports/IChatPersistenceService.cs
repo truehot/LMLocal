@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 
 namespace LMLocal.Application.Abstractions.Ports
@@ -37,11 +36,6 @@ namespace LMLocal.Application.Abstractions.Ports
         /// Scans all jsonl chat files, finds the most recent session_start marker, and returns all messages belonging to that session in chronological order.
         /// </summary>
         Task<List<ChatMessage>> LoadLastSessionAsync(CancellationToken cancellationToken = default);
-
-        /// <summary>
-        /// Scans jsonl chat files and returns lightweight summaries of the last <paramref name="limit"/> sessions, each containing the first user message (truncated), timestamp, and message count.
-        /// </summary>
-        Task<List<ChatSessionSummary>> GetChatSessionsAsync(int limit = ChatLogConstants.DefaultSessionListLimit, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Scans jsonl chat files for a specific session by ID, returns all its messages in chronological order, and makes it the current session for subsequent saves.

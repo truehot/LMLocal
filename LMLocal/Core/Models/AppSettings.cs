@@ -99,6 +99,12 @@ namespace LMLocal.Core.Models
         public bool FlashTaskbarOnCompletion { get; set; } = true;
 
         /// <summary>
+        /// When true, a banner above the chat input offers to explain the current debugger stop
+        /// (breakpoint or exception) while Visual Studio is in Break Mode.
+        /// </summary>
+        public bool EnableDebuggerContext { get; set; } = false;
+
+        /// <summary>
         /// When true, sequential model tool executions are grouped into a single compact UI block to reduce chat clutter.
         /// </summary>
         public bool CollapseToolCalls { get; set; } = false;
@@ -142,6 +148,7 @@ namespace LMLocal.Core.Models
                 && OpenToolFilesInEditor == other.OpenToolFilesInEditor
                 && PreventCloseWhileGenerating == other.PreventCloseWhileGenerating
                 && FlashTaskbarOnCompletion == other.FlashTaskbarOnCompletion
+                && EnableDebuggerContext == other.EnableDebuggerContext
                 && CollapseToolCalls == other.CollapseToolCalls
                 && ShowTokenStats == other.ShowTokenStats
                 && EnableRateLimitHandling == other.EnableRateLimitHandling
@@ -173,6 +180,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + OpenToolFilesInEditor.GetHashCode();
                 hash = hash * 23 + PreventCloseWhileGenerating.GetHashCode();
                 hash = hash * 23 + FlashTaskbarOnCompletion.GetHashCode();
+                hash = hash * 23 + EnableDebuggerContext.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
                 hash = hash * 23 + ShowTokenStats.GetHashCode();
                 hash = hash * 23 + EnableRateLimitHandling.GetHashCode();

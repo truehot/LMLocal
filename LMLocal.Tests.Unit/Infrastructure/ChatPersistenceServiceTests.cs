@@ -29,6 +29,16 @@ namespace LMLocal.Tests.Unit.Infrastructure
             return mock;
         }
 
+        /// <summary>
+        /// Returns the id of the session whose log contains a message with exactly <paramref name="content"/>.
+        /// </summary>
+        private static async Task<string> FindSessionIdByContentAsync(ChatPersistenceService service, string content)
+        {
+            var logs = await service.ReadAllSessionsAsync();
+            return logs.Single(log => log.Entries.Any(entry =>
+                string.Equals(entry.Message.Content as string, content, StringComparison.Ordinal))).SessionId;
+        }
+
         [Test]
         public async Task SaveLastMessageAsync_WhenFileExists_AppendsInsteadOfWrite()
         {
@@ -499,11 +509,11 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         // ----------------------------------------------------------------
-        //  GetChatSessionsAsync
+        //  ReadAllSessionsAsync — the raw material for the session summaries
         // ----------------------------------------------------------------
 
         [Test]
-        public async Task GetChatSessionsAsync_ReturnsUserPromptsAndCounts()
+        public async Task ReadAllSessionsAsync_WithNoFiles_ReturnsEmpty()
         {
             var mockSettings = CreateMockSettingsManager();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
@@ -511,51 +521,57 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
 
-            // Session 1: user + assistant
-            await service.MarkNewSessionAsync();
-            await service.SaveLastMessageAsync(new ChatMessage("user", "question one"));
-            await service.SaveLastMessageAsync(new ChatMessage("assistant", "answer one"));
+            var result = await service.ReadAllSessionsAsync();
 
-            // Session 2: user + assistant + tool
-            await service.MarkNewSessionAsync();
-            await service.SaveLastMessageAsync(new ChatMessage("user", "question two"));
-            await service.SaveLastMessageAsync(new ChatMessage("assistant", "answer two"));
-            await service.SaveLastMessageAsync(new ChatMessage("tool", "result", "call-1"));
-
-            var result = await service.GetChatSessionsAsync();
-
-            Assert.That(result.Count, Is.EqualTo(2));
-
-            // Most recent session first (timestamp ordering)
-            Assert.That(result[0].Prompt, Is.EqualTo("question two"));
-            Assert.That(result[0].MessageCount, Is.EqualTo(3));
-            Assert.That(result[1].Prompt, Is.EqualTo("question one"));
-            Assert.That(result[1].MessageCount, Is.EqualTo(2));
+            Assert.That(result, Is.Empty);
         }
 
         [Test]
-        public async Task GetChatSessionsAsync_TruncatesLongPrompts()
+        public async Task ReadAllSessionsAsync_SessionSpanningTwoFiles_ReturnsChronologicalEntriesWithModels()
         {
+            // The session summaries rely on this: entries must come back oldest-first across hourly file
+            // boundaries, otherwise the "order of first use" of a model would depend on the scan order.
             var mockSettings = CreateMockSettingsManager();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
             var fileSystem = new InMemoryFileSystem();
 
             var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
 
-            await service.MarkNewSessionAsync();
-            var longPrompt = new string('x', 201);
-            await service.SaveLastMessageAsync(new ChatMessage("user", longPrompt));
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LMLocalChat",
+                "ChatHistory");
 
-            var result = await service.GetChatSessionsAsync();
+            const string sessionId = "session-models";
 
-            Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result[0].Prompt.Length, Is.EqualTo(200 + 3), "Prompt should be truncated to 200 chars + ellipsis");
-            Assert.That(result[0].Prompt.StartsWith(new string('x', 200)));
-            Assert.That(result[0].Prompt.EndsWith("..."));
+            var olderPath = Path.Combine(dir, "20250201_13_chat_.jsonl");
+            var olderContent =
+                "{\"type\":\"session_start\",\"session_id\":\"" + sessionId + "\",\"timestamp\":\"2025-02-01T13:00:00Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"user\",\"content\":\"q1\",\"timestamp\":\"2025-02-01T13:00:01Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"assistant\",\"content\":\"a1\",\"model_id\":\"beta\",\"timestamp\":\"2025-02-01T13:00:02Z\"}\n";
+            await fileSystem.WriteAllBytesAsync(olderPath, Encoding.UTF8.GetBytes(olderContent));
+
+            var newerPath = Path.Combine(dir, "20250201_14_chat_.jsonl");
+            var newerContent =
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"user\",\"content\":\"q2\",\"timestamp\":\"2025-02-01T14:00:00Z\"}\n" +
+                "{\"type\":\"message\",\"session_id\":\"" + sessionId + "\",\"role\":\"assistant\",\"content\":\"a2\",\"model_id\":\"alpha\",\"timestamp\":\"2025-02-01T14:00:01Z\"}\n";
+            await fileSystem.WriteAllBytesAsync(newerPath, Encoding.UTF8.GetBytes(newerContent));
+
+            var logs = await service.ReadAllSessionsAsync();
+
+            Assert.That(logs, Has.Count.EqualTo(1));
+            Assert.That(logs[0].SessionId, Is.EqualTo(sessionId));
+
+            var contents = logs[0].Entries.Select(entry => entry.Message.Content as string).ToList();
+            Assert.That(contents, Is.EqualTo(new[] { "q1", "a1", "q2", "a2" }), "entries must be chronological across files");
+
+            Assert.That(logs[0].Entries[1].Message.ModelId, Is.EqualTo("beta"));
+            Assert.That(logs[0].Entries[3].Message.ModelId, Is.EqualTo("alpha"));
+            Assert.That(logs[0].Entries[0].TimestampUtc, Is.EqualTo(new DateTime(2025, 2, 1, 13, 0, 1, DateTimeKind.Utc)));
         }
 
         [Test]
-        public async Task GetChatSessionsAsync_PromptJustBelowBoundary_NotTruncated()
+        public async Task ReadAllSessionsAsync_LegacyLineWithoutModelId_LeavesModelIdNull()
         {
             var mockSettings = CreateMockSettingsManager();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
@@ -563,75 +579,50 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
 
-            await service.MarkNewSessionAsync();
-            var prompt = new string('x', 199);
-            await service.SaveLastMessageAsync(new ChatMessage("user", prompt));
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LMLocalChat",
+                "ChatHistory");
 
-            var result = await service.GetChatSessionsAsync();
+            var path = Path.Combine(dir, "20250101_10_chat_.jsonl");
+            var content =
+                "{\"type\":\"message\",\"session_id\":\"legacy\",\"role\":\"assistant\",\"content\":\"old a\",\"timestamp\":\"2025-01-01T10:00:01Z\"}\n";
+            await fileSystem.WriteAllBytesAsync(path, Encoding.UTF8.GetBytes(content));
 
-            Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result[0].Prompt.Length, Is.EqualTo(199), "199 chars must not be truncated");
-            Assert.That(result[0].Prompt.EndsWith("..."), Is.False);
+            var logs = await service.ReadAllSessionsAsync();
+
+            Assert.That(logs, Has.Count.EqualTo(1));
+            Assert.That(logs[0].Entries[0].Message.ModelId, Is.Null,
+                "legacy logs carry no model field - nothing must be invented");
         }
 
         [Test]
-        public async Task GetChatSessionsAsync_PromptAtBoundary_NotTruncated()
+        public async Task ReadAllSessionsAsync_KeepsDateLikeContentAndHonoursTheTimestampOffset()
         {
+            // Both halves of the date-coercion fix: the prompt keeps its own text and the timestamp keeps its instant.
             var mockSettings = CreateMockSettingsManager();
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
             var fileSystem = new InMemoryFileSystem();
 
             var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
 
-            await service.MarkNewSessionAsync();
-            var prompt = new string('x', 200);
-            await service.SaveLastMessageAsync(new ChatMessage("user", prompt));
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "LMLocalChat",
+                "ChatHistory");
 
-            var result = await service.GetChatSessionsAsync();
+            var path = Path.Combine(dir, "20250201_13_chat_.jsonl");
+            var content =
+                "{\"type\":\"message\",\"session_id\":\"dated\",\"role\":\"user\",\"content\":\"2025-02-01T13:00:00Z\",\"timestamp\":\"2025-02-01T15:00:01+02:00\"}\n";
+            await fileSystem.WriteAllBytesAsync(path, Encoding.UTF8.GetBytes(content));
 
-            Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result[0].Prompt.Length, Is.EqualTo(200), "200 chars must not be truncated");
-            Assert.That(result[0].Prompt.EndsWith("..."), Is.False);
-        }
+            var logs = await service.ReadAllSessionsAsync();
 
-        [Test]
-        public async Task GetChatSessionsAsync_SessionWithoutUserMessage_HasEmptyPrompt()
-        {
-            var mockSettings = CreateMockSettingsManager();
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
-            var fileSystem = new InMemoryFileSystem();
-
-            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
-
-            await service.MarkNewSessionAsync();
-            await service.SaveLastMessageAsync(new ChatMessage("assistant", "no user before"));
-
-            var result = await service.GetChatSessionsAsync();
-
-            Assert.That(result.Count, Is.EqualTo(1));
-            Assert.That(result[0].Prompt, Is.EqualTo(string.Empty));
-        }
-
-        [Test]
-        public async Task GetChatSessionsAsync_WithLimit_ReturnsOnlyLast()
-        {
-            var mockSettings = CreateMockSettingsManager();
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
-            var fileSystem = new InMemoryFileSystem();
-
-            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
-
-            for (int i = 0; i < 3; i++)
-            {
-                await service.MarkNewSessionAsync();
-                await service.SaveLastMessageAsync(new ChatMessage("user", $"prompt {i}"));
-            }
-
-            var result = await service.GetChatSessionsAsync(limit: 2);
-
-            Assert.That(result.Count, Is.EqualTo(2));
-            Assert.That(result[0].Prompt, Is.EqualTo("prompt 2"));
-            Assert.That(result[1].Prompt, Is.EqualTo("prompt 1"));
+            Assert.That(logs, Has.Count.EqualTo(1));
+            Assert.That(logs[0].Entries[0].Message.Content, Is.EqualTo("2025-02-01T13:00:00Z"),
+                "a date-like message must stay the string the user typed");
+            Assert.That(logs[0].Entries[0].TimestampUtc, Is.EqualTo(new DateTime(2025, 2, 1, 13, 0, 1, DateTimeKind.Utc)),
+                "the explicit offset must be honoured regardless of the machine's time zone");
         }
 
         // ----------------------------------------------------------------
@@ -657,10 +648,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await service.SaveLastMessageAsync(new ChatMessage("user", "qB"));
             await service.SaveLastMessageAsync(new ChatMessage("assistant", "aB"));
 
-            var summaries = await service.GetChatSessionsAsync();
-            var sessionA = summaries.Single(s => s.Prompt == "qA");
+            string sessionId = await FindSessionIdByContentAsync(service, "qA");
 
-            var messages = await service.LoadSessionByIdAsync(sessionA.SessionId);
+            var messages = await service.LoadSessionByIdAsync(sessionId);
 
             Assert.That(messages.Count, Is.EqualTo(2));
             Assert.That(messages[0].Content, Is.EqualTo("qA"));
@@ -743,17 +733,16 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await service.MarkNewSessionAsync();
             await service.SaveLastMessageAsync(new ChatMessage("user", "qB"));
 
-            var summaries = await service.GetChatSessionsAsync();
-            var sessionA = summaries.Single(s => s.Prompt == "qA");
+            string sessionId = await FindSessionIdByContentAsync(service, "qA");
 
             // Loading A makes it the current session — no new session boundary is written.
-            var loaded = await service.LoadSessionByIdAsync(sessionA.SessionId);
+            var loaded = await service.LoadSessionByIdAsync(sessionId);
             Assert.That(loaded.Count, Is.EqualTo(2));
 
             // A continuation after the load must append to A, not to a fresh session.
             await service.SaveLastMessageAsync(new ChatMessage("assistant", "contA"));
 
-            var reloaded = await service.LoadSessionByIdAsync(sessionA.SessionId);
+            var reloaded = await service.LoadSessionByIdAsync(sessionId);
             Assert.That(reloaded.Count, Is.EqualTo(3));
             Assert.That(reloaded[2].Content, Is.EqualTo("contA"));
         }
@@ -952,39 +941,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
                 Times.Never);
         }
 
-        // ----------------------------------------------------------------
-        //  GetChatSessionsAsync edge cases
-        // ----------------------------------------------------------------
-
-        [Test]
-        public async Task GetChatSessionsAsync_WithNonPositiveLimit_ReturnsEmpty()
-        {
-            var mockSettings = CreateMockSettingsManager();
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
-            var fileSystem = new InMemoryFileSystem();
-
-            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
-
-            var zero = await service.GetChatSessionsAsync(0);
-            var negative = await service.GetChatSessionsAsync(-1);
-
-            Assert.That(zero, Is.Empty);
-            Assert.That(negative, Is.Empty);
-        }
-
-        [Test]
-        public async Task GetChatSessionsAsync_WithNoFiles_ReturnsEmpty()
-        {
-            var mockSettings = CreateMockSettingsManager();
-            mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableChatLogging = true });
-            var fileSystem = new InMemoryFileSystem();
-
-            var service = new ChatPersistenceService(mockSettings.Object, fileSystem);
-
-            var result = await service.GetChatSessionsAsync();
-
-            Assert.That(result, Is.Empty);
-        }
     }
 }
 

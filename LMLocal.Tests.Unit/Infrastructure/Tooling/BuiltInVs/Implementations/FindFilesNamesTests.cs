@@ -252,7 +252,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             foreach (var block in result.Terms)
             {
                 Assert.That(block.Results.Count, Is.EqualTo(250), block.FileName);
-                Assert.That(block.NextPageToken, Is.EqualTo("250"), block.FileName);
+                Assert.That(block.NextPageToken, Does.Match(@"^r\d+:250$"), block.FileName);
             }
         }
 
@@ -295,7 +295,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             var first = (FindFiles.FindFilesMultiResponse)await tool.ExecuteAsync(new Dictionary<string, object> { ["file_names"] = new JArray("A*", "B*") });
             var block = first.Terms[0];
-            Assert.That(block.NextPageToken, Is.EqualTo("50"));
+            Assert.That(block.NextPageToken, Does.Match(@"^r\d+:50$"));
 
             var next = (FindFiles.FileSearchResultsResponse)await tool.ExecuteAsync(new Dictionary<string, object> { ["file_name"] = "A*", ["page_token"] = block.NextPageToken });
             Assert.That(next.Results.Count, Is.EqualTo(10));

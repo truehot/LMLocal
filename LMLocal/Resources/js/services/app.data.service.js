@@ -69,6 +69,13 @@ class AppDataService {
         return await bridgeClient.getChatSessionByIdAsync(sessionId);
     }
 
+    /**
+     * Token usage statistics of the current session or of a period.
+     */
+    async getUsageStatsAsync(period) {
+        return await bridgeClient.getUsageStatsAsync(period);
+    }
+
     async setActiveModel(modelId, modelName, supportsMaxTokens, tokenMax) {
         const result = await bridgeClient.setActiveModelAsync(modelId, tokenMax || 0);
 

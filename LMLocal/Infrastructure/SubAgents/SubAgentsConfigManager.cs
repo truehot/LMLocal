@@ -406,7 +406,7 @@ namespace LMLocal.Infrastructure.SubAgents
         }
 
         /// <summary>
-        /// Serializes the provided config (as given) and writes it to disk. 
+        /// Serializes the provided config (as given) and writes it to disk.
         /// </summary>
         private async Task WriteCoreAsync(SubAgentsConfig config, CancellationToken cancellationToken)
         {
