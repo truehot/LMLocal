@@ -36,5 +36,65 @@ namespace LMLocal.Application.SubAgents
 
         /// <summary>One of <see cref="LMLocal.Core.Models.Usage.UsageOrigins"/>; null means a chat request.</summary>
         public string Origin { get; set; }
+
+        /// <summary>Pipeline id when the run is a step of a pipeline; null for a plain agent run.</summary>
+        public string PipelineId { get; set; }
+
+        /// <summary>One id per pipeline run, shared by all its steps; null for a plain agent run.</summary>
+        public string PipelineRunId { get; set; }
+
+        /// <summary>1-based number of the step inside the pipeline; null for a plain agent run.</summary>
+        public int? PipelineStep { get; set; }
+
+        /// <summary>Step id from the config, when the step declares one.</summary>
+        public string PipelineStepId { get; set; }
+
+        /// <summary>1-based attempt of the step; null on the first attempt.</summary>
+        public int? PipelineAttempt { get; set; }
+
+        /// <summary>1-based number of the branch inside a parallel step; null for a sequential step.</summary>
+        public int? PipelineBranch { get; set; }
+
+        /// <summary>
+        /// Set by the owner of the cancellation token so a run cancelled on purpose (a sibling branch of a pipeline
+        /// group failed) is not reported as a user stop. Null for a plain agent run.
+        /// </summary>
+        public SubAgentRunCancellationOwner Cancellation { get; set; }
+
+        /// <summary>
+        /// Copy of the request, so the caller can run the same settings again (a retry) or with another prompt
+        /// without touching the request stored in the pipeline run.
+        /// </summary>
+        public SubAgentRunRequest Copy()
+        {
+            return new SubAgentRunRequest
+            {
+                AgentName = AgentName,
+                Prompt = Prompt,
+                ProviderType = ProviderType,
+                BaseUrl = BaseUrl,
+                ApiKey = ApiKey,
+                Model = Model,
+                System = System,
+                Temperature = Temperature,
+                ReasoningEffort = ReasoningEffort,
+                MaxTokens = MaxTokens,
+                TimeoutSeconds = TimeoutSeconds,
+                MaxRounds = MaxRounds,
+                AllowedTools = AllowedTools,
+                ExcludedAgentNames = ExcludedAgentNames,
+                Progress = Progress,
+                ParentSessionId = ParentSessionId,
+                RequestId = RequestId,
+                Origin = Origin,
+                PipelineId = PipelineId,
+                PipelineRunId = PipelineRunId,
+                PipelineStep = PipelineStep,
+                PipelineStepId = PipelineStepId,
+                PipelineAttempt = PipelineAttempt,
+                PipelineBranch = PipelineBranch,
+                Cancellation = Cancellation
+            };
+        }
     }
 }

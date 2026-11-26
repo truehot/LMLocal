@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -320,6 +321,140 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.Candidates.Count, Is.GreaterThanOrEqualTo(1));
             Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(1));
             Assert.That(resp.Candidates[0].Text, Is.EqualTo("a\nb\nc"));
+        }
+
+        [Test]
+        public async Task FirstLineFound_BlockMismatch_NamesDifferingLineAndColumn()
+        {
+            // Session 076a5f92: the last line of old_lines lost its ';' four times in a row and the error never said which line differed.
+            SetupFileContent("a\nb\nc;");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "a\nb\nc", newLines: "x"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.StartWith("First line of old_lines found at 1 location(s), but the full block didn't match. "));
+            Assert.That(resp.ErrorMessage, Does.Contain(
+                "Closest match starts at line 1: line 3 of old_lines (file line 3) differs at column 2: the file has ';' (U+003B), old_lines has end of line."));
+            Assert.That(resp.ErrorMessage, Does.EndWith("Re-read the file or retry with the suggested start_line."));
+        }
+
+        [Test]
+        public async Task FirstLineFound_BlockMismatch_LongestPrefixWins()
+        {
+            SetupFileContent("x\ny\nz\n-\n-\n-\n-\n-\n-\nx\nq");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 10, oldLines: "x\ny\nw", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain(
+                "Closest match starts at line 1: line 3 of old_lines (file line 3) differs at column 1: the file has 'z' (U+007A), old_lines has 'w' (U+0077)."));
+            Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task FirstLineFound_BlockMismatch_TieGoesToNearestStartLineAndComesFirst()
+        {
+            SetupFileContent("x\na\n-\n-\n-\n-\n-\n-\n-\nx\nb");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 9, oldLines: "x\nc", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain(
+                "Closest match starts at line 10: line 2 of old_lines (file line 11) differs at column 1: the file has 'b' (U+0062), old_lines has 'c' (U+0063)."));
+            Assert.That(resp.Candidates.ConvertAll(c => c.StartLine), Is.EqualTo(new List<int> { 10, 1 }));
+        }
+
+        [Test]
+        public async Task FirstLineFound_BlockMismatch_NormalizedCharacterBeforeTheErrorIsNotReported()
+        {
+            // NBSP in line 2 is removed by canonical matching anyway; the hint must point at the ';' in line 3.
+            SetupFileContent("x\na\u00A0b\nc;");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "x\na b\nc", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain(
+                "line 3 of old_lines (file line 3) differs at column 2: the file has ';' (U+003B), old_lines has end of line."));
+        }
+
+        [Test]
+        public async Task FirstLineFoundOnlyCanonically_BlockMismatch_PointsAtTheRealError()
+        {
+            // Check 46g: before this the first line counted as not found and the answer was "Old content not found".
+            SetupFileContent("a\u00A0b\nx = 1");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "a b\nx = 2", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.StartWith("First line of old_lines found at 1 location(s) after character normalization, but the full block didn't match."));
+            Assert.That(resp.ErrorMessage, Does.Contain(
+                "line 2 of old_lines (file line 2) differs at column 5: the file has '1' (U+0031), old_lines has '2' (U+0032)."));
+            Assert.That(resp.Candidates[0].StartLine, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task FirstLineFound_BlockMismatch_NonAsciiCharacterIsShownAsCodeOnly()
+        {
+            SetupFileContent("x\ny = \"" + (char)0xE9 + "\"");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "x\ny = \"e\"", newLines: "n"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("differs at column 6: the file has U+00E9, old_lines has 'e' (U+0065)."));
+        }
+
+        // ── Several matches, one at start_line: taken, the others named in note (5920dad5) ──
+
+        [Test]
+        public async Task SeveralMatchesIgnoringIndent_StartLineOnOne_TakesItAndNamesTheOthers()
+        {
+            SetupFileContent("x\n    dup;\ny\n    dup;\nz");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 4, oldLines: "dup;", newLines: "done;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Null);
+            Assert.That(resp.Note, Is.EqualTo(
+                "old_lines also matches line(s) 2 (first-line indentation ignored); start_line 4 was used, the others were left unchanged."));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "x\n    dup;\ny\n    done;\nz", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task SeveralMatchesIgnoringIndent_StartLineOnNone_StaysAmbiguous()
+        {
+            SetupFileContent("x\n    dup;\ny\n    dup;\nz");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "dup;", newLines: "done;"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("matches 2 locations when leading indentation of the first line is ignored"));
+            Assert.That(resp.Candidates.Select(c => c.StartLine), Is.EqualTo(new[] { 2, 4 }));
+            Assert.That(resp.Note, Is.Null);
+        }
+
+        [Test]
+        public async Task SeveralCanonicalMatches_StartLineOnOne_TakesItAndReportsInvisibleCharacters()
+        {
+            SetupFileContent("a\u200Bb\nx\na\u200Bb");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 3, oldLines: "ab", newLines: "ab2"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.Null);
+            Assert.That(resp.InvisibleCharacters, Is.EqualTo(new[] { "line 3: U+200B removed (the line was rewritten from new_lines)" }));
+            Assert.That(resp.Note, Is.EqualTo(
+                "old_lines also matches line(s) 1 (after character normalization); start_line 3 was used, the others were left unchanged."));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\u200Bb\nx\nab2", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task SeveralCanonicalMatchesIgnoringIndent_StartLineOnOne_TakesIt()
+        {
+            SetupFileContent("  a\u200Bb\nx\n  a\u200Bb");
+            var result = await _tool.ExecuteAsync(CreateParams(startLine: 3, oldLines: "ab", newLines: "ab2"));
+            var resp = result as ReplaceLinesResponse;
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.MatchedIgnoringFirstLineIndent, Is.True);
+            Assert.That(resp.Note, Is.EqualTo(
+                "old_lines also matches line(s) 1 (after character normalization, first-line indentation ignored); start_line 3 was used, the others were left unchanged."));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "  a\u200Bb\nx\n  ab2", Encoding.UTF8, false, It.IsAny<CancellationToken>()));
         }
 
         // ── Auto-correct: block found at exactly one location ─────────────────
@@ -756,7 +891,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         [Test]
         public async Task Replace_CanonicalMatchAtTwoLocations_ReturnsCandidates()
         {
-            SetupFileContent("a\u2014b\na-b");
+            // start_line is on neither match; with start_line on one of them that one is taken (P3-7).
+            SetupFileContent("x\na\u2014b\na-b");
             var result = await _tool.ExecuteAsync(CreateParams(startLine: 1, oldLines: "a\u2013b", newLines: "X"));
             var resp = result as ReplaceLinesResponse;
             Assert.That(resp.Success, Is.False);

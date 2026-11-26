@@ -103,6 +103,12 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
         /// <summary>Allow parallel tool calls.</summary>
         [JsonProperty("parallel_tool_calls", NullValueHandling = NullValueHandling.Ignore)]
         public bool? ParallelToolCalls { get; set; }
+
+        /// <summary>
+        /// Characters of reasoning_content this request carries, for the usage log only. Never sent to the API.
+        /// </summary>
+        [JsonIgnore]
+        public int ReasoningEchoChars { get; set; }
     }
 
     public class FunctionParameters
@@ -180,11 +186,14 @@ namespace LMLocal.Infrastructure.LlmApi.Requests
         [JsonProperty("tool_call_id", NullValueHandling = NullValueHandling.Ignore)]
         public string ToolCallId { get; set; }
 
-        /// <summary>
-        /// 
-        /// </summary>
         [JsonProperty("tool_calls", NullValueHandling = NullValueHandling.Ignore)]
         public List<ToolCall> ToolCalls { get; set; }
+
+        /// <summary>
+        /// Reasoning of an earlier assistant message, echoed back (DeepSeek thinking mode with tools).
+        /// </summary>
+        [JsonProperty("reasoning_content", NullValueHandling = NullValueHandling.Ignore)]
+        public string ReasoningContent { get; set; }
     }
 
     public class ToolCall

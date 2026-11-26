@@ -67,13 +67,15 @@ export function formatPrice(value, curr = '$') {
 }
 
 /**
-* Formats a duration in milliseconds as a compact human-readable string.
+* Formats a duration in milliseconds as a compact human-readable string. Below a minute it keeps one decimal
+* (`12.3s`) for the answer stats; `wholeSeconds` gives whole values (`12s`) for the live counter.
 */
-export function formatDuration(ms) {
+export function formatDuration(ms, wholeSeconds = false) {
     const totalSeconds = Math.max(0, ms) / 1000;
 
     if (totalSeconds < 60) {
-        return `${totalSeconds.toFixed(1)}${UIText.TEXT_TIME_SECONDS}`;
+        const seconds = wholeSeconds ? Math.floor(totalSeconds) : totalSeconds.toFixed(1);
+        return `${seconds}${UIText.TEXT_TIME_SECONDS}`;
     }
 
     const roundedTotalSeconds = Math.round(totalSeconds);

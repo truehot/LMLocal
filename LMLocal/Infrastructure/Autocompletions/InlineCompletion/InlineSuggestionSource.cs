@@ -84,7 +84,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("InlineSuggestionSource: " + ex.Message);
+                InternalLogger.Warn("InlineSuggestionSource: RequestProposalsAsync failed", ex);
                 return null;
             }
         }
@@ -311,7 +311,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("InlineSuggestionSource.Commit: " + ex.Message);
+                InternalLogger.Warn("InlineSuggestionSource.Commit", ex);
                 return false;
             }
         }

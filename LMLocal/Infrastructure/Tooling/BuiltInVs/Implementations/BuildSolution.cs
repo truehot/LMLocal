@@ -401,7 +401,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: cannot resolve the directory of project '{projectUniqueName}': {ex.Message}");
+                InternalLogger.Warn($"BuildSolution: cannot resolve the directory of project '{projectUniqueName}'", ex);
                 return null;
             }
         }
@@ -411,7 +411,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// </summary>
         internal static string FailureSummary(IList<string> failedProjects, int shown, int total)
         {
-            string summary = failedProjects != null && failedProjects.Count > 0
+            string summary = failedProjects?.Count > 0
                 ? "Failed projects: " + string.Join(", ", failedProjects) + "."
                 : "Build failed.";
 
@@ -458,7 +458,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: LocateBuildPaneByGuid failed: {ex.Message}");
+                InternalLogger.Warn("BuildSolution: LocateBuildPaneByGuid failed", ex);
             }
             return null;
         }
@@ -484,7 +484,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: LocateBuildPaneByName failed: {ex.Message}");
+                InternalLogger.Warn("BuildSolution: LocateBuildPaneByName failed", ex);
             }
             return null;
         }
@@ -519,7 +519,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: LocateBuildPane failed: {ex.Message}");
+                InternalLogger.Warn("BuildSolution: LocateBuildPane failed", ex);
                 return null;
             }
         }
@@ -551,7 +551,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"BuildSolution: ReadPaneTail failed: {ex.Message}");
+                InternalLogger.Warn("BuildSolution: ReadPaneTail failed", ex);
                 return null;
             }
         }

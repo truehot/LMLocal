@@ -255,40 +255,6 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result.Message, Does.Not.Contain("context_length_exceeded"));
         }
 
-        // --- IsRateLimit ---
-
-        [Test]
-        public void IsRateLimit_True_WhenCode429()
-        {
-            var info = new ApiErrorInfo { Message = "slow down", Code = 429 };
-
-            Assert.That(info.IsRateLimit, Is.True);
-        }
-
-        [Test]
-        public void IsRateLimit_True_WhenRetryAfterPresent()
-        {
-            var info = new ApiErrorInfo { Message = "wait", RetryAfterSeconds = 5 };
-
-            Assert.That(info.IsRateLimit, Is.True);
-        }
-
-        [Test]
-        public void IsRateLimit_False_WhenCode400()
-        {
-            var info = new ApiErrorInfo { Message = "bad request", Code = 400 };
-
-            Assert.That(info.IsRateLimit, Is.False);
-        }
-
-        [Test]
-        public void IsRateLimit_False_WhenNoCodeNoRetry()
-        {
-            var info = new ApiErrorInfo { Message = "unknown" };
-
-            Assert.That(info.IsRateLimit, Is.False);
-        }
-
         // --- ToString ---
 
         [Test]

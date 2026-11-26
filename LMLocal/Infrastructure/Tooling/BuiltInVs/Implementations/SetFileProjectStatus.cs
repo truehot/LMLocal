@@ -118,6 +118,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                if (!(ex is OperationCanceledException))
+                    InternalLogger.Warn($"SetFileProjectStatus: could not snapshot the project '{absoluteProjectPath}' before modifying it", ex);
                 return ErrorResponse($"Operation failed: {ex.Message}");
             }
 
@@ -151,6 +153,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (Exception ex)
                 {
+                    if (!(ex is OperationCanceledException))
+                        InternalLogger.Warn($"SetFileProjectStatus: could not change '{absolutePaths[i]}'", ex);
                     results[i] = ErrorResponse($"Operation failed: {ex.Message}", absolutePaths[i]);
                 }
             }
@@ -167,6 +171,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (Exception ex)
                 {
+                    InternalLogger.Warn($"SetFileProjectStatus: the project '{absoluteProjectPath}' was changed in Visual Studio but could not be saved to disk", ex);
                     foreach (int i in changed)
                         results[i] = ErrorResponse($"The change was applied in Visual Studio but the project could not be saved to disk: {ex.Message}", absolutePaths[i]);
                 }
@@ -240,6 +245,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                if (!(ex is OperationCanceledException))
+                    InternalLogger.Warn($"SetFileProjectStatus: could not snapshot '{absolutePath}' before removing it from the project", ex);
                 return ErrorResponse($"File was not removed from the project because it could not be snapshotted: {ex.Message}", absolutePath);
             }
 
@@ -294,7 +301,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SetFileProjectStatus: could not search '{filePath}' in the project: {ex.Message}");
+                InternalLogger.Warn($"SetFileProjectStatus: could not search '{filePath}' in the project", ex);
                 return null;
             }
         }
@@ -320,7 +327,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"SetFileProjectStatus: could not inspect a project item while looking for '{fullPath}': {ex.Message}");
+                    InternalLogger.Warn($"SetFileProjectStatus: could not inspect a project item while looking for '{fullPath}'", ex);
                 }
             }
 
@@ -370,7 +377,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SetFileProjectStatus: failed to reload project '{projectPath}' from disk: {ex.Message}");
+                InternalLogger.Warn($"SetFileProjectStatus: failed to reload project '{projectPath}' from disk", ex);
                 return false;
             }
         }
@@ -385,7 +392,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SetFileProjectStatus: IsDirty is not available for '{ProjectFinder.SafeName(project, ProjectField.FullName)}': {ex.Message}");
+                InternalLogger.Warn($"SetFileProjectStatus: IsDirty is not available for '{ProjectFinder.SafeName(project, ProjectField.FullName)}'", ex);
                 return false;
             }
         }
@@ -403,7 +410,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SetFileProjectStatus: could not search the solution for project '{absoluteProjectPath}': {ex.Message}");
+                InternalLogger.Warn($"SetFileProjectStatus: could not search the solution for project '{absoluteProjectPath}'", ex);
                 return null;
             }
         }

@@ -191,6 +191,10 @@ namespace LMLocal.Tests.E2E.VSIX
                 "    // see other.cs:77 and Foo.cs:5-9",
                 "    internal static class ToolHistoryPruner",
                 "````",
+                @"2.  The final message: File: LMLocal\Application\Chat\ChatHistoryManager.cs, lines 585-585",
+                "````csharp",
+                "    var finalAssistant = fragment[fragment.Count - 1];",
+                "````",
                 @"LMLocal\Application\Chat\HistoryCompactor.cs:276: `var pruned = ToolHistoryPruner.Prune(`",
                 "```",
                 @"LMLocal\A\B.cs:3",
@@ -202,6 +206,7 @@ namespace LMLocal.Tests.E2E.VSIX
                 new[]
                 {
                     @"LMLocal\Application\Chat\ToolHistoryPruner.cs:49",
+                    @"LMLocal\Application\Chat\ChatHistoryManager.cs:585",
                     @"LMLocal\Application\Chat\HistoryCompactor.cs:276",
                     @"LMLocal\A\B.cs:3"
                 },

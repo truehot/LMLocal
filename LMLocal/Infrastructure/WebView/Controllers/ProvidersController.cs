@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Models;
 
@@ -35,7 +36,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                 {
                     DefaultProviders = config.DefaultProviders,
                     Providers = config.Providers,
-                    ProviderTypes = Infrastructure.Api.ProviderResolver.GetProviderTypes()
+                    ProviderTypes = ProviderResolver.GetProviderTypes()
                 };
                 return response.ToJson();
             }

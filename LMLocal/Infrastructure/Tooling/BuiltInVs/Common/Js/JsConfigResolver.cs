@@ -89,7 +89,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"JsConfigResolver: invalid search root '{root}': {ex.Message}");
+                        InternalLogger.Warn($"JsConfigResolver: invalid search root '{root}'", ex);
                         continue;
                     }
                     if (!searchRoots.Any(r => string.Equals(r, abs, StringComparison.OrdinalIgnoreCase)))
@@ -167,8 +167,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
             {
                 normalizedSolution = Path.GetFullPath(solutionDir).TrimEnd(Path.DirectorySeparatorChar);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                InternalLogger.Warn($"JsConfigResolver: cannot normalize the solution folder '{solutionDir}'", ex);
                 yield break;
             }
 
@@ -180,8 +181,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
                 {
                     norm = Path.GetFullPath(current).TrimEnd(Path.DirectorySeparatorChar);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    InternalLogger.Warn($"JsConfigResolver: cannot normalize the folder '{current}'", ex);
                     yield break;
                 }
 
@@ -244,7 +246,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"JsConfigResolver: failed to load config '{configPath}': {ex.Message}");
+                InternalLogger.Warn($"JsConfigResolver: failed to load config '{configPath}'", ex);
                 return null;
             }
         }
@@ -324,7 +326,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"JsConfigResolver: FileExists failed for '{candidate}': {ex.Message}");
+                    InternalLogger.Warn($"JsConfigResolver: FileExists failed for '{candidate}'", ex);
                 }
             }
 

@@ -68,7 +68,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"ProjectMetadataProvider: Failed to read project file {actualPath}: {ex.Message}");
+                    InternalLogger.Warn($"ProjectMetadataProvider: Failed to read project file {actualPath}", ex);
                 }
             }
 
@@ -102,7 +102,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"ProjectMetadataProvider: Failed to enumerate project files in {projectPath}: {ex.Message}");
+                    InternalLogger.Warn($"ProjectMetadataProvider: Failed to enumerate project files in {projectPath}", ex);
                 }
             }
             return null;

@@ -156,7 +156,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 List<string> filter = null;
 
-                if (requestedPaths != null && requestedPaths.Count > 0)
+                if (requestedPaths?.Count > 0)
                 {
                     filter = ResolveRequestedPaths(requestedPaths, _vsDependencies.GetSolutionDirectory());
 
@@ -187,7 +187,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"get_changes_diff: unexpected error: {ex.Message}");
+                InternalLogger.Warn("get_changes_diff: unexpected error", ex);
                 return Failure(ex.Message);
             }
         }
@@ -328,7 +328,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!TryParseStringArray(filesObj, out files, out string filesError))
                     return (false, null, DefaultMaxFiles, DefaultMaxLines, filesError);
 
-                if (files != null && files.Count > MaxFilesFilterEntries)
+                if (files?.Count > MaxFilesFilterEntries)
                 {
                     return (false, null, DefaultMaxFiles, DefaultMaxLines,
                         $"Parameter 'files' must contain at most {MaxFilesFilterEntries} entries.");

@@ -84,7 +84,10 @@ namespace LMLocal.Application.ChatSession
         {
             if (!await WaitForSessionLockAsync(cancellationToken).ConfigureAwait(false))
             {
-                InternalLogger.Info("SessionManager: Previous session is still finishing; giving up on the new one.");
+                if (cancellationToken.IsCancellationRequested)
+                    InternalLogger.Info("SessionManager: the new session was cancelled while waiting for the previous one");
+                else
+                    InternalLogger.Error("SessionManager: the new session was rejected: the previous one is still finishing");
 
                 if (onMessage != null)
                 {
@@ -102,7 +105,7 @@ namespace LMLocal.Application.ChatSession
             {
                 if (_isSessionRunning)
                 {
-                    InternalLogger.Info("SessionManager: Session already running");
+                    InternalLogger.Error("SessionManager: the new session was rejected: a session is already running");
                     return false;
                 }
 

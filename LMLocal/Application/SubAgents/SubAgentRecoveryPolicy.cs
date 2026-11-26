@@ -69,11 +69,14 @@ namespace LMLocal.Application.SubAgents
         /// </summary>
         internal const string LimitRetryHint = "Split the task into smaller pieces or narrow it and retry.";
 
+        /// <summary>Assistant turn that closes a discarded tool-call turn when a run recovers.</summary>
+        internal const string DiscardedTurnPlaceholder = "(tool call discarded)";
+
         /// <summary>
         /// User-turn instruction injected when the model still wants tools in the last round; the next round has no tools.
         /// </summary>
         internal const string RoundLimitNudge = @"[AUTOMATED GUARD: ROUND LIMIT REACHED]
-No tool calls are left in this run.
+Tools are disabled now.
 Answer the task now using only the tool results above.
 For every part of the task those results do not answer, say that it was not checked; do not report it as NOT FOUND.";
 
@@ -126,7 +129,6 @@ Then give the complete final answer again.";
         /// <summary>How many times a single run may recover from a tool call aborted while streaming before it fails.</summary>
         private const int MalformedRecoveryMaxAttempts = 2;
 
-        private readonly IToolCallLoopDetector _loopDetector;
         private readonly bool _loopRecoveryEnabled;
         private readonly int _maxRounds;
 
@@ -137,9 +139,8 @@ Then give the complete final answer again.";
         private int _unresolvedRefsAttempts;
         private bool _finalAnswerRequested;
 
-        public SubAgentRecoveryPolicy(IToolCallLoopDetector loopDetector, bool loopRecoveryEnabled, int maxRounds)
+        public SubAgentRecoveryPolicy(bool loopRecoveryEnabled, int maxRounds)
         {
-            _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _loopRecoveryEnabled = loopRecoveryEnabled;
             _maxRounds = maxRounds;
         }
@@ -174,7 +175,7 @@ Then give the complete final answer again.";
                     $"SubAgent recovered from a malformed tool call (attempt {_malformedRecoveryAttempts} of {MalformedRecoveryMaxAttempts}).");
             }
 
-            if (_previousToolCalls != null && _loopDetector.AreSameToolCalls(round.ToolCalls, _previousToolCalls))
+            if (_previousToolCalls != null && ToolCallLoopDetector.AreSameToolCalls(round.ToolCalls, _previousToolCalls))
             {
                 _consecutiveDuplicateRounds++;
                 if (_consecutiveDuplicateRounds >= MaxDuplicateToolRounds)

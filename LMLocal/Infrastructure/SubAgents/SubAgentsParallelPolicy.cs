@@ -34,11 +34,14 @@ namespace LMLocal.Infrastructure.SubAgents
             if (settings == null || !settings.EnableSubAgents || !settings.EnableAiTools)
                 return false;
 
-            var agent = FindAgent(toolName);
-            if (agent == null || !agent.Parallel)
-                return false;
+            var name = toolName.Trim();
 
-            return HasOnlyReadOnlyTools(agent);
+            var agent = FindAgent(name);
+            if (agent != null)
+                return agent.Parallel && HasOnlyReadOnlyTools(agent);
+
+            var pipeline = FindPipeline(name);
+            return pipeline != null && IsPipelineParallel(pipeline);
         }
 
         public int ResolveMaxParallel(string toolName)
@@ -46,15 +49,49 @@ namespace LMLocal.Infrastructure.SubAgents
 
         private int ResolveConfiguredMaxParallel(string toolName)
         {
-            var agent = FindAgent(toolName);
-            if (agent != null && agent.MaxParallel.HasValue && agent.MaxParallel.Value >= 1)
+            var name = toolName == null ? null : toolName.Trim();
+
+            var agent = FindAgent(name);
+            if (agent?.MaxParallel.HasValue == true && agent.MaxParallel.Value >= 1)
                 return agent.MaxParallel.Value;
+
+            var pipeline = FindPipeline(name);
+            if (pipeline?.MaxParallel.HasValue == true && pipeline.MaxParallel.Value >= 1)
+                return pipeline.MaxParallel.Value;
 
             var topLevel = _catalog.TryGetSnapshot()?.MaxParallel;
             if (topLevel.HasValue && topLevel.Value >= 1)
                 return topLevel.Value;
 
             return SubAgentsConfig.DefaultMaxParallel;
+        }
+
+        /// <summary>
+        /// A pipeline may join a parallel group of the main round only when it opted in, when every agent of its steps
+        /// is read-only, and when it has no parallel step of its own: a group inside a group would multiply the
+        /// concurrent runs by the two widths.
+        /// </summary>
+        private bool IsPipelineParallel(SubAgentPipelineDefinition pipeline)
+        {
+            var root = _catalog.TryGetSnapshot();
+            var optedIn = pipeline.Parallel.HasValue
+                ? pipeline.Parallel.Value
+                : (root != null && root.Parallel);
+
+            if (!optedIn)
+                return false;
+
+            if (pipeline.HasParallelSteps)
+                return false;
+
+            foreach (var agentName in pipeline.GetAgentNames())
+            {
+                var agent = FindAgent(agentName);
+                if (agent == null || !HasOnlyReadOnlyTools(agent))
+                    return false;
+            }
+
+            return true;
         }
 
         private SubAgentDefinition FindAgent(string toolName)
@@ -76,28 +113,28 @@ namespace LMLocal.Infrastructure.SubAgents
             return null;
         }
 
-        private bool HasOnlyReadOnlyTools(SubAgentDefinition agent)
+        private SubAgentPipelineDefinition FindPipeline(string toolName)
         {
-            var allowed = agent.AllowedTools;
-            if (allowed == null || allowed.Count == 0)
-                return true; // reasoning-only agent: no tools -> safe.
+            var name = toolName?.Trim();
+            if (string.IsNullOrEmpty(name))
+                return null;
 
-            foreach (var name in allowed)
+            var pipelines = _catalog.GetEnabledPipelines();
+            if (pipelines == null)
+                return null;
+
+            foreach (var pipeline in pipelines)
             {
-                if (string.IsNullOrWhiteSpace(name))
-                    continue;
-
-                var trimmed = name.Trim();
-
-                // Only built-in tools can run inside a SubAgent; unknown/MCP names are not executed there.
-                if (!_builtInTools.ToolExists(trimmed))
-                    continue;
-
-                if (_builtInTools.GetToolAccessLevel(trimmed) != ToolAccessLevel.ReadOnly)
-                    return false;
+                if (pipeline != null && string.Equals(pipeline.Id?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                    return pipeline;
             }
 
-            return true;
+            return null;
+        }
+
+        private bool HasOnlyReadOnlyTools(SubAgentDefinition agent)
+        {
+            return SubAgentToolAccess.HasOnlyReadOnlyTools(agent, _builtInTools);
         }
     }
 }

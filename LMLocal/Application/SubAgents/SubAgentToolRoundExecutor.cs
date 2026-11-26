@@ -39,9 +39,6 @@ namespace LMLocal.Application.SubAgents
 
         /// <summary>
         /// Executes the round's calls in order; a call not allowed in the queue gets the "not allowed" error and is not run.
-        /// <paramref name="available"/> is asked before EACH call: the calls run one after another, so a budget taken once
-        /// per round would hand the second long tool the time the first one already spent. Null provider or null value
-        /// = unlimited.
         /// </summary>
         public async Task<List<ToolResultMessage>> ExecuteAsync(IReadOnlyList<ToolCallRecord> calls, CancellationToken cancellationToken, Func<TimeSpan?> available = null)
         {
@@ -83,13 +80,7 @@ namespace LMLocal.Application.SubAgents
                 if (succeeded)
                     _evidence.Record(toolCall.FunctionName, execResult.Result);
 
-                results.Add(new ToolResultMessage
-                {
-                    ToolCallId = toolCall.CallId,
-                    ToolName = toolCall.FunctionName,
-                    Result = succeeded ? execResult.Result : execResult.Error,
-                    Error = execResult.Error
-                });
+                results.Add(execResult.ToMessage(toolCall));
             }
 
             return results;

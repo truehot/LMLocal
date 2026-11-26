@@ -191,7 +191,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"TryResolveFilePath failed for filePath='{filePath}', solutionDir='{solutionDir}': {ex.Message}");
+                InternalLogger.Warn($"TryResolveFilePath failed for filePath='{filePath}', solutionDir='{solutionDir}'", ex);
                 resolvedPath = null;
                 return false;
             }

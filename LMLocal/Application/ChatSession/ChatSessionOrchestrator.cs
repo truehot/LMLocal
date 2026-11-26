@@ -5,10 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Application.ChatSessionStream;
-using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Application.Usage;
 using LMLocal.Core.Common;
@@ -36,7 +34,6 @@ namespace LMLocal.Application.ChatSession
     {
         /// <summary>
         /// Generates response with automatic tool execution support.
-        /// Handles complete session lifecycle including multi-round tool calls.
         /// </summary>
         Task RunSessionAsync(
             GenerateStreamContext context,
@@ -52,21 +49,15 @@ namespace LMLocal.Application.ChatSession
     internal class ChatSessionOrchestrator : IChatSessionOrchestrator
     {
         private readonly IChatStreamService _chatService;
-        private readonly IToolExecutionManager _toolManager;
         private readonly IHistoryCompactor _compactor;
         private readonly IChatHistoryManager _history;
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly IToolCallLoopDetector _loopDetector;
-        private readonly ISubAgentsParallelPolicy _parallelPolicy;
-        private readonly ISubAgentsParallelRunner _parallelRunner;
+        private readonly ChatToolRoundRunner _toolRoundRunner;
         private readonly IActiveModelContext _activeModelContext;
-        private readonly ISettingsManager _settingsManager;
-        private readonly IUsageRecorder _usageRecorder;
+        private readonly ChatUsageWriter _usageWriter;
         private readonly object _resetLock = new object();
 
         private const int MAX_TOOL_ITERATIONS = 9999;
         private const int MAX_STATE_ITERATIONS = 9999;
-        private const int TOOL_EXECUTION_TIMEOUT_MS = 30000;
         private const int MAX_DUPLICATE_TOOL_ROUNDS = 1;
         private const int MAX_CONTEXT_OVERFLOW_RETRIES = 2;
 
@@ -100,28 +91,18 @@ namespace LMLocal.Application.ChatSession
 
         public ChatSessionOrchestrator(
             IChatStreamService chatService,
-            IToolExecutionManager toolManager,
             IHistoryCompactor compactor,
             IChatHistoryManager history,
-            ISnapshotManager snapshotManager,
-            IToolCallLoopDetector loopDetector,
-            ISubAgentsParallelPolicy parallelPolicy,
-            ISubAgentsParallelRunner parallelRunner,
-            IActiveModelContext activeModelContext = null,
-            ISettingsManager settingsManager = null,
-            IUsageRecorder usageRecorder = null)
+            ChatToolRoundRunner toolRoundRunner,
+            IActiveModelContext activeModelContext,
+            ChatUsageWriter usageWriter)
         {
             _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
-            _toolManager = toolManager ?? throw new ArgumentNullException(nameof(toolManager));
             _compactor = compactor ?? throw new ArgumentNullException(nameof(compactor));
             _history = history ?? throw new ArgumentNullException(nameof(history));
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
-            _parallelPolicy = parallelPolicy ?? throw new ArgumentNullException(nameof(parallelPolicy));
-            _parallelRunner = parallelRunner ?? throw new ArgumentNullException(nameof(parallelRunner));
-            _activeModelContext = activeModelContext;
-            _settingsManager = settingsManager;
-            _usageRecorder = usageRecorder;
+            _toolRoundRunner = toolRoundRunner ?? throw new ArgumentNullException(nameof(toolRoundRunner));
+            _activeModelContext = activeModelContext ?? throw new ArgumentNullException(nameof(activeModelContext));
+            _usageWriter = usageWriter ?? throw new ArgumentNullException(nameof(usageWriter));
         }
 
         public async Task RunSessionAsync(
@@ -149,13 +130,12 @@ namespace LMLocal.Application.ChatSession
                 AllResults = new List<StreamCompletionResult>(),
                 ToolResultsForNextRound = new List<ToolResultMessage>(),
                 SessionCancellationToken = sessionToken,
-                RateLimitWaitSink = info => OnRateLimitWaitAsync(rateLimitNotifier, info)
+                RateLimitWaitSink = info => OnRateLimitWaitAsync(rateLimitNotifier, info),
+                RequestId = Guid.NewGuid().ToString("N"),
+                StartedUtc = DateTime.UtcNow
             };
 
-            sessionContext.RequestId = Guid.NewGuid().ToString("N");
-            sessionContext.StartedUtc = DateTime.UtcNow;
-            sessionContext.Title = BuildSessionTitle(context?.Prompt);
-            sessionContext.SessionId = CurrentSessionId();
+            _history.EnsureChatDateLine();
 
             var requestStopwatch = Stopwatch.StartNew();
             var terminalState = ChatSessionState.Terminated;
@@ -204,7 +184,7 @@ namespace LMLocal.Application.ChatSession
                     stateIterationCount++;
                     if (stateIterationCount > MAX_STATE_ITERATIONS)
                     {
-                        InternalLogger.Error($"ChatSessionOrchestrator: State machine exceeded max iterations ({MAX_STATE_ITERATIONS})");
+                        InternalLogger.Warn($"ChatSessionOrchestrator: State machine exceeded max iterations ({MAX_STATE_ITERATIONS})");
                         sessionContext.LastException = new InvalidOperationException("State machine exceeded maximum iterations");
                         sessionContext.CurrentState = ChatSessionState.Error;
                     }
@@ -220,7 +200,7 @@ namespace LMLocal.Application.ChatSession
 
                         if (!StateHandlers.TryGetValue(sessionContext.CurrentState, out var handler))
                         {
-                            InternalLogger.Error($"ChatSessionOrchestrator: Unknown state '{sessionContext.CurrentState}'");
+                            InternalLogger.Warn($"ChatSessionOrchestrator: Unknown state '{sessionContext.CurrentState}'");
                             sessionContext.CurrentState = ChatSessionState.Error;
                             sessionContext.LastException = new InvalidOperationException($"Unknown state: {sessionContext.CurrentState}");
                             continue;
@@ -242,7 +222,8 @@ namespace LMLocal.Application.ChatSession
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Error("ChatSessionOrchestrator: Unhandled exception in state handler", ex);
+                        // The error file gets it once, with the stack, from "Session terminated with error" below.
+                        InternalLogger.Warn($"ChatSessionOrchestrator: Unhandled exception in state handler {sessionContext.CurrentState}");
                         sessionContext.LastException = ex;
                         sessionContext.CurrentState = ChatSessionState.Error;
                     }
@@ -259,14 +240,18 @@ namespace LMLocal.Application.ChatSession
                 rateLimitNotifier.Complete();
                 await rateLimitDelivery.ConfigureAwait(false);
 
-                if (sessionContext.LastException != null)
+                if (sessionContext.LastException != null && !(sessionContext.LastException is ToolLoopHaltedException))
                 {
-                    InternalLogger.Error($"ChatSessionOrchestrator: Session terminated with error: {sessionContext.LastException.Message}");
+                    InternalLogger.Error(
+                        "ChatSessionOrchestrator: Session terminated with error " +
+                        $"(model={context?.ModelId}, round={sessionContext.RoundNumber}, session={sessionContext.SessionId}, request={sessionContext.RequestId})",
+                        sessionContext.LastException);
                 }
 
                 requestStopwatch.Stop();
 
-                await RecordUsageAsync(sessionContext, terminalState, requestStopwatch.ElapsedMilliseconds, context)
+                await _usageWriter
+                    .RecordAsync(sessionContext, terminalState, requestStopwatch.ElapsedMilliseconds, context?.ModelId)
                     .ConfigureAwait(false);
 
                 usageScope?.Dispose();
@@ -366,7 +351,7 @@ namespace LMLocal.Application.ChatSession
 
             if (context.LastResult == null)
             {
-                InternalLogger.Info("СhatSessionOrchestrator: Generation completed with null result");
+                InternalLogger.Info("ChatSessionOrchestrator: Generation completed with null result");
                 context.LastException = new InvalidOperationException("LastResult is null after generation");
                 return ChatSessionState.Error;
             }
@@ -377,14 +362,14 @@ namespace LMLocal.Application.ChatSession
 
             if (!string.IsNullOrEmpty(context.LastResult.ErrorMessage))
             {
-                InternalLogger.Info($"СhatSessionOrchestrator: Generation completed with error: {context.LastResult.ErrorMessage}");
+                InternalLogger.Info($"ChatSessionOrchestrator: Generation completed with error: {context.LastResult.ErrorMessage}");
                 context.LastException = new InvalidOperationException(context.LastResult.ErrorMessage);
                 return ChatSessionState.Error;
             }
 
             if (context.LastResult.WasCancelled)
             {
-                InternalLogger.Info("СhatSessionOrchestrator: Generation was cancelled by user");
+                InternalLogger.Info("ChatSessionOrchestrator: Generation was cancelled by user");
                 return ChatSessionState.Cancelled;
             }
 
@@ -427,7 +412,7 @@ namespace LMLocal.Application.ChatSession
             if (!ContextOverflowDetector.IsContextOverflow(
                     context.LastResult,
                     null,
-                    _activeModelContext?.MaxContextLength > 0 ? _activeModelContext.MaxContextLength : (int?)null))
+                    _activeModelContext.MaxContextLength > 0 ? _activeModelContext.MaxContextLength : (int?)null))
             {
                 return null;
             }
@@ -509,7 +494,6 @@ namespace LMLocal.Application.ChatSession
 
         /// <summary>
         /// ExecutingTools state: Executes all tool calls from current generation result.
-        /// Collects results and transitions back to Generating for next round with tool context.
         /// </summary>
         private async Task<ChatSessionState> HandleExecutingToolsStateAsync(
             SessionStateContext context,
@@ -529,7 +513,7 @@ namespace LMLocal.Application.ChatSession
                 previousTools = context.AllResults[context.AllResults.Count - 2]?.ToolCalls;
             }
 
-            if (previousTools != null && _loopDetector.AreSameToolCalls(currentTools, previousTools))
+            if (previousTools != null && ToolCallLoopDetector.AreSameToolCalls(currentTools, previousTools))
             {
                 context.ConsecutiveDuplicateToolRounds++;
 
@@ -539,11 +523,11 @@ namespace LMLocal.Application.ChatSession
 
                     int identicalRounds = context.ConsecutiveDuplicateToolRounds + 1;
 
-                    InternalLogger.Error(
+                    InternalLogger.Warn(
                         "ChatSessionOrchestrator: Tool call loop detected. " +
                         $"{identicalRounds} identical tool rounds in a row [{names}]. Halting.");
 
-                    context.LastException = new InvalidOperationException(
+                    context.LastException = new ToolLoopHaltedException(
                         "Execution halted: the model repeated its previous tool round with identical arguments " +
                         $"({identicalRounds} identical rounds in a row: {names}). " +
                         "It appears to be stuck in a loop; change the request or the arguments to continue.");
@@ -565,127 +549,11 @@ namespace LMLocal.Application.ChatSession
 
             var usageContext = BuildUsageContext(context);
 
-            await _snapshotManager.BeginBatchAsync(ct).ConfigureAwait(false);
-            try
-            {
-                var allCalls = context.LastResult.ToolCalls;
+            var results = await _toolRoundRunner
+                .RunAsync(context.LastResult.ToolCalls, usageContext, onMessage, ct)
+                .ConfigureAwait(false);
 
-                var parallelIdx = new List<int>();
-                var sequentialIdx = new List<int>();
-
-                for (int i = 0; i < allCalls.Count; i++)
-                {
-                    var call = allCalls[i];
-                    if (call != null && _parallelPolicy.IsParallelEnabled(call.FunctionName))
-                        parallelIdx.Add(i);
-                    else
-                        sequentialIdx.Add(i);
-                }
-
-                var ordered = new ToolResultMessage[allCalls.Count];
-
-                if (parallelIdx.Count > 1)
-                {
-                    var parallelCalls = new List<ToolCallRecord>(parallelIdx.Count);
-                    foreach (var i in parallelIdx)
-                        parallelCalls.Add(allCalls[i]);
-
-                    var groupMaxParallel = parallelCalls
-                        .Select(c => _parallelPolicy.ResolveMaxParallel(c.FunctionName))
-                        .DefaultIfEmpty(SubAgentsConfig.DefaultMaxParallel)
-                        .Min();
-                    if (groupMaxParallel < 1)
-                        groupMaxParallel = SubAgentsConfig.DefaultMaxParallel;
-
-                    InternalLogger.Info($"ChatSessionOrchestrator: Running {parallelCalls.Count} SubAgents in parallel (max {groupMaxParallel} concurrently).");
-
-
-                    string groupId = Guid.NewGuid().ToString("N");
-                    var groupCallIds = parallelCalls.Select(c => c.CallId).ToList();
-                    int groupTotal = parallelCalls.Count;
-                    int groupCompleted = 0;
-
-                    await onMessage(new WebView2ToolGroupMessage
-                    {
-                        Type = WebView2MessageType.StreamToolGroupStart,
-                        GroupId = groupId,
-                        CallIds = groupCallIds,
-                        Total = groupTotal,
-                        Completed = 0
-                    }).ConfigureAwait(false);
-
-                    var groupResult = await _parallelRunner.RunAsync(
-                        parallelCalls,
-                        async (call, callCt) =>
-                        {
-                            var callResult = await RunToolCallAsync(call, onMessage, callCt, usageContext).ConfigureAwait(false);
-
-                            int completed = Interlocked.Increment(ref groupCompleted);
-                            await onMessage(new WebView2ToolGroupMessage
-                            {
-                                Type = WebView2MessageType.StreamToolGroupProgress,
-                                GroupId = groupId,
-                                CallIds = groupCallIds,
-                                Total = groupTotal,
-                                Completed = completed
-                            }).ConfigureAwait(false);
-
-                            return callResult;
-                        },
-                        groupMaxParallel,
-                        ct).ConfigureAwait(false);
-
-                    await onMessage(new WebView2ToolGroupMessage
-                    {
-                        Type = WebView2MessageType.StreamToolGroupEnd,
-                        GroupId = groupId,
-                        CallIds = groupCallIds,
-                        Total = groupTotal,
-                        Completed = groupTotal
-                    }).ConfigureAwait(false);
-
-                    for (int j = 0; j < parallelCalls.Count; j++)
-                    {
-                        ordered[parallelIdx[j]] = ToToolResultMessage(parallelCalls[j], groupResult.Results[j]);
-                    }
-                }
-                else if (parallelIdx.Count == 1)
-                {
-                    // A single agent has nothing to overlap with; run it inline.
-                    ct.ThrowIfCancellationRequested();
-                    var call = allCalls[parallelIdx[0]];
-                    var result = await RunToolCallAsync(call, onMessage, ct, usageContext).ConfigureAwait(false);
-                    ordered[parallelIdx[0]] = ToToolResultMessage(call, result);
-                }
-
-                foreach (var i in sequentialIdx)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    var call = allCalls[i];
-                    var result = await RunToolCallAsync(call, onMessage, ct, usageContext).ConfigureAwait(false);
-                    ordered[i] = ToToolResultMessage(call, result);
-                }
-
-                foreach (var result in ordered)
-                {
-                    if (result != null)
-                        context.ToolResultsForNextRound.Add(result);
-                }
-            }
-
-            finally
-            {
-                try
-                {
-                    await _snapshotManager.EndBatchAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception batchEx)
-                {
-                    InternalLogger.Error($"ChatSessionOrchestrator: snapshot batch cleanup failed: {batchEx.Message}", batchEx);
-                }
-            }
-
-            await SendSnapshotUpdateAsync(onMessage).ConfigureAwait(false);
+            context.ToolResultsForNextRound.AddRange(results);
 
             if (context.ConsecutiveToolIterationCount >= MAX_TOOL_ITERATIONS)
             {
@@ -727,73 +595,7 @@ namespace LMLocal.Application.ChatSession
         }
 
         /// <summary>
-        /// Runs one tool call: emits StreamToolCall, executes with a per-call timeout while forwarding progress steps, then emits StreamToolEnd.
-        /// </summary>
-        private async Task<ToolExecutionResult> RunToolCallAsync(
-            ToolCallRecord toolCall,
-            Func<WebView2ScriptMessage, Task> onMessage,
-            CancellationToken ct,
-            UsageCallContext usageContext)
-        {
-            var processingMessage = _toolManager.GetProcessingMessage(toolCall);
-
-            var uiCallId = "ui_" + Guid.NewGuid().ToString("N");
-
-            await onMessage(new WebView2ToolCallMessage
-            {
-                Type = WebView2MessageType.StreamToolCall,
-                FunctionName = toolCall.FunctionName,
-                CallId = uiCallId,
-                ArgumentsJson = toolCall.ArgumentsJson,
-                Message = processingMessage
-            }).ConfigureAwait(false);
-
-            ToolExecutionResult toolResult;
-            using (var toolCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
-            {
-                var toolTimeout = _toolManager.GetToolTimeout(toolCall.FunctionName) ?? TimeSpan.FromMilliseconds(TOOL_EXECUTION_TIMEOUT_MS);
-                toolCts.CancelAfter(toolTimeout);
-
-                var stepProgress = new ToolActivityForwarder(uiCallId, onMessage);
-                toolResult = await _toolManager.ExecuteToolAsync(toolCall, toolCts.Token, stepProgress, null, usageContext).ConfigureAwait(false);
-
-                if (toolCts.IsCancellationRequested && !ct.IsCancellationRequested && !toolResult.IsSuccess)
-                {
-                    var timeoutText = $"Tool '{toolCall.FunctionName}' timed out after {(int)toolTimeout.TotalSeconds} s.";
-                    toolResult.Error = timeoutText;
-                    toolResult.Result = null;
-                    toolResult.UserMessage = timeoutText;
-                }
-            }
-
-            ct.ThrowIfCancellationRequested();
-
-            await onMessage(new WebView2ToolCallMessage
-            {
-                Type = WebView2MessageType.StreamToolEnd,
-                FunctionName = toolCall.FunctionName,
-                CallId = uiCallId,
-                Message = string.IsNullOrEmpty(toolResult.Error) ? toolResult.CompletionMessage : toolResult.UserMessage,
-                IsError = !string.IsNullOrEmpty(toolResult.Error)
-            }).ConfigureAwait(false);
-
-            return toolResult;
-        }
-
-        private static ToolResultMessage ToToolResultMessage(ToolCallRecord toolCall, ToolExecutionResult toolResult)
-        {
-            return new ToolResultMessage
-            {
-                ToolCallId = toolCall.CallId,
-                ToolName = toolCall.FunctionName,
-                Result = string.IsNullOrEmpty(toolResult.Error) ? toolResult.Result : toolResult.Error,
-                Error = toolResult.Error
-            };
-        }
-
-        /// <summary>
         /// Completing state: Sends ChatSessionComplete message with metadata.
-        /// Transitions to CompactingHistory to perform history compaction before terminating.
         /// </summary>
         private async Task<ChatSessionState> HandleCompletingStateAsync(
             SessionStateContext context,
@@ -837,78 +639,18 @@ namespace LMLocal.Application.ChatSession
         }
 
         /// <summary>
-        /// Writes one usage record for the request, whatever its outcome: a stopped or failed request spent tokens too.
-        /// </summary>
-        private async Task RecordUsageAsync(
-            SessionStateContext sessionContext,
-            ChatSessionState terminalState,
-            long durationMs,
-            GenerateStreamContext generateContext)
-        {
-            if (_usageRecorder == null || sessionContext == null || sessionContext.AllResults.Count == 0)
-                return;
-
-            try
-            {
-                var usage = new UsageAccumulator();
-                usage.Add(sessionContext.AllResults);
-
-                UsageOutcome outcome;
-                string error;
-                UsageOutcomeMapper.MapSessionTerminal(
-                    terminalState,
-                    sessionContext.AllResults,
-                    sessionContext.LastException,
-                    sessionContext.LastResult != null ? sessionContext.LastResult.ErrorMessage : null,
-                    out outcome,
-                    out error);
-
-                var settings = _settingsManager != null ? _settingsManager.Current : null;
-
-                var record = new UsageRecord
-                {
-                    Timestamp = sessionContext.StartedUtc,
-                    SessionId = sessionContext.SessionId,
-                    RequestId = sessionContext.RequestId,
-                    Source = UsageSource.Main,
-                    Origin = UsageOrigins.Chat,
-                    Title = sessionContext.Title,
-                    Provider = settings != null ? settings.Provider : null,
-                    BaseUrl = settings != null ? settings.LmStudioBaseUrl : null,
-                    Model = generateContext != null ? generateContext.ModelId : null,
-                    DurationMs = durationMs,
-                    ContextMax = _activeModelContext != null && _activeModelContext.MaxContextLength > 0
-                        ? _activeModelContext.MaxContextLength
-                        : (int?)null,
-                    Outcome = outcome,
-                    Error = error
-                };
-
-                usage.ApplyTo(record);
-
-                await _usageRecorder.AppendAsync(record, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"ChatSessionOrchestrator: failed to record the usage of the request: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Context handed to the tools of this request, so a subagent or a compaction writes its usage under the
         /// session and the request of the main chat.
         /// </summary>
         private UsageCallContext BuildUsageContext(SessionStateContext context)
         {
-            string sessionId = context != null ? context.SessionId : CurrentSessionId();
-
-            return UsageCallContext.ForChat(sessionId, context != null ? context.RequestId : null);
+            return UsageCallContext.ForChat(context.SessionId, context.RequestId);
         }
 
         /// <summary>
         /// Id of the live chat session in the format of the chat log.
         /// </summary>
-        private string CurrentSessionId() => UsageIds.SessionId(_history?.CurrentSessionId);
+        private string CurrentSessionId() => UsageIds.SessionId(_history.CurrentSessionId);
 
         /// <summary>
         /// Fixes the session and title of the request right before its first round and opens the usage scope for it.
@@ -929,7 +671,7 @@ namespace LMLocal.Application.ChatSession
         {
             try
             {
-                var history = _history != null ? _history.GetHistoryCopy() : null;
+                var history = _history.GetHistoryCopy();
 
                 if (history != null)
                 {
@@ -949,7 +691,7 @@ namespace LMLocal.Application.ChatSession
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ChatSessionOrchestrator: failed to build the session title: {ex.Message}");
+                InternalLogger.Warn("ChatSessionOrchestrator: failed to build the session title", ex);
             }
 
             return null;
@@ -1034,13 +776,13 @@ namespace LMLocal.Application.ChatSession
 
                 await _compactor.CompactIfNeededAsync(generateContext.ModelId, ct).ConfigureAwait(false);
             }
-            catch (OperationCanceledException exc)
+            catch (OperationCanceledException)
             {
-                InternalLogger.Error($"ChatSessionOrchestrator: Session cancelled: {exc.Message}");
+                InternalLogger.Info("ChatSessionOrchestrator: History compaction cancelled");
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"ChatSessionOrchestrator: History compaction failed: {ex.Message}");
+                InternalLogger.Error("ChatSessionOrchestrator: History compaction failed", ex);
             }
             finally
             {
@@ -1113,22 +855,11 @@ namespace LMLocal.Application.ChatSession
             }
         }
 
-        private async Task SendSnapshotUpdateAsync(Func<WebView2ScriptMessage, Task> onMessage)
+        /// <summary>Halt of a model that repeats one tool round: shown to the user, kept out of the error file.</summary>
+        private sealed class ToolLoopHaltedException : InvalidOperationException
         {
-            try
+            public ToolLoopHaltedException(string message) : base(message)
             {
-                var changedFiles = await _snapshotManager.GetChangedFilesWithStatusAsync().ConfigureAwait(false);
-
-                var message = new WebView2SnapshotMessage
-                {
-                    ChangedFiles = changedFiles.ToList(),
-                };
-
-                await onMessage(message).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Error("SendSnapshotUpdateAsync failed", ex);
             }
         }
     }

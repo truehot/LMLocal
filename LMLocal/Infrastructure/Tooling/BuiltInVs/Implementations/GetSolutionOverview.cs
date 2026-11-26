@@ -84,7 +84,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Failed to generate solution overview: {ex}");
+                InternalLogger.Error("Failed to generate solution overview", ex);
                 return Error(ex.Message);
             }
         }

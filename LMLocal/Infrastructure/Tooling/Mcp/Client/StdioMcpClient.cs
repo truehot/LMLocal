@@ -96,7 +96,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"[StdioMcpClient] Failed to send notifications/initialized: {ex.Message}");
+                InternalLogger.Warn("[StdioMcpClient] Failed to send notifications/initialized", ex);
             }
         }
 
@@ -125,11 +125,11 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 }
 
                 StopProcess();
-                InternalLogger.Debug($"[StdioMcpClient] Closed successfully");
+                InternalLogger.Debug("[StdioMcpClient] Closed successfully");
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"[StdioMcpClient] Error during close: {ex.Message}", ex);
+                InternalLogger.Error("[StdioMcpClient] Error during close", ex);
             }
         }
 
@@ -141,7 +141,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             if (_closed)
                 throw new InvalidOperationException("Client is closed");
 
-            if (_readingTask != null && _readingTask.IsFaulted)
+            if (_readingTask?.IsFaulted == true)
                 throw new InvalidOperationException("Internal reader loop crashed", _readingTask.Exception);
 
             long requestId = ExtractRequestId(json);
@@ -300,17 +300,17 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                     }
                     catch (JsonException ex)
                     {
-                        InternalLogger.Warn($"[StdioMcpClient] Failed to parse JSON-RPC response: {ex.Message}");
+                        InternalLogger.Warn("[StdioMcpClient] Failed to parse JSON-RPC response", ex);
                     }
                 }
             }
             catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
             {
-                InternalLogger.Error($"[StdioMcpClient] ReadJsonRpcMessagesAsync failed unexpectedly: {ex.Message}", ex);
+                InternalLogger.Info($"[StdioMcpClient] ReadJsonRpcMessagesAsync stopped: {ex.GetType().Name}");
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"[StdioMcpClient] ReadJsonRpcMessagesAsync failed unexpectedly: {ex.Message}", ex);
+                InternalLogger.Error("[StdioMcpClient] ReadJsonRpcMessagesAsync failed", ex);
             }
             finally
             {
@@ -342,7 +342,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             }
             catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
             {
-                InternalLogger.Info($"[StdioMcpClient] Shutdown");
+                InternalLogger.Info("[StdioMcpClient] Shutdown");
             }
             catch (Exception ex)
             {
@@ -425,7 +425,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                             {
                                 Process.Start(new ProcessStartInfo
                                 {
-                                    FileName = "taskkill",
+                                    FileName = ExecutablePath.InSystemDirectory("taskkill.exe"),
                                     Arguments = $"/T /F /PID {pid}",
                                     CreateNoWindow = true,
                                     UseShellExecute = false
@@ -452,7 +452,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"[StdioMcpClient] Error in StopProcess: {ex.Message}", ex);
+                InternalLogger.Error("[StdioMcpClient] Error in StopProcess", ex);
             }
         }
 

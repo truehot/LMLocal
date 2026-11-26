@@ -9,7 +9,6 @@ using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Infrastructure.LlmApi.Provider;
-using LMLocal.Infrastructure.Api;
 
 namespace LMLocal.Infrastructure.Providers
 {
@@ -108,13 +107,13 @@ namespace LMLocal.Infrastructure.Providers
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Error parsing providers config: {ex.Message}", ex);
+                    InternalLogger.Error("Error parsing providers config", ex);
                     return defaultConfig;
                 }
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading providers config file: {ex.Message}", ex);
+                InternalLogger.Error("Error reading providers config file", ex);
                 return GetDefaultProviders();
             }
             finally

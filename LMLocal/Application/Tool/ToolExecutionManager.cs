@@ -151,7 +151,8 @@ namespace LMLocal.Application.Tool
                     ToolId = toolCall.CallId,
                     ToolName = toolCall.FunctionName,
                     Result = outcome?.Result ?? result,
-                    CompletionMessage = completionMessage
+                    CompletionMessage = completionMessage,
+                    UiData = (result as IToolUiData)?.UiData
                 };
             }
             catch (OperationCanceledException)
@@ -167,7 +168,7 @@ namespace LMLocal.Application.Tool
             }
             catch (ToolBudgetExhaustedException ex)
             {
-                InternalLogger.Warn($"ToolExecutionManager: {toolCall.FunctionName} not started: {ex.Message}");
+                InternalLogger.Warn($"ToolExecutionManager: {toolCall.FunctionName} not started", ex);
                 return new ToolExecutionResult
                 {
                     ToolId = toolCall.CallId,
@@ -178,7 +179,7 @@ namespace LMLocal.Application.Tool
             }
             catch (ArgumentException ex)
             {
-                InternalLogger.Warn($"ToolExecutionManager: Argument error in {toolCall.FunctionName}: {ex.Message}");
+                InternalLogger.Warn($"ToolExecutionManager: Argument error in {toolCall.FunctionName}", ex);
                 return new ToolExecutionResult
                 {
                     ToolId = toolCall.CallId,

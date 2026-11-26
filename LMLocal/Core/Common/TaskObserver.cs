@@ -24,14 +24,14 @@ namespace LMLocal.Core.Common
                 TaskScheduler.Default);
         }
 
-        /// <summary>Reads the failure so it stops being "unobserved", then logs it.
+        /// <summary>Reads the failure so it stops being "unobserved", then logs it whole.</summary>
         private static void LogFault(Task task, string context)
         {
-            var failure = task.Exception?.GetBaseException();
+            var failure = task.Exception;
             if (failure == null)
                 return;
 
-            InternalLogger.Warn((context ?? "Task") + " failed: " + failure.Message);
+            InternalLogger.Error((context ?? "Task") + " failed", failure);
         }
     }
 }

@@ -210,7 +210,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"History compaction failed: {ex.Message}", ex);
+                InternalLogger.Error("History compaction failed", ex);
             }
         }
 
@@ -236,7 +236,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"SummarizeAsync failed: {ex.Message}", ex);
+                InternalLogger.Error("SummarizeAsync failed", ex);
                 return null;
             }
         }
@@ -349,7 +349,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"CompactForcedAsync failed: {ex.Message}", ex);
+                InternalLogger.Error("CompactForcedAsync failed", ex);
                 return (CompactionOutcome.Failed, null);
             }
         }
@@ -446,7 +446,8 @@ namespace LMLocal.Application.Chat
             {
                 ToolCalls = message.ToolCalls,
                 ModelId = message.ModelId,
-                Timestamp = message.Timestamp
+                Timestamp = message.Timestamp,
+                ReasoningContent = message.ReasoningContent
             };
         }
 
@@ -483,7 +484,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("HistoryCompactor: model profile lookup failed: " + ex.Message, ex);
+                InternalLogger.Error("HistoryCompactor: model profile lookup failed", ex);
                 return null;
             }
         }
@@ -511,7 +512,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("HistoryCompactor: model profile lookup failed: " + ex.Message, ex);
+                InternalLogger.Error("HistoryCompactor: model profile lookup failed", ex);
                 return null;
             }
         }
@@ -532,15 +533,15 @@ namespace LMLocal.Application.Chat
                 estimator.Add(message.Role);
                 estimator.Add(ContentTextExtractor.ExtractTextContent(message.Content));
 
-                if (message.ToolCalls is List<LMLocal.Infrastructure.LlmApi.Requests.ToolCall> calls)
+                if (message.ToolCalls != null)
                 {
-                    foreach (var call in calls)
+                    foreach (var call in message.ToolCalls)
                     {
-                        if (call?.Function == null)
+                        if (call == null)
                             continue;
 
-                        estimator.Add(call.Function.Name);
-                        estimator.Add(call.Function.Arguments);
+                        estimator.Add(call.Name);
+                        estimator.Add(call.Arguments);
                     }
                 }
 
@@ -674,8 +675,8 @@ namespace LMLocal.Application.Chat
                     ContextMax = GetMaxContext(),
                     Prompt = usage != null ? usage.PromptTokens : (int?)null,
                     Completion = usage != null ? usage.CompletionTokens : (int?)null,
-                    Cached = usage != null && usage.PromptTokensDetails != null ? usage.PromptTokensDetails.CachedTokens : (int?)null,
-                    Reasoning = usage != null && usage.CompletionTokensDetails != null ? usage.CompletionTokensDetails.ReasoningTokens : (int?)null,
+                    Cached = usage?.PromptTokensDetails != null ? usage.PromptTokensDetails.CachedTokens : (int?)null,
+                    Reasoning = usage?.CompletionTokensDetails != null ? usage.CompletionTokensDetails.ReasoningTokens : (int?)null,
                     ContextPeak = usage != null ? usage.PromptTokens : (int?)null,
                     Outcome = outcome,
                     Error = UsageOutcomeMapper.FirstLine(error)
@@ -685,7 +686,7 @@ namespace LMLocal.Application.Chat
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"HistoryCompactor: failed to record the compaction usage: {ex.Message}");
+                InternalLogger.Warn("HistoryCompactor: failed to record the compaction usage", ex);
             }
         }
 

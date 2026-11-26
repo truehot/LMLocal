@@ -90,10 +90,7 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>Optional streaming callback (chunks/token stats).</summary>
         public Func<TextStreamChunk, TokenGenerationStats, Task> OnChunk { get; set; }
 
-        /// <summary>
-        /// Optional sink for rate-limit wait notifications. Null means "retry silently" and is the SubAgent path,
-        /// where the wait is only recorded in the internal log.
-        /// </summary>
+        /// <summary>Optional sink for rate-limit wait notifications.</summary>
         public Func<RateLimitWaitInfo, Task> OnRateLimitWait { get; set; }
 
         /// <summary>Calibration of the conversation this round belongs to. Optional.</summary>
@@ -193,7 +190,8 @@ namespace LMLocal.Application.ChatSessionStream
                     temperature: request.Temperature,
                     maxOutputTokens: request.MaxOutputTokens ?? modelProfile?.MaxTokens,
                     contextLength: modelProfile?.ContextLength,
-                    reasoning: request.ReasoningEffort ?? modelProfile?.ReasoningEffort);
+                    reasoning: request.ReasoningEffort ?? modelProfile?.ReasoningEffort,
+                    echoReasoning: request.Provider == null && !(modelProfile?.DisableReasoningEcho ?? false));
 
                 int envelopeEstimate = EnvelopeEstimator.Estimate(messages, ResolveToolsForEstimate(request));
                 int fixedOverhead = Math.Max(0, envelopeEstimate - EnvelopeEstimator.Estimate(WithoutSystemMessage(messages), null));
@@ -255,6 +253,9 @@ namespace LMLocal.Application.ChatSessionStream
                         linkedCts.Token,
                         request.OnChunk,
                         _settingsManager.BatchIntervalMs).ConfigureAwait(false);
+
+                    if (result != null)
+                        result.ReasoningEchoChars = streaming.ReasoningEchoChars;
                 }
 
                 request.Calibration?.RecordSuccessfulRound(result?.TokenUsage?.PromptTokens, envelopeEstimate);
@@ -286,7 +287,7 @@ namespace LMLocal.Application.ChatSessionStream
         /// <summary>
         /// Maps an API exception to a stream result carrying the structured error fields.
         /// </summary>
-        private static StreamCompletionResult BuildErrorResult(ApiException ex)
+        internal static StreamCompletionResult BuildErrorResult(ApiException ex)
         {
             var errorInfo = ex.ErrorInfo;
 
@@ -314,7 +315,7 @@ namespace LMLocal.Application.ChatSessionStream
                 return null;
 
             var settings = _settingsManager?.Current;
-            if (settings == null || !settings.EnableAiTools)
+            if (settings?.EnableAiTools != true)
                 return null;
 
             return _toolQueueProvider?.GetMainQueue()?.Definitions;
@@ -337,7 +338,7 @@ namespace LMLocal.Application.ChatSessionStream
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("GetModelProfileAsync failed: " + ex.Message, ex);
+                InternalLogger.Error("GetModelProfileAsync failed", ex);
                 return null;
             }
         }
@@ -374,7 +375,7 @@ namespace LMLocal.Application.ChatSessionStream
                 return false;
 
             var settings = _settingsManager?.Current;
-            if (settings == null || !settings.EnableRateLimitHandling)
+            if (settings?.EnableRateLimitHandling != true)
                 return false;
 
             if (attempt >= RateLimitRetryPolicy.MaxAttempts)
@@ -383,7 +384,7 @@ namespace LMLocal.Application.ChatSessionStream
                 return false;
             }
 
-            int cap = RateLimitRetryPolicy.MaxRetryDelaySeconds;
+            const int cap = RateLimitRetryPolicy.MaxRetryDelaySeconds;
             if (!RateLimitRetryPolicy.TryGetDelay(ex, cap, out delay, out source))
             {
                 double hint = ex?.ErrorInfo?.RetryAfterSeconds ?? 0d;
@@ -411,7 +412,7 @@ namespace LMLocal.Application.ChatSessionStream
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Rate limit: wait notification failed: " + ex.Message);
+                InternalLogger.Warn("Rate limit: wait notification failed", ex);
             }
         }
 
@@ -420,6 +421,9 @@ namespace LMLocal.Application.ChatSessionStream
         /// </summary>
         private static StreamRoundResult ClassifyAndCommit(IChatHistoryManager history, StreamCompletionResult result, string modelId)
         {
+            // Reasoning goes with the assistant message this round commits (if any); a round without a commit leaves none behind.
+            history.SetNextAssistantReasoning(result.WasCancelled || !string.IsNullOrEmpty(result.ErrorMessage) ? null : result.Reasoning);
+
             if (result.WasCancelled)
             {
                 return new StreamRoundResult { Outcome = StreamRoundOutcome.Cancelled, Stream = result };
@@ -441,7 +445,7 @@ namespace LMLocal.Application.ChatSessionStream
                 return new StreamRoundResult { Outcome = StreamRoundOutcome.Incomplete, Stream = result };
             }
 
-            bool hasToolCalls = result.ToolCalls != null && result.ToolCalls.Count > 0;
+            bool hasToolCalls = result.ToolCalls?.Count > 0;
             if (hasToolCalls)
             {
                 history.SetPendingAssistant(result.ContentResponse, result.ToolCalls, modelId);

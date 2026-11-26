@@ -130,5 +130,52 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
 
             Assert.That(ledger.TryResolve("src/Big.cs", new LineRange(1, 160), out _), Is.True);
         }
+
+        [Test]
+        public void TryRecord_WindowRead_KeepsTotalLines_AndHasNotReachedEnd()
+        {
+            var ledger = new ReadLedger();
+            var response = BuildResponse("src/P.json", 1, 200, hasMore: true);
+            response.TotalLines = 254;
+
+            Assert.That(ReadResultRecorder.TryRecord(ledger, response), Is.True);
+
+            var record = ledger.Records[0];
+            Assert.That(record.TotalLines, Is.EqualTo(254));
+            Assert.That(record.ReachedEnd, Is.False);
+        }
+
+        [Test]
+        public void TryRecord_ReadToEndOfFile_HasReachedEnd()
+        {
+            var ledger = new ReadLedger();
+            var response = BuildResponse("src/Tests.cs", 1, 41, hasMore: false);
+            response.TotalLines = 41;
+
+            Assert.That(ReadResultRecorder.TryRecord(ledger, response), Is.True);
+
+            Assert.That(ledger.Records[0].ReachedEnd, Is.True);
+        }
+
+        [Test]
+        public void TryRecord_MultiFileRead_KeepsTotalLinesPerBlock()
+        {
+            var ledger = new ReadLedger();
+            var first = BuildResponse("src/A.cs", 1, 200, hasMore: true);
+            first.TotalLines = 300;
+            var second = BuildResponse("src/B.cs", 1, 50, hasMore: false);
+            second.TotalLines = 50;
+
+            ReadResultRecorder.TryRecord(ledger, new ReadFileLines.ReadFilesResponse
+            {
+                Success = true,
+                Files = new List<ReadFileLines.FileLinesResponse> { first, second }
+            });
+
+            Assert.That(ledger.Records[0].TotalLines, Is.EqualTo(300));
+            Assert.That(ledger.Records[0].ReachedEnd, Is.False);
+            Assert.That(ledger.Records[1].TotalLines, Is.EqualTo(50));
+            Assert.That(ledger.Records[1].ReachedEnd, Is.True);
+        }
     }
 }

@@ -307,5 +307,69 @@ namespace LMLocal.Tests.Unit.Services.Tool
             var error = new ToolExecutionResult { Error = "err", Result = new object() };
             Assert.That(error.IsSuccess, Is.False);
         }
+
+        /// <summary>Response that carries both an outcome and data for the UI.</summary>
+        private sealed class OutcomeWithUiData : IToolExecutionOutcome, IToolUiData
+        {
+            public bool Success { get; set; }
+
+            public string Error { get; set; }
+
+            public object Result => "model payload";
+
+            public object UiData { get; set; }
+        }
+
+        [Test]
+        public async Task ExecuteToolAsync_UiData_IsCopiedOnSuccess()
+        {
+            var call = new ToolCallRecord { CallId = "id_ui", FunctionName = "ui_tool", ArgumentsJson = "{}" };
+            AllowToolsInMainQueue("ui_tool");
+
+            var uiData = new[] { "one", "two" };
+            var response = new OutcomeWithUiData { Success = true, UiData = uiData };
+            _toolRouterMock.Setup(f => f.ExecuteAsync("ui_tool", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>())).ReturnsAsync(response);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("ui_tool", response)).Returns("ok");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.UiData, Is.SameAs(uiData));
+            Assert.That(res.Result, Is.EqualTo("model payload"));
+            Assert.That(res.IsSuccess, Is.True);
+        }
+
+        [Test]
+        public async Task ExecuteToolAsync_ReportedFailure_HasNoUiData()
+        {
+            var call = new ToolCallRecord { CallId = "id_ui_fail", FunctionName = "ui_tool", ArgumentsJson = "{}" };
+            AllowToolsInMainQueue("ui_tool");
+
+            var response = new OutcomeWithUiData { Success = false, Error = "rejected", UiData = new[] { "half a list" } };
+            _toolRouterMock.Setup(f => f.ExecuteAsync("ui_tool", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>())).ReturnsAsync(response);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("ui_tool", response)).Returns("Task list not updated: rejected");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.Error, Is.EqualTo("rejected"));
+            Assert.That(res.UiData, Is.Null, "a reported failure must not reach the UI");
+        }
+
+        [Test]
+        public async Task ExecuteToolAsync_ResultWithoutUiData_HasNoUiData()
+        {
+            var call = new ToolCallRecord { CallId = "id_plain_ui", FunctionName = "plain", ArgumentsJson = null };
+            AllowToolsInMainQueue("plain");
+
+            var plainResult = "plain string result";
+            _toolRouterMock.Setup(f => f.ExecuteAsync("plain", It.IsAny<Dictionary<string, object>>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>())).ReturnsAsync(plainResult);
+            _toolRouterMock.Setup(f => f.GetCompletionMessage("plain", plainResult)).Returns("done");
+
+            var mgr = CreateManager();
+            var res = await mgr.ExecuteToolAsync(call, CancellationToken.None, (IProgress<ToolActivityEvent>)null);
+
+            Assert.That(res.UiData, Is.Null);
+        }
     }
 }

@@ -36,9 +36,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         internal const string FilesParameter = "files";
 
         private static readonly string EndLineDescription =
-            "Last line number to read (1-indexed, inclusive, >= start_line). It is a line number, not a line count: " +
-            "start_line 413 with end_line 442 reads 30 lines. " +
-            $"Optional: omitted, up to {DefaultWindowLines} lines from start_line are read.";
+            "Inclusive 1-indexed final line number (must be >= start_line). " +
+            "Example: start_line=413, end_line=442 reads lines 413..442. " +
+            $"Optional; defaults to start_line + {DefaultWindowLines - 1}.";
 
         public string ToolName => "read_file_lines";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -137,14 +137,29 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return Error("No solution is currently open.", filePath);
 
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
+                string pathNote = null;
                 if (!_pathResolver.TryResolveFilePath(filePath, solutionDir, out string absolutePath) || string.IsNullOrEmpty(absolutePath))
-                    return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, filePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
+                {
+                    var replacement = await _missingFileHint.TryResolveUniqueAsync(filePath, solutionDir, cancellationToken).ConfigureAwait(false);
+                    if (replacement == null)
+                        return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, filePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
+
+                    absolutePath = replacement.AbsolutePath;
+                    pathNote = replacement.Note;
+                }
 
                 if (!_pathResolver.IsPathInsideDirectory(absolutePath, solutionDir))
                     return Error($"File '{absolutePath}' is outside the solution directory '{solutionDir}'. Only files inside the open solution can be read.", filePath);
 
                 if (!_fileSystem.FileExists(absolutePath))
-                    return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
+                {
+                    var replacement = await _missingFileHint.TryResolveUniqueAsync(filePath, solutionDir, cancellationToken).ConfigureAwait(false);
+                    if (replacement == null)
+                        return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePath, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), filePath);
+
+                    absolutePath = replacement.AbsolutePath;
+                    pathNote = replacement.Note;
+                }
 
                 if (!_pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath))
                     relativePath = absolutePath;
@@ -166,7 +181,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     AbsolutePath = absolutePath,
                     Content = NumberLines(lines, startLine),
                     HasMoreResults = hasMore,
-                    TotalLines = totalLines
+                    TotalLines = totalLines,
+                    Note = pathNote
                 };
             }
             catch (Exception ex)
@@ -184,7 +200,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         /// <summary>
         /// Reads 'files' (an array of {file_path, start_line, end_line}, or such an array serialized into a string).
-        /// A top-level file_path, when also passed, becomes the first entry. Each entry is validated when it is read,
+        /// A top-level file_path, when also passed, becomes the first entry, unless it is empty or repeats a 'files' item. Each entry is validated when it is read,
         /// so a bad entry fails only its own block.
         /// </summary>
         internal static (List<Dictionary<string, object>> Entries, string Error) ExtractEntries(Dictionary<string, object> parameters, object filesObj)
@@ -208,16 +224,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return (null, $"Parameter '{FilesParameter}' must be an array of objects {{file_path, start_line, end_line}}.");
 
             var entries = new List<Dictionary<string, object>>();
-            if (parameters != null && parameters.TryGetValue("file_path", out object single) && !LiteralListParameter.IsMissing(single))
-            {
-                entries.Add(new Dictionary<string, object>
-                {
-                    ["file_path"] = single,
-                    ["start_line"] = parameters.TryGetValue("start_line", out object s) ? s : null,
-                    ["end_line"] = parameters.TryGetValue("end_line", out object e) ? e : null
-                });
-            }
-
             foreach (object item in items)
             {
                 Dictionary<string, object> entry;
@@ -230,6 +236,21 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 entries.Add(entry);
             }
 
+            // A top-level range is skipped when its file_path is empty (a placeholder) or it repeats a 'files' item.
+            if (parameters != null && parameters.TryGetValue("file_path", out object single) && !LiteralListParameter.IsMissing(single)
+                && !(Unwrap(single) is string blank && string.IsNullOrWhiteSpace(blank)))
+            {
+                var topLevel = new Dictionary<string, object>
+                {
+                    ["file_path"] = single,
+                    ["start_line"] = parameters.TryGetValue("start_line", out object s) ? s : null,
+                    ["end_line"] = parameters.TryGetValue("end_line", out object e) ? e : null
+                };
+
+                if (!entries.Any(entry => SameRange(entry, topLevel)))
+                    entries.Insert(0, topLevel);
+            }
+
             if (entries.Count == 0)
                 return (null, $"Parameter '{FilesParameter}' has no entries.");
             if (entries.Count > MaxFiles)
@@ -237,6 +258,19 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             return (entries, null);
         }
+
+        private static object Unwrap(object value) => value is JValue jv ? jv.Value : value;
+
+        /// <summary>Same file_path (case-insensitive) and the same start_line and end_line as sent; absent equals null.</summary>
+        private static bool SameRange(Dictionary<string, object> a, Dictionary<string, object> b)
+        {
+            return string.Equals(Field(a, "file_path")?.Trim(), Field(b, "file_path")?.Trim(), StringComparison.OrdinalIgnoreCase)
+                && Field(a, "start_line") == Field(b, "start_line")
+                && Field(a, "end_line") == Field(b, "end_line");
+        }
+
+        private static string Field(Dictionary<string, object> entry, string key) =>
+            entry.TryGetValue(key, out object value) && Unwrap(value) is object v ? Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture) : null;
 
         public string GetProcessingMessage(Dictionary<string, object> parameters)
         {
@@ -404,6 +438,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
             public string ErrorMessage { get; set; }
+
+            /// <summary>
+            /// Set when the requested path did not exist and the only file of that name in the solution was read instead;
+            /// <see cref="FilePath"/> is then the real path.
+            /// </summary>
+            [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+            public string Note { get; set; }
 
             /// <summary>
             /// Absolute on-disk path of the file that was read.

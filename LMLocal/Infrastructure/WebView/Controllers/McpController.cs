@@ -75,7 +75,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"Failed to refresh MCP servers after config update: {ex.Message}");
+                    InternalLogger.Warn("Failed to refresh MCP servers after config update", ex);
                 }
 
                 return true;

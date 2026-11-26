@@ -312,6 +312,34 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 Is.EqualTo("Finding 'A.cs', with extension '.cs'... "));
         }
 
+        // ---- note for a pattern with folders --------------------------------------------------
+
+        [Test]
+        public void FolderPatternNote_NoFiles_SaysHowThePatternWasRead()
+        {
+            var note = FindFiles.BuildFolderPatternNote("Application/ChatSession*", 0);
+
+            Assert.That(note, Does.StartWith("No file matching 'ChatSession*' is directly in a folder whose path ends with 'Application'."));
+            Assert.That(note, Does.Contain("project_filter"));
+        }
+
+        [Test]
+        public void FolderPatternNote_FolderOnlyPattern_HasNoNamePart()
+        {
+            var note = FindFiles.BuildFolderPatternNote(@"./Core//Models\", 0);
+
+            Assert.That(note, Does.StartWith(@"No file is directly in a folder whose path ends with 'Core\Models'."));
+        }
+
+        [TestCase("Core/Models/X.cs", 1)]
+        [TestCase("X.cs", 0)]
+        [TestCase("./X.cs", 0)]
+        [TestCase(".", 0)]
+        public void FolderPatternNote_FilesFoundOrNoFolders_IsNull(string pattern, int fileCount)
+        {
+            Assert.That(FindFiles.BuildFolderPatternNote(pattern, fileCount), Is.Null);
+        }
+
         // ---- helpers -------------------------------------------------------------------------
 
         private static FindFiles Tool(ISearchResultCache cache)

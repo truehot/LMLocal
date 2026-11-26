@@ -226,6 +226,30 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
+        public void EnvelopeEstimator_CountsToolCallNameAndArgumentsAndSkipsNullEntries()
+        {
+            const string arguments = "{\"file_path\":\"src/a.cs\",\"start_line\":1}";
+            var withoutCalls = new List<ChatMessage> { new ChatMessage("assistant", "reading") };
+            var withCalls = new List<ChatMessage>
+            {
+                new ChatMessage("assistant", "reading")
+                {
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        null,
+                        new ChatToolCall { Id = "call_1", Name = "read_file_lines", Arguments = arguments, ExtraContentJson = "{\"google\":{}}" }
+                    }
+                }
+            };
+
+            int expected = EnvelopeEstimator.Estimate(withoutCalls, null)
+                + EnvelopeEstimator.EstimateText("read_file_lines")
+                + EnvelopeEstimator.EstimateText(arguments);
+
+            Assert.That(EnvelopeEstimator.Estimate(withCalls, null), Is.EqualTo(expected));
+        }
+
+        [Test]
         public void HistoryLimit_SubtractsTheRealFixedOverhead()
         {
             var calibration = new ContextCalibration();

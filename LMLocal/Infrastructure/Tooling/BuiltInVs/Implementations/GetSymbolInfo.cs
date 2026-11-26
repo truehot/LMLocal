@@ -152,6 +152,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                InternalLogger.Warn("GetSymbolInfo: symbol lookup failed", ex);
                 return Error(ex.Message, null);
             }
         }
@@ -226,6 +227,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                InternalLogger.Warn("GetSymbolInfo: symbol_names lookup failed", ex);
                 return new SymbolInfoMultiResponse { Success = false, ErrorMessage = ex.Message, Symbols = new List<SymbolDefinitionsBlock>() };
             }
         }
@@ -329,7 +331,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         }
                         else
                         {
-                            return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePathParam, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), symbolName);
+                            var replacement = await _missingFileHint.TryResolveUniqueAsync(filePathParam, solutionDir, cancellationToken).ConfigureAwait(false);
+                            if (replacement == null)
+                                return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePathParam, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), symbolName);
+
+                            targetFilePath = replacement.AbsolutePath;
+                            scopeNote = replacement.Note;
                         }
                     }
                 }
@@ -560,12 +567,15 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     catch (Exception ex)
                     {
+                        InternalLogger.Warn($"GetSymbolInfo: symbol lookup of '{symbolName}' failed", ex);
                         return Error(ex.Message, symbolName);
                     }
                 }, cancellationToken);
             }
             catch (Exception ex)
             {
+                if (!(ex is OperationCanceledException))
+                    InternalLogger.Warn($"GetSymbolInfo: symbol lookup of '{symbolName}' failed before the background task started", ex);
                 return Error(ex.Message, symbolName);
             }
         }

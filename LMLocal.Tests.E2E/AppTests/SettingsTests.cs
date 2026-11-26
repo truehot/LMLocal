@@ -315,4 +315,83 @@ public class SettingsTests : AppTestBase
         }
     }
 
+    /// <summary>
+    /// The tool call layout is a single select with three modes. Its value is resolved when the dialog opens, so an
+    /// old settings file that only carries the CollapseToolCalls flag already shows the mode that flag stands for.
+    /// </summary>
+    [Test]
+    [Category("Settings")]
+    public async Task SettingsDialog_ToolCallsDisplay_ShowsTheModeTheLegacyFlagStandsFor()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.EvaluateAsync(
+            "() => { if (window.__settingsOverride) { window.__settingsOverride.GetSettingsAsync = async () => JSON.stringify({ LmStudioBaseUrl: 'http://localhost:1234', StreamInactivityTimeoutSeconds: 20, AutoLoadOnStartup: true, CollapseToolCalls: true }); } }");
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        var select = dialog.Locator("[data-setting='ToolCallsDisplay']");
+        await Expect(select).ToBeVisibleAsync(new() { Timeout = 2000 });
+        await Expect(select.Locator("option")).ToHaveCountAsync(3);
+        await Expect(select).ToHaveValueAsync("expanded");
+    }
+
+    /// <summary>
+    /// The checkbox is gone, so the dialog no longer sends CollapseToolCalls at all: the settings manager has to
+    /// restore it from the mode, otherwise every save would reset it to false and an older build would lose the
+    /// grouped layout.
+    /// </summary>
+    [Test]
+    [Category("Settings")]
+    public async Task Save_Settings_SendsTheChosenToolCallsDisplayMode()
+    {
+        await GotoWithMockAsync("webview-mock.js");
+        await Expect(Page.Locator("#conn-status"))
+            .ToHaveTextAsync("Connected", new() { Timeout = 3000 });
+
+        await Page.EvaluateAsync(
+            "() => { if (window.__settingsOverride) { window.__settingsOverride.GetSettingsAsync = async () => JSON.stringify({ LmStudioBaseUrl: 'http://localhost:1234', StreamInactivityTimeoutSeconds: 20, AutoLoadOnStartup: true, ToolCallsDisplay: 'flat' }); } }");
+        await Page.EvaluateAsync(
+            "() => { window.__capturedSettings = null; if (window.__settingsOverride) { const orig = window.__settingsOverride.UpdateSettingsAsync; window.__settingsOverride.UpdateSettingsAsync = async (json) => { window.__capturedSettings = json; return orig(json); } } }");
+
+        await Page.Locator("#menu-btn").ClickAsync();
+        await Page.Locator("button[data-action='open-settings']").ClickAsync();
+
+        var dialog = Page.Locator("#settings-dialog");
+        await Expect(dialog).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        var select = dialog.Locator("[data-setting='ToolCallsDisplay']");
+        await Expect(select).ToHaveValueAsync("flat", new() { Timeout = 2000 });
+        await select.SelectOptionAsync("collapsed");
+
+        await Page.Locator("#settings-dialog .modal-footer button.btn-primary").ClickAsync();
+        await Expect(dialog).ToBeHiddenAsync(new() { Timeout = 3000 });
+
+        var capturedRaw = await Page.EvaluateAsync<string>(
+            "() => { const v = window.__capturedSettings; if (v === undefined || v === null) return null; return (typeof v === 'string') ? v : JSON.stringify(v); }");
+        Assert.That(capturedRaw, Is.Not.Null, "Bridge did not receive settings payload");
+
+        var json = capturedRaw!;
+        if (json.Length > 0 && json[0] == '"' && json[^1] == '"')
+        {
+            json = System.Text.Json.JsonSerializer.Deserialize<string>(json)!;
+        }
+
+        var doc = System.Text.Json.JsonDocument.Parse(json).RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(doc.GetProperty("ToolCallsDisplay").GetString(), Is.EqualTo("collapsed"),
+                "the selected mode must reach the bridge");
+            Assert.That(doc.TryGetProperty("CollapseToolCalls", out _), Is.False,
+                "the checkbox is gone, so the legacy flag is no longer part of the payload");
+        }
+    }
+
 }

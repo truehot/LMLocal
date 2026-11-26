@@ -19,6 +19,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
         private Mock<ISubAgentsCatalog> _catalogMock;
         private Mock<ISettingsManager> _settingsManagerMock;
         private Mock<ISubAgentsService> _subAgentsServiceMock;
+        private Mock<ISubAgentPipelineRunner> _pipelineRunnerMock;
         private SubAgentsToolSource _source;
 
         private static SubAgentsConfig Config(params SubAgentDefinition[] agents)
@@ -47,6 +48,7 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
             _catalogMock = new Mock<ISubAgentsCatalog>();
             _settingsManagerMock = new Mock<ISettingsManager>();
             _subAgentsServiceMock = new Mock<ISubAgentsService>();
+            _pipelineRunnerMock = new Mock<ISubAgentPipelineRunner>();
 
             _settingsManagerMock.SetupGet(s => s.Current)
                 .Returns(new AppSettings { EnableAiTools = true, EnableSubAgents = true, EnableAiWriteTools = false });
@@ -54,7 +56,8 @@ namespace LMLocal.Tests.Unit.Infrastructure.SubAgents
             _source = new SubAgentsToolSource(
                 _catalogMock.Object,
                 _settingsManagerMock.Object,
-                () => _subAgentsServiceMock.Object);
+                () => _subAgentsServiceMock.Object,
+                _pipelineRunnerMock.Object);
         }
 
         private void SetEnabledAgents(params SubAgentDefinition[] agents)

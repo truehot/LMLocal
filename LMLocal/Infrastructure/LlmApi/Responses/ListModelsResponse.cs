@@ -208,7 +208,7 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"OpenAiPricingConverter: failed to parse pricing tiers: {ex.Message}");
+                    InternalLogger.Warn("OpenAiPricingConverter: failed to parse pricing tiers", ex);
                     return pricing;
                 }
 

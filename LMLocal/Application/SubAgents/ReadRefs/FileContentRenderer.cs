@@ -62,10 +62,10 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 sb.Append(" *(truncated, more lines available)*");
             sb.AppendLine();
             sb.AppendLine();
-            sb.Append("````").Append(lang).AppendLine();
+            sb.Append("````").AppendLine(lang);
             AppendNumberedLines(sb, lines);
             sb.AppendLine();
-            sb.Append("````").AppendLine();
+            sb.AppendLine("````");
             sb.AppendLine();
         }
 

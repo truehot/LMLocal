@@ -128,14 +128,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 string solutionDir = _vsDependencies.GetSolutionDirectory();
 
                 string targetFilePath = null;
+                string pathNote = null;
                 if (!string.IsNullOrEmpty(filePathParam))
                 {
                     if (!_pathResolver.TryResolveFilePath(filePathParam, solutionDir, out string absolutePath))
                         return Error($"Cannot resolve file path: {filePathParam}", symbolName);
                     if (!_fileSystem.FileExists(absolutePath))
-                        return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePathParam, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), symbolName);
+                    {
+                        var replacement = await _missingFileHint.TryResolveUniqueAsync(filePathParam, solutionDir, cancellationToken).ConfigureAwait(false);
+                        if (replacement == null)
+                            return Error(await _missingFileHint.BuildFileNotFoundErrorAsync(filePathParam, absolutePath, solutionDir, cancellationToken).ConfigureAwait(false), symbolName);
+
+                        absolutePath = replacement.AbsolutePath;
+                        pathNote = replacement.Note;
+                    }
                     targetFilePath = absolutePath;
                 }
+
+                string warning = string.IsNullOrEmpty(pathNote) ? selection.Warning : (string.IsNullOrEmpty(selection.Warning) ? pathNote : selection.Warning + " " + pathNote);
 
                 var filter = new EnumerateSolutionFilesFilter
                 {
@@ -184,7 +194,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     var cachedInfo = cached.AllResults.FirstOrDefault();
                     if (cachedInfo != null)
                     {
-                        return BuildResponse(cachedInfo, selection.Offset(pageSize, cachedInfo.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), selection.Warning);
+                        return BuildResponse(cachedInfo, selection.Offset(pageSize, cachedInfo.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), warning);
                     }
                 }
 
@@ -200,7 +210,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 };
                 _searchCache.Set(cacheKey, solutionDir, cacheEntry);
 
-                return BuildResponse(fullResult, selection.Offset(pageSize, fullResult.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), selection.Warning);
+                return BuildResponse(fullResult, selection.Offset(pageSize, fullResult.References?.Count ?? 0), pageSize, _searchCache.GetId(cacheKey), warning);
             }
             catch (OperationCanceledException)
             {
@@ -208,7 +218,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"GetSymbolInfoJs: unexpected error: {ex}");
+                InternalLogger.Error("GetSymbolInfoJs: unexpected error", ex);
                 return Error(ex.Message, null);
             }
         }
@@ -505,7 +515,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"GetSymbolInfoJs: ExecuteCoreAsync error: {ex}");
+                InternalLogger.Error("GetSymbolInfoJs: ExecuteCoreAsync error", ex);
                 return Error(ex.Message, symbolName);
             }
         }
@@ -535,7 +545,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"GetSymbolInfoJs: error reading '{filePath}': {ex.Message}");
+                InternalLogger.Warn($"GetSymbolInfoJs: error reading '{filePath}'", ex);
                 return null;
             }
         }
@@ -613,7 +623,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"GetSymbolInfoJs: error parsing '{filePath}' during chain build: {ex.Message}");
+                        InternalLogger.Warn($"GetSymbolInfoJs: error parsing '{filePath}' during chain build", ex);
                         continue;
                     }
                 }

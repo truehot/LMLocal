@@ -121,6 +121,61 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             Assert.That(error, Is.EqualTo("File not found: x"));
         }
 
+        // ---- TryResolveUniqueAsync ----------------------------------------------------------------
+
+        [Test]
+        public async Task TryResolveUnique_OneFileWithThatName_ReturnsItWithANote()
+        {
+            string full = Path.Combine(_solutionDir, @"LMLocal\Resources\js\store\settings.store.js");
+            Create(@"LMLocal\Resources\js\store\settings.store.js");
+
+            var resolved = await _hint.TryResolveUniqueAsync(@"Resources\js\store\settings.store.js", _solutionDir, CancellationToken.None);
+
+            Assert.That(resolved, Is.Not.Null);
+            Assert.That(resolved.RelativePath, Is.EqualTo(@"LMLocal\Resources\js\store\settings.store.js"));
+            Assert.That(resolved.AbsolutePath, Is.EqualTo(full).IgnoreCase);
+            Assert.That(resolved.Note, Is.EqualTo(
+                @"Path 'Resources\js\store\settings.store.js' does not exist; used 'LMLocal\Resources\js\store\settings.store.js', the only file with that name in the solution. Cite this path."));
+        }
+
+        [Test]
+        public async Task TryResolveUnique_BareFileName_ReturnsTheOnlyFile()
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            var resolved = await _hint.TryResolveUniqueAsync("Compactor.cs", _solutionDir, CancellationToken.None);
+
+            Assert.That(resolved.RelativePath, Is.EqualTo(@"App\Chat\Compactor.cs"));
+        }
+
+        [Test]
+        public async Task TryResolveUnique_SeveralFilesWithThatName_ReturnsNull()
+        {
+            Create(@"App\Chat\Compactor.cs");
+            Create(@"Lib\Compactor.cs");
+
+            Assert.That(await _hint.TryResolveUniqueAsync(@"Other\Compactor.cs", _solutionDir, CancellationToken.None), Is.Null);
+        }
+
+        [Test]
+        public async Task TryResolveUnique_NoFileWithThatName_ReturnsNull()
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            Assert.That(await _hint.TryResolveUniqueAsync(@"App\NoSuchSerializer.cs", _solutionDir, CancellationToken.None), Is.Null);
+        }
+
+        [TestCase(@"Other\Makefile")]
+        [TestCase(@"LMLocal\Commands\*")]
+        [TestCase("")]
+        public async Task TryResolveUnique_NotAFileName_ReturnsNull(string requested)
+        {
+            Create(@"App\Makefile");
+            Create(@"LMLocal\Commands\A.cs");
+
+            Assert.That(await _hint.TryResolveUniqueAsync(requested, _solutionDir, CancellationToken.None), Is.Null);
+        }
+
         [Test]
         public void CancelledByTheCaller_Propagates()
         {

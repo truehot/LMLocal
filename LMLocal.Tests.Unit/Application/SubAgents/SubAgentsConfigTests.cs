@@ -1062,7 +1062,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         }
 
         private static (SubAgentsConfigManager manager, InMemoryFileSystem fs, string path) CreateManager(
-            IReadOnlyList<ToolDefinition> builtInTools)
+            IReadOnlyList<ToolDefinition> builtInTools,
+            params string[] writeTools)
         {
             var fs = new InMemoryFileSystem();
             var settings = new Mock<ISettingsManager>();
@@ -1071,6 +1072,18 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             var builtInToolsMock = new Mock<IBuiltInVsToolProvider>();
             builtInToolsMock.Setup(b => b.GetAllToolDefinitionsUnfiltered())
                 .Returns(builtInTools);
+
+            // The access level decides whether an agent may run in a parallel group of a pipeline.
+            var write = new HashSet<string>(writeTools ?? new string[0], StringComparer.OrdinalIgnoreCase);
+            foreach (var tool in builtInTools ?? new List<ToolDefinition>())
+            {
+                if (tool == null || string.IsNullOrWhiteSpace(tool.Name))
+                    continue;
+
+                builtInToolsMock.Setup(b => b.ToolExists(tool.Name)).Returns(true);
+                builtInToolsMock.Setup(b => b.GetToolAccessLevel(tool.Name))
+                    .Returns(write.Contains(tool.Name) ? ToolAccessLevel.FullAccess : ToolAccessLevel.ReadOnly);
+            }
 
             var path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -1157,6 +1170,81 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             var errors = manager.Validate(config);
 
             Assert.That(errors.Any(e => e.Contains("collides with a built-in tool")), Is.True);
+        }
+
+        [Test]
+        public void ManagerValidate_ParallelGroupWithWriteAgent_ReportsError()
+        {
+            var (manager, _, _) = CreateManager(
+                new List<ToolDefinition> { Tool("read_file_lines"), Tool("replace_file_content") },
+                "replace_file_content");
+
+            var config = new SubAgentsConfig();
+            config.Agents.Add(new SubAgentDefinition
+            {
+                Id = "writer",
+                Description = "W",
+                CustomBaseUrl = "http://x",
+                Model = "m",
+                Enabled = true,
+                AllowedTools = new List<string> { "replace_file_content" }
+            });
+            config.Agents.Add(new SubAgentDefinition
+            {
+                Id = "reader",
+                Description = "R",
+                CustomBaseUrl = "http://x",
+                Model = "m",
+                Enabled = true,
+                AllowedTools = new List<string> { "read_file_lines" }
+            });
+
+            var pipeline = new SubAgentPipelineDefinition { Id = "write_flow", Description = "P" };
+            pipeline.Steps.Add(new SubAgentPipelineStep
+            {
+                Parallel = new List<SubAgentPipelineStep>
+                {
+                    new SubAgentPipelineStep { Agent = "writer", Prompt = "{{task}}" },
+                    new SubAgentPipelineStep { Agent = "reader", Prompt = "{{task}}" }
+                }
+            });
+            config.Pipelines = new List<SubAgentPipelineDefinition> { pipeline };
+
+            var errors = manager.Validate(config);
+
+            Assert.That(errors.Any(e => e.Contains("uses write tools")), Is.True, string.Join("; ", errors));
+        }
+
+        [Test]
+        public void ManagerValidate_ParallelGroupWithReadOnlyAgents_HasNoWriteToolError()
+        {
+            var (manager, _, _) = CreateManager(new List<ToolDefinition> { Tool("read_file_lines") });
+
+            var config = new SubAgentsConfig();
+            config.Agents.Add(new SubAgentDefinition
+            {
+                Id = "reader",
+                Description = "R",
+                CustomBaseUrl = "http://x",
+                Model = "m",
+                Enabled = true,
+                AllowedTools = new List<string> { "read_file_lines" }
+            });
+
+            var pipeline = new SubAgentPipelineDefinition { Id = "read_flow", Description = "P" };
+            pipeline.Steps.Add(new SubAgentPipelineStep
+            {
+                Parallel = new List<SubAgentPipelineStep>
+                {
+                    new SubAgentPipelineStep { Agent = "reader", Prompt = "{{task}}" },
+                    new SubAgentPipelineStep { Agent = "reader", Prompt = "{{task}}" }
+                }
+            });
+            config.Pipelines = new List<SubAgentPipelineDefinition> { pipeline };
+
+            var errors = manager.Validate(config);
+
+            Assert.That(errors.Any(e => e.Contains("uses write tools")), Is.False, string.Join("; ", errors));
         }
 
         [Test]

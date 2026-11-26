@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace LMLocal.Core.Models
 {
@@ -22,7 +23,7 @@ namespace LMLocal.Core.Models
         /// <summary>
         /// Tool calls initiated by assistant (only for role="assistant" when tool_calls are present).
         /// </summary>
-        public object ToolCalls { get; set; }
+        public IReadOnlyList<ChatToolCall> ToolCalls { get; set; }
 
         /// <summary>
         /// Id of the model that produced this assistant message.
@@ -34,6 +35,12 @@ namespace LMLocal.Core.Models
         /// UI only, it is never sent to the model.
         /// </summary>
         public DateTime? Timestamp { get; set; }
+
+        /// <summary>
+        /// Reasoning text of this assistant message, echoed back as reasoning_content to providers that require it
+        /// (DeepSeek thinking mode with tools). Kept in memory only, not written to the chat log.
+        /// </summary>
+        public string ReasoningContent { get; set; }
 
         public ChatMessage(string role, object content, string toolCallId = null)
         {

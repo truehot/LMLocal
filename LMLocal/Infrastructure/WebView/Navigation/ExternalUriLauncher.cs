@@ -41,12 +41,12 @@ namespace LMLocal.Infrastructure.WebView.Navigation
             }
             catch (Win32Exception ex)
             {
-                InternalLogger.Warn($"ExternalUriLauncher: no handler for '{uri}': {ex.Message}");
+                InternalLogger.Warn($"ExternalUriLauncher: no handler for '{uri}'", ex);
                 return false;
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExternalUriLauncher: failed to open '{uri}': {ex.Message}");
+                InternalLogger.Warn($"ExternalUriLauncher: failed to open '{uri}'", ex);
                 return false;
             }
         }

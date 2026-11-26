@@ -9,6 +9,20 @@ export const ReplaceLastMode = Object.freeze({
 });
 
 /**
+ * Name of the built-in task list tool. Must match TodoWrite.ToolName (LMLocal.Infrastructure.Tooling.BuiltInVs).
+ */
+export const TodoToolName = 'todo_write';
+
+/**
+ * Item statuses of the todo_write list. Must match TodoWrite.StatusPending / StatusInProgress / StatusDone.
+ */
+export const TodoStatus = Object.freeze({
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Done: 'done'
+});
+
+/**
  * Shared  UI text.
  */
 
@@ -29,24 +43,24 @@ export const UIText = Object.freeze({
     EDIT_BANNER_DRAFT_HINT: 'Your draft will be restored',
     SHOW_LESS: 'less',
     SHOW_MORE: 'more',
-    STATUS_CLEARING: 'Clearing conversation...',
-    STATUS_COMPACTING: 'Summarizing history...',
-    STATUS_CONNECTING: 'Connecting...',
+    STATUS_CLEARING: 'Clearing conversation',
+    STATUS_COMPACTING: 'Summarizing history',
+    STATUS_CONNECTING: 'Connecting',
     STATUS_ERROR: 'Error',
     STATUS_STOPPED: 'Stopped',
-    STATUS_EXECUTING: 'Running tool...',
-    STATUS_FINISHING: 'Finishing...',
+    STATUS_EXECUTING: 'Running tool',
+    STATUS_FINISHING: 'Finishing',
     STATUS_IDLE: 'Ready',
     STATUS_OFFLINE: 'Disconnected',
     STATUS_ONLINE: 'Connected',
-    STATUS_PROCESSING: 'Thinking...',
+    STATUS_PROCESSING: 'Thinking',
     STATUS_RESPONDING: 'Tool result ready',
-    STATUS_STEPPING: 'SubAgent working...',
-    STATUS_STOPPING: 'Stopping...',
+    STATUS_STEPPING: 'SubAgent working',
+    STATUS_STOPPING: 'Stopping',
     STATUS_RATE_LIMIT_WAIT: 'Rate limited — retrying, attempt {attempt}/{max} ({seconds}s)',
-    STATUS_STREAMING: 'Generating...',
-    STATUS_THINKING: 'Reasoning...',
-    STATUS_UNKNOWN: 'Wait...',
+    STATUS_STREAMING: 'Generating',
+    STATUS_THINKING: 'Reasoning',
+    STATUS_UNKNOWN: 'Wait',
     STATUS_TOOLS_READ: 'Read',
     STATUS_TOOLS_READ_WRITE: 'Read & Write',
     STATUS_SUBAGENTS: 'SubAgents',

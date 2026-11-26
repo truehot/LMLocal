@@ -18,6 +18,7 @@ namespace LMLocal.Tests.Architecture
         private const string Ports = "LMLocal.Application.Abstractions.Ports";
         private const string Infrastructure = "LMLocal.Infrastructure";
         private const string DependencyInjection = "LMLocal.Infrastructure.DependencyInjection";
+        private const string LlmApiRequests = "LMLocal.Infrastructure.LlmApi.Requests";
         private const string Commands = "LMLocal.Commands";
 
         private static readonly string[] UiTypes =
@@ -42,6 +43,7 @@ namespace LMLocal.Tests.Architecture
         [TestCase(Application)]
         [TestCase(Ports)]
         [TestCase(Infrastructure)]
+        [TestCase(LlmApiRequests)]
         [TestCase(Commands)]
         public void Layer_ContainsTypes(string layerNamespace)
         {
@@ -90,6 +92,18 @@ namespace LMLocal.Tests.Architecture
                 .GetResult();
 
             AssertRatchet(result, new string[0], "Application -> Infrastructure.DependencyInjection");
+        }
+
+        /// <summary>Strict: wire request DTOs must not leak back into Application.</summary>
+        [Test]
+        public void Application_DoesNotDependOn_LlmApiRequests()
+        {
+            var result = LMLocalTypes()
+                .That().ResideInNamespace(Application)
+                .ShouldNot().HaveDependencyOn(LlmApiRequests)
+                .GetResult();
+
+            AssertRatchet(result, new string[0], "Application -> Infrastructure.LlmApi.Requests");
         }
 
         [Test]

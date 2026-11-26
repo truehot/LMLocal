@@ -3,7 +3,6 @@ using System.Linq;
 using System.Threading;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -31,10 +30,10 @@ namespace LMLocal.Tests.Unit
             {
                 total += ((message.Content as string)?.Length ?? 0) / 4 + 1;
 
-                if (message.ToolCalls is List<ToolCall> calls)
+                if (message.ToolCalls != null)
                 {
-                    foreach (var call in calls)
-                        total += ((call?.Function?.Arguments)?.Length ?? 0) / 4;
+                    foreach (var call in message.ToolCalls)
+                        total += (call?.Arguments?.Length ?? 0) / 4;
                 }
             }
             return total;
@@ -49,17 +48,13 @@ namespace LMLocal.Tests.Unit
         {
             return new ChatMessage("assistant", null)
             {
-                ToolCalls = new List<ToolCall>
+                ToolCalls = new List<ChatToolCall>
                 {
-                    new ToolCall
+                    new ChatToolCall
                     {
                         Id = "c" + index,
-                        Type = "function",
-                        Function = new FunctionCallDetails
-                        {
-                            Name = "read_file_lines",
-                            Arguments = "{\"file_path\":\"" + filePath + "\"}"
-                        }
+                        Name = "read_file_lines",
+                        Arguments = "{\"file_path\":\"" + filePath + "\"}"
                     }
                 }
             };
@@ -75,17 +70,13 @@ namespace LMLocal.Tests.Unit
 
             return new ChatMessage("assistant", null)
             {
-                ToolCalls = new List<ToolCall>
+                ToolCalls = new List<ChatToolCall>
                 {
-                    new ToolCall
+                    new ChatToolCall
                     {
                         Id = "w" + index,
-                        Type = "function",
-                        Function = new FunctionCallDetails
-                        {
-                            Name = "create_file",
-                            Arguments = arguments.ToString(Newtonsoft.Json.Formatting.None)
-                        }
+                        Name = "create_file",
+                        Arguments = arguments.ToString(Newtonsoft.Json.Formatting.None)
                     }
                 }
             };
@@ -150,10 +141,10 @@ namespace LMLocal.Tests.Unit
 
             foreach (var assistant in result.Messages.Where(m => m.Role == "assistant"))
             {
-                var call = ((List<ToolCall>)assistant.ToolCalls).Single();
-                var arguments = JObject.Parse(call.Function.Arguments);
+                var call = assistant.ToolCalls.Single();
+                var arguments = JObject.Parse(call.Arguments);
 
-                Assert.That(arguments.Property("content"), Is.Null, "content must be removed: {0}", call.Function.Arguments);
+                Assert.That(arguments.Property("content"), Is.Null, "content must be removed: {0}", call.Arguments);
                 Assert.That(arguments.Value<bool>(ToolHistoryPruner.PrunedKey), Is.True);
                 Assert.That(arguments.Value<int>(ToolHistoryPruner.LinesKey), Is.GreaterThan(0));
                 Assert.That(arguments.Value<string>("file_path"), Is.Not.Null, "file_path must survive");
@@ -179,13 +170,13 @@ namespace LMLocal.Tests.Unit
                 new ChatMessage("user", "do the work"),
                 new ChatMessage("assistant", null)
                 {
-                    ToolCalls = new List<ToolCall>
+                    ToolCalls = new List<ChatToolCall>
                     {
-                        new ToolCall
+                        new ChatToolCall
                         {
                             Id = "e1",
-                            Type = "function",
-                            Function = new FunctionCallDetails { Name = "replace_file_lines", Arguments = arguments.ToString(Newtonsoft.Json.Formatting.None) }
+                            Name = "replace_file_lines",
+                            Arguments = arguments.ToString(Newtonsoft.Json.Formatting.None)
                         }
                     }
                 },
@@ -194,15 +185,15 @@ namespace LMLocal.Tests.Unit
 
             var result = ToolHistoryPruner.Prune(messages, Options(), FlatCost, 0);
 
-            var call = ((List<ToolCall>)result.Messages[1].ToolCalls).Single();
-            var pruned = JObject.Parse(call.Function.Arguments);
+            var call = result.Messages[1].ToolCalls.Single();
+            var pruned = JObject.Parse(call.Arguments);
             var items = (JArray)pruned["edits"];
 
             Assert.That(items.Count, Is.EqualTo(2));
             foreach (JObject item in items.Cast<JObject>())
             {
-                Assert.That(item.Property("old_lines"), Is.Null, call.Function.Arguments);
-                Assert.That(item.Property("new_lines"), Is.Null, call.Function.Arguments);
+                Assert.That(item.Property("old_lines"), Is.Null, call.Arguments);
+                Assert.That(item.Property("new_lines"), Is.Null, call.Arguments);
             }
             Assert.That(items.Select(i => i.Value<int>("start_line")), Is.EqualTo(new[] { 40, 10 }));
             Assert.That(pruned.Value<string>("file_path"), Is.EqualTo("src/A.cs"));
@@ -249,8 +240,9 @@ namespace LMLocal.Tests.Unit
                 Assert.That(result.Messages[i].Role, Is.EqualTo(history[i].Role));
                 Assert.That(result.Messages[i].ToolCallId, Is.EqualTo(history[i].ToolCallId));
 
-                var after = result.Messages[i].ToolCalls as List<ToolCall>;
-                if (!(history[i].ToolCalls is List<ToolCall> before))
+                var after = result.Messages[i].ToolCalls;
+                var before = history[i].ToolCalls;
+                if (before == null)
                 {
                     Assert.That(after, Is.Null);
                     continue;
@@ -282,12 +274,12 @@ namespace LMLocal.Tests.Unit
         {
             var history = History(2, 200);
             var originalBody = (string)history[2].Content;
-            var originalArguments = ((List<ToolCall>)history[1].ToolCalls)[0].Function.Arguments;
+            var originalArguments = history[1].ToolCalls[0].Arguments;
 
             var result = ToolHistoryPruner.Prune(history, Options(), FlatCost, 0);
 
             Assert.That((string)history[2].Content, Is.EqualTo(originalBody));
-            Assert.That(((List<ToolCall>)history[1].ToolCalls)[0].Function.Arguments, Is.EqualTo(originalArguments));
+            Assert.That(history[1].ToolCalls[0].Arguments, Is.EqualTo(originalArguments));
             Assert.That(result.Messages[2], Is.Not.SameAs(history[2]));
         }
 

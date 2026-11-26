@@ -9,7 +9,8 @@ namespace LMLocal.Application.Abstractions.Ports
     public interface IToolQueueProvider
     {
         /// <summary>
-        /// Main chat queue: enabled built-in tools minus the ones owned by visible SubAgents, plus the visible agent tools, plus MCP tools.
+        /// Main chat queue: enabled built-in tools minus the ones owned by visible SubAgents, plus the visible agent tools,
+        /// plus the available pipeline tools, plus MCP tools.
         /// </summary>
         ToolQueue GetMainQueue();
 

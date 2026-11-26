@@ -81,7 +81,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"Error deleting session: {ex.Message}");
+                    InternalLogger.Warn("Error deleting session", ex);
                 }
             }
         }
@@ -175,7 +175,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp.Client
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"Failed to send notifications/initialized: {ex.Message}");
+                InternalLogger.Warn("Failed to send notifications/initialized", ex);
             }
         }
 

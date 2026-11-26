@@ -81,7 +81,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"UsageStore: failed to create the usage folder '{_usageDirectory}': {ex.Message}");
+                InternalLogger.Warn($"UsageStore: failed to create the usage folder '{_usageDirectory}'", ex);
             }
         }
 
@@ -132,7 +132,7 @@ namespace LMLocal.Infrastructure.Persistence
             catch (Exception ex)
             {
                 // Usage is a metric: losing a line must never break the request that produced it.
-                InternalLogger.Warn($"UsageStore: failed to append a usage record: {ex.Message}");
+                InternalLogger.Warn("UsageStore: failed to append a usage record", ex);
             }
         }
 
@@ -150,7 +150,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"UsageStore: failed to read the solution folder: {ex.Message}");
+                InternalLogger.Warn("UsageStore: failed to read the solution folder", ex);
                 return null;
             }
         }
@@ -292,7 +292,7 @@ namespace LMLocal.Infrastructure.Persistence
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"UsageStore: failed to read '{ManifestFileName}' in '{folder}': {ex.Message}");
+                    InternalLogger.Warn($"UsageStore: failed to read '{ManifestFileName}' in '{folder}'", ex);
                 }
             }
 
@@ -330,7 +330,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"UsageStore: failed to locate the assembly folder: {ex.Message}");
+                InternalLogger.Warn("UsageStore: failed to locate the assembly folder", ex);
             }
 
             return new[] { assemblyFolder, AppDomain.CurrentDomain.BaseDirectory };

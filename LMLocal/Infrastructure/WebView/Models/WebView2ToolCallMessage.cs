@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+
 namespace LMLocal.Infrastructure.WebView
 {
     /// <summary>
@@ -34,6 +36,12 @@ namespace LMLocal.Infrastructure.WebView
         /// Optional 1-based step number, present on StreamToolStep messages.
         /// </summary>
         public int? Step { get; set; }
+
+        /// <summary>
+        /// Optional data for the WebView only, set on StreamToolEnd when the tool returned a structure the UI renders.
+        /// </summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        public object UiData { get; set; }
     }
 }
 

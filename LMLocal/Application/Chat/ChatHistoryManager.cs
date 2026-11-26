@@ -7,11 +7,6 @@ using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat.Normalization;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
-using LMLocal.Infrastructure.LlmApi.Provider;
-using LMLocal.Infrastructure.LlmApi.Requests;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace LMLocal.Application.Chat
 {
@@ -56,6 +51,12 @@ namespace LMLocal.Application.Chat
         List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null);
 
         /// <summary>
+        /// Sets the line with the date and time the chat started, which <see cref="BuildUserMessagesWithHistory"/>
+        /// appends to the system message. Taken once per chat: a changed line would change the prompt prefix.
+        /// </summary>
+        void EnsureChatDateLine();
+
+        /// <summary>
         /// Removes the assistant message an unsuccessful round committed, and drops the pending assistant state, so the retry neither sees a truncated answer nor commits its tool calls.
         /// </summary>
         void DiscardLastAssistantFromFailedRound();
@@ -94,6 +95,12 @@ namespace LMLocal.Application.Chat
         /// Drops the queued assistant tool call without committing it, so the next AddToolExecutionResultMessages call cannot resurrect a tool call that was rejected (e.g. an identical repeated call detected as a loop).
         /// </summary>
         void DiscardPendingAssistant();
+
+        /// <summary>
+        /// Reasoning text for the next assistant message committed to history (AddAssistantMessage, directly or through
+        /// SetPendingAssistant); null clears it. Kept in memory only.
+        /// </summary>
+        void SetNextAssistantReasoning(string reasoning);
 
         /// <summary>
         /// Clears history and starts a new session, carrying over the last completed step 1:1 (user message + assistant reply with text + tool calls/results in between).
@@ -148,6 +155,8 @@ namespace LMLocal.Application.Chat
         private readonly IChatPersistenceService _persistence;
         private readonly ISettingsManager _settingsManager;
         private readonly IToolResultMarkdownFormatter _formatter;
+        private readonly ITimeProvider _timeProvider;
+        private readonly IProviderPolicy _providerPolicy;
         private const int LookbackLimit = 800;
 
         private readonly HistoryNormalizer _normalizer = new HistoryNormalizer();
@@ -155,15 +164,25 @@ namespace LMLocal.Application.Chat
         private string _pendingAssistantContent;
         private IReadOnlyList<ToolCallRecord> _pendingAssistantToolCalls;
         private string _pendingAssistantModelId;
+        private string _nextAssistantReasoning;
+
+        private string _chatDateLine;
 
         /// <summary>
         /// Creates a chat history manager backed by the given persistence service.
         /// </summary>
-        public ChatHistoryManager(ISettingsManager settingsManager, IChatPersistenceService persistence, IToolResultMarkdownFormatter formatter = null)
+        public ChatHistoryManager(
+            ISettingsManager settingsManager,
+            IChatPersistenceService persistence,
+            IProviderPolicy providerPolicy,
+            IToolResultMarkdownFormatter formatter = null,
+            ITimeProvider timeProvider = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
+            _providerPolicy = providerPolicy ?? throw new ArgumentNullException(nameof(providerPolicy));
             _formatter = formatter;
+            _timeProvider = timeProvider;
         }
 
         /// <summary>
@@ -173,6 +192,19 @@ namespace LMLocal.Application.Chat
         {
             get { return _persistence?.CurrentSessionId; }
         }
+
+        /// <summary>
+        /// Sets the line to the current time when the chat has none yet: local servers reuse the cached prompt prefix,
+        /// so the line is taken once per chat and must not change while the chat lives.
+        /// </summary>
+        public void EnsureChatDateLine()
+        {
+            if (_timeProvider == null || _chatDateLine != null)
+                return;
+
+            _chatDateLine = CurrentDateLine.Format(_timeProvider.UtcNow, _timeProvider.LocalTimeZone);
+        }
+
         /// <summary>
         /// Adds a user message to history and persists it.
         /// </summary>
@@ -245,26 +277,23 @@ namespace LMLocal.Application.Chat
             bool hasContent = !string.IsNullOrWhiteSpace(content);
             bool hasToolCalls = toolCalls?.Count > 0;
 
+            string reasoning = _nextAssistantReasoning;
+            _nextAssistantReasoning = null;
+
             if (!hasContent && !hasToolCalls) return;
 
-            List<ToolCall> toolCallObjects = null;
+            List<ChatToolCall> toolCallObjects = null;
             if (hasToolCalls)
             {
-                toolCallObjects = new List<ToolCall>(toolCalls.Count);
+                toolCallObjects = new List<ChatToolCall>(toolCalls.Count);
                 foreach (var toolCall in toolCalls)
                 {
-                    string normalizedArguments = string.IsNullOrEmpty(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson;
-
-                    toolCallObjects.Add(new ToolCall
+                    toolCallObjects.Add(new ChatToolCall
                     {
                         Id = toolCall.CallId,
-                        Type = "function",
-                        Function = new FunctionCallDetails
-                        {
-                            Name = toolCall.FunctionName,
-                            Arguments = normalizedArguments
-                        },
-                        ExtraContent = ParseExtraContent(toolCall.ExtraContentJson)
+                        Name = toolCall.FunctionName,
+                        Arguments = string.IsNullOrEmpty(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson,
+                        ExtraContentJson = string.IsNullOrEmpty(toolCall.ExtraContentJson) ? null : toolCall.ExtraContentJson
                     });
                 }
             }
@@ -273,7 +302,8 @@ namespace LMLocal.Application.Chat
             {
                 ToolCalls = toolCallObjects,
                 ModelId = modelId,
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                ReasoningContent = reasoning
             };
 
             lock (_lock)
@@ -281,16 +311,6 @@ namespace LMLocal.Application.Chat
                 _history.Add(chatMessage);
             }
             _ = _persistence.SaveLastMessageAsync(chatMessage, CancellationToken.None);
-        }
-
-        /// <summary>
-        /// Raw JSON string → JToken, or null when absent/unparsable.
-        /// </summary>
-        private static JToken ParseExtraContent(string extraContentJson)
-        {
-            if (string.IsNullOrEmpty(extraContentJson)) return null;
-            try { return JToken.Parse(extraContentJson); }
-            catch (JsonException) { return null; }
         }
 
         /// <summary>
@@ -311,6 +331,12 @@ namespace LMLocal.Application.Chat
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
             _pendingAssistantModelId = null;
+            _nextAssistantReasoning = null;
+        }
+
+        public void SetNextAssistantReasoning(string reasoning)
+        {
+            _nextAssistantReasoning = string.IsNullOrEmpty(reasoning) ? null : reasoning;
         }
 
         /// <summary>
@@ -325,6 +351,7 @@ namespace LMLocal.Application.Chat
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
             _pendingAssistantModelId = null;
+            _nextAssistantReasoning = null;
 
             lock (_lock)
             {
@@ -406,6 +433,7 @@ namespace LMLocal.Application.Chat
         {
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
+            _nextAssistantReasoning = null;
 
             lock (_lock)
             {
@@ -458,11 +486,13 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
-        /// Clears all messages from history and marks a new session boundary.
+        /// Clears all messages from history and marks a new session boundary. The chat date line goes too: the next
+        /// chat starts with a line of its own.
         /// </summary>
         public void Clear()
         {
             ClearInMemory();
+            _chatDateLine = null;
             _ = _persistence.MarkNewSessionAsync();
         }
 
@@ -474,6 +504,7 @@ namespace LMLocal.Application.Chat
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
             _pendingAssistantModelId = null;
+            _nextAssistantReasoning = null;
 
             lock (_lock)
             {
@@ -541,11 +572,6 @@ namespace LMLocal.Application.Chat
         /// </summary>
         public async Task ConsolidateLastExchangeAsync()
         {
-            var allowedTools = new HashSet<string>
-            {
-                "read_file_lines", "get_solution_overview", "get_active_document", "code_explorer_subagent"
-            };
-
             List<ChatMessage> consolidatedFragment = null;
             lock (_lock)
             {
@@ -566,12 +592,12 @@ namespace LMLocal.Application.Chat
                     {
                         var msg = fragment[i];
 
-                        if (msg.Role == "assistant" && msg.ToolCalls is List<ToolCall> calls)
+                        if (msg.Role == "assistant" && msg.ToolCalls != null)
                         {
-                            foreach (var call in calls)
+                            foreach (var call in msg.ToolCalls)
                             {
-                                if (call?.Function != null && allowedTools.Contains(call.Function.Name))
-                                    toolCallFuncMap[call.Id] = call.Function.Name;
+                                if (call != null && call.Id != null)
+                                    toolCallFuncMap[call.Id] = call.Name;
                             }
                         }
                         else if (msg.Role == "tool"
@@ -587,15 +613,13 @@ namespace LMLocal.Application.Chat
                     var originalContent = ContentTextExtractor.ExtractTextContent(userMessage.Content);
                     string consolidatedUserContent;
 
-                    if (toolResults.Count > 0 && _formatter != null)
-                    {
-                        var formattedTools = _formatter.FormatToolResults(toolResults);
-                        consolidatedUserContent = originalContent + "\n\n---\n\n" + formattedTools;
-                    }
-                    else
-                    {
-                        consolidatedUserContent = originalContent;
-                    }
+                    string formattedTools = toolResults.Count > 0 && _formatter != null
+                        ? _formatter.FormatToolResults(toolResults)
+                        : null;
+
+                    consolidatedUserContent = string.IsNullOrEmpty(formattedTools)
+                        ? originalContent
+                        : originalContent + "\n\n---\n\n" + formattedTools;
 
                     consolidatedFragment = new List<ChatMessage>
                     {
@@ -694,6 +718,7 @@ namespace LMLocal.Application.Chat
             _pendingAssistantContent = null;
             _pendingAssistantToolCalls = null;
             _pendingAssistantModelId = null;
+            _nextAssistantReasoning = null;
 
             lock (_lock)
             {
@@ -758,8 +783,7 @@ namespace LMLocal.Application.Chat
         /// </summary>
         public void EnsureHistoryNormalized()
         {
-            var provider = ProviderResolver.ResolveProvider(_settingsManager.Current?.Provider);
-            if (provider != ModelProvider.LlamaCpp) return;
+            if (!_providerPolicy.RequiresStrictRoleAlternation(_settingsManager.Current?.Provider)) return;
 
             List<ChatMessage> snapshot;
             lock (_lock)
@@ -772,31 +796,39 @@ namespace LMLocal.Application.Chat
         }
 
         /// <summary>
-        /// Builds the message list (system + history) for the current provider backend.
+        /// Builds the message list (system + history) for the current provider backend. The chat date line, when the
+        /// chat has one, goes to the end of the system message.
         /// </summary>
         public List<ChatMessage> BuildUserMessagesWithHistory(string additionalSystemPrompt = null)
         {
-            ChatMessage systemMessage = null;
-            if (!string.IsNullOrEmpty(additionalSystemPrompt))
-            {
-                systemMessage = new ChatMessage("system", additionalSystemPrompt);
-            }
-            else
-            {
-                var currentSystemPrompt = _settingsManager.SystemPrompt;
-                if (!string.IsNullOrEmpty(currentSystemPrompt))
-                {
-                    systemMessage = new ChatMessage("system", currentSystemPrompt);
-                }
-            }
+            string systemPrompt = !string.IsNullOrEmpty(additionalSystemPrompt)
+                ? additionalSystemPrompt
+                : _settingsManager.SystemPrompt;
+
+            string systemText = ComposeSystemMessage(systemPrompt, _chatDateLine);
 
             var messages = new List<ChatMessage>(_history.Count + 2);
-            if (systemMessage != null)
-                messages.Add(systemMessage);
+            if (systemText != null)
+                messages.Add(new ChatMessage("system", systemText));
 
             messages.AddRange(_normalizer.Compose(_history));
 
             return messages;
+        }
+
+        /// <summary>
+        /// Appends the chat date line to the end of the system prompt, so the prompt text stays an unchanged prefix and
+        /// local servers can keep their cached prompt prefix.
+        /// </summary>
+        private static string ComposeSystemMessage(string systemPrompt, string chatDateLine)
+        {
+            if (string.IsNullOrEmpty(chatDateLine))
+                return string.IsNullOrEmpty(systemPrompt) ? null : systemPrompt;
+
+            if (string.IsNullOrEmpty(systemPrompt))
+                return chatDateLine;
+
+            return systemPrompt.TrimEnd() + "\n\n" + chatDateLine;
         }
 
         private void InvalidateCacheLocked()
@@ -829,6 +861,8 @@ namespace LMLocal.Application.Chat
                 _pendingAssistantContent = null;
                 _pendingAssistantToolCalls = null;
                 _pendingAssistantModelId = null;
+                _nextAssistantReasoning = null;
+                _chatDateLine = null;
 
                 lock (_lock)
                 {

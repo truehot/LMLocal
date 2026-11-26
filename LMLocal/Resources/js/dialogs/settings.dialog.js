@@ -1,6 +1,7 @@
 import { Icons, UIText } from '@app/constants/app.globals.js';
 import { createCallback } from '@app/lib/callback.js';
 import { populateProviderSelect } from '@app/lib/populate-provider.select.js';
+import { resolveToolCallsDisplay } from '@app/lib/tool.calls.display.js';
 import toast from '@app/lib/toast.js';
 import { buildTestFailureMessage } from '@app/lib/test-connection.message.js';
 
@@ -166,6 +167,11 @@ export class SettingsDialog {
                         el.checked = String(val) === String(el.value);
                     } else if (el.id === 'provider-select') {
                         return;
+                    } else if (el.tagName === 'SELECT') {
+                        const mode = key === 'ToolCallsDisplay' ? resolveToolCallsDisplay(settings) : val;
+                        if (mode === undefined || mode === null || mode === '') return;
+                        el.value = String(mode);
+                        if (el.selectedIndex < 0) el.selectedIndex = 0;
                     } else {
                         el.value = val !== undefined && val !== null ? String(val) : '';
                     }

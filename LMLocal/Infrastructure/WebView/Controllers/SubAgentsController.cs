@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
+using LMLocal.Infrastructure.Tooling.BuiltInVs;
 using LMLocal.Infrastructure.WebView.Models;
 
 namespace LMLocal.Infrastructure.WebView.Controllers
@@ -33,10 +34,12 @@ namespace LMLocal.Infrastructure.WebView.Controllers
     public class SubAgentsController : ISubAgentsController
     {
         private readonly ISubAgentsConfigManager _configManager;
+        private readonly IBuiltInVsToolProvider _builtInTools;
 
-        public SubAgentsController(ISubAgentsConfigManager configManager)
+        public SubAgentsController(ISubAgentsConfigManager configManager, IBuiltInVsToolProvider builtInTools = null)
         {
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _builtInTools = builtInTools;
         }
 
         public async Task<string> GetSubAgentsAsync()
@@ -65,9 +68,12 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                         AllowedTools = agent.AllowedTools != null
                             ? new List<string>(agent.AllowedTools)
                             : new List<string>(),
-                        Enabled = agent.Enabled
+                        Enabled = agent.Enabled,
+                        Exposed = agent.IsExposed
                     });
                 }
+
+                AddPipelines(response, config);
 
                 return response.ToJson();
             }
@@ -108,11 +114,13 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                         Model = request.Model
                     };
 
-                    errors = await _configManager.UpdateEnabledFlagsAsync(request.Agents, defaults: defaults).ConfigureAwait(false);
+                    errors = await _configManager.UpdateEnabledFlagsAsync(
+                        request.Agents, defaults: defaults, pipelineFlags: request.Pipelines).ConfigureAwait(false);
                 }
                 else
                 {
-                    errors = await _configManager.UpdateEnabledFlagsAsync(request.Agents).ConfigureAwait(false);
+                    errors = await _configManager.UpdateEnabledFlagsAsync(
+                        request.Agents, pipelineFlags: request.Pipelines).ConfigureAwait(false);
                 }
 
                 if (errors.Count > 0)
@@ -154,6 +162,64 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                 InternalLogger.Error("ReplaceSubAgentsConfigAsync failed", ex);
                 return Failure(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Adds the pipelines with their step chain and, when they are not offered to the main model right now,
+        /// the reason.
+        /// </summary>
+        private void AddPipelines(SubAgentsListResponse response, SubAgentsConfig config)
+        {
+            if (response == null || config == null || config.Pipelines == null)
+                return;
+
+            var builtInToolNames = GetBuiltInToolNames();
+
+            foreach (var pipeline in config.Pipelines)
+            {
+                if (pipeline == null || string.IsNullOrWhiteSpace(pipeline.Id))
+                    continue;
+
+                var item = new SubAgentPipelineResponse
+                {
+                    Id = pipeline.Id.Trim(),
+                    DisplayName = pipeline.DisplayNameOrId,
+                    Description = pipeline.Description,
+                    Enabled = pipeline.IsEnabled,
+                    UnavailableReason = SubAgentPipelineAvailability.GetUnavailableReason(
+                        pipeline,
+                        config,
+                        builtInToolNames,
+                        isAgentReadOnly: agent => SubAgentToolAccess.HasOnlyReadOnlyTools(agent, _builtInTools))
+                };
+
+                foreach (var step in pipeline.EnumerateLeafSteps())
+                {
+                    item.Steps.Add(step.Label);
+                }
+
+                response.Pipelines.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// Every built-in tool name; pipeline ids share their namespace. Null when the provider is not available,
+        /// which only skips that one check.
+        /// </summary>
+        private IReadOnlyCollection<string> GetBuiltInToolNames()
+        {
+            var all = _builtInTools?.GetAllToolDefinitionsUnfiltered();
+            if (all == null)
+                return null;
+
+            var names = new List<string>();
+            foreach (var def in all)
+            {
+                if (def != null && !string.IsNullOrWhiteSpace(def.Name))
+                    names.Add(def.Name.Trim());
+            }
+
+            return names;
         }
 
         /// <summary>

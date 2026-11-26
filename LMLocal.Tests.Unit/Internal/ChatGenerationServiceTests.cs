@@ -145,6 +145,7 @@ namespace LMLocal.Tests.Unit
             public void EnsureHistoryNormalized() { }
             public void SetPendingAssistant(string text, IReadOnlyList<ToolCallRecord> toolCalls, string modelId = null) { }
             public void DiscardPendingAssistant() { }
+            public void SetNextAssistantReasoning(string reasoning) { }
             public void DiscardLastAssistantFromFailedRound() { }
             public Task<bool> ReplaceHistoryWithNewSessionAsync(IEnumerable<ChatMessage> messages) => Task.FromResult(true);
             public Task<TruncateLastExchangeOutcome> TruncateLastExchangeAsync(bool keepUserMessage, string expectedPrompt = null) => Task.FromResult(TruncateLastExchangeOutcome.Replaced);
@@ -155,6 +156,8 @@ namespace LMLocal.Tests.Unit
             public Task ClearAndSaveMessagesAsync(IEnumerable<ChatMessage> messages) => Task.CompletedTask;
 
             public System.Guid? CurrentSessionId => null;
+
+            public void EnsureChatDateLine() { }
 
             public void ReplaceHistoryInMemory(IEnumerable<ChatMessage> messages)
             {

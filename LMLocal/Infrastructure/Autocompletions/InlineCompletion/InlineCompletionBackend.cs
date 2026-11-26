@@ -63,7 +63,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("InlineCompletionBackend.RefreshAsync: " + ex.Message);
+                InternalLogger.Warn("InlineCompletionBackend.RefreshAsync", ex);
             }
             finally
             {

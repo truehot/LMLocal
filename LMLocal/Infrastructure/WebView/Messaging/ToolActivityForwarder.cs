@@ -4,9 +4,7 @@ using LMLocal.Application.Tool;
 
 namespace LMLocal.Infrastructure.WebView.Messaging
 {
-    /// <summary>
-    /// Bridges tool activity events to WebView2 StreamToolStep messages.
-    /// </summary>
+    /// <summary>Bridges tool activity events to WebView2: steps to StreamToolStep, token usage to StreamToolTokens.</summary>
     internal sealed class ToolActivityForwarder : IProgress<ToolActivityEvent>
     {
         private readonly Func<WebView2ScriptMessage, Task> _onMessage;
@@ -20,7 +18,24 @@ namespace LMLocal.Infrastructure.WebView.Messaging
 
         public void Report(ToolActivityEvent e)
         {
-            if (e == null || (string.IsNullOrEmpty(e.ToolName) && string.IsNullOrEmpty(e.Message)))
+            if (e == null)
+                return;
+
+            if (e.IsTokenEvent)
+            {
+                _ = _onMessage(new WebView2ToolTokensMessage
+                {
+                    Type = WebView2MessageType.StreamToolTokens,
+                    CallId = _activityId,
+                    AgentName = e.AgentName,
+                    Tokens = e.Tokens.Value,
+                    TokensPerSecond = e.TokensPerSecond ?? 0
+                });
+
+                return;
+            }
+
+            if (string.IsNullOrEmpty(e.ToolName) && string.IsNullOrEmpty(e.Message))
                 return;
 
             var message = new WebView2ToolCallMessage

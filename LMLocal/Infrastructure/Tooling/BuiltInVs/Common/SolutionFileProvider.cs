@@ -192,7 +192,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                             }
                             catch (ArgumentException ex)
                             {
-                                InternalLogger.Warn($"GetFilePath: malformed path components for projectDir='{projectDir}' saveName='{saveName}': {ex.Message}");
+                                InternalLogger.Warn($"GetFilePath: malformed path components for projectDir='{projectDir}' saveName='{saveName}'", ex);
                             }
                         }
                     }
@@ -222,7 +222,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                                        || ex is UnauthorizedAccessException
                                        || ex is System.Security.SecurityException)
             {
-                InternalLogger.Warn($"FileExistsSafe: error probing path '{path}': {ex.GetType().Name}: {ex.Message}");
+                InternalLogger.Warn($"FileExistsSafe: error probing path '{path}': {ex.GetType().Name}", ex);
             }
 
             return false;

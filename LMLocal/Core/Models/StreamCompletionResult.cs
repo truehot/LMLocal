@@ -14,6 +14,16 @@ namespace LMLocal.Core.Models
         public string ContentResponse { get; set; }
 
         /// <summary>
+        /// The complete reasoning text of the response (reasoning_content / reasoning deltas), or null when there was none.
+        /// </summary>
+        public string Reasoning { get; set; }
+
+        /// <summary>
+        /// Total size in characters of the reasoning_content echoed back with this request, or 0 when nothing was echoed.
+        /// </summary>
+        public int ReasoningEchoChars { get; set; }
+
+        /// <summary>
         /// Reason the model stopped generating.
         /// Values: "stop" (natural completion), "length" (max tokens), "tool_calls" (tools invoked), "content_filter" (safety).
         /// Null if stream ended without explicit completion reason.

@@ -23,7 +23,8 @@ export function startTooling(toolContainer, callId, message) {
     toolContainer.appendChild(toolDiv);
 }
 
-export function stepTooling(toolContainer, callId, step, message) {
+/** Shows tool progress as `Step N: <message>`, with `<category> · ` before the message when `options.category` is set. */
+export function stepTooling(toolContainer, callId, step, message, options = {}) {
     if (!callId || !toolContainer) return;
     const toolDiv = toolContainer.querySelector(`[data-tool-call-id="${callId}"]`);
     if (!toolDiv) return;
@@ -35,6 +36,7 @@ export function stepTooling(toolContainer, callId, step, message) {
     if (!stepSpan) return;
 
     const text = message || '';
+    const category = typeof options.category === 'string' ? options.category : '';
 
     const hasStep = typeof step === 'number' && !Number.isNaN(step);
     const sameStep = hasStep && toolDiv.getAttribute('data-step') === String(step);
@@ -43,7 +45,7 @@ export function stepTooling(toolContainer, callId, step, message) {
         if (toolDiv.getAttribute('data-message') === text) return;
         stepSpan.textContent += ` + ${text}`;
     } else {
-        stepSpan.textContent = ' ' + (hasStep ? `Step ${step}: ` : '') + text;
+        stepSpan.textContent = ' ' + (hasStep ? `Step ${step}: ` : '') + (category ? `${category} · ` : '') + text;
     }
 
     if (hasStep) toolDiv.setAttribute('data-step', String(step));

@@ -151,15 +151,38 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
         [TestCase("Compactor.cs")]
         [TestCase(@"Chat\Compactor.cs")]
         [TestCase("Other/Compactor.cs")]
-        public async Task Resolve_WrongPathOfExistingFile_NamesRealPath(string path)
+        public async Task Resolve_WrongPathOfTheOnlyFile_SearchesItAndSaysSo(string path)
         {
-            Create(@"App\Chat\Compactor.cs");
+            string file = Create(@"App\Chat\Compactor.cs");
 
             var (scope, error) = await _resolver.ResolveAsync(path, _solutionDir, NoProjects);
 
-            Assert.That(scope, Is.Null);
-            Assert.That(error, Is.EqualTo(
-                $"Path not found: '{path}'. The file 'Compactor.cs' exists at 'App\\Chat\\Compactor.cs': call again with that path."));
+            Assert.That(error, Is.Null);
+            Assert.That(scope.Kind, Is.EqualTo(SearchScopeKind.File));
+            Assert.That(scope.FilePath, Is.EqualTo(file).IgnoreCase);
+            Assert.That(scope.Note, Is.EqualTo(
+                $"Path '{path}' does not exist; used 'App\\Chat\\Compactor.cs', the only file with that name in the solution. Cite this path."));
+        }
+
+        [Test]
+        public async Task Resolve_ExistingFile_HasNoNote()
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            var (scope, _) = await _resolver.ResolveAsync(@"App\Chat\Compactor.cs", _solutionDir, NoProjects);
+
+            Assert.That(scope.Note, Is.Null);
+        }
+
+        [Test]
+        public async Task Resolve_ReplacedPath_KeepsTheKeyOfTheRealFile()
+        {
+            Create(@"App\Chat\Compactor.cs");
+
+            var (replaced, _) = await _resolver.ResolveAsync(@"Other\Compactor.cs", _solutionDir, NoProjects);
+            var (direct, _) = await _resolver.ResolveAsync(@"App\Chat\Compactor.cs", _solutionDir, NoProjects);
+
+            Assert.That(replaced.Key, Is.EqualTo(direct.Key), "the cache must not tell the two calls apart");
         }
 
         [Test]

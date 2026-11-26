@@ -308,13 +308,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
             await service.MarkNewSessionAsync();
 
             // Build a ChatMessage with ToolCalls — exactly how ChatHistoryManager.AddAssistantMessage does it
-            var toolCalls = new List<ToolCall>
+            var toolCalls = new List<ChatToolCall>
             {
-                new ToolCall
+                new ChatToolCall
                 {
                     Id = "call_1",
-                    Type = "function",
-                    Function = new FunctionCallDetails { Name = "search", Arguments = "{\"query\":\"test\"}" }
+                    Name = "search",
+                    Arguments = "{\"query\":\"test\"}"
                 }
             };
             var assistantMsg = new ChatMessage("assistant", "using tools") { ToolCalls = toolCalls };
@@ -327,12 +327,12 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(loaded[0].Role, Is.EqualTo("assistant"));
             Assert.That(loaded[0].Content, Is.EqualTo("using tools"));
 
-            // Critical: ToolCalls must be List<ToolCall>, not JArray
-            Assert.That(loaded[0].ToolCalls, Is.InstanceOf<List<ToolCall>>());
-            var loadedTc = loaded[0].ToolCalls as List<ToolCall>;
+            // Critical: ToolCalls must come back as the Core type, not as a wire DTO or a JArray
+            Assert.That(loaded[0].ToolCalls, Is.InstanceOf<List<ChatToolCall>>());
+            var loadedTc = loaded[0].ToolCalls;
             Assert.That(loadedTc.Count, Is.EqualTo(1));
             Assert.That(loadedTc[0].Id, Is.EqualTo("call_1"));
-            Assert.That(loadedTc[0].Function.Name, Is.EqualTo("search"));
+            Assert.That(loadedTc[0].Name, Is.EqualTo("search"));
         }
 
 

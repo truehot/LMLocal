@@ -109,7 +109,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ProjectConfigurationReader: cannot read the active solution configuration: {ex.Message}");
+                InternalLogger.Warn("ProjectConfigurationReader: cannot read the active solution configuration", ex);
             }
 
             if (activeConfiguration == null || string.IsNullOrEmpty(activeConfiguration.Name))
@@ -212,7 +212,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ProjectConfigurationReader: cannot read the solution contexts: {ex.Message}");
+                InternalLogger.Warn("ProjectConfigurationReader: cannot read the solution contexts", ex);
             }
 
             return null;
@@ -277,7 +277,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ProjectConfigurationReader: cannot read 'OutputPath' of the project: {ex.Message}");
+                InternalLogger.Warn("ProjectConfigurationReader: cannot read 'OutputPath' of the project", ex);
                 return null;
             }
         }

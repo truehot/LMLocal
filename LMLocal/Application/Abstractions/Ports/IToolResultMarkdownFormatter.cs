@@ -8,7 +8,8 @@ namespace LMLocal.Application.Abstractions.Ports
     public interface IToolResultMarkdownFormatter
     {
         /// <summary>
-        /// Formats a collection of tool results (function name + JSON content) into a single Markdown section. Only results from known tools (read_file_lines, get_solution_overview, get_active_document) are included;
+        /// Formats the tool results of one step into a single Markdown section: the files read in the step, one
+        /// block per file without the reads a later write made stale, and the files the step changed.
         /// </summary>
         string FormatToolResults(IEnumerable<(string FunctionName, string JsonContent)> toolResults);
     }

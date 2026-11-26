@@ -36,7 +36,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         private const string KnowledgeExtension = "*.md";
         private const int MaxFilesToScan = 1000;
         private const int DefaultMaxResults = 5;
-        private const int MaxMaxResults = 50;
+        private const int MaxMaxResults = 20;
 
         public string ToolName => "search_solution_knowledge";
         public ToolAccessLevel AccessLevel => ToolAccessLevel.ReadOnly;
@@ -83,7 +83,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { "query", new ToolDetails { Type = "string", Description = "A short keyword phrase, technical term, identifier, feature name, or topic to search for. Prefer specific terms over full sentences." } },
-                        { "max_results", new ToolDetails { Type = "integer", Description = "Maximum number of top matching files to return. Default 5, maximum 50." } }
+                        { "max_results", new ToolDetails { Type = "integer", Description = "Maximum number of top matching files to return. Default 5, maximum 20." } }
                     },
                     Required = new List<string> { "query" }
                 }
@@ -109,7 +109,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (files.Count == 0)
                     return Success(new List<KnowledgeMatchResult>(), 0, KnowledgeSearchOutcome.NoFiles);
 
-                var results = new List<KnowledgeMatchResult>();
+                string[] partialTerms = KnowledgeScorer.TokenizeQuery(query).Length > 1
+                    ? KnowledgePartialMatcher.GetSignificantTerms(query)
+                    : Array.Empty<string>();
+                if (partialTerms.Length < 2)
+                    partialTerms = Array.Empty<string>();
+                var foundTerms = new bool[partialTerms.Length];
+
+                var results = new List<ScoredFile>();
 
                 foreach (var file in files)
                 {
@@ -117,7 +124,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
                     try
                     {
-                        var match = await ScoreFileAsync(file, query, solutionDir, cancellationToken).ConfigureAwait(false);
+                        var match = await ScoreFileAsync(file, query, partialTerms, foundTerms, solutionDir, cancellationToken).ConfigureAwait(false);
                         if (match != null)
                             results.Add(match);
                     }
@@ -127,19 +134,25 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"search_solution_knowledge: error processing '{file.Path}': {ex.Message}");
+                        InternalLogger.Warn($"search_solution_knowledge: error processing '{file.Path}'", ex);
                     }
                 }
 
                 if (results.Count == 0)
                     return Success(new List<KnowledgeMatchResult>(), 0, KnowledgeSearchOutcome.NoMatches);
 
-                results.Sort((a, b) =>
+                results.Sort((x, y) =>
                 {
+                    var a = x.Result;
+                    var b = y.Result;
+
                     int c = b.Kind.CompareTo(a.Kind);
                     if (c != 0) return c;
 
                     c = b.SubScore.CompareTo(a.SubScore);
+                    if (c != 0) return c;
+
+                    c = b.TieBreakScore.CompareTo(a.TieBreakScore);
                     if (c != 0) return c;
 
                     c = b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc);
@@ -148,8 +161,27 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return string.CompareOrdinal(a.FilePath, b.FilePath);
                 });
 
+                results = KeepBestPartialResults(results);
                 var top = results.Take(maxResults).ToList();
-                return Success(top, results.Count);
+
+                bool hasPartial = false;
+                foreach (var scored in top)
+                {
+                    if (scored.Partial == null)
+                        continue;
+                    FillPartialDetails(scored, partialTerms);
+                    hasPartial = true;
+                }
+
+                int totalMatches = partialTerms.Length > 0
+                    ? results.Count(r => r.Result.Kind != KnowledgeMatchKind.FilenameSubstring)
+                        + top.Count(r => r.Result.Kind == KnowledgeMatchKind.FilenameSubstring)
+                    : results.Count;
+
+                var response = Success(top.Select(r => r.Result).ToList(), totalMatches);
+                if (hasPartial)
+                    response.Note = KnowledgePartialMatcher.BuildNote(partialTerms, foundTerms);
+                return response;
             }
             catch (OperationCanceledException)
             {
@@ -157,7 +189,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"search_solution_knowledge: unexpected error: {ex.Message}");
+                InternalLogger.Warn("search_solution_knowledge: unexpected error", ex);
                 return Failure(ex.Message);
             }
         }
@@ -213,7 +245,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"search_solution_knowledge: cannot enumerate '{absoluteDir}': {ex.Message}");
+                    InternalLogger.Warn($"search_solution_knowledge: cannot enumerate '{absoluteDir}'", ex);
                     continue;
                 }
 
@@ -235,7 +267,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"search_solution_knowledge: cannot stat '{entry.Path}': {ex.Message}");
+                    InternalLogger.Warn($"search_solution_knowledge: cannot stat '{entry.Path}'", ex);
                     entry.LastWriteTimeUtc = DateTime.MinValue;
                 }
             }
@@ -246,9 +278,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 .ToList();
         }
 
-        private async Task<KnowledgeMatchResult> ScoreFileAsync(
+        /// <summary>
+        /// Scores one file: all-words tiers first, then the partial-words fallback, then a file-name substring match.
+        /// </summary>
+        private async Task<ScoredFile> ScoreFileAsync(
             KnowledgeFileEntry file,
             string query,
+            string[] partialTerms,
+            bool[] foundTerms,
             string solutionDir,
             CancellationToken cancellationToken)
         {
@@ -257,11 +294,58 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
             string normalized = KnowledgeScorer.NormalizeLineEndings(content);
             var score = KnowledgeScorer.Score(fileName, normalized, query);
+
+            KnowledgePartialMatch partial = null;
+            if (partialTerms.Length > 0)
+            {
+                partial = KnowledgePartialMatcher.Analyze(fileName, normalized, partialTerms);
+                for (int i = 0; i < foundTerms.Length; i++)
+                {
+                    if (partial.PresentTerms[i])
+                        foundTerms[i] = true;
+                }
+            }
+
+            if (score.Kind < KnowledgeMatchKind.FilenameExact && partial != null && partial.IsMatch)
+            {
+                var partialResult = BuildResult(file, solutionDir, KnowledgeMatchKind.PartialWords, partial.WordCount, null, 0, string.Empty);
+                partialResult.TieBreakScore = partial.SectionCount;
+                return new ScoredFile(partialResult, partial, normalized);
+            }
+
             if (!score.IsMatch)
                 return null;
 
             string snippet = KnowledgeScorer.BuildSnippet(normalized, score.BestMatchIndex, SnippetRadius);
-            return BuildResult(file, solutionDir, score.Kind, score.SubScore, score.Heading, score.BestMatchLine, snippet);
+            return new ScoredFile(BuildResult(file, solutionDir, score.Kind, score.SubScore, score.Heading, score.BestMatchLine, snippet), null, null);
+        }
+
+        /// <summary>
+        /// Keeps the first <see cref="KnowledgePartialMatcher.MaxResults"/> fallback results of the sorted list and drops the rest.
+        /// </summary>
+        private static List<ScoredFile> KeepBestPartialResults(List<ScoredFile> sorted)
+        {
+            var kept = new List<ScoredFile>(sorted.Count);
+            int partialCount = 0;
+            foreach (var scored in sorted)
+            {
+                if (scored.Partial != null && ++partialCount > KnowledgePartialMatcher.MaxResults)
+                    continue;
+                kept.Add(scored);
+            }
+            return kept;
+        }
+
+        /// <summary>
+        /// Builds the snippet, line, heading and matched_terms of a fallback result that made it into the response.
+        /// </summary>
+        private static void FillPartialDetails(ScoredFile scored, string[] partialTerms)
+        {
+            var details = KnowledgePartialMatcher.BuildDetails(scored.Content, scored.Partial, partialTerms, SnippetRadius);
+            scored.Result.Snippet = KnowledgeScorer.BuildSnippet(scored.Content, details.CenterIndex, SnippetRadius);
+            scored.Result.LineNumber = details.Line;
+            scored.Result.Heading = details.Heading;
+            scored.Result.MatchedTerms = details.MatchedTerms;
         }
 
         private KnowledgeMatchResult BuildResult(
@@ -378,6 +462,23 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             public string Path { get; set; }
             public DateTime LastWriteTimeUtc { get; set; }
+        }
+
+        /// <summary>
+        /// A scored file; a fallback result keeps its match and text until its snippet is built.
+        /// </summary>
+        private sealed class ScoredFile
+        {
+            public KnowledgeMatchResult Result { get; }
+            public KnowledgePartialMatch Partial { get; }
+            public string Content { get; }
+
+            public ScoredFile(KnowledgeMatchResult result, KnowledgePartialMatch partial, string content)
+            {
+                Result = result;
+                Partial = partial;
+                Content = content;
+            }
         }
     }
 }

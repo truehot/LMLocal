@@ -41,6 +41,7 @@ namespace LMLocal.Infrastructure.Streaming
             cancellationToken.ThrowIfCancellationRequested();
 
             var fullResponse = new StringBuilder();
+            var fullReasoning = new StringBuilder();
             var contentBuffer = new StringBuilder();
             var reasoningBuffer = new StringBuilder();
             var toolCalls = new ToolCallAccumulator(_argumentsGuard);
@@ -142,6 +143,7 @@ namespace LMLocal.Infrastructure.Streaming
                                             {
                                                 case ChunkKind.Reasoning:
                                                     reasoningBuffer.Append(textChunk.Text);
+                                                    fullReasoning.Append(textChunk.Text);
                                                     break;
                                                 case ChunkKind.Content:
                                                     contentBuffer.Append(textChunk.Text);
@@ -241,6 +243,11 @@ namespace LMLocal.Infrastructure.Streaming
                 InternalLogger.Info($"Stream closed by user cancellation: {ex.Message}");
                 result.StopReason = StreamStopReason.Cancelled;
             }
+            catch (IOException ex) when (cancellationToken.IsCancellationRequested)
+            {
+                InternalLogger.Info($"Stream read interrupted by user cancellation: {ex.Message}");
+                result.StopReason = StreamStopReason.Cancelled;
+            }
             catch (IOException ex) when (ex.InnerException is SocketException socketEx && socketEx.SocketErrorCode == SocketError.TimedOut)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -257,7 +264,7 @@ namespace LMLocal.Infrastructure.Streaming
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in StreamProcessor: {ex.Message}", ex);
+                InternalLogger.Error("StreamProcessor: ProcessStreamAsync failed", ex);
                 result.ErrorMessage = ExceptionFormatter.Format(ex);
                 result.StopReason = cancellationToken.IsCancellationRequested ? StreamStopReason.Cancelled : StreamStopReason.Error;
             }
@@ -267,6 +274,7 @@ namespace LMLocal.Infrastructure.Streaming
             }
 
             result.ContentResponse = fullResponse.ToString();
+            result.Reasoning = fullReasoning.Length > 0 ? fullReasoning.ToString() : null;
             result.ToolCalls = toolCalls.Build();
 
             return result;

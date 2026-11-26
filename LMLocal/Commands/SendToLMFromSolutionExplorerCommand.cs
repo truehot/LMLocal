@@ -162,7 +162,7 @@ namespace LMLocal.Commands
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"SendToLMFromSE: injection failed: {ex.Message}");
+                    InternalLogger.Error("SendToLMFromSE: injection failed", ex);
                 }
             });
         }
@@ -246,7 +246,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendToLMFromSE: failed to process ProjectItem '{pi.Name}': {ex.Message}");
+                InternalLogger.Warn($"SendToLMFromSE: failed to process ProjectItem '{pi.Name}'", ex);
             }
         }
 
@@ -292,7 +292,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendToLMFromSE: failed to process Solution Folder '{solutionFolder.Name}': {ex.Message}");
+                InternalLogger.Warn($"SendToLMFromSE: failed to process Solution Folder '{solutionFolder.Name}'", ex);
             }
         }
 
@@ -356,7 +356,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendToLMFromSE: failed to read file '{fullPath}': {ex.Message}");
+                InternalLogger.Warn($"SendToLMFromSE: failed to read file '{fullPath}'", ex);
                 result.Add(new FileEntry
                 {
                     Path = fullPath,
@@ -404,7 +404,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendToLMFromSE: failed to build solution tree: {ex.Message}");
+                InternalLogger.Warn("SendToLMFromSE: failed to build solution tree", ex);
             }
 
             return new FileEntry

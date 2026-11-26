@@ -157,7 +157,7 @@ To use LM Local, you need:
 * **"Clear chat" button** – Click the clear history icon (located next to the menu button in the top-right corner) to open a confirmation dialog, allowing you to choose how to handle the current conversation context:
   * **Start fresh:** Clear everything and open a completely empty chat.
   * **Exact copy of the last exchange:** Copy your last message along with the AI's answer into the new chat's history.
-  * **Consolidate last exchange:** Merge your last message, tool results (code lines), and AI response into a single clean starting history.
+  * **Consolidate last exchange:** Merge the files read in your last step (one copy per file, without files changed afterwards) and the AI response into a single clean starting history.
   * **Summarize and move context:** Send a quick request to the AI to summarize this conversation, then save it as the first message in the new chat.
 
 
@@ -182,6 +182,8 @@ To use LM Local, you need:
 - 📜 **Chat History Dialog** – Browse and load past conversations from history logs.
 - 📊 **Usage & Stats** – Token usage, time and speed for today, recent days or the current session, split by model and by main chat / subagents.
 - 🕒 **Message Time** – Each answer shows when it arrived; hover for the full date.
+- 🪜 **Tool Calls View** – Choose how tool calls are shown: as a plain list, in a group that starts open, or in a group that starts closed.
+- ✅ **Task Panel** – For multi-step requests the model's plan is shown above the status bar with the state of each step.
 - 🛡️ **Protect Running AI Requests** - Prevents accidental loss of work: if you close Visual Studio (close button, Alt+F4 or File → Exit) or sign out / shut down Windows while an AI request is still running, a confirmation dialog in the current Visual Studio theme offers **Keep working**, **Stop request** (stops the request, Visual Studio stays open) or **Stop and exit**. Closing the dialog (Esc or ✕) keeps Visual Studio open. A forced Windows shutdown or ending the process from Task Manager is not intercepted. Can be turned off in Settings under **Protect running AI requests**.
 
 ### Context & Solution Awareness
@@ -302,6 +304,8 @@ The **Models** dialog (menu `… → Models…`) manages model settings in the `
 
 The **Adjust Current** button automatically finds or prepares a record for the currently active model.
 
+**Don't send reasoning back** – turn it on if the model or its server rejects the reasoning of earlier answers (`reasoning_content`) in requests with tools.
+
 You can also pick an **Auto-apply instruction** for a model: when you switch to this model, that instruction mode is selected in the chat (if the mode is enabled). "Not set" keeps the current mode.
 
 <a id="content--builtin-ai-tools"></a>
@@ -357,6 +361,8 @@ Open this from the extension's main menu. You’ll see all built‑in tools (for
 | `build_solution` | Builds the currently open solution, including all its projects, or a specific project. | Any (MSBuild) | Uses MSBuild via Visual Studio, in the active solution configuration (Configuration/Platform in the VS toolbar). |
 | `run_tests` | Runs the tests of a specific project and shows live output. | .NET (C#, VB, F#) | Uses the active solution configuration (Configuration/Platform in the VS toolbar). Requires the .NET SDK (`dotnet` CLI). |
 | `get_changes_diff` | Lists pending file changes with added/removed counts and optionally returns unified diffs for selected files. | Any | Mirrors the Changes panel |
+| `todo_write` | Keeps the step list of a multi-step request; shown in the chat as the task panel. | Any | – |
+| `git_read` | Read-only git inspection: status, diff, log, show, blame and file_at_revision for the repository containing the solution. | Any (git 2.24+) | No network, no writes; available with write tools disabled |
 
 `*` **Automatic syntax check applies to:** C# and VB (via Roslyn), .js/.mjs/.cjs (via Acornima).
 
@@ -430,15 +436,16 @@ To bind subagents to a different provider (e.g., cloud API, custom endpoint) or 
 
 ### Predefined Subagents
 
-Out of the box, LMLocal includes **5 predefined subagents**, all enabled by default:
+Out of the box, LMLocal includes these **predefined subagents**, all enabled by default except the Architect:
 
 1. **Code explorer** (`code_explorer_subagent`) — Read-only code agent: finds files by name or content, resolves C# and JavaScript/TypeScript symbols (declarations and usages), and reads source that first has to be located. Returns verified locations (file path, line number, matched line) or raw source blocks; both are reported through markers that the runner replaces with the real file lines, so the text comes verbatim from the tool results.
 2. **Build & Test** (`build_subagent`) — Agent used to build the open solution and run unit tests in Visual Studio, returning compiler errors and test failures.
 3. **Context retriever** (`context_retriever_subagent`) — Retrieval agent for querying archived chat history and project knowledge base documents to recall prior decisions, plans, or architectural conventions.
-4. **Architect** (`architect_subagent`) — Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
+4. **Architect** (`architect_subagent`) — *Disabled by default.* Read-only architecture decision agent: for tasks that need an architectural decision, it selects one best-fit design for the existing codebase, defines component responsibilities and layer boundaries, and explicitly lists what should not be introduced. Skipped for isolated fixes.
 5. **Reviewer** (`reviewer_subagent`) — Final-step software architecture and code quality reviewer that inspects the actual pending diff and validates proposed plans and implementations before delivery, ending with `Status: COMPLETE`, `PARTIAL`, or `REJECTED`.
+6. **Review skeptic** (`review_skeptic_subagent`) — Independent second opinion on the changes, called after the reviewer: checks whether the claims are true, whether the approach is justified, whether tests cover the new behavior, and whether a simpler path exists. It gives an assessment and never blocks.
 
-**Typical order:** explorer / context retriever gather evidence → architect (only when an architectural decision is needed) → edits → build & test → reviewer.
+**Typical order:** explorer / context retriever gather evidence → architect (when enabled and an architectural decision is needed) → edits → build & test → reviewer → review skeptic.
 
 > * **Note:** The default subagent prompts are specifically optimized for the `google_gemma-4-e4b-it` model.
 
@@ -502,7 +509,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 
 **Root-level defaults** (`providerType`, `customBaseUrl`, `customApiKey`, `model`, `temperature`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `reasoningEffort`, `parallel`, `maxParallel`) are applied to any agent that doesn't set its own value. Changing a root value updates every agent that currently *inherits* it; explicit per-agent values stay exactly as typed.
 
-**Tool ownership:** while subagent mode is on, a built-in tool listed in the `allowedTools` of an enabled agent is removed from the main model's tools: the main model reaches it only through that agent. Root-level `sharedTools` lists the tools the main model keeps anyway; the agent still has them too. The default config shares `read_file_lines`, so the main model reads a file whose path it already knows directly instead of running the code explorer for it.
+**Tool ownership:** while subagent mode is on, a built-in tool listed in the `allowedTools` of an enabled agent is removed from the main model's tools: the main model reaches it only through that agent. Root-level `sharedTools` lists the tools the main model keeps anyway; the agent still has them too. The default config shares `get_symbol_info` and `get_symbol_info_js`, so the main model can look up a symbol directly instead of running the code explorer for it. A hidden agent (`exposed: false`) is never offered to the main model as a tool, but it **still owns** its tools: they stay hidden from the main model unless they are in `sharedTools`.
 
 #### Example (illustrative)
 
@@ -536,7 +543,8 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
   "temperature": 0.1,
   "reasoningEffort": "medium",
   "sharedTools": [
-    "read_file_lines"
+    "get_symbol_info",
+    "get_symbol_info_js"
   ]
 }
 ```
@@ -546,6 +554,7 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `agents[]` | object[] | ✅ | — | see the schema below |
+| `pipelines[]` | object[] | | — | **alpha** — fixed sequences of agent runs, each offered to the main model as one tool; see *Pipelines* below |
 | `sharedTools[]` | string[] | | — | built-in tool names the main model keeps even though an enabled agent lists them in `allowedTools` (see *Tool ownership*) |
 
 #### `agents[]` schema
@@ -567,10 +576,69 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 | `reasoningEffort` | string | | root default | `none`/`low`/`medium`/`high` |
 | `parallel` | bool | | `false` | enable parallel grouping |
 | `maxParallel` | int `1..8` | | root default | how many SubAgents may run at the same time (values above 8 are treated as 8) |
+| `exposed` | bool | | `true` | **alpha** (used with pipelines) — `false` → the main model does not see the agent as a tool and cannot call it; it stays reachable through a pipeline (and through IPC for benchmarks) and still owns its tools |
 | `enabled` | bool | | `true` | runtime gate |
 | `allowedTools[]` | string[] | | `[]` | built-in tool names; an unknown name or another subagent's `id` (no recursion) → save rejected |
 
-**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`, `get_changes_diff`, `replace_file_lines`, `insert_file_lines`.
+**Common built-in tool names** referenced by the default agents: `get_solution_overview`, `list_directory`, `find_files`, `search_file_content`, `read_file_lines`, `get_symbol_info`, `get_symbol_info_js`, `inspect_type`, `build_solution`, `run_tests`, `search_chat_history`, `search_solution_knowledge`, `get_changes_diff`, `git_read`, `replace_file_lines`, `insert_file_lines`.
+
+#### Pipelines (alpha)
+
+> **Alpha:** pipelines are experimental. The configuration format and behavior may change in the next versions. They are off by default: the built-in `subagents.json` has no `pipelines[]`. A sample configuration ships as `subagents-pipeline.json`.
+
+A pipeline is a fixed sequence of agent runs offered to the main model as **one** tool. The main model calls it once with a `task`; the steps run in the configured order, each in a fresh session, and only the final text comes back. The main model never decides what runs next.
+
+```json
+"pipelines": [
+  {
+    "id": "review_flow",
+    "displayName": "Review flow",
+    "description": "Reviews the pending changes: explore the code, then analyze it, then write the verdict.",
+    "enabled": true,
+    "steps": [
+      { "agent": "code_explorer_subagent", "prompt": "{{task}}" },
+      { "agent": "review_subagent", "prompt": "Task: {{task}}\n\nCollected context:\n{{prev}}" }
+    ]
+  }
+]
+```
+
+| Field | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | string | ✅ | — | tool name: `[A-Za-z0-9_-]{1,64}`; must not collide with an agent id or a built-in tool name |
+| `displayName` | string | | `id` | shown in the chat card and in the dialog |
+| `description` | string | ✅ | — | the tool description the main model reads; it decides whether to call the pipeline from this text only |
+| `enabled` | bool | | `true` | a disabled pipeline is not offered to the model |
+| `output` | string | | `last` | `last` returns the answer of the last step; `all` returns every answer under its own heading |
+| `parallel` | bool | | root `parallel` | may the pipeline join a parallel group of one main round (only when every step agent is read-only and the pipeline has no parallel step) |
+| `maxParallel` | int `1..8` | | root `maxParallel` | width of that group |
+| `steps[]` | object[] | ✅ | — | at least one step |
+
+Step fields (`steps[]`):
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | | makes the answer addressable as `{{steps.<id>}}`; unique within the pipeline |
+| `agent` | string | ✅ | id of an agent from `agents[]` |
+| `prompt` | string | ✅ | the user message of the step |
+| `retries` | int `0..3` | | extra attempts on a transient provider failure (network, HTTP 408 or 5xx, a broken stream), with a pause of 3 / 5 / 8 s before each; default `0` |
+| `parallel` | object[] | | a group of branches that run at the same time; a step has exactly one of `agent`+`prompt` or `parallel` |
+| `maxParallel` | int | | width of the group; falls back to the pipeline, then to the root value |
+| `onBranchError` | string | | `stop` (default: the first final branch error stops the pipeline) or `continue` (the other branches finish and the next step sees `ERROR: ...` in their place) |
+
+**Placeholders:** `{{task}}` (the task of the main model), `{{prev}}` (final answer of the previous step; for a parallel step, every answer in config order, each under `### [b/K <id>]`) and `{{steps.<id>}}` (answer of an earlier step or branch). Substitution is one pass: a placeholder inside an answer is never expanded again, and a placeholder that cannot be resolved stays as it is. `{{prev}}` is not allowed in the first step.
+
+**Parallel steps:** the branches of a `parallel` group run at the same time, so every branch agent must use read-only tools only. A branch agent with a write tool is a configuration error: the pipeline is reported as invalid and is not offered to the main model (two agents editing the same files at once would interleave, and all branch runs share one snapshot batch). The answers are joined in config order, never in completion order. A branch is retried on its own (the other branches keep running); with `onBranchError: "stop"` the first *final* branch error — after its retries — cancels the others, and the error names the branch that failed, not a branch that was cancelled because of it.
+
+**When a pipeline is offered:** subagent mode and AI tools are on, the pipeline is enabled and structurally valid, and every step agent exists, is enabled and has its tools available in the current mode (an agent with a write tool in read-only mode makes the pipeline unavailable). Otherwise the pipeline is simply not in the tool list: the reason goes to the log and to the dialog, and saving is never blocked by it.
+
+**When a step fails:** the pipeline stops and the error names the position (`pipeline 'review_flow' step 2/3 (review)`); the steps after it do not run. A step is repeated only after a transient provider failure. Everything else is final at once: other provider errors (HTTP 4xx, an exhausted quota, a context overflow), a rate limit (HTTP 429 is already retried inside the request when *Retry once on rate limit* is on), the agent timeout, a truncated answer, logical failures (round limit, tools in the final round, an empty answer) and a user Stop. Each attempt is a separate run with its own log session and its own usage record. The timeout of the whole call is the sum of the step timeouts and the pauses before their retries, plus one grace period (a parallel group counts as its slowest branch), so it cannot cut the pipeline off between steps. The chat card shows the wall-clock duration of the whole run and the overall generation speed (all completion tokens over all generation time), never a sum of the per-step rates.
+
+> **Context growth:** `{{prev}}` is passed as it is and is never truncated. With long answers a step may overflow the model context; that step then fails with a provider error that names its position. Plan `maxTokens` and the number of steps with that in mind.
+
+> **Prompt injection:** `{{prev}}` contains file content and model answers. Put agents with write tools into a step only where they are really needed, because the text of an earlier step can instruct them.
+
+> **Older versions:** an extension version that does not know `pipelines[]` and `exposed` still reads the file (unknown fields are ignored), but its Save writes the configuration back without them. Keep the current version if you rely on pipelines.
 
 ---
 
@@ -578,11 +646,12 @@ Edit `%LOCALAPPDATA%\LMLocalChat\subagents.json` to add, remove, or tweak agents
 
 Open the Sub Agents dialog from the main menu.
 
-- **Enable / Disable** – toggle individual agents or all at once.
-- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it updates `model`, `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values (the others inherit the root defaults). If the active provider has no API key (or base URL), the old value is **removed** from the root and from agents, so a key from the previous provider does not stay in `subagents.json`. If the list is empty (no custom file), it first **loads the 8 built-in defaults into the dialog**.
+- **Enable / Disable** – toggle individual agents or all at once; **Enable All** / **Disable All** switch the pipelines as well.
+- **Pipelines** (alpha) – the section under the agent list shows every pipeline of the file: its step chain (`explorer → analyzer → analyzer`), its description and a toggle. When the pipeline is not offered to the main model right now, the reason is shown under its name (`agent 'x' is disabled`). Steps and prompts are edited in `subagents.json` only; the dialog never rewrites them. An agent that is hidden from the main model is marked **pipeline only**.
+- **Use Active Model** – copies the current main chat's model, provider, base URL, and API key into the root defaults. When clicked on an existing list, it updates `model`, `providerType`, `customBaseUrl`, `customApiKey` only on agents that already have those values (the others inherit the root defaults). If the active provider has no API key (or base URL), the old value is **removed** from the root and from agents, so a key from the previous provider does not stay in `subagents.json`. If the list is empty (no custom file), it first **loads the built-in defaults into the dialog**.
 - **Save** behaves in two modes:
-  - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the whole agent set is written, creating or replacing `subagents.json`.
-  - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags and root-level changes are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
+  - **Full replace** – after loading built-ins into an empty list (Use Active Model on *"No SubAgents configured"*): the configuration of the built-in default is written as it is — every root field (`temperature`, `reasoningEffort`, `timeoutSeconds`, `maxRounds`, `maxTokens`, `parallel`, `maxParallel`, `sharedTools`, `pipelines[]`) stays in the root and every agent keeps its own fields (`parallel`, `maxParallel`, `customApiKey`, `exposed`, …). The chosen provider and model are applied on top, the toggles are written as `enabled`.
+  - **Partial update** – when the dialog was opened from an existing custom file (flags toggled, or Use Active Model over existing agents): only the `enabled` flags of the agents and of the pipelines, and the root-level changes, are written; all other JSON fields stay exactly as typed (inherited fields are not expanded).
 
 Enable subagent mode in the chat via the **'s'** toolbar icon or the **"Enable Sub Agents"** checkbox in Settings.
 
@@ -1023,11 +1092,10 @@ The following configuration files are stored there:
 | `instructions.json` | AI Instructions presets (see [AI Instructions & Modes](#content--ai-instructions--modes)). |
 | `tools.json` | Enabled/disabled state of built-in tools (Built‑in Tools… dialog). |
 | `autocompletions.json` | Auto-completion settings (see [Auto-Completions](#content--auto-completions)). |
-| `subagents.json` | Subagent (worker agent) definitions. |
+| `subagents.json` | Subagent (worker agent) definitions and pipelines (`agents[]`, `pipelines[]`). |
 | `mcp.json` | MCP server configuration. |
 | `ChatHistory\` | Chat session logs (history dialog, session restore). |
-| `SubAgentsLogs\` | Sub Agent session logs. |
-| `Usage\` | Token usage records for the Usage & Stats dialog. |
+| `SubAgentsLogs\` | Sub Agent session logs. || `Usage\` | Token usage records for the Usage & Stats dialog. A pipeline step is recorded like a regular SubAgent run of its agent, plus `pipeline`, `pipeline_run_id`, `pipeline_step` (and `pipeline_step_id`, `pipeline_attempt`, `pipeline_branch` when they apply). |
 | `Snapshots\` | Internal backups used by the Changes panel to revert edits. |
 | `WebViewData\` | WebView2 browser data of the chat window. |
 

@@ -1,12 +1,23 @@
 ﻿import { formatTokenStats } from '@app/lib/token.stats.js';
 import { startTooling as startToolStatus, stepTooling as stepToolStatus, finishTooling as finishToolStatus, updateToolGroup as updateToolGroupStatus, stopRunningTools } from '@app/chat/tool.status.js';
+import { describeToolCall, stepActivity, formatAgentNames } from '@app/lib/tool.activity.js';
 import { createGenerationStopped } from '@app/chat/generation.stopped.js';
+
+/** How long one activity stays in the header: a single tool lasts milliseconds and several run per round. */
+const HEADER_LABEL_MIN_MS = 1500;
+
+/** Time without a running tool before the header says that the model is thinking. */
+const HEADER_THINKING_DELAY_MS = 1000;
+
+const THINKING_LABEL = 'Thinking…';
 
 /**
  * Factory that creates a collapsible AI message DOM element with multi-step support.
  */
 export function createAiCollapsibleMessage(container, highlightWorkerClient, currentPipeline, config) {
-    const { roundNum = 0, toolCount = 0 } = config || {};
+    const { roundNum = 0, behavior } = config || {};
+    const keepClosed = behavior?.keepClosed === true;
+    const onStopped = behavior?.onStopped;
 
     const thoughtHtml = `<div class="thought-container" style="display: none;" data-element="thought-container">
         <div class="reasoning-header">
@@ -57,7 +68,18 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
     let finalResponseEl = element.querySelector('[data-element="final-response"]');
     let finishPromise = null;
 
-    updateBlockTitle(roundNum, toolCount);
+    let headerLabel = null;
+    let headerLabelShownAt = 0;
+    let headerStep = roundNum + 1;
+    let nextHeaderStep = headerStep;
+    let headerHoldTimer = null;
+    let headerThinkingTimer = null;
+    let headerThinking = false;
+    let headerDone = false;
+    const runningTools = new Map();
+    const runningAgents = new Map();
+
+    renderHeader();
 
     let elements = {
         loadingIndicator: element.querySelector('[data-element="loading-indicator"]'),
@@ -80,12 +102,26 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
         if (elements.thoughtLoader) elements.thoughtLoader.style.display = 'none';
     }
 
-    function updateBlockTitle(roundNum, toolCount) {
+    function setTitleText(title, text) {
+        if (title.textContent !== text) title.textContent = text;
+    }
+
+    /** Header of the group: "In Progress..." (hidden in expanded mode) until the first tool, then "Step N: <activity>". */
+    function renderHeader() {
+        if (headerDone) return;
+
         const title = collapsibleBlock?.querySelector('.collapsible-title');
         const header = collapsibleBlock?.querySelector('.collapsible-header');
         if (!title || !header) return;
 
-        if (toolCount < 1) {
+        if (headerLabel === null) {
+            if (keepClosed) {
+                header.style.display = '';
+                collapsibleBlock?.classList.remove('no-header');
+                setTitleText(title, 'In Progress...');
+                return;
+            }
+
             header.style.display = 'none';
             collapsibleBlock?.classList.add('expanded', 'no-header');
             collapsibleContent?.classList.add('expanded');
@@ -94,9 +130,119 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
 
         header.style.display = '';
         collapsibleBlock?.classList.remove('no-header');
-        title.textContent = toolCount > 1
-            ? `Step ${roundNum}: Multi-Tool Execution (${toolCount} actions)`
-            : `Step ${roundNum}: Tool Execution`;
+        setTitleText(title, `Step ${headerStep}: ${headerLabel}`);
+    }
+
+    /** Activity to show now: running SubAgents, else the last started tool, else "Thinking…"; null keeps the shown one. */
+    function desiredHeaderLabel() {
+        if (runningAgents.size > 0) {
+            return formatAgentNames(Array.from(runningAgents.values()));
+        }
+
+        if (runningTools.size > 0) {
+            const labels = Array.from(runningTools.values());
+            return labels[labels.length - 1];
+        }
+
+        return headerThinking ? THINKING_LABEL : null;
+    }
+
+    /** Shows a label with the step it belongs to: the number of a new round waits for that round's first label. */
+    function applyHeaderLabel(label) {
+        if (label === headerLabel && nextHeaderStep === headerStep) return;
+        headerLabel = label;
+        headerStep = nextHeaderStep;
+        headerLabelShownAt = Date.now();
+        renderHeader();
+    }
+
+    function clearHeaderHoldTimer() {
+        if (!headerHoldTimer) return;
+        clearTimeout(headerHoldTimer);
+        headerHoldTimer = null;
+    }
+
+    function clearThinkingTimer() {
+        if (!headerThinkingTimer) return;
+        clearTimeout(headerThinkingTimer);
+        headerThinkingTimer = null;
+    }
+
+    /** Switches to the current activity once the shown one had HEADER_LABEL_MIN_MS; re-derived when the timer fires. */
+    function refreshHeaderLabel() {
+        if (headerDone) return;
+
+        const desired = desiredHeaderLabel();
+        if (!desired || (desired === headerLabel && nextHeaderStep === headerStep)) {
+            clearHeaderHoldTimer();
+            return;
+        }
+
+        const elapsed = headerLabel === null ? Number.POSITIVE_INFINITY : Date.now() - headerLabelShownAt;
+        const remaining = HEADER_LABEL_MIN_MS - elapsed;
+
+        if (remaining <= 0) {
+            clearHeaderHoldTimer();
+            applyHeaderLabel(desired);
+            return;
+        }
+
+        if (headerHoldTimer) return;
+
+        headerHoldTimer = setTimeout(() => {
+            headerHoldTimer = null;
+            refreshHeaderLabel();
+        }, remaining);
+    }
+
+    /** "Thinking…" between tools only after a pause, so a fast tool → model → tool cycle does not blink through it. */
+    function scheduleThinkingLabel() {
+        if (headerDone || headerLabel === null) return;
+        if (runningTools.size > 0 || runningAgents.size > 0) return;
+        if (headerThinking || headerThinkingTimer) return;
+
+        headerThinkingTimer = setTimeout(() => {
+            headerThinkingTimer = null;
+            if (runningTools.size > 0 || runningAgents.size > 0) return;
+            headerThinking = true;
+            refreshHeaderLabel();
+        }, HEADER_THINKING_DELAY_MS);
+    }
+
+    /** Cancels every pending header update: a late label must not replace "Completed"/"Stopped". */
+    function stopHeaderActivity() {
+        clearHeaderHoldTimer();
+        clearThinkingTimer();
+        headerThinking = false;
+        runningTools.clear();
+        runningAgents.clear();
+    }
+
+    /** Records a started call: a SubAgent keeps its name for its whole run, a built-in tool shows its category. */
+    function trackRunningCall(callId, message, toolName) {
+        const activity = describeToolCall(toolName, message);
+
+        clearThinkingTimer();
+        headerThinking = false;
+
+        if (activity.kind === 'agent') {
+            runningAgents.set(callId, activity.label);
+        } else {
+            runningTools.set(callId, activity.label);
+        }
+
+        refreshHeaderLabel();
+    }
+
+    function untrackRunningCall(callId) {
+        runningTools.delete(callId);
+        runningAgents.delete(callId);
+
+        if (runningTools.size > 0 || runningAgents.size > 0) {
+            refreshHeaderLabel();
+        } else {
+            scheduleThinkingLabel();
+        }
     }
 
     function wrapInBlock() {
@@ -108,6 +254,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
     }
 
     function resetState() {
+        stopHeaderActivity();
         elements = null;
         collapsibleBlock = null;
         collapsibleContent = null;
@@ -139,6 +286,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
                 elements.thoughtContainer.style.display = 'block';
                 elements.thoughtContainer.classList.add('is-thinking');
             }
+            scheduleThinkingLabel();
         },
 
         stopThoughts: () => {
@@ -156,11 +304,13 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
                 }
             }
             isStreaming = true;
+            scheduleThinkingLabel();
         },
 
         updateStreaming: (text) => {
             if (!isStreaming) api.startStreaming(text);
             currentPipeline.write(text);
+            scheduleThinkingLabel();
         },
 
         finishStreaming: () => {
@@ -190,18 +340,22 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             return finishPromise;
         },
 
-        startTooling: (callId, message) => {
+        startTooling: (callId, message, toolName) => {
             stopLoadingIndicator();
             wrapInBlock();
             startToolStatus(elements.toolContainer, callId, message);
+            trackRunningCall(callId, message, toolName);
         },
 
-        stepTooling: (callId, step, message) => {
-            stepToolStatus(elements.toolContainer, callId, step, message);
+        stepTooling: (callId, step, message, toolName) => {
+            stepToolStatus(elements.toolContainer, callId, step, message, {
+                category: stepActivity(toolName, message)
+            });
         },
 
         finishTooling: (callId, withError, message) => {
             finishToolStatus(elements.toolContainer, callId, withError, message);
+            untrackRunningCall(callId);
         },
 
         updateToolGroup: (groupId, completed, total) => {
@@ -215,6 +369,8 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             }
             stopLoadingIndicator();
             stopThoughts();
+            stopHeaderActivity();
+            headerDone = true;
             stopRunningTools(elements.toolContainer);
 
             if (finalResponseEl) {
@@ -222,9 +378,11 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
                 finalResponseEl.appendChild(createGenerationStopped(message, options));
             }
             element.classList.add('stopped');
+
+            if (onStopped) onStopped(api);
         },
 
-        nextRound: (roundNum, toolCount) => {
+        nextRound: (roundNum) => {
             stopLoadingIndicator();
             stopThoughts();
             if (isStreaming) {
@@ -247,7 +405,12 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
             elements.toolContainer = stepDiv.querySelector('[data-element="ai-tool-container"]');
             elements.thoughtLoader = stepDiv.querySelector('[data-element="thought-loader"]');
 
-            updateBlockTitle(roundNum, toolCount);
+            nextHeaderStep = roundNum + 1;
+            if (headerLabel === THINKING_LABEL) {
+                headerStep = nextHeaderStep;
+                renderHeader();
+            }
+            scheduleThinkingLabel();
 
             if (collapsibleBlock) {
                 collapsibleBlock.style.display = 'block';
@@ -255,6 +418,9 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
         },
 
         finalizeResult: async () => {
+            stopHeaderActivity();
+            headerDone = true;
+
             if (finishPromise) {
                 try { await finishPromise; } catch (e) { console.error('finalizeResult:', e); }
             }
@@ -346,6 +512,7 @@ export function createAiCollapsibleMessage(container, highlightWorkerClient, cur
         finalize: () => {
             stopLoadingIndicator();
             stopThoughts();
+            stopHeaderActivity();
             if (isStreaming) {
                 isStreaming = false;
                 currentPipeline?.abort();

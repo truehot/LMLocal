@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Provider;
 
-namespace LMLocal.Infrastructure.Api
+namespace LMLocal.Infrastructure.LlmApi.Provider
 {
     /// <summary>
     /// Resolves the model provider and corresponding API endpoint.

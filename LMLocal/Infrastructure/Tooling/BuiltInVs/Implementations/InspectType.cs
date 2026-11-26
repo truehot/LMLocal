@@ -114,6 +114,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
+                LMLocal.Core.Common.InternalLogger.Warn("InspectType: type inspection failed", ex);
                 return ErrorResponse(null, $"Internal error: {ex.Message}");
             }
         }
@@ -145,6 +146,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     }
                     catch (Exception ex) when (!(ex is OperationCanceledException))
                     {
+                        LMLocal.Core.Common.InternalLogger.Warn($"InspectType: inspection of '{typeName}' failed", ex);
                         blocks.Add(ErrorResponse(typeName, $"Internal error: {ex.Message}"));
                     }
                 }

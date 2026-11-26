@@ -42,6 +42,10 @@ namespace LMLocal.Infrastructure.Settings
         private const int DefaultWindowSeconds = 5;
         private const int DefaultRequestTimeoutSeconds = 105;
 
+        private const string ToolCallsDisplayFlat = "flat";
+        private const string ToolCallsDisplayExpanded = "expanded";
+        private const string ToolCallsDisplayCollapsed = "collapsed";
+
         public event Action<AppSettings> SettingsChanged;
 
         public SettingsManager()
@@ -375,12 +379,38 @@ namespace LMLocal.Infrastructure.Settings
             }
         }
 
+        /// <summary>
+        /// Normalizes the values a settings file (or the webview payload) may carry in an unusable form.
+        /// </summary>
         private static void EnsureValidSettings(AppSettings settings)
         {
-            if (settings != null && !Enum.IsDefined(typeof(AppTheme), settings.Theme))
+            if (settings == null) return;
+
+            if (!Enum.IsDefined(typeof(AppTheme), settings.Theme))
             {
                 settings.Theme = AppTheme.Dark;
             }
+
+            settings.ToolCallsDisplay = NormalizeToolCallsDisplay(settings.ToolCallsDisplay, settings.CollapseToolCalls);
+
+            settings.CollapseToolCalls = !string.Equals(settings.ToolCallsDisplay, ToolCallsDisplayFlat, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Returns one of the known display modes.
+        /// </summary>
+        private static string NormalizeToolCallsDisplay(string value, bool collapseToolCalls)
+        {
+            string mode = value?.Trim().ToLowerInvariant();
+
+            if (string.Equals(mode, ToolCallsDisplayFlat, StringComparison.Ordinal) ||
+                string.Equals(mode, ToolCallsDisplayExpanded, StringComparison.Ordinal) ||
+                string.Equals(mode, ToolCallsDisplayCollapsed, StringComparison.Ordinal))
+            {
+                return mode;
+            }
+
+            return collapseToolCalls ? ToolCallsDisplayExpanded : ToolCallsDisplayFlat;
         }
 
         private bool TryValidateSettings(AppSettings settings, out System.Collections.Generic.List<string> errors)

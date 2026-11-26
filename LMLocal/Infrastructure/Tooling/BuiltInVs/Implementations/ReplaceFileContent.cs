@@ -133,7 +133,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return Error($"Error: {ex.Message}");
             }
         }

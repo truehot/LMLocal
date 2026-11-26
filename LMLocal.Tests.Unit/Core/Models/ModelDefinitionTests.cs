@@ -1,4 +1,5 @@
 using LMLocal.Core.Models;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit.Core.Models
@@ -123,6 +124,41 @@ namespace LMLocal.Tests.Unit.Core.Models
 
             // Not a hard contract, but a regression signal for a missing hash contribution.
             Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void DisableReasoningEcho_DefaultsToFalse()
+        {
+            Assert.That(new ModelDefinition().DisableReasoningEcho, Is.False, "An existing profile without the field keeps echoing reasoning.");
+        }
+
+        [Test]
+        public void Equals_ReturnsFalse_WhenDisableReasoningEchoDiffers()
+        {
+            var a = BaseModel();
+            var b = BaseModel();
+            b.DisableReasoningEcho = true;
+
+            Assert.That(a.Equals(b), Is.False);
+            Assert.That(a.GetHashCode(), Is.Not.EqualTo(b.GetHashCode()));
+        }
+
+        [Test]
+        public void Json_WithoutDisableReasoningEcho_ReadsFalse()
+        {
+            var file = JsonConvert.DeserializeObject<ModelsConfigFile>(
+                "{\"models\":[{\"id\":1,\"modelId\":\"deepseek-chat\",\"providerType\":\"deepseek\",\"enabled\":true}]}");
+
+            Assert.That(file.Models[0].DisableReasoningEcho, Is.False);
+        }
+
+        [Test]
+        public void Json_WithDisableReasoningEcho_ReadsTrue()
+        {
+            var file = JsonConvert.DeserializeObject<ModelsConfigFile>(
+                "{\"models\":[{\"id\":1,\"modelId\":\"deepseek-chat\",\"providerType\":\"deepseek\",\"disableReasoningEcho\":true}]}");
+
+            Assert.That(file.Models[0].DisableReasoningEcho, Is.True);
         }
 
         [Test]

@@ -47,6 +47,38 @@ namespace LMLocal.Infrastructure.WebView.Models
 
         [JsonProperty("enabled")]
         public bool Enabled { get; set; }
+
+        /// <summary>
+        /// False when the agent is reachable only through a pipeline: the main model does not see it as a tool.
+        /// </summary>
+        [JsonProperty("exposed")]
+        public bool Exposed { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Pipeline summary exposed to the UI: its steps are shown as a chain and are not editable here.
+    /// </summary>
+    public class SubAgentPipelineResponse
+    {
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("displayName")]
+        public string DisplayName { get; set; }
+
+        [JsonProperty("description")]
+        public string Description { get; set; }
+
+        [JsonProperty("enabled")]
+        public bool Enabled { get; set; }
+
+        /// <summary>Step labels in run order, e.g. <c>explorer → analyzer → analyzer</c>.</summary>
+        [JsonProperty("steps")]
+        public List<string> Steps { get; set; } = new List<string>();
+
+        /// <summary>Why the pipeline is not offered to the main model right now; null when it is available.</summary>
+        [JsonProperty("unavailableReason")]
+        public string UnavailableReason { get; set; }
     }
 
     /// <summary>
@@ -56,6 +88,9 @@ namespace LMLocal.Infrastructure.WebView.Models
     {
         [JsonProperty("agents")]
         public List<SubAgentResponse> Agents { get; set; } = new List<SubAgentResponse>();
+
+        [JsonProperty("pipelines")]
+        public List<SubAgentPipelineResponse> Pipelines { get; set; } = new List<SubAgentPipelineResponse>();
 
         [JsonProperty("success")]
         public bool Success { get; set; } = true;
@@ -89,6 +124,10 @@ namespace LMLocal.Infrastructure.WebView.Models
 
         [JsonProperty("agents")]
         public List<SubAgentEnabledFlag> Agents { get; set; }
+
+        /// <summary>Enabled flags of the pipelines; null when the payload carries none.</summary>
+        [JsonProperty("pipelines")]
+        public List<SubAgentEnabledFlag> Pipelines { get; set; }
     }
 
     /// <summary>

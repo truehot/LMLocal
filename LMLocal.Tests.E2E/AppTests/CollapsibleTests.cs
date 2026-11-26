@@ -211,7 +211,7 @@ public class CollapsibleTests : AppTestBase
 
     [Test]
     [Category("Collapsible")]
-    public async Task MultiTool_HeaderShowsCorrectToolCount()
+    public async Task MultiTool_HeaderNamesTheActivityOfTheRound()
     {
         await GotoWithMockAsync("webview-mock-collapsible.js");
         await Expect(Page.Locator("#conn-status"))
@@ -224,9 +224,11 @@ public class CollapsibleTests : AppTestBase
         await Expect(Page.Locator("[data-element=\"collapsible-block\"]"))
             .ToBeVisibleAsync(new() { Timeout = 5000 });
 
-        // The header title should reflect multi-tool execution. It is set when the round
-        // transition arrives, so wait for it instead of reading whatever the title holds now.
+        // Set by the first tool call of the round, not by the transition that follows the finished tools.
         var title = Page.Locator(".collapsible-title");
-        await Expect(title).ToContainTextAsync("Multi-Tool", new() { Timeout = 5000 });
+        await Expect(title).ToContainTextAsync("Reading code", new() { Timeout = 5000 });
+
+        Assert.That(await title.TextContentAsync(), Does.Not.Contain("Multi-Tool"),
+            "The header shows the activity of the tools, not how many of them run");
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
@@ -218,7 +219,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: reacting to the settings change failed: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: reacting to the settings change failed", ex);
             }
         }
 
@@ -239,7 +240,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read the settings: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read the settings", ex);
                 return false;
             }
         }
@@ -272,7 +273,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read the stopping frame: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read the stopping frame", ex);
             }
         }
 
@@ -286,7 +287,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read the debugger mode: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read the debugger mode", ex);
                 return false;
             }
         }
@@ -348,7 +349,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read the stack frames: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read the stack frames", ex);
             }
 
             return frames;
@@ -388,7 +389,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read the local variables: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read the local variables", ex);
             }
 
             return locals;
@@ -456,7 +457,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot read '$exception': {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot read '$exception'", ex);
             }
 
             if (chain.Count == 0)
@@ -492,7 +493,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot evaluate '{expression}': {ex.Message}");
+                InternalLogger.Warn($"DebuggerContextService: cannot evaluate '{expression}'", ex);
                 return null;
             }
         }
@@ -568,7 +569,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             return value.Length > MaxRawValueLength ? value.Substring(0, MaxRawValueLength) : value;
         }
 
-        private static string SafeRead(Func<string> read)
+        private static string SafeRead(Func<string> read, [CallerLineNumber] int callerLine = 0)
         {
             try
             {
@@ -576,12 +577,12 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: a debugger read failed: {ex.Message}");
+                InternalLogger.Warn($"DebuggerContextService: a debugger read failed (called at line {callerLine})", ex);
                 return null;
             }
         }
 
-        private static bool SafeReadBool(Func<bool> read)
+        private static bool SafeReadBool(Func<bool> read, [CallerLineNumber] int callerLine = 0)
         {
             try
             {
@@ -589,13 +590,13 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: a debugger read failed: {ex.Message}");
+                InternalLogger.Warn($"DebuggerContextService: a debugger read failed (called at line {callerLine})", ex);
                 return false;
             }
         }
 
         /// <summary>Reads a one-based line number; 0 stands for "unknown".</summary>
-        private static int SafeReadLineNumber(Func<uint> read)
+        private static int SafeReadLineNumber(Func<uint> read, [CallerLineNumber] int callerLine = 0)
         {
             try
             {
@@ -604,7 +605,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: a debugger read failed: {ex.Message}");
+                InternalLogger.Warn($"DebuggerContextService: a debugger read failed (called at line {callerLine})", ex);
                 return 0;
             }
         }
@@ -662,7 +663,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot marshal the stop to the UI thread: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot marshal the stop to the UI thread", ex);
             }
         }
 
@@ -733,7 +734,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"DebuggerContextService: cannot unsubscribe from the debugger events: {ex.Message}");
+                InternalLogger.Warn("DebuggerContextService: cannot unsubscribe from the debugger events", ex);
             }
             finally
             {

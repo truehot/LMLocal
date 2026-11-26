@@ -163,7 +163,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return ErrorReponse($"Error: {ex.Message}");
             }
         }
@@ -255,7 +255,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             catch (Exception ex)
             {
                 TryDeletePartialCopy(absolutePath);
-                InternalLogger.Error($"{ToolName}: failed to copy '{absoluteSourcePath}' to '{absolutePath}': {ex}");
+                InternalLogger.Error($"{ToolName}: failed to copy '{absoluteSourcePath}' to '{absolutePath}'", ex);
                 return ErrorReponse($"Failed to copy '{copyFrom}' to '{filePath}': {ex.Message}");
             }
 
@@ -284,7 +284,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"{ToolName}: failed to delete the partial copy '{absolutePath}': {ex.Message}");
+                InternalLogger.Warn($"{ToolName}: failed to delete the partial copy '{absolutePath}'", ex);
             }
         }
 

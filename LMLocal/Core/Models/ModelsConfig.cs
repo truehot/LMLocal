@@ -123,6 +123,12 @@ namespace LMLocal.Core.Models
         [JsonProperty("enabled")]
         public bool Enabled { get; set; } = true;
 
+        /// <summary>
+        /// When true, the reasoning_content of earlier answers is not sent back to this model.
+        /// </summary>
+        [JsonProperty("disableReasoningEcho")]
+        public bool DisableReasoningEcho { get; set; }
+
         public bool Equals(ModelDefinition other)
         {
             if (ReferenceEquals(this, other)) return true;
@@ -137,7 +143,8 @@ namespace LMLocal.Core.Models
                 && string.Equals(ReasoningEffort, other.ReasoningEffort, StringComparison.OrdinalIgnoreCase)
                 && InstructionTabId == other.InstructionTabId
                 && IsCustom == other.IsCustom
-                && Enabled == other.Enabled;
+                && Enabled == other.Enabled
+                && DisableReasoningEcho == other.DisableReasoningEcho;
         }
 
         public override bool Equals(object obj) => Equals(obj as ModelDefinition);
@@ -158,6 +165,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + (InstructionTabId.HasValue ? InstructionTabId.Value.GetHashCode() : 0);
                 hash = hash * 23 + IsCustom.GetHashCode();
                 hash = hash * 23 + Enabled.GetHashCode();
+                hash = hash * 23 + DisableReasoningEcho.GetHashCode();
                 return hash;
             }
         }

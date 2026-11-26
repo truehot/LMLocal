@@ -46,6 +46,7 @@ namespace LMLocal.Infrastructure.LlmApi
                 AddTools(request, _toolQueueProvider.GetMainQueue().Definitions);
             }
 
+            ApplyReasoningEchoGate(request);
             return request;
         }
 
@@ -56,6 +57,7 @@ namespace LMLocal.Infrastructure.LlmApi
 
             var request = CreateRequest(messageContext, modelContext, stream);
             AddTools(request, tools);
+            ApplyReasoningEchoGate(request);
             return request;
         }
 
@@ -70,7 +72,8 @@ namespace LMLocal.Infrastructure.LlmApi
                     Role = msg.Role,
                     Content = msg.Content,
                     ToolCallId = msg.ToolCallId,
-                    ToolCalls = ConvertToolCalls(msg.ToolCalls)
+                    ToolCalls = ToolCallProjection.ToWire(msg.ToolCalls),
+                    ReasoningContent = modelContext.EchoReasoning ? msg.ReasoningContent : null
                 };
                 messages.Add(apiMessage);
             }
@@ -104,22 +107,39 @@ namespace LMLocal.Infrastructure.LlmApi
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ApiRequestBuilder: failed to add tools to request: {ex.Message}");
+                InternalLogger.Warn("ApiRequestBuilder: failed to add tools to request", ex);
             }
         }
 
-        private static List<ToolCall> ConvertToolCalls(object toolCalls)
+        /// <summary>
+        /// reasoning_content goes back only with the tools of the request, and never when the model profile opted out
+        /// (the messages were already filtered in CreateRequest). The echoed size is kept on the request for the usage log.
+        /// </summary>
+        private static void ApplyReasoningEchoGate(SendChatRequest request)
         {
-            if (toolCalls == null)
-                return null;
+            bool hasTools = request.Tools != null && request.Tools.Count > 0;
+            int messages = 0, chars = 0;
 
-            if (toolCalls is List<ToolCall> typed)
-                return typed;
+            foreach (var message in request.Messages)
+            {
+                if (string.IsNullOrEmpty(message?.ReasoningContent))
+                    continue;
 
-            if (toolCalls is JArray jArray)
-                return jArray.ToObject<List<ToolCall>>();
+                if (!hasTools)
+                {
+                    message.ReasoningContent = null;
+                    continue;
+                }
 
-            return null;
+                messages++;
+                chars += message.ReasoningContent.Length;
+            }
+
+            request.ReasoningEchoChars = chars;
+
+            if (messages > 0)
+                InternalLogger.Info($"[ReasoningEcho] attached to {messages} message(s), {chars} chars, tools: {request.Tools.Count}.");
         }
+
     }
 }

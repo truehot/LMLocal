@@ -86,7 +86,7 @@ namespace LMLocal.Infrastructure.Instructions
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Error loading instruction defaults: " + ex.Message);
+                InternalLogger.Warn("Error loading instruction defaults", ex);
                 return new List<InstructionDefaultTab>();
             }
 

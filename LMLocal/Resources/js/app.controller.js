@@ -5,6 +5,7 @@ import { themeComponent } from '@app/components/theme.component.js';
 import { toolbarComponent } from '@app/components/toolbar.component.js';
 import { chatComponent } from '@app/components/chat.component.js';
 import { changesPanelComponent } from '@app/components/changes.panel.component.js';
+import { todoPanelComponent } from '@app/components/todo.panel.component.js';
 
 import chatController from '@app/chat/chat.controller.js';
 import appManager from '@app/services/app.manager.js';
@@ -18,6 +19,7 @@ import instructionsStore from '@app/store/instructions.store.js';
 import settingsStore from '@app/store/settings.store.js';
 import providersStore from '@app/store/providers.store.js';
 import changesStore from '@app/store/changes.store.js';
+import todoStore from '@app/store/todo.store.js';
 import bridgeMessageDispatcher from '@app/api/bridge.message.dispatcher.js';
 import appDataService from '@app/services/app.data.service.js';
 import { createModelSelectorDialog } from '@app/lib/model-selector.factory.js';
@@ -52,6 +54,7 @@ class AppController {
         this._instructionsStoreListener = null;
         this._settingsStoreListener = null;
         this._changesStoreListener = null;
+        this._todoStoreListener = null;
         this._providerResolverUnsubscribe = null;
         this._globalClickHandler = null;
     }
@@ -67,6 +70,7 @@ class AppController {
         menuComponent.setup();
         chatComponent.setup();
         changesPanelComponent.setup();
+        todoPanelComponent.setup();
 
         this._attachEvents();
 
@@ -88,6 +92,7 @@ class AppController {
         menuComponent.reset();
         chatComponent.reset();
         changesPanelComponent.reset();
+        todoPanelComponent.reset();
 
         this._initialized = false;
     }
@@ -111,6 +116,7 @@ class AppController {
             chatController.updateAppState(state, prev);
             toolbarComponent.updateAppState(state, prev);
             changesPanelComponent.updateAppState(state, prev);
+            todoPanelComponent.updateAppState(state, prev);
         };
         appStore.subscribe(this._appStoreListener);
 
@@ -143,6 +149,11 @@ class AppController {
             changesPanelComponent.updateChangesState(state, prev);
         };
         changesStore.subscribe(this._changesStoreListener);
+
+        this._todoStoreListener = (state, prev) => {
+            todoPanelComponent.updateTodoState(state, prev);
+        };
+        todoStore.subscribe(this._todoStoreListener);
 
         this._providerResolverUnsubscribe = providerResolver.subscribe((name) => {
             statusComponent.updateProviderName(name);
@@ -181,8 +192,8 @@ class AppController {
             chatController.renderHistory(messages);
         });
 
-        bridgeMessageHandler.onToolRoundStart.on((roundNumber, toolCount) => {
-            appManager.onToolRoundStart(roundNumber, toolCount);
+        bridgeMessageHandler.onToolRoundStart.on((roundNumber) => {
+            appManager.onToolRoundStart(roundNumber);
         });
 
         bridgeMessageHandler.onFinalRound.on(() => {
@@ -517,6 +528,11 @@ class AppController {
         if (this._changesStoreListener) {
             changesStore.unsubscribe(this._changesStoreListener);
             this._changesStoreListener = null;
+        }
+
+        if (this._todoStoreListener) {
+            todoStore.unsubscribe(this._todoStoreListener);
+            this._todoStoreListener = null;
         }
 
         if (this._providerResolverUnsubscribe) {

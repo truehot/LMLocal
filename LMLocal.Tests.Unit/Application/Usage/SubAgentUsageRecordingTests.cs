@@ -11,6 +11,7 @@ using LMLocal.Application.Tool;
 using LMLocal.Application.Usage;
 using LMLocal.Core.Models;
 using LMLocal.Core.Models.Usage;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Persistence;
 using Moq;
 using NUnit.Framework;
@@ -83,8 +84,8 @@ namespace LMLocal.Tests.Unit.Application.Usage
                 _roundService.Object,
                 () => _toolManager.Object,
                 _queueProvider.Object,
-                new Mock<IToolCallLoopDetector>().Object,
                 _persistenceFactory.Object,
+                new ProviderPolicy(),
                 SubAgentsService.DefaultLoopRecoveryEnabled,
                 _recorder.Object);
         }

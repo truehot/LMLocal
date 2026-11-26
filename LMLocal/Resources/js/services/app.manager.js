@@ -183,11 +183,9 @@ class AppManager {
             accumulatedText: "",
             accumulatedThoughtText: "",
             error: null,
-            // An error that arrives before ChatSessionStart means the backend refused the replacement and changed nothing.
             replacePending: request.replaceLast ? { mode: request.replaceLast, prompt: request.prompt || '' } : null,
             stoppedByUser: false,
-            roundNumber: 0,
-            toolCount: 0
+            roundNumber: 0
         });
 
         bridgeClient.executePromptAsync(request).catch(e => {
@@ -199,11 +197,10 @@ class AppManager {
     /**
      * Marks the start of a tool round.
      */
-    onToolRoundStart(roundNumber, toolCount) {
+    onToolRoundStart(roundNumber) {
         appStore.setState({
             status: AppStatus.PROCESSING,
             roundNumber: roundNumber || 0,
-            toolCount: toolCount || 0,
             accumulatedText: "",
             accumulatedThoughtText: ""
         });

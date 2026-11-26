@@ -143,7 +143,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     return new FormatCodeResponse
                     {
                         Success = true,
-                        FilePath = absolutePath,
+                        FilePath = ReportedPath(absolutePath, solutionDir),
                         Skipped = true,
                         Note = $"Visual Studio has no formatter for '{extension}' files; the file was left unchanged."
                     };
@@ -161,12 +161,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return new FormatCodeResponse
                 {
                     Success = true,
-                    FilePath = absolutePath
+                    FilePath = ReportedPath(absolutePath, solutionDir)
                 };
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error during formatting for {absolutePath}: {ex}");
+                InternalLogger.Error($"Error during formatting for {absolutePath}", ex);
                 return ErrorResponse($"Formatting failed: {ex.Message}");
             }
             finally
@@ -188,6 +188,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         /// <summary>
+        /// The path the other file tools report: solution-relative when the file is inside the solution, absolute
+        /// otherwise.
+        /// </summary>
+        private string ReportedPath(string absolutePath, string solutionDir)
+        {
+            return _pathResolver.TryGetRelativePath(absolutePath, solutionDir, out string relativePath)
+                   && !string.IsNullOrEmpty(relativePath)
+                ? relativePath
+                : absolutePath;
+        }
+
+        /// <summary>
         /// True/false when VS reports whether <paramref name="commandName"/> is available for the active documen.
         /// </summary>
         private static bool? IsCommandAvailable(DTE dte, string commandName)
@@ -199,7 +211,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"format_document: cannot query availability of '{commandName}': {ex.Message}");
+                InternalLogger.Warn($"format_document: cannot query availability of '{commandName}'", ex);
                 return null;
             }
         }
@@ -233,7 +245,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (FilePathList.TryParse(parameters, out List<string> paths, out _) && paths.Count > 1)
                 return $"Formatting {paths.Count} files... ";
 
-            var path = paths != null && paths.Count == 1 ? paths[0] : "file";
+            var path = paths?.Count == 1 ? paths[0] : "file";
             bool organizeUsings = true;
             if (parameters != null && parameters.TryGetValue("organize_usings", out var organizeValue))
                 TryParseBoolean(organizeValue, out organizeUsings);

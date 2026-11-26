@@ -1,10 +1,12 @@
-import { Config } from '@app/constants/app.globals.js';
+import { Config, TodoToolName } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import appStore from '@app/store/app.store.js';
 import sessionStore from '@app/store/session.store.js';
 import changesStore from '@app/store/changes.store.js';
+import todoStore from '@app/store/todo.store.js';
 import { ChunkBuffer } from '@app/lib/chunk.buffer.js';
 import { createCallback } from '@app/lib/callback.js';
+import { subAgentNameFromMessage } from '@app/lib/tool.activity.js';
 import { applyRateLimitWait } from '@app/store/rate.limit.state.js';
 
 class BridgeMessageHandler {
@@ -114,7 +116,9 @@ class BridgeMessageHandler {
             this.onFinalRound.emit();
             return;
         }
-        this.onToolRoundStart.emit(data.RoundNumber || 0, data.ToolCount || 0);
+
+        this._clearSubAgentTokens();
+        this.onToolRoundStart.emit(data.RoundNumber || 0);
     }
 
     handleChatSessionCancelled(errorMessage) {
@@ -126,7 +130,8 @@ class BridgeMessageHandler {
             error: errorMessage,
             stoppedByUser: true,
             tokenSpeed: 0,
-            rateLimitWait: null
+            rateLimitWait: null,
+            subAgentTokens: {}
         });
     }
 
@@ -134,8 +139,9 @@ class BridgeMessageHandler {
         this.contentBuffer.reset();
         this.thoughtBuffer.reset();
         sessionStore.setState({ toolResultTokens: 0 });
+        todoStore.setState({ items: [] });
 
-        appStore.setState({ rateLimitWait: null, replacePending: null });
+        appStore.setState({ rateLimitWait: null, replacePending: null, subAgentTokens: {} });
     }
 
     /**
@@ -168,7 +174,8 @@ class BridgeMessageHandler {
             lastAnswerTokens: contextTokens,
             cachedTokens: metadata.CachedTokens || 0,
             tokenSpeed: metadata.TokensPerSecond || 0,
-            rateLimitWait: null
+            rateLimitWait: null,
+            subAgentTokens: {}
         });
     }
 
@@ -184,7 +191,8 @@ class BridgeMessageHandler {
             stoppedByUser: false,
             tokenSpeed: 0,
             rateLimitWait: null,
-            replacePending: null
+            replacePending: null,
+            subAgentTokens: {}
         });
 
         if (refusedReplacement) {
@@ -192,11 +200,48 @@ class BridgeMessageHandler {
         }
     }
 
+    /** A tool call started; a SubAgent call is registered, so its live token events have an entry to update. */
     handleStreamToolCall(toolCall) {
-        appStore.setState({
-            status: AppStatus.EXECUTING,
-            toolCallId: toolCall.CallId,
-            toolMessage: toolCall.Message
+        const callId = toolCall.CallId || "";
+        const isSubAgent = !!subAgentNameFromMessage(toolCall.Message);
+
+        appStore.setState(prevState => {
+            const next = {
+                status: AppStatus.EXECUTING,
+                toolCallId: callId,
+                toolName: toolCall.FunctionName || "",
+                toolMessage: toolCall.Message
+            };
+
+            if (isSubAgent && callId) {
+                next.subAgentTokens = {
+                    ...(prevState.subAgentTokens || {}),
+                    [callId]: { tokens: 0, speed: 0 }
+                };
+            }
+
+            return next;
+        });
+    }
+
+    /** Live token usage of a running SubAgent; ignored once its call ended, so a late event cannot revive it. */
+    handleStreamToolTokens(toolCall) {
+        const callId = toolCall.CallId || "";
+        if (!callId || !appStore.getState().subAgentTokens?.[callId]) return;
+
+        const tokens = Number(toolCall.Tokens) || 0;
+        const speed = Number(toolCall.TokensPerSecond) || 0;
+
+        appStore.setState(prevState => {
+            const current = prevState.subAgentTokens || {};
+            if (!current[callId]) return {};
+
+            return {
+                subAgentTokens: {
+                    ...current,
+                    [callId]: { tokens: tokens, speed: speed }
+                }
+            };
         });
     }
 
@@ -204,18 +249,39 @@ class BridgeMessageHandler {
         appStore.setState({
             status: AppStatus.STEPPING,
             toolCallId: toolCall.CallId,
+            toolName: toolCall.FunctionName || "",
             toolStep: Number.isFinite(toolCall.Step) ? toolCall.Step : null,
             toolMessage: toolCall.Message
         });
     }
 
     handleStreamToolEnd(toolCall) {
-        appStore.setState({
-            status: AppStatus.RESPONDING,
-            toolCallId: toolCall.CallId,
-            toolWithError: toolCall.IsError,
-            toolMessage: toolCall.Message
+        appStore.setState(prevState => {
+            const next = {
+                status: AppStatus.RESPONDING,
+                toolCallId: toolCall.CallId,
+                toolWithError: toolCall.IsError,
+                toolMessage: toolCall.Message
+            };
+
+            const current = prevState.subAgentTokens || {};
+            if (current[toolCall.CallId]) {
+                const { [toolCall.CallId]: _ended, ...rest } = current;
+                next.subAgentTokens = rest;
+            }
+
+            return next;
         });
+
+        if (toolCall.FunctionName === TodoToolName && Array.isArray(toolCall.UiData)) {
+            todoStore.setState({ items: toolCall.UiData });
+        }
+    }
+
+    /** Clears the SubAgent token usage at a new round, so no number of a finished call survives. */
+    _clearSubAgentTokens() {
+        if (Object.keys(appStore.getState().subAgentTokens || {}).length === 0) return;
+        appStore.setState({ subAgentTokens: {} });
     }
 
     handleStreamToolGroupStart(group) {

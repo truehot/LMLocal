@@ -17,5 +17,10 @@ namespace LMLocal.Infrastructure.SubAgents
         /// Enabled agents with a non-empty name, in file order. Names are not mutated.
         /// </summary>
         IReadOnlyList<SubAgentDefinition> GetEnabledAgents();
+
+        /// <summary>
+        /// Enabled pipelines with a non-empty id, in file order.
+        /// </summary>
+        IReadOnlyList<SubAgentPipelineDefinition> GetEnabledPipelines();
     }
 }

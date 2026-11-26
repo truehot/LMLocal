@@ -23,7 +23,6 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IToolExecutionManager> _toolManagerMock;
         private Mock<IHistoryCompactor> _compactorMock;
         private Mock<ISnapshotManager> _snapshotManagerMock;
-        private Mock<IToolCallLoopDetector> _loopDetectorMock;
         private Mock<ISubAgentsParallelPolicy> _parallelPolicyMock;
         private Mock<ISubAgentsParallelRunner> _parallelRunnerMock;
 
@@ -34,22 +33,21 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock = new Mock<IToolExecutionManager>();
             _compactorMock = new Mock<IHistoryCompactor>();
             _snapshotManagerMock = new Mock<ISnapshotManager>();
-            _loopDetectorMock = new Mock<IToolCallLoopDetector>();
             _parallelPolicyMock = new Mock<ISubAgentsParallelPolicy>();
             _parallelRunnerMock = new Mock<ISubAgentsParallelRunner>();
         }
 
         private ChatSessionOrchestrator CreateOrchestrator()
         {
-            return new ChatSessionOrchestrator(
-                _chatServiceMock.Object,
-                _toolManagerMock.Object,
-                _compactorMock.Object,
-                new Mock<IChatHistoryManager>().Object,
-                _snapshotManagerMock.Object,
-                _loopDetectorMock.Object,
-                _parallelPolicyMock.Object,
-                _parallelRunnerMock.Object);
+            return new OrchestratorTestBuilder
+            {
+                ChatService = _chatServiceMock,
+                ToolManager = _toolManagerMock,
+                Compactor = _compactorMock,
+                SnapshotManager = _snapshotManagerMock,
+                ParallelPolicy = _parallelPolicyMock,
+                ParallelRunner = _parallelRunnerMock.Object
+            }.Build();
         }
 
         // Arrange-Act-Assert: successful generation path without tools -> sends complete and compaction messages

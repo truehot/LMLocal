@@ -609,14 +609,31 @@ body {
     font-variant-numeric: tabular-nums;
 }
 
+#elapsed-time {
+    display: inline-block;
+}
+
 #token-number {
     display: inline-block;
     min-width: 9ch;
 }
 
+    /* Separator between the time and the numbers; like them it comes and goes with the :empty rule below. */
+    #token-number:not(:empty)::before {
+        content: '·';
+        margin: 0 6px;
+        opacity: 0.6;
+    }
+
 #tokens-speed {
     display: inline-block;
     min-width: 8ch;
+}
+
+/* Only the time is shown while a tool or the prompt processing produces no tokens: empty numbers take no room. */
+#token-number:empty,
+#tokens-speed:empty {
+    display: none;
 }
 
 #tools-mode-status {

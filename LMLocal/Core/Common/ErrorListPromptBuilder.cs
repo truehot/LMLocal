@@ -149,7 +149,7 @@ namespace LMLocal.Core.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: cannot relativize '{fullPath}': {ex.Message}");
+                InternalLogger.Warn($"ExplainError: cannot relativize '{fullPath}'", ex);
                 return fullPath;
             }
         }

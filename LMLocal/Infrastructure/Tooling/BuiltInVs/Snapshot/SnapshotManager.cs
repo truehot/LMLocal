@@ -97,7 +97,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                     }
                     catch (Exception ex) when (ex is JsonException || ex is InvalidDataException)
                     {
-                        InternalLogger.Error($"Failed to parse snapshot manifest: {ex.Message}. Archiving corrupted data.");
+                        InternalLogger.Error("Failed to parse snapshot manifest. Archiving corrupted data.", ex);
                         ArchiveCorrupted(paths.SnapshotDir);
                         paths = _pathsFactory.Create();
                         if (paths == null) return;
@@ -454,7 +454,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"RollbackAll error for '{entry.RelativePath}': {ex}");
+                    InternalLogger.Error($"RollbackAll error for '{entry.RelativePath}'", ex);
                     errors.Add(new Exception($"Failed to rollback '{entry.RelativePath}': {ex.Message}", ex));
                 }
             }
@@ -542,7 +542,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"RollbackFiles error for '{entry.RelativePath}': {ex}");
+                    InternalLogger.Error($"RollbackFiles error for '{entry.RelativePath}'", ex);
                     errors.Add(new Exception($"Failed to rollback '{entry.RelativePath}': {ex.Message}", ex));
                 }
             }
@@ -607,7 +607,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"CommitAll error for '{entry.RelativePath}': {ex}");
+                    InternalLogger.Error($"CommitAll error for '{entry.RelativePath}'", ex);
                     errors.Add(new Exception($"Failed to commit '{entry.RelativePath}': {ex.Message}", ex));
                 }
             }
@@ -693,7 +693,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"CommitFiles error for '{entry.RelativePath}': {ex}");
+                    InternalLogger.Error($"CommitFiles error for '{entry.RelativePath}'", ex);
                     errors.Add(new Exception($"Failed to commit '{entry.RelativePath}': {ex.Message}", ex));
                 }
             }

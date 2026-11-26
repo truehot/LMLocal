@@ -10,6 +10,7 @@ using LMLocal.Application.SubAgents;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Persistence;
 using Moq;
 using NUnit.Framework;
@@ -32,7 +33,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         private Mock<IStreamingRoundService> _roundServiceMock;
         private Mock<IToolExecutionManager> _toolExecutionManagerMock;
         private Mock<IToolQueueProvider> _queueProviderMock;
-        private Mock<IToolCallLoopDetector> _loopDetectorMock;
         private Mock<IChatPersistenceFactory> _persistenceFactoryMock;
         private Mock<IChatPersistenceService> _persistenceMock;
 
@@ -47,7 +47,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             _roundServiceMock = new Mock<IStreamingRoundService>();
             _toolExecutionManagerMock = new Mock<IToolExecutionManager>();
             _queueProviderMock = new Mock<IToolQueueProvider>();
-            _loopDetectorMock = new Mock<IToolCallLoopDetector>();
             _persistenceFactoryMock = new Mock<IChatPersistenceFactory>();
             _persistenceMock = new Mock<IChatPersistenceService>();
 
@@ -77,8 +76,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 _roundServiceMock.Object,
                 () => _toolExecutionManagerMock.Object,
                 _queueProviderMock.Object,
-                _loopDetectorMock.Object,
                 _persistenceFactoryMock.Object,
+                new ProviderPolicy(),
                 loopRecoveryEnabled);
         }
 
@@ -99,6 +98,87 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             _roundServiceMock
                 .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(exception);
+        }
+
+        /// <summary>Records every progress event the service reports, so its token events can be asserted.</summary>
+        private sealed class RecordingProgress : IProgress<ToolActivityEvent>
+        {
+            internal List<ToolActivityEvent> Events { get; } = new List<ToolActivityEvent>();
+
+            public void Report(ToolActivityEvent value)
+            {
+                Events.Add(value);
+            }
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_ReportsTheTokenUsageOfTheRoundToTheProgressSink()
+        {
+            var recorder = new RecordingProgress();
+            var request = BuildRequest(maxRounds: 1);
+            request.Progress = recorder;
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest roundRequest, CancellationToken token) =>
+                {
+                    if (roundRequest.OnChunk != null)
+                    {
+                        roundRequest.OnChunk(
+                                new TextStreamChunk("Hello", ChunkKind.Content),
+                                new TokenGenerationStats(12, 4.5))
+                            .GetAwaiter().GetResult();
+
+                        roundRequest.OnChunk(
+                                new TextStreamChunk(" world", ChunkKind.Content),
+                                new TokenGenerationStats(20, 6.0))
+                            .GetAwaiter().GetResult();
+                    }
+
+                    return Task.FromResult(new StreamRoundResult
+                    {
+                        Outcome = StreamRoundOutcome.Completed,
+                        Stream = new StreamCompletionResult { ContentResponse = "Hello world" }
+                    });
+                });
+
+            var response = await CreateService().ExecutePromptAsync(request, CancellationToken.None);
+
+            Assert.That(response.Success, Is.True);
+            Assert.That(recorder.Events, Is.Not.Empty, "the run must report its tokens, or the status bar stays frozen");
+            Assert.That(recorder.Events[0].Tokens, Is.EqualTo(12), "the first live value of the round");
+            Assert.That(recorder.Events.Count, Is.GreaterThanOrEqualTo(2), "the round is closed with a final event");
+            Assert.That(recorder.Events[recorder.Events.Count - 1].Tokens, Is.EqualTo(20));
+            Assert.That(recorder.Events[recorder.Events.Count - 1].TokensPerSecond, Is.EqualTo(0),
+                "after the round no tokens flow, so a speed there would look frozen");
+            Assert.That(recorder.Events.TrueForAll(e => e.Step == null), Is.True,
+                "token events must not reach the step line of the card");
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_RoundWithoutTextChunks_ReportsTheServerCompletionTokens()
+        {
+            var recorder = new RecordingProgress();
+            var request = BuildRequest(maxRounds: 1);
+            request.Progress = recorder;
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StreamRoundResult
+                {
+                    Outcome = StreamRoundOutcome.Completed,
+                    Stream = new StreamCompletionResult
+                    {
+                        ContentResponse = "Done",
+                        TokenUsage = new TokenUsageMetadata { CompletionTokens = 35 }
+                    }
+                });
+
+            await CreateService().ExecutePromptAsync(request, CancellationToken.None);
+
+            Assert.That(recorder.Events, Is.Not.Empty);
+            Assert.That(recorder.Events[recorder.Events.Count - 1].Tokens, Is.EqualTo(35),
+                "Tool-call arguments produce no text chunk; the round's tokens come from the server's count");
         }
 
         [Test]
@@ -135,12 +215,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         {
             SetupRepeatedToolCalls("read_file_lines", "{\"path\":\"a.cs\"}");
             AllowTool("read_file_lines");
-
-            _loopDetectorMock
-                .Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns(true);
 
             _toolExecutionManagerMock
                 .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
@@ -195,12 +269,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     return Task.FromResult(rounds.Count > 0 ? rounds.Dequeue() : completedRound);
                 });
 
-            AllowTool("read_file_lines");
-            _loopDetectorMock
-                .Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns(true);
 
             _toolExecutionManagerMock
                 .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
@@ -235,7 +303,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 recoveredHistory.Select(m => m.Role),
                 Is.EqualTo(new[] { "assistant" }),
                 "The tool turn is closed by an assistant message before the new user turn starts.");
-            Assert.That(recoveredHistory[0].Content, Is.EqualTo("INTERRUPTED"));
+            Assert.That(recoveredHistory[0].Content, Is.EqualTo(SubAgentRecoveryPolicy.DiscardedTurnPlaceholder));
         }
 
         [Test]
@@ -259,12 +327,6 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(toolRound);
 
-            AllowTool("read_file_lines");
-            _loopDetectorMock
-                .Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns(true);
 
             _toolExecutionManagerMock
                 .Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<ToolQueue>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
@@ -283,10 +345,10 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         [Test]
         public async Task ExecutePromptAsync_RejectedToolCall_NeverExecuted()
         {
-            SetupRepeatedToolCalls("write_file", "{\"path\":\"a.cs\"}");
-
             // The queue has no definitions, so every call is rejected before execution.
-            // Recovery is pinned off: this test guards the rejection, not the recovery path.
+            // Recovery is pinned off: this test guards the rejection, not the recovery path, and the arguments differ
+            // per round, so the loop guard cannot end the run before its round limit.
+            SetupToolCallsWithVaryingArguments("write_file");
             var response = await CreateService(loopRecoveryEnabled: false)
                 .ExecutePromptAsync(BuildRequest(), CancellationToken.None);
 
@@ -380,7 +442,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             var history = requests[1].History.GetHistoryCopy();
             Assert.That(history.Select(m => m.Role), Is.EqualTo(new[] { "assistant" }),
                 "The aborted turn is closed by an assistant message, without the broken call.");
-            Assert.That(history[0].Content, Is.EqualTo("INTERRUPTED"));
+            Assert.That(history[0].Content, Is.EqualTo(SubAgentRecoveryPolicy.DiscardedTurnPlaceholder));
         }
 
         [Test]
@@ -520,6 +582,39 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 {
                     Outcome = StreamRoundOutcome.ToolCalls,
                     Stream = new StreamCompletionResult { ToolCalls = new[] { call } }
+                });
+        }
+
+        /// <summary>
+        /// Every round asks for the same tool with different arguments, so the loop guard has nothing to catch and only
+        /// the round limit can end the run.
+        /// </summary>
+        private void SetupToolCallsWithVaryingArguments(string toolName)
+        {
+            int round = 0;
+
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns(() =>
+                {
+                    int current = ++round;
+
+                    return Task.FromResult(new StreamRoundResult
+                    {
+                        Outcome = StreamRoundOutcome.ToolCalls,
+                        Stream = new StreamCompletionResult
+                        {
+                            ToolCalls = new[]
+                            {
+                                new ToolCallRecord
+                                {
+                                    CallId = "call_1",
+                                    FunctionName = toolName,
+                                    ArgumentsJson = $"{{\"path\":\"a{current}.cs\"}}"
+                                }
+                            }
+                        }
+                    });
                 });
         }
 
@@ -774,6 +869,237 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(response.Error, Does.StartWith("SubAgent stream ended as cancelled without a stop request"));
             Assert.That(response.Error, Does.Contain("(round 1/20)"));
             Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_OwnerCancellation_ReportsCallerCancellation()
+        {
+            _roundServiceMock
+                .Setup(r => r.RunAsync(It.IsAny<StreamRoundRequest>(), It.IsAny<CancellationToken>()))
+                .Returns((StreamRoundRequest req, CancellationToken ct) => RoundThatNeverCompletes(ct));
+
+            var request = BuildRequest(timeoutSeconds: 360);
+            request.Cancellation = new SubAgentRunCancellationOwner();
+
+            using (var cts = new CancellationTokenSource())
+            {
+                // The owner (a pipeline group) marks the reason before it cancels the token.
+                request.Cancellation.MarkStoppedByCaller();
+                cts.Cancel();
+
+                var response = await CreateService().ExecutePromptAsync(request, cts.Token);
+
+                Assert.That(response.Success, Is.False);
+                Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Cancelled));
+                Assert.That(response.Error, Does.StartWith("SubAgent stopped: cancelled by its caller"));
+                Assert.That(response.Error, Does.Not.Contain("stopped by the user"),
+                    "a sibling branch failure must not read like a user stop.");
+                Assert.That(response.Error, Does.Not.Contain("timed out"));
+                Assert.That(response.Error.Length, Is.LessThanOrEqualTo(120), response.Error);
+            }
+        }
+
+        [Test]
+        public async Task ExecutePromptAsync_CancellationWithoutStopOrTimeout_StaysTimeout()
+        {
+            // Neither the user nor the owner cancelled: previously reported as a timeout, and it still is.
+            SetupRoundThrows(new OperationCanceledException());
+
+            var response = await CreateService()
+                .ExecutePromptAsync(BuildRequest(timeoutSeconds: 360), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Timeout));
+            Assert.That(response.Error, Does.StartWith("SubAgent timed out after 360s"));
+            Assert.That(response.Error, Does.Not.Contain("cancelled"));
+        }
+
+        // =====================================================================
+        // FailureKind: a pipeline step repeats a run only for provider / timeout / incomplete failures, so every
+        // FailRun path must report the right kind. A wrong "Unexpected" silently disables the retries.
+        // =====================================================================
+
+        [Test]
+        public async Task FailureKind_Success_IsNone()
+        {
+            SetupRounds(CompletedRound("done"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.True, response.Error);
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.None));
+        }
+
+        [Test]
+        public async Task FailureKind_StreamError_IsProvider()
+        {
+            SetupRounds(new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Error,
+                Stream = new StreamCompletionResult { ErrorMessage = "502 Bad Gateway" }
+            });
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Provider));
+        }
+
+        [Test]
+        public async Task FailureKind_StreamCancelledWithoutStop_IsProvider()
+        {
+            SetupRounds(new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Cancelled,
+                Stream = new StreamCompletionResult { StopReason = StreamStopReason.Cancelled }
+            });
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Provider));
+        }
+
+        [Test]
+        public async Task FailureKind_ApiException404_IsProviderNotRetryable()
+        {
+            SetupRoundThrows(new ApiException(new ApiErrorInfo { Message = "Model not found" }, 404));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.ProviderNotRetryable));
+        }
+
+        [Test]
+        public async Task FailureKind_ApiException503_IsProvider()
+        {
+            SetupRoundThrows(new ApiException(new ApiErrorInfo { Message = "Service unavailable", Code = 503 }, 503));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Provider));
+        }
+
+        [TestCase(400, null, null)]
+        [TestCase(401, null, null)]
+        [TestCase(403, null, null)]
+        [TestCase(404, "model_not_found", null)]
+        [TestCase(413, null, null)]
+        [TestCase(422, null, null)]
+        [TestCase(429, null, null)]
+        [TestCase(429, "insufficient_quota", null)]
+        [TestCase(503, "rate_limit_exceeded", null)]
+        [TestCase(400, "context_length_exceeded", null)]
+        [TestCase(500, null, "exceed_context_size_error")]
+        [TestCase(null, null, "exceed_context_size_error")]
+        public async Task FailureKind_PermanentOrRateLimitedError_IsProviderNotRetryable(int? status, string code, string type)
+        {
+            SetupRounds(ErrorRound(status, code, type));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.ProviderNotRetryable));
+        }
+
+        [TestCase(408, null, null)]
+        [TestCase(500, null, null)]
+        [TestCase(502, null, null)]
+        [TestCase(503, null, null)]
+        [TestCase(504, null, null)]
+        [TestCase(null, "server_error", "server_error")]
+        [TestCase(null, null, null)]
+        public async Task FailureKind_TransientError_IsProvider(int? status, string code, string type)
+        {
+            SetupRounds(ErrorRound(status, code, type));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Provider));
+        }
+
+        private static StreamRoundResult ErrorRound(int? status, string code, string type)
+        {
+            return new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Error,
+                Stream = new StreamCompletionResult
+                {
+                    ErrorMessage = "provider error",
+                    ErrorCode = code ?? status?.ToString(),
+                    ErrorType = type,
+                    HttpStatusCode = status,
+                    FinishReason = "error",
+                    StopReason = StreamStopReason.Error
+                }
+            };
+        }
+
+        [Test]
+        public async Task FailureKind_UnreachableProvider_IsProvider()
+        {
+            // The most common provider failure: the local server is not running.
+            SetupRoundThrows(new HttpRequestException(
+                GenericWrapper,
+                new InvalidOperationException("No connection could be made because the target machine actively refused it")));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Provider),
+                "an unreachable server must be retryable as a provider failure");
+            Assert.That(response.Error, Does.Contain("actively refused it"), "the message stays as before");
+        }
+
+        [Test]
+        public async Task FailureKind_IncompleteAnswer_IsIncomplete()
+        {
+            SetupRounds(new StreamRoundResult
+            {
+                Outcome = StreamRoundOutcome.Incomplete,
+                Stream = new StreamCompletionResult { ErrorMessage = "Response was cut off by the token limit." }
+            });
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(), CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Incomplete));
+        }
+
+        [Test]
+        public async Task FailureKind_RoundLimit_IsAgent()
+        {
+            AllowTool("find_files");
+            SetupRounds(FindFilesRound("A.cs"), FindFilesRound("B.cs"));
+
+            var response = await CreateService().ExecutePromptAsync(BuildRequest(maxRounds: 1), CancellationToken.None);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Agent),
+                "a logical failure of the agent is never retried: the same agent would fail the same way");
+        }
+
+        [Test]
+        public async Task FailureKind_MissingModel_IsInvalidRequest()
+        {
+            var request = BuildRequest();
+            request.Model = "  ";
+
+            var response = await CreateService().ExecutePromptAsync(request, CancellationToken.None);
+
+            Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.InvalidRequest));
+        }
+
+        [Test]
+        public async Task FailureKind_UserStop_IsCancelled()
+        {
+            using (var cts = new CancellationTokenSource())
+            {
+                cts.Cancel();
+                SetupRoundThrows(new OperationCanceledException(cts.Token));
+
+                var response = await CreateService().ExecutePromptAsync(BuildRequest(timeoutSeconds: 360), cts.Token);
+
+                Assert.That(response.FailureKind, Is.EqualTo(SubAgentFailureKind.Cancelled));
+                AssertReadsAsUserStop(response);
+            }
         }
 
         private static void AssertReadsAsUserStop(SubAgentsRunResponse response)

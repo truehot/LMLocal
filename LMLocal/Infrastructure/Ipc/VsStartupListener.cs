@@ -107,7 +107,7 @@ namespace LMLocal.Ipc
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"VsStartupListener Dispose error: {ex.Message}");
+                    Debug.WriteLine($"VsStartupListener Dispose error: {ex}");
                 }
                 disposed = true;
             }

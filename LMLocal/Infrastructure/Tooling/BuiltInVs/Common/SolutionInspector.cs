@@ -39,7 +39,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SolutionInspector: Failed to get last write time for {solutionFile}: {ex.Message}");
+                InternalLogger.Warn($"SolutionInspector: Failed to get last write time for {solutionFile}", ex);
             }
 
             bool cacheValid = _cache.HasValue &&
@@ -107,7 +107,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"SolutionInspector: Failed to process project: {ex.Message}");
+                    InternalLogger.Warn("SolutionInspector: Failed to process project", ex);
                     continue;
                 }
             }
@@ -179,7 +179,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"SolutionInspector: Failed to get project file via GetMkDocument: {ex.Message}");
+                    InternalLogger.Warn("SolutionInspector: Failed to get project file via GetMkDocument", ex);
                 }
             }
 

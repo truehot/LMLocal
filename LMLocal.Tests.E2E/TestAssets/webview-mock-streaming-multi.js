@@ -154,7 +154,7 @@ const __mockBridge = {
     },
     GetSettingsAsync: async () => {
         console.log('[mock] GetSettingsAsync called');
-        return JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true });
+        return JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true, ToolCallsDisplay: 'expanded' });
     },
     UpdateSettingsAsync: async (json) => {
         console.log('[mock] UpdateSettingsAsync called');
@@ -211,7 +211,7 @@ function __startMock() {
             FocusAsync: async () => {},
         };
         window.__settingsOverride = {
-            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true }),
+            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true, ToolCallsDisplay: 'expanded' }),
             UpdateSettingsAsync: async (json) => true,
             TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
         };

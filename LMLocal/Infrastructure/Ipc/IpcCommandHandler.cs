@@ -1,7 +1,6 @@
 using LMLocal.Core.Models;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -74,8 +73,7 @@ internal static class IpcCommandHandler
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"IPC: DTE.Solution.Open failed for '{path}': {ex.Message}");
-                Debug.WriteLine($"IPC: DTE.Solution.Open failed for '{path}': {ex.Message}");
+                InternalLogger.Warn($"IPC: DTE.Solution.Open failed for '{path}'", ex);
             }
 
             // Fallback for environments where the DTE automation object is unavailable.
@@ -210,9 +208,15 @@ internal static class IpcCommandHandler
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"IPC: RunTool error: {ex.Message}", ex);
-                Debug.WriteLine($"IPC: RunTool error: {ex.Message}");
-                try { await writer.WriteLineAsync($"ERROR {ex.Message}"); } catch { }
+                InternalLogger.Error("IPC: RunTool error", ex);
+                try
+                {
+                    await writer.WriteLineAsync($"ERROR {ex.Message}");
+                }
+                catch (Exception reportEx)
+                {
+                    InternalLogger.Warn("IPC: could not report the RunTool error to the client", reportEx);
+                }
             }
 
             return;
@@ -301,29 +305,15 @@ internal static class IpcCommandHandler
                     return;
                 }
 
-                var request = new SubAgentRunRequest
+                var request = SubAgentRunRequestFactory.Create(agent, new SubAgentRunRequestOptions
                 {
-                    AgentName = agent.Id.Trim(),
                     Prompt = prompt,
-                    System = agent.System,
-                    AllowedTools = agent.AllowedTools,
-                    Model = modelOverride ?? agent.Model ?? config.Model,
-                    Temperature = agent.Temperature ?? config.Temperature,
-                    ReasoningEffort = !string.IsNullOrWhiteSpace(agent.ReasoningEffort) ? agent.ReasoningEffort : config.ReasoningEffort,
-                    MaxTokens = agent.MaxTokens ?? config.MaxTokens,
-                    MaxRounds = maxRoundsOverride ?? agent.MaxRounds ?? config.MaxRounds,
-                    TimeoutSeconds = agent.TimeoutSeconds ?? config.TimeoutSeconds,
-                    ProviderType = !string.IsNullOrWhiteSpace(agent.ProviderType) ? agent.ProviderType : config.ProviderType,
-                    BaseUrl = !string.IsNullOrWhiteSpace(agent.CustomBaseUrl) ? agent.CustomBaseUrl : config.CustomBaseUrl,
-                    ApiKey = !string.IsNullOrWhiteSpace(agent.CustomApiKey) ? agent.CustomApiKey : config.CustomApiKey,
-                    Origin = UsageOrigins.Ipc
-                };
+                    ModelOverride = modelOverride,
+                    MaxRoundsOverride = maxRoundsOverride,
+                    Origin = UsageOrigins.Ipc,
+                    RootDefaults = config
+                });
 
-                // A subagent that owns write tools records file snapshots too, and SnapshotManager
-                // requires an active batch around every execution round. Nothing else opens one on
-                // this path: ChatSessionOrchestrator opens the batch for chat rounds, and the RunTool
-                // branch above opens it for raw IPC tool calls. Open it here as well, and never nest
-                // it - BeginBatchAsync clears the paths recorded by an already open batch.
                 ISnapshotManager snapshotManager = null;
                 bool snapshotBatchBegan = false;
                 if (NeedsSnapshotBatch(agent.AllowedTools))
@@ -370,7 +360,7 @@ internal static class IpcCommandHandler
                         }
                         catch (Exception batchEx)
                         {
-                            InternalLogger.Error($"IPC: RunSubAgent snapshot batch cleanup failed: {batchEx.Message}", batchEx);
+                            InternalLogger.Error("IPC: RunSubAgent snapshot batch cleanup failed", batchEx);
                         }
                     }
                 }
@@ -381,14 +371,179 @@ internal static class IpcCommandHandler
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"IPC: RunSubAgent error: {ex.Message}", ex);
-                Debug.WriteLine($"IPC: RunSubAgent error: {ex.Message}");
+                InternalLogger.Error("IPC: RunSubAgent error", ex);
                 try
                 {
                     await writer.WriteLineAsync(JsonConvert.SerializeObject(new { error = ex.Message }));
                 }
-                catch
+                catch (Exception reportEx)
                 {
+                    InternalLogger.Warn("IPC: could not report the RunSubAgent error to the client", reportEx);
+                }
+            }
+
+            return;
+        }
+
+        else if (command.StartsWith("RunPipeline|", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                // parts[0] = "RunPipeline"
+                // parts[1] = pipeline id (subagents.json -> pipelines[])
+                // parts[2] = Uri.EscapeDataString(task)
+                // parts[3] = model override applied to every step (optional)
+                // parts[4] = maxRounds override applied to every step (optional)
+
+                var parts = command.Split('|');
+                if (parts.Length < 3)
+                {
+                    await writer.WriteLineAsync("{\"error\":\"Usage: RunPipeline|pipelineId|task_escaped|model?|maxRounds?\"}");
+                    return;
+                }
+
+                var pipelineId = parts[1].Trim();
+                string task;
+                try
+                {
+                    task = Uri.UnescapeDataString(parts[2]);
+                }
+                catch (UriFormatException)
+                {
+                    await writer.WriteLineAsync("{\"error\":\"Invalid task encoding. Use Uri.EscapeDataString.\"}");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(pipelineId) || string.IsNullOrWhiteSpace(task))
+                {
+                    await writer.WriteLineAsync("{\"error\":\"RunPipeline requires a non-empty pipelineId and task.\"}");
+                    return;
+                }
+
+                var modelOverride = parts.Length > 3 && !string.IsNullOrWhiteSpace(parts[3]) ? parts[3].Trim() : null;
+                var maxRoundsOverride = parts.Length > 4 && int.TryParse(parts[4], out int mr) ? (int?)mr : null;
+
+                var pipelineRunner = ServiceConfiguration.GetService<ISubAgentPipelineRunner>();
+                var configManager = ServiceConfiguration.GetService<ISubAgentsConfigManager>();
+                var settingsManager = ServiceConfiguration.GetService<ISettingsManager>();
+                var toolsConfigManager = ServiceConfiguration.GetService<IToolsConfigManager>();
+
+                // The normal startup path loads settings from WebViewInitializer
+                await settingsManager.LoadAsync(token);
+                await toolsConfigManager.LoadAsync(token);
+
+                var config = await configManager.GetAsync(token);
+                var pipeline = (config == null || config.Pipelines == null)
+                    ? null
+                    : config.Pipelines.FirstOrDefault(p => p != null &&
+                        string.Equals(p.Id?.Trim(), pipelineId, StringComparison.OrdinalIgnoreCase));
+
+                if (pipeline == null)
+                {
+                    var notFound = JsonConvert.SerializeObject(new { error = "Pipeline '" + pipelineId + "' not found in subagents.json." });
+                    await writer.WriteLineAsync(notFound);
+                    return;
+                }
+
+                var builtInTools = ServiceConfiguration.GetService<IBuiltInVsToolProvider>();
+                var built = SubAgentPipelineRequestFactory.Create(
+                    pipeline,
+                    config,
+                    task,
+                    progress: null,
+                    parentSessionId: null,
+                    requestId: null,
+                    origin: UsageOrigins.Ipc,
+                    modelOverride: modelOverride,
+                    maxRoundsOverride: maxRoundsOverride,
+                    isAgentReadOnly: agent => SubAgentToolAccess.HasOnlyReadOnlyTools(agent, builtInTools),
+                    requireEnabledAgents: false);
+
+                if (built.Request == null)
+                {
+                    var invalid = JsonConvert.SerializeObject(new { error = built.Error });
+                    await writer.WriteLineAsync(invalid);
+                    return;
+                }
+
+                var allowedTools = new List<string>();
+                foreach (var step in built.Request.Steps)
+                {
+                    if (step.Request?.AllowedTools != null)
+                        allowedTools.AddRange(step.Request.AllowedTools);
+
+                    if (step.Branches == null)
+                        continue;
+
+                    foreach (var branch in step.Branches)
+                    {
+                        if (branch.Request?.AllowedTools != null)
+                            allowedTools.AddRange(branch.Request.AllowedTools);
+                    }
+                }
+
+                ISnapshotManager snapshotManager = null;
+                bool snapshotBatchBegan = false;
+                if (NeedsSnapshotBatch(allowedTools))
+                {
+                    snapshotManager = ServiceConfiguration.GetService<ISnapshotManager>();
+                    if (snapshotManager?.IsBatchActive == false)
+                    {
+                        await package.JoinableTaskFactory.SwitchToMainThreadAsync(token);
+                        await snapshotManager.BeginBatchAsync(token).ConfigureAwait(false);
+                        snapshotBatchBegan = true;
+                    }
+                }
+
+                var runSucceeded = false;
+                try
+                {
+                    var response = await pipelineRunner.RunAsync(built.Request, token);
+                    runSucceeded = response?.Success == true;
+
+                    var json = JsonConvert.SerializeObject(response, new JsonSerializerSettings
+                    {
+                        NullValueHandling = NullValueHandling.Ignore,
+                        Formatting = Formatting.None,
+                        ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+                    });
+
+                    await writer.WriteLineAsync(json);
+                }
+                finally
+                {
+                    if (snapshotBatchBegan && snapshotManager != null)
+                    {
+                        try
+                        {
+                            await package.JoinableTaskFactory.SwitchToMainThreadAsync(CancellationToken.None);
+
+                            if (runSucceeded)
+                                await snapshotManager.EndBatchAsync(CancellationToken.None).ConfigureAwait(false);
+                            else
+                                await snapshotManager.CancelBatchAsync(CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception batchEx)
+                        {
+                            InternalLogger.Error("IPC: RunPipeline snapshot batch cleanup failed", batchEx);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                InternalLogger.Error("IPC: RunPipeline error", ex);
+                try
+                {
+                    await writer.WriteLineAsync(JsonConvert.SerializeObject(new { error = ex.Message }));
+                }
+                catch (Exception reportEx)
+                {
+                    InternalLogger.Warn("IPC: could not report the RunPipeline error to the client", reportEx);
                 }
             }
 

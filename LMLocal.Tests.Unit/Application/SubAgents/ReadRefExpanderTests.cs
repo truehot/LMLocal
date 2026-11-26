@@ -302,5 +302,55 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
             Assert.That(result.Content, Does.Not.Contain("1: >"));
         }
 
+        [Test]
+        public async Task Expand_WindowReadMarkerToTotalLines_ExpandsWholeRangeFromDisk()
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 254);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 200, AbsolutePath, totalLines: 254));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync("@src\\Program.cs:1-254", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(result.Content, Does.Contain("File: src\\Program.cs, lines 1-254"));
+            Assert.That(result.Content, Does.Contain("line 201\n"));
+            Assert.That(result.Content, Does.Contain("line 254\n````"));
+        }
+
+        [Test]
+        public async Task Expand_MarkerPastEndOfFile_IsRenderedWithActualRange()
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 41);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 41, AbsolutePath, totalLines: 41, reachedEnd: true));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync("@src\\Program.cs:1-60", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.Content, Does.Contain("File: src\\Program.cs, lines 1-41"));
+            Assert.That(result.Content, Does.Not.Contain("lines 1-60"));
+            Assert.That(result.Content, Does.Contain("line 41\n````"));
+        }
+
+        [Test]
+        public async Task Expand_TooManyUnreadLines_StaysUnresolved()
+        {
+            var fileSystem = new InMemoryFileSystem();
+            WriteFile(fileSystem, 1000);
+
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord(RelativePath, 1, 200, AbsolutePath, totalLines: 1000));
+
+            var result = await CreateExpander(ledger, fileSystem).ExpandAsync("@src\\Program.cs:1-1000", CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(0));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(1));
+            Assert.That(result.Content, Is.EqualTo("@src\\Program.cs:1-1000"));
+        }
     }
 }

@@ -60,13 +60,13 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Error parsing MCP config: {ex.Message}", ex);
+                    InternalLogger.Error("Error parsing MCP config", ex);
                     return new McpConfigFile();
                 }
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading MCP config file: {ex.Message}", ex);
+                InternalLogger.Error("Error reading MCP config file", ex);
                 return new McpConfigFile();
             }
             finally

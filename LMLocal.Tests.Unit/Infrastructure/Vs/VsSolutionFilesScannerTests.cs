@@ -267,6 +267,47 @@ namespace LMLocal.Tests.Unit.Infrastructure.Vs
             Assert.That(VsSolutionFilesScanner.MatchesProjectFilter("Core\\Models\\X.cs", "reMod"), Is.False);
         }
 
+        [TestCase("Core/Models/SubAgentsConfig.cs", new[] { @"Core\Models\SubAgentsConfig.cs" })]
+        [TestCase(@"core\models\subagentsconfig", new[] { @"Core\Models\SubAgentsConfig.cs" })]
+        [TestCase(@"./Core//Models\SubAgentsConfig.cs", new[] { @"Core\Models\SubAgentsConfig.cs" })]
+        [TestCase("Models/SubAgentsConfig.cs", new[] { @"Core\Models\SubAgentsConfig.cs", @"Other\Models\SubAgentsConfig.cs" })]
+        [TestCase("Models/*Config.cs", new[] { @"Core\Models\SubAgentsConfig.cs", @"Other\Models\SubAgentsConfig.cs" })]
+        [TestCase("Core/Models/", new[] { @"Core\Models\SubAgentsConfig.cs" })]
+        [TestCase("Deep/A.cs", new[] { @"Core\Models\Deep\A.cs" })]
+        [TestCase("Core/SubAgentsConfig.cs", new string[0])]
+        [TestCase("Mod/SubAgentsConfig.cs", new string[0])]
+        [TestCase("Core/Models/A.cs", new string[0])]
+        [TestCase("SubAgentsConfig.cs", new[] { @"Core\Models\SubAgentsConfig.cs", @"Core\ModelsX\SubAgentsConfig.cs", @"Other\Models\SubAgentsConfig.cs" })]
+        public async Task EnumerateSolutionFiles_FileNameWithFolders_MatchesFoldersRightAboveTheFile(string fileName, string[] expected)
+        {
+            foreach (var relative in new[] { @"Core\Models\SubAgentsConfig.cs", @"Other\Models\SubAgentsConfig.cs", @"Core\ModelsX\SubAgentsConfig.cs", @"Core\Models\Deep\A.cs" })
+            {
+                var f = Path.Combine(_root, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var results = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter { FileName = fileName, ReturnRelative = true })).ToList();
+
+            Assert.That(results, Is.EquivalentTo(expected));
+        }
+
+        [Test]
+        public async Task EnumerateSolutionFiles_AbsoluteFileName_MatchesThatFile()
+        {
+            var target = Path.Combine(_root, "Core", "Models", "A.cs");
+            var other = Path.Combine(_root, "Other", "Models", "A.cs");
+            foreach (var f in new[] { target, other })
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(f));
+                File.WriteAllText(f, "x");
+            }
+
+            var results = (await CreateScanner().EnumerateSolutionFilesAsync(new EnumerateSolutionFilesFilter { FileName = target, ReturnRelative = true })).ToList();
+
+            Assert.That(results, Is.EqualTo(new[] { Path.Combine("Core", "Models", "A.cs") }));
+        }
+
         [TestCase(0, 3, false, 0)]
         [TestCase(3, 3, false, 3)]
         [TestCase(4, 3, true, 3)]

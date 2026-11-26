@@ -98,7 +98,7 @@ namespace LMLocal.Infrastructure.Tooling
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"Failed to read tools configuration file; using defaults: {ex.Message}");
+                InternalLogger.Warn("Failed to read tools configuration file; using defaults", ex);
                 lock (_lock)
                 {
                     _cachedConfig = GetDefaultTools();
@@ -133,7 +133,7 @@ namespace LMLocal.Infrastructure.Tooling
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"Failed to parse tools.json: {ex.Message}");
+                        InternalLogger.Warn("Failed to parse tools.json", ex);
                         loaded = defaultConfig;
                     }
                 }

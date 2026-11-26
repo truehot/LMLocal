@@ -46,12 +46,13 @@ namespace LMLocal.Infrastructure.SubAgents
         IReadOnlyList<string> Validate(SubAgentsConfig config);
 
         /// <summary>
-        /// Merges enabled flags into the stored configuration and optionally applies the "Use Active Model" top-level defaults, validates the whole result and saves it.
+        /// Merges enabled flags into the stored configuration and optionally applies the "Use Active Model" top-level defaults, validates the whole result and saves it. Pipeline flags are applied to the pipelines of the same raw config.
         /// </summary>
         Task<IReadOnlyList<string>> UpdateEnabledFlagsAsync(
             IReadOnlyList<SubAgentEnabledFlag> flags,
             CancellationToken cancellationToken = default,
-            SubAgentDefaults defaults = null);
+            SubAgentDefaults defaults = null,
+            IReadOnlyList<SubAgentEnabledFlag> pipelineFlags = null);
 
         /// <summary>
         /// Serializes the provided configuration to json and invalidates the snapshot so it is re-read on the next session.
@@ -138,6 +139,20 @@ namespace LMLocal.Infrastructure.SubAgents
                 .ToList();
         }
 
+        /// <summary>
+        /// Enabled pipelines with a non-empty id, in file order.
+        /// </summary>
+        public IReadOnlyList<SubAgentPipelineDefinition> GetEnabledPipelines()
+        {
+            var config = TryGetSnapshot();
+            if (config == null || config.Pipelines == null)
+                return Array.Empty<SubAgentPipelineDefinition>();
+
+            return config.Pipelines
+                .Where(p => p != null && p.IsEnabled && !string.IsNullOrWhiteSpace(p.Id))
+                .ToList();
+        }
+
         public async Task RefreshAsync(CancellationToken cancellationToken = default)
         {
             var config = await ReadEffectiveConfigAsync(cancellationToken).ConfigureAwait(false);
@@ -190,7 +205,7 @@ namespace LMLocal.Infrastructure.SubAgents
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
-                InternalLogger.Error($"SubAgentsConfigManager: failed to read default subagents config: {ex.Message}", ex);
+                InternalLogger.Error("SubAgentsConfigManager: failed to read default subagents config", ex);
                 return new SubAgentsConfig();
             }
         }
@@ -236,6 +251,20 @@ namespace LMLocal.Infrastructure.SubAgents
                     allAgentNames.Add(name);
             }
 
+            var allPipelineNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (config.Pipelines != null)
+            {
+                foreach (var pipeline in config.Pipelines)
+                {
+                    if (pipeline == null)
+                        continue;
+
+                    var name = pipeline.Id?.Trim();
+                    if (!string.IsNullOrEmpty(name))
+                        allPipelineNames.Add(name);
+                }
+            }
+
             var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var agent in config.Agents)
             {
@@ -269,6 +298,10 @@ namespace LMLocal.Infrastructure.SubAgents
                     {
                         errors.Add($"agent '{name}': allowedTools references another SubAgent '{tool}' (recursion is not allowed)");
                     }
+                    else if (allPipelineNames.Contains(tool))
+                    {
+                        errors.Add($"agent '{name}': allowedTools references the pipeline '{tool}' (recursion is not allowed)");
+                    }
                     else if (!toolNames.Contains(tool))
                     {
                         errors.Add($"agent '{name}': allowedTools references unknown tool '{tool}'");
@@ -276,13 +309,93 @@ namespace LMLocal.Infrastructure.SubAgents
                 }
             }
 
+            // Pipelines share the tool namespace with agents and built-in tools, and their steps must reference
+            // existing agents.
+            if (config.Pipelines != null)
+            {
+                foreach (var pipeline in config.Pipelines)
+                {
+                    if (pipeline == null)
+                        continue;
+
+                    var name = pipeline.Id?.Trim();
+                    if (string.IsNullOrEmpty(name))
+                        continue;
+
+                    if (toolNames.Contains(name))
+                    {
+                        errors.Add($"pipeline id '{name}' collides with a built-in tool name");
+                    }
+
+                    if (allAgentNames.Contains(name))
+                    {
+                        errors.Add($"pipeline id '{name}' collides with a SubAgent id");
+                    }
+
+                    foreach (var step in pipeline.EnumerateLeafSteps())
+                    {
+                        var agentName = step.Agent?.Trim();
+                        if (string.IsNullOrEmpty(agentName))
+                            continue;
+
+                        if (!allAgentNames.Contains(agentName))
+                        {
+                            errors.Add($"pipeline '{name}': step references unknown SubAgent '{agentName}'");
+                        }
+                    }
+
+                    foreach (var group in pipeline.Steps ?? new List<SubAgentPipelineStep>())
+                    {
+                        if (group == null || !group.IsParallelGroup)
+                            continue;
+
+                        foreach (var branch in group.Parallel)
+                        {
+                            var branchAgent = FindAgent(config.Agents, branch == null ? null : branch.Agent);
+                            if (branchAgent == null)
+                                continue;
+
+                            if (!SubAgentToolAccess.HasOnlyReadOnlyTools(branchAgent, _builtInTools))
+                            {
+                                errors.Add(
+                                    $"pipeline '{name}': branch agent '{branchAgent.Id.Trim()}' uses write tools "
+                                    + "(the branches of a parallel group run at the same time and may only use read-only agents)");
+                            }
+                        }
+                    }
+                }
+            }
+
             return errors;
+        }
+
+        /// <summary>
+        /// Agent with this id from the config, or null.
+        /// </summary>
+        private static SubAgentDefinition FindAgent(IEnumerable<SubAgentDefinition> agents, string id)
+        {
+            var name = string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+            if (name == null || agents == null)
+                return null;
+
+            foreach (var agent in agents)
+            {
+                if (agent == null)
+                    continue;
+
+                var agentId = agent.Id == null ? null : agent.Id.Trim();
+                if (string.Equals(agentId, name, StringComparison.OrdinalIgnoreCase))
+                    return agent;
+            }
+
+            return null;
         }
 
         public async Task<IReadOnlyList<string>> UpdateEnabledFlagsAsync(
             IReadOnlyList<SubAgentEnabledFlag> flags,
             CancellationToken cancellationToken = default,
-            SubAgentDefaults defaults = null)
+            SubAgentDefaults defaults = null,
+            IReadOnlyList<SubAgentEnabledFlag> pipelineFlags = null)
         {
 
             var raw = await ReadConfigCoreAsync(cancellationToken, applyDefaults: false).ConfigureAwait(false);
@@ -307,6 +420,24 @@ namespace LMLocal.Infrastructure.SubAgents
                             target = raw.Agents[index];
                         }
                     }
+
+                    if (target != null)
+                    {
+                        target.Enabled = flag.Enabled;
+                    }
+                }
+            }
+
+            // Pipelines have their own flags: they are not agents, so they are never matched by the agent flags.
+            if (pipelineFlags != null && raw.Pipelines != null)
+            {
+                foreach (var flag in pipelineFlags)
+                {
+                    if (flag == null || string.IsNullOrWhiteSpace(flag.Id))
+                        continue;
+
+                    var target = raw.Pipelines.FirstOrDefault(p =>
+                        p != null && string.Equals(p.Id, flag.Id, StringComparison.OrdinalIgnoreCase));
 
                     if (target != null)
                     {
@@ -347,7 +478,6 @@ namespace LMLocal.Infrastructure.SubAgents
 
         /// <summary>
         /// Applies the "Use Active Model" top-level defaults to the raw config.
-        /// For customBaseUrl/customApiKey: null = not provided (keep), empty string = clear.
         /// </summary>
         private static void ApplyActiveModelDefaults(SubAgentsConfig config, SubAgentDefaults defaults)
         {
@@ -419,7 +549,7 @@ namespace LMLocal.Infrastructure.SubAgents
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
-                InternalLogger.Error($"SubAgentsConfigManager: failed to save subagents config: {ex.Message}", ex);
+                InternalLogger.Error("SubAgentsConfigManager: failed to save subagents config", ex);
                 throw;
             }
             finally
@@ -464,7 +594,7 @@ namespace LMLocal.Infrastructure.SubAgents
             }
             catch (Exception ex) when (!(ex is OperationCanceledException))
             {
-                InternalLogger.Error($"SubAgentsConfigManager: failed to read subagents config: {ex.Message}", ex);
+                InternalLogger.Error("SubAgentsConfigManager: failed to read subagents config", ex);
                 config.Errors = new System.Collections.Generic.List<string> { ex.Message };
                 return config;
             }

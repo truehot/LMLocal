@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Application.Tool;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.Tooling.BuiltInVs.Abstractions;
@@ -37,6 +38,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// <summary>Longest step text accepted.</summary>
         internal const int MaxTextLength = 200;
 
+        // The tool name and the statuses are mirrored in Resources/js/constants/app.globals.js (TodoToolName, TodoStatus).
         internal const string StatusPending = "pending";
         internal const string StatusInProgress = "in_progress";
         internal const string StatusDone = "done";
@@ -66,12 +68,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Stores the step list of the current request. Use it when the request needs 3 or more steps: " +
-                              "call it once at the start with the plan, then after each finished step with the whole updated list. " +
-                              "One call per response; the last call of a response is the list. Mark a step done only when it is " +
-                              "really finished. Do not use it for single-step requests. Every call replaces the stored list, so " +
-                              $"always send all steps. A call that breaks a rule is rejected as a whole: at most {MaxItems} items, " +
-                              $"texts of 1 to {MaxTextLength} characters, at most one item in_progress, every text unique.",
+                Description = "Tracks progress on a multi-step request. Purpose: keep completed, current and remaining work " +
+                              "visible to you and the user across tool rounds, preventing skipped steps, repeated work and " +
+                              "premature completion. Use it only for requests with 3 or more meaningful steps: " +
+                              "1. Before starting, send the complete ordered plan: the first actionable step in_progress, " +
+                              "all others pending. " +
+                              "2. After each completed step, send the entire list again: finished steps done, the next " +
+                              "unfinished step in_progress, the rest pending. " +
+                              "3. Keep working and updating until the task is finished; before the final response, make " +
+                              "sure the list shows the final state. " +
+                              "Mark a step done only when its work is actually finished and verified where applicable. " +
+                              "Write the steps in the order you will actually do them. The list is yours to reshape at any " +
+                              "time: add, remove or reorder steps, or replace it with a new list for the next phase (for " +
+                              "example one list while reading, then one for the changes); keep the statuses that are still valid. " +
+                              "A call only records progress; it does not do the work. " +
+                              "At most one call per tool round; steps finished in the same round go into one update. " +
+                              "Every call replaces the list, so always send all steps. A call that breaks a rule is rejected " +
+                              $"as a whole: at most {MaxItems} items, texts of 1 to {MaxTextLength} characters, at most one " +
+                              "item in_progress, every text unique.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
@@ -80,15 +94,17 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         { ItemsParameter, new ToolDetails
                             {
                                 Type = "array",
-                                Description = $"The whole step list in order (at most {MaxItems} items; an empty array clears it). " +
-                                              "Each item is an object with text and status. An array serialized into a JSON string is accepted too.",
+                                Description = $"The complete ordered step list (at most {MaxItems} items; an empty array clears it): " +
+                                              "completed, current and remaining steps. Each item is an object with text and status. " +
+                                              "An array serialized into a JSON string is accepted too.",
                                 Items = new ToolDetails
                                 {
                                     Type = "object",
                                     Properties = new Dictionary<string, ToolDetails>
                                     {
-                                        { TextField, new ToolDetails { Type = "string", Description = $"One step, 1 to {MaxTextLength} characters, trimmed; unique in the list." } },
-                                        { StatusField, new ToolDetails { Type = "string", Description = "pending, in_progress or done (case-insensitive). At most one item in_progress." } }
+                                        { TextField, new ToolDetails { Type = "string", Description = $"One concrete, actionable step, 1 to {MaxTextLength} characters, trimmed; unique in the list." } },
+                                        { StatusField, new ToolDetails { Type = "string", Description = "pending = not started; in_progress = being worked on now; done = finished. " +
+                                                                                                        "At most one item in_progress; finished steps stay done in later updates." } }
                                     },
                                     Required = new List<string> { TextField, StatusField }
                                 }
@@ -126,7 +142,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return Task.FromResult<object>(Error($"Error: {ex.Message}"));
             }
         }
@@ -138,8 +154,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         public string GetCompletionMessage(object result)
         {
-            var response = result as TodoWriteResponse;
-            if (response == null)
+            if (!(result is TodoWriteResponse response))
                 return "Tasks updated.";
 
             return response.Success
@@ -153,9 +168,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         /// </summary>
         private static (List<TodoItem> items, string error) ParseItems(object value)
         {
-            JArray array;
-            string arrayError;
-            if (!TryGetArray(value, out array, out arrayError))
+            if (!TryGetArray(value, out JArray array, out string arrayError))
                 return (null, arrayError);
 
             if (array.Count > MaxItems)
@@ -169,13 +182,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             {
                 string position = $"item {i + 1}";
 
-                var raw = array[i] as JObject;
-                if (raw == null)
+                if (!(array[i] is JObject raw))
                     return (null, $"{position} must be an object with text and status.");
 
-                bool present;
-                string text;
-                if (!TryReadStringField(raw, TextField, out text, out present))
+                if (!TryReadStringField(raw, TextField, out string text, out bool present))
                     return (null, present ? $"{position} text must be a string." : $"{position} has no text.");
 
                 text = text.Trim();
@@ -186,8 +196,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (!seen.Add(text))
                     return (null, $"duplicate text: \"{text}\" - every step must be different.");
 
-                string rawStatus;
-                if (!TryReadStringField(raw, StatusField, out rawStatus, out present))
+                if (!TryReadStringField(raw, StatusField, out string rawStatus, out present))
                     return (null, present
                         ? $"{position} status must be a string."
                         : $"{position} has no status; use {StatusPending}, {StatusInProgress} or {StatusDone}.");
@@ -225,19 +234,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return false;
             }
 
-            var scalar = value as JValue;
-            if (scalar != null)
+            if (value is JValue scalar)
                 value = scalar.Value;
 
-            var given = value as JArray;
-            if (given != null)
+            if (value is JArray given)
             {
                 array = given;
                 return true;
             }
 
-            var text = value as string;
-            if (text != null)
+            if (value is string text)
             {
                 string trimmed = text.Trim();
                 if (!trimmed.StartsWith("[", StringComparison.Ordinal) || !trimmed.EndsWith("]", StringComparison.Ordinal))
@@ -264,8 +270,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 return false;
             }
 
-            var list = value as IEnumerable;
-            if (list != null)
+            if (value is IEnumerable list)
             {
                 try
                 {
@@ -368,7 +373,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         public string Status { get; set; }
     }
 
-    internal class TodoWriteResponse
+    internal class TodoWriteResponse : IToolUiData
     {
         [JsonProperty("success")]
         public bool Success { get; set; }
@@ -381,5 +386,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// The accepted list for the live task widget of the WebView; null when the call was rejected.
+        /// </summary>
+        [JsonIgnore]
+        public object UiData => Success ? (object)Items : null;
     }
 }

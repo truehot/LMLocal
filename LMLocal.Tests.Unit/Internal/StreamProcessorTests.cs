@@ -102,6 +102,37 @@ namespace LMLocal.Tests.Unit
             }
         }
 
+        /// <summary>Cancels the token and then fails the read, as the cancel registration does by closing the stream.</summary>
+        private class CancelThenThrowStream : MemoryStream
+        {
+            private readonly CancellationTokenSource _cts;
+            private readonly Exception _exception;
+
+            public CancelThenThrowStream(CancellationTokenSource cts, Exception exception) { _cts = cts; _exception = exception; }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                _cts.Cancel();
+                throw _exception;
+            }
+        }
+
+        [Test]
+        public async Task ProcessStreamAsync_ReadFailsAfterCancellation_ReportsCancellation()
+        {
+            var processor = new StreamProcessor(new MockTokenSpeedCalculator(), new MockSettingsManager());
+            var interrupted = new IOException("Unable to read data from the transport connection", new SocketException((int)SocketError.Interrupted));
+
+            using (var cts = new CancellationTokenSource())
+            using (var stream = new CancelThenThrowStream(cts, interrupted))
+            {
+                var result = await processor.ProcessStreamAsync(stream, cts.Token, null, 1);
+
+                Assert.That(result.WasCancelled, Is.True);
+                Assert.That(result.ErrorMessage, Is.Null.Or.Empty);
+            }
+        }
+
         [Test]
         public async Task ProcessStreamAsync_ObjectDisposedWithoutCancellation_ReportsError()
         {

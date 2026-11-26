@@ -1,6 +1,6 @@
 @media print {
 
-    #top-info-bar, #global-changes-panel, .spacer, #debug-stop-banner, #status-bar, .input-container {
+    #top-info-bar, #global-changes-panel, #global-todo-panel, .spacer, #debug-stop-banner, #status-bar, .input-container {
         display: none !important;
     }
 

@@ -102,6 +102,13 @@ namespace LMLocal.Core.Models
         public List<string> SharedTools { get; set; }
 
         /// <summary>
+        /// Pipelines: fixed sequences of agent runs exposed to the main model as a single tool each. Optional;
+        /// a missing section keeps the configuration unchanged and is not written back.
+        /// </summary>
+        [JsonProperty("pipelines")]
+        public List<SubAgentPipelineDefinition> Pipelines { get; set; }
+
+        /// <summary>
         /// Validation errors of the most recent parse.
         /// </summary>
         [JsonIgnore]
@@ -131,6 +138,30 @@ namespace LMLocal.Core.Models
                     if (!names.Add(agent.Id.Trim()))
                     {
                         errors.Add($"duplicate agent id '{agent.Id.Trim()}'");
+                    }
+                }
+            }
+
+            if (Pipelines != null)
+            {
+                var pipelineIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < Pipelines.Count; i++)
+                {
+                    var pipeline = Pipelines[i];
+                    if (pipeline == null)
+                    {
+                        errors.Add($"pipeline[{i}] is empty");
+                        continue;
+                    }
+
+                    foreach (var e in pipeline.Validate())
+                    {
+                        errors.Add($"pipeline[{i}] {e}");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(pipeline.Id) && !pipelineIds.Add(pipeline.Id.Trim()))
+                    {
+                        errors.Add($"duplicate pipeline id '{pipeline.Id.Trim()}'");
                     }
                 }
             }
@@ -204,7 +235,8 @@ namespace LMLocal.Core.Models
                 ReasoningEffort = ReasoningEffort,
                 Parallel = Parallel,
                 MaxParallel = MaxParallel,
-                SharedTools = SharedTools != null ? new List<string>(SharedTools) : null
+                SharedTools = SharedTools != null ? new List<string>(SharedTools) : null,
+                Pipelines = ClonePipelines()
             };
 
             foreach (var agent in Agents)
@@ -233,8 +265,25 @@ namespace LMLocal.Core.Models
                     Parallel = agent.Parallel,
                     MaxParallel = agent.MaxParallel,
                     Enabled = agent.Enabled,
+                    Exposed = agent.Exposed,
                     AllowedTools = agent.AllowedTools != null ? new List<string>(agent.AllowedTools) : new List<string>()
                 });
+            }
+
+            return clone;
+        }
+        /// <summary>
+        /// Deep copy of the pipelines, including their steps and branches.
+        /// </summary>
+        private List<SubAgentPipelineDefinition> ClonePipelines()
+        {
+            if (Pipelines == null)
+                return null;
+
+            var clone = new List<SubAgentPipelineDefinition>(Pipelines.Count);
+            foreach (var pipeline in Pipelines)
+            {
+                clone.Add(pipeline == null ? null : pipeline.Clone());
             }
 
             return clone;
@@ -384,6 +433,20 @@ namespace LMLocal.Core.Models
         public List<string> AllowedTools { get; set; } = new List<string>();
 
         /// <summary>
+        /// Whether the agent is listed in the tool queue of the main model. Default: true. A hidden agent
+        /// (<c>false</c>) can still be used inside a pipeline and through IPC, and it still owns its tools.
+        /// </summary>
+        [JsonProperty("exposed")]
+        public bool? Exposed { get; set; }
+
+        /// <summary>True unless the config explicitly hides the agent from the main model.</summary>
+        [JsonIgnore]
+        public bool IsExposed
+        {
+            get { return Exposed != false; }
+        }
+
+        /// <summary>
         /// Validates the agent and returns a list of human-readable errors.
         /// </summary>
         public IReadOnlyList<string> Validate()
@@ -430,8 +493,25 @@ namespace LMLocal.Core.Models
         /// </summary>
         private static bool IsValidToolIdentifier(string name)
         {
+            return SubAgentToolIdentifier.IsValid(name);
+        }
+    }
+
+    /// <summary>
+    /// Shared rule for every name that becomes a tool name: agents, pipelines and pipeline steps.
+    /// </summary>
+    internal static class SubAgentToolIdentifier
+    {
+        /// <summary>
+        /// True when the name is usable as a tool identifier: letters, digits, '_', '-', 1..64 chars.
+        /// </summary>
+        internal static bool IsValid(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
             var value = name.Trim();
-            if (string.IsNullOrEmpty(value) || value.Length > 64)
+            if (value.Length > 64)
                 return false;
 
             foreach (var c in value)

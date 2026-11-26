@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Security;

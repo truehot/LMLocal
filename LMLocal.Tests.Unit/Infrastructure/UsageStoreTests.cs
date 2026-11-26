@@ -186,6 +186,30 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
+        public void Serializer_ReasoningEcho_WrittenOnlyWhenPositive()
+        {
+            UsageRecord echoed = Record(new DateTime(2026, 11, 20, 10, 15, 2, DateTimeKind.Utc));
+            echoed.ReasoningEcho = 120;
+            UsageRecord silent = Record(new DateTime(2026, 11, 20, 10, 15, 2, DateTimeKind.Utc));
+
+            Assert.That(UsageRecordSerializer.BuildLine(echoed), Does.Contain("\"reasoning_echo\":120"));
+            Assert.That(UsageRecordSerializer.BuildLine(silent), Does.Not.Contain("reasoning_echo"));
+        }
+
+        [Test]
+        public void Serializer_ReasoningEcho_RoundTrips()
+        {
+            UsageRecord original = Record(new DateTime(2026, 11, 20, 10, 15, 2, DateTimeKind.Utc));
+            original.ReasoningEcho = 4096;
+
+            UsageRecord parsed = UsageRecordSerializer.ParseLine(UsageRecordSerializer.BuildLine(original));
+            UsageRecord withoutEcho = UsageRecordSerializer.ParseLine(UsageRecordSerializer.BuildLine(Record(new DateTime(2026, 11, 20, 10, 15, 2, DateTimeKind.Utc))));
+
+            Assert.That(parsed.ReasoningEcho, Is.EqualTo(4096));
+            Assert.That(withoutEcho.ReasoningEcho, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Serializer_BrokenLine_IsSkippedInsteadOfThrowing()
         {
             Assert.That(UsageRecordSerializer.ParseLine("{not json"), Is.Null);

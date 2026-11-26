@@ -7,8 +7,7 @@ namespace LMLocal.Application.ChatSessionStream
     /// <summary>
     /// Stops a Gemma tool call whose arguments contain chat-template control tokens. Write tools may legitimately carry these
     /// tokens in file content, so for them only a protocol junction (one token right after another) stops the call; for every
-    /// other tool a single token does. A call whose name is not known yet is treated like a write tool.
-    /// Stateless: one instance serves all streams.
+    /// other tool a single token does.
     /// </summary>
     internal sealed class GemmaToolCallArgumentsGuard : IToolCallArgumentsGuard
     {

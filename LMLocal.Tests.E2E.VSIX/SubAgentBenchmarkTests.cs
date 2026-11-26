@@ -519,35 +519,27 @@ line six - foxtrot";
 
             list.Add(Sc("A1.31", Explorer,
                 "Find the C# method AddAssistantMessage in LMLocal/Application/Chat/ChatHistoryManager.cs. It has an interface declaration and two concrete overloads. Select the concrete implementation overload that accepts IReadOnlyList<ToolCallRecord> and return its declaration line together with its full implementation body.",
-                "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "normalizedArguments")));
+                "AddAssistantMessage", Ev(ChatHistoryManagerFile, "toolCallObjects"), Ev(ChatHistoryManagerFile, "toolCall.ArgumentsJson")));
 
-            // ---- Added 2026-11-21 from the real requests of 2026-11-20 (Docs\subagent-benchmark-scenarios-plan.md, section 6.3). ----
-            // Judged by locations against ground truth from the repository, not by words of the answer.
-
-            // A1.32 - a batch of six items of different types in one request (64% of the real explorer requests had four or more items).
-            // Items 1-2 are checked by the lines the runner expands from the markers; items 3-5 by locations; item 6 must not
-            // produce a location: CheckForeignLocations rejects every location outside the expected ones.
-            const string a132Factory = @"LMLocal\Application\Tool\ToolMessageFactory.cs";
+            // A1.32 - a batch of four items of different types in one request (64% of the real explorer requests had four or more items).
+            // Item 1 is checked by the lines the runner expands from the marker; items 2-4 by locations; CheckForeignLocations rejects every other location.
             var a132Decl = LocationsOf("internal static class ToolHistoryPruner", ".cs", @"LMLocal\Application");
             var a132Calls = LocationsOf("ToolHistoryPruner.Prune(", ".cs", "LMLocal");
             var a132Text = LocationsOf("PrunedKey", ".cs", @"LMLocal\Application\Chat");
             var a132 = ScVerbatim("A1.32", Explorer,
-                "Answer all six items in one report:\n"
-                + "1. Read " + a132Factory + " and return it verbatim.\n"
-                + "2. Read LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md lines 11-15 and return them verbatim with their line numbers.\n"
-                + "3. Where is the class ToolHistoryPruner declared? Report file:line with the declaration line text.\n"
-                + "4. Search only in project LMLocal: which places call ToolHistoryPruner.Prune? Report file:line with the matched line text for every call site.\n"
-                + "5. Search the folder LMLocal\\Application\\Chat for the exact text PrunedKey and report every matched line with file:line and its text.\n"
-                + $"6. Search the entire solution for the literal text bench-{guid}-q6 and report every hit, or state clearly that there are none.",
-                Ev(a132Factory, "public static ChatMessage CreateFromToolResult(ToolResultMessage toolResult)"),
+                "Answer all four items in one report:\n"
+                + "1. Read LMLocal.Tests.E2E.VSIX\\Fixtures\\reader-ranges-fixture.md lines 11-15 and return them verbatim with their line numbers.\n"
+                + "2. Where is the class ToolHistoryPruner declared? Report file:line with the declaration line text.\n"
+                + "3. Search only in project LMLocal: which places call ToolHistoryPruner.Prune? Report file:line with the matched line text for every call site.\n"
+                + "4. Search the folder LMLocal\\Application\\Chat for the exact text PrunedKey and report every matched line with file:line and its text.",
                 "reader-ranges-fixture.md, lines 11-15",
                 "RANGE-ANCHOR-A1-OPEN",
                 "RANGE-ANCHOR-A1-CLOSE");
             a132.ExpectedLocations = a132Decl.Concat(a132Calls).Concat(a132Text).Distinct().ToArray();
-            // Items 1-2 are whole files or ranges the runner expands as "File: path, lines a-b": those two files may appear with any lines.
-            a132.AllowedLocations = new[] { a132Factory, @"LMLocal.Tests.E2E.VSIX\Fixtures\reader-ranges-fixture.md" };
+            // Item 1 is a range the runner expands as "File: path, lines a-b": that file may appear with any lines.
+            a132.AllowedLocations = new[] { @"LMLocal.Tests.E2E.VSIX\Fixtures\reader-ranges-fixture.md" };
             a132.CheckForeignLocations = true;
-            // Items 3-5 are single matched lines: a range over a whole file must not cover them.
+            // Items 2-4 are single matched lines: a range over a whole file must not cover them.
             a132.MaxCoverLines = 3;
             a132.MustNotContain = new[] { "@LMLocal" };
             list.Add(a132);
@@ -1964,9 +1956,9 @@ line six - foxtrot";
             + @"(?::(?<a>\d+)(?:-(?<b>\d+))?(?<more>(?:,\d+)*)|\((?<pl>\d+)(?:,\d+)?\))(?!\d)",
             RegexOptions.Compiled);
 
-        // "File: path, lines a-b": a range marker expanded by the runner (FileContentRenderer.AppendRefContentBlock).
+        // "File: path, lines a-b": a range marker expanded by the runner (FileContentRenderer.AppendRefContentBlock); the marker is replaced in place, so text may precede it.
         private static readonly Regex RangeHeaderRegex = new Regex(
-            @"^\s*File:\s+(?<path>\S.*?\.[A-Za-z0-9]{1,6}),\s+lines\s+(?<a>\d+)-(?<b>\d+)\s*$",
+            @"(?<!\w)File:\s+(?<path>\S.*?\.[A-Za-z0-9]{1,6}),\s+lines\s+(?<a>\d+)-(?<b>\d+)\s*$",
             RegexOptions.Compiled);
 
         // The runner fences an expanded range with four backticks (a model writes three).

@@ -122,7 +122,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs
             }
             catch (InvalidOperationException ex)
             {
-                InternalLogger.Warn($"Failed to get tool configuration for '{toolName}'. Defaulting to disabled. Exception: {ex}");
+                InternalLogger.Warn($"Failed to get tool configuration for '{toolName}'. Defaulting to disabled", ex);
                 return false;
             }
         }

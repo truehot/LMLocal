@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
@@ -29,8 +30,7 @@ namespace LMLocal.Application.SubAgents
         internal const int DefaultTimeoutSeconds = 120;
 
         /// <summary>
-        /// Time kept back for the final answer round. Tool rounds stop this long before the agent deadline, so the answer
-        /// comes from the results already gathered instead of dying with the hard budget timeout.
+        /// Time kept back for the final answer round.
         /// </summary>
         internal const int BudgetReserveSeconds = 25;
 
@@ -47,9 +47,10 @@ namespace LMLocal.Application.SubAgents
         private readonly IStreamingRoundService _roundService;
         private readonly Func<IToolExecutionManager> _toolExecutionManagerResolver;
         private readonly IToolQueueProvider _queueProvider;
-        private readonly IToolCallLoopDetector _loopDetector;
         private readonly IChatPersistenceFactory _chatPersistenceFactory;
+        private readonly IProviderPolicy _providerPolicy;
         private readonly IUsageRecorder _usageRecorder;
+        private readonly ITimeProvider _timeProvider;
         private readonly string _logsFolder;
         private readonly bool _loopRecoveryEnabled;
 
@@ -59,20 +60,22 @@ namespace LMLocal.Application.SubAgents
             IStreamingRoundService roundService,
             Func<IToolExecutionManager> toolExecutionManagerResolver,
             IToolQueueProvider queueProvider,
-            IToolCallLoopDetector loopDetector,
             IChatPersistenceFactory chatPersistenceFactory,
+            IProviderPolicy providerPolicy,
             bool loopRecoveryEnabled = DefaultLoopRecoveryEnabled,
-            IUsageRecorder usageRecorder = null)
+            IUsageRecorder usageRecorder = null,
+            ITimeProvider timeProvider = null)
         {
             _settingsManager = settingsManager ?? throw new ArgumentNullException(nameof(settingsManager));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _roundService = roundService ?? throw new ArgumentNullException(nameof(roundService));
             _toolExecutionManagerResolver = toolExecutionManagerResolver ?? throw new ArgumentNullException(nameof(toolExecutionManagerResolver));
             _queueProvider = queueProvider ?? throw new ArgumentNullException(nameof(queueProvider));
-            _loopDetector = loopDetector ?? throw new ArgumentNullException(nameof(loopDetector));
             _chatPersistenceFactory = chatPersistenceFactory ?? throw new ArgumentNullException(nameof(chatPersistenceFactory));
+            _providerPolicy = providerPolicy ?? throw new ArgumentNullException(nameof(providerPolicy));
             _loopRecoveryEnabled = loopRecoveryEnabled;
             _usageRecorder = usageRecorder;
+            _timeProvider = timeProvider;
 
             string appDataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -86,7 +89,7 @@ namespace LMLocal.Application.SubAgents
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SubAgentsService: failed to create logs folder '{_logsFolder}': {ex.Message}");
+                InternalLogger.Warn($"SubAgentsService: failed to create logs folder '{_logsFolder}'", ex);
             }
         }
 
@@ -99,6 +102,8 @@ namespace LMLocal.Application.SubAgents
 
             var response = new SubAgentsRunResponse { RunId = runId };
 
+            var tokenReporter = new SubAgentTokenReporter(request == null ? null : request.Progress, _timeProvider);
+
             int? lastRound = null;
             Guid? chatSessionId = null;
 
@@ -107,15 +112,19 @@ namespace LMLocal.Application.SubAgents
             var usageOutcome = UsageOutcome.Ok;
             string usageError = null;
 
+            var timeoutSeconds = EffectiveTimeoutSeconds(request);
+
             SubAgentsRunResponse FailRun(
                 SubAgentsRunResponse failed,
                 SubAgentRunRequest failedRequest,
                 string error,
                 int? round,
-                UsageOutcome outcome = UsageOutcome.Error)
+                UsageOutcome outcome = UsageOutcome.Error,
+                SubAgentFailureKind kind = SubAgentFailureKind.Unexpected)
             {
                 usageOutcome = outcome;
                 usageError = error;
+                failed.FailureKind = kind;
 
                 InternalLogger.Warn(
                     $"SubAgentsService: run '{failed.RunId}' of '{failedRequest?.AgentName}' failed"
@@ -126,31 +135,42 @@ namespace LMLocal.Application.SubAgents
                 return Fail(failed, error);
             }
 
+            SubAgentsRunResponse StopRun(SubAgentsRunResponse stopped, SubAgentRunRequest stoppedRequest, int? round, int? steps)
+            {
+                return IsStoppedByCaller(stoppedRequest)
+                    ? FailRun(stopped, stoppedRequest, DescribeCallerCancel(stoppedRequest, round), round,
+                        UsageOutcome.Cancelled, SubAgentFailureKind.Cancelled)
+                    : FailRun(stopped, stoppedRequest, DescribeCancellation(stoppedRequest, round, steps), round,
+                        UsageOutcome.Cancelled, SubAgentFailureKind.Cancelled);
+            }
+
             try
             {
                 if (request == null)
                 {
                     return FailRun(
-                        response, null, "SubAgent run request is required.", null);
+                        response, null, "SubAgent run request is required.", null,
+                        UsageOutcome.Error, SubAgentFailureKind.InvalidRequest);
                 }
 
                 if (string.IsNullOrWhiteSpace(request.Prompt))
                 {
                     return FailRun(
-                        response, request, "Prompt is required.", null);
+                        response, request, "Prompt is required.", null,
+                        UsageOutcome.Error, SubAgentFailureKind.InvalidRequest);
                 }
 
                 var modelId = request.Model?.Trim();
                 if (string.IsNullOrWhiteSpace(modelId))
                 {
                     return FailRun(
-                        response, request, "Model is required.", null);
+                        response, request, "Model is required.", null,
+                        UsageOutcome.Error, SubAgentFailureKind.InvalidRequest);
                 }
 
                 response.Model = modelId;
 
                 var maxRounds = request.MaxRounds ?? DefaultMaxRounds;
-                var timeoutSeconds = request.TimeoutSeconds ?? DefaultTimeoutSeconds;
                 var systemPrompt = !string.IsNullOrWhiteSpace(request.System)
                     ? request.System
                     : _settingsManager.SystemPrompt;
@@ -165,7 +185,7 @@ namespace LMLocal.Application.SubAgents
                 };
 
                 var persistence = _chatPersistenceFactory.Create(_logsFolder);
-                var history = new ChatHistoryManager(_settingsManager, persistence);
+                var history = new ChatHistoryManager(_settingsManager, persistence, _providerPolicy);
                 await persistence.MarkNewSessionAsync(cancellationToken).ConfigureAwait(false);
                 chatSessionId = persistence.CurrentSessionId;
 
@@ -176,7 +196,7 @@ namespace LMLocal.Application.SubAgents
                 string promptForRound = request.Prompt;
                 string finalRoundNote = null;
 
-                var recovery = new SubAgentRecoveryPolicy(_loopDetector, _loopRecoveryEnabled, maxRounds);
+                var recovery = new SubAgentRecoveryPolicy(_loopRecoveryEnabled, maxRounds);
                 var evidence = new SubAgentRunEvidence();
                 var toolExecutor = new SubAgentToolRoundExecutor(_toolExecutionManagerResolver, toolQueue, request.Progress, evidence);
 
@@ -214,43 +234,55 @@ namespace LMLocal.Application.SubAgents
                             MaxOutputTokens = request.MaxTokens,
                             Provider = provider,
                             Tools = finalAnswerRound ? NoTools : tools,
-                            OnChunk = null
+                            OnChunk = tokenReporter.IsEnabled ? ReportTokens(tokenReporter) : null
                         };
 
                         promptForRound = null;
                         isToolRound = true;
                         finalRoundNote = null;
 
-                        var roundResult = await _roundService.RunAsync(roundRequest, overallCts.Token).ConfigureAwait(false);
+                        StreamRoundResult roundResult = null;
+                        try
+                        {
+                            roundResult = await _roundService.RunAsync(roundRequest, overallCts.Token).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            tokenReporter.EndRound(roundResult?.Stream?.TokenUsage?.CompletionTokens);
+                        }
+
                         var streamResult = roundResult.Stream;
 
                         usage.Add(streamResult);
 
                         if (cancellationToken.IsCancellationRequested)
                         {
-                            return FailRun(
-                                response, request, DescribeCancellation(request, round, toolExecutor.Steps), round, UsageOutcome.Cancelled);
+                            return StopRun(response, request, round, toolExecutor.Steps);
                         }
 
                         if (overallCts.Token.IsCancellationRequested)
                         {
                             return FailRun(
-                                response, request, DescribeTimeout(request, round), round, UsageOutcome.Timeout);
+                                response, request, DescribeTimeout(request, round), round,
+                                UsageOutcome.Timeout, SubAgentFailureKind.Timeout);
                         }
 
                         switch (roundResult.Outcome)
                         {
                             case StreamRoundOutcome.Error:
                                 return FailRun(
-                                    response, request, "Provider stream error: " + streamResult.ErrorMessage, round);
+                                    response, request, "Provider stream error: " + streamResult.ErrorMessage, round,
+                                    UsageOutcome.Error, ClassifyProviderError(streamResult));
 
                             case StreamRoundOutcome.Cancelled:
                                 return FailRun(
-                                    response, request, DescribeUnexpectedCancel(request, round), round);
+                                    response, request, DescribeUnexpectedCancel(request, round), round,
+                                    UsageOutcome.Error, SubAgentFailureKind.Provider);
 
                             case StreamRoundOutcome.Incomplete:
                                 return FailRun(
-                                    response, request, streamResult.ErrorMessage, round, UsageOutcome.Incomplete);
+                                    response, request, streamResult.ErrorMessage, round,
+                                    UsageOutcome.Incomplete, SubAgentFailureKind.Incomplete);
 
                             case StreamRoundOutcome.ToolCalls:
                                 if (finalAnswerRound && roundRequest.IsToolRound)
@@ -259,13 +291,14 @@ namespace LMLocal.Application.SubAgents
                                         response,
                                         request,
                                         "SubAgent called tools in the final answer round (agent budget exhausted); run stopped.",
-                                        round);
+                                        round, UsageOutcome.Error, SubAgentFailureKind.Agent);
                                 }
 
                                 var decision = recovery.Evaluate(streamResult, round);
                                 if (decision.Action == RecoveryAction.Fail)
                                 {
-                                    return FailRun(response, request, decision.Error, round);
+                                    return FailRun(response, request, decision.Error, round,
+                                        UsageOutcome.Error, SubAgentFailureKind.Agent);
                                 }
 
                                 if (decision.Action == RecoveryAction.Recover)
@@ -328,36 +361,47 @@ namespace LMLocal.Application.SubAgents
                     }
 
                     return FailRun(
-                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {SubAgentRecoveryPolicy.LimitRetryHint}", lastRound);
+                        response, request, $"SubAgent exceeded maximum rounds ({maxRounds}). {SubAgentRecoveryPolicy.LimitRetryHint}", lastRound,
+                        UsageOutcome.Error, SubAgentFailureKind.Agent);
                 }
             }
             catch (OperationCanceledException)
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested || IsStoppedByCaller(request))
                 {
-                    return FailRun(
-                        response, request, DescribeCancellation(request, lastRound, null), lastRound, UsageOutcome.Cancelled);
+                    return StopRun(response, request, lastRound, null);
                 }
 
                 return FailRun(
-                    response, request, DescribeTimeout(request, lastRound), lastRound, UsageOutcome.Timeout);
+                    response, request, DescribeTimeout(request, lastRound), lastRound,
+                    UsageOutcome.Timeout, SubAgentFailureKind.Timeout);
             }
             catch (ApiException ex)
             {
-                InternalLogger.Warn($"SubAgentsService: provider API error: {ex.Message}");
+                InternalLogger.Warn("SubAgentsService: provider API error", ex);
                 return FailRun(
-                    response, request, "Provider API error: " + ExceptionFormatter.Format(ex), lastRound);
+                    response, request, "Provider API error: " + ExceptionFormatter.Format(ex), lastRound,
+                    UsageOutcome.Error, ClassifyProviderError(StreamingRoundService.BuildErrorResult(ex)));
+            }
+            catch (HttpRequestException ex)
+            {
+                InternalLogger.Warn("SubAgentsService: provider request failed", ex);
+                return FailRun(
+                    response, request, ExceptionFormatter.Format(ex), lastRound,
+                    UsageOutcome.Error, SubAgentFailureKind.Provider);
             }
             catch (InvalidOperationException ex)
             {
                 return FailRun(
-                    response, request, ExceptionFormatter.Format(ex), lastRound);
+                    response, request, ExceptionFormatter.Format(ex), lastRound,
+                    UsageOutcome.Error, SubAgentFailureKind.Unexpected);
             }
             catch (Exception ex)
             {
                 InternalLogger.Error($"SubAgentsService: unexpected error during run '{runId}'", ex);
                 return FailRun(
-                    response, request, ExceptionFormatter.Format(ex), lastRound);
+                    response, request, ExceptionFormatter.Format(ex), lastRound,
+                    UsageOutcome.Error, SubAgentFailureKind.Unexpected);
             }
             finally
             {
@@ -369,6 +413,16 @@ namespace LMLocal.Application.SubAgents
                 await RecordUsageAsync(request, response, usage, usageOutcome, usageError, chatSessionId, usageStartedUtc)
                     .ConfigureAwait(false);
             }
+        }
+
+        /// <summary>Forwards the token stats of a round to the call's progress sink for the status bar.</summary>
+        private static Func<TextStreamChunk, TokenGenerationStats, Task> ReportTokens(SubAgentTokenReporter reporter)
+        {
+            return (chunk, stats) =>
+            {
+                reporter.Report(stats);
+                return Task.CompletedTask;
+            };
         }
 
         /// <summary>
@@ -413,6 +467,12 @@ namespace LMLocal.Application.SubAgents
                     Source = UsageSource.Subagent,
                     Origin = string.IsNullOrWhiteSpace(request.Origin) ? UsageOrigins.Chat : request.Origin,
                     Agent = request.AgentName,
+                    Pipeline = request.PipelineId,
+                    PipelineRunId = request.PipelineRunId,
+                    PipelineStep = request.PipelineStep,
+                    PipelineStepId = request.PipelineStepId,
+                    PipelineAttempt = request.PipelineAttempt,
+                    PipelineBranch = request.PipelineBranch,
                     RunSessionId = UsageIds.SessionId(chatSessionId),
                     Provider = request.ProviderType,
                     BaseUrl = request.BaseUrl,
@@ -430,7 +490,7 @@ namespace LMLocal.Application.SubAgents
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SubAgentsService: failed to record the usage of run '{response?.RunId}': {ex.Message}");
+                InternalLogger.Warn($"SubAgentsService: failed to record the usage of run '{response?.RunId}'", ex);
             }
         }
 
@@ -451,7 +511,7 @@ namespace LMLocal.Application.SubAgents
         private void CloseTurnForRecovery(IChatHistoryManager history)
         {
             history.DiscardPendingAssistant();
-            history.AddAssistantMessage(_settingsManager.AssistantPlaceholder, null);
+            history.AddAssistantMessage(SubAgentRecoveryPolicy.DiscardedTurnPlaceholder, null);
         }
 
         // Keep the reason and the numbers inside the first ~100 chars: the UI truncates tool errors at 120.
@@ -467,6 +527,21 @@ namespace LMLocal.Application.SubAgents
             return $"{text} ({position}).";
         }
 
+        /// <summary>
+        /// Tells a transient provider failure from one a repeated run cannot fix; a rate limit counts as the latter because the round already handled it.
+        /// </summary>
+        private static SubAgentFailureKind ClassifyProviderError(StreamCompletionResult result)
+        {
+            if (ContextOverflowDetector.IsContextOverflow(result) || RateLimitRetryPolicy.IsRateLimit(result))
+                return SubAgentFailureKind.ProviderNotRetryable;
+
+            var status = result?.HttpStatusCode;
+            if (!status.HasValue || status.Value == 408 || status.Value >= 500)
+                return SubAgentFailureKind.Provider;
+
+            return SubAgentFailureKind.ProviderNotRetryable;
+        }
+
         private static string DescribeUnexpectedCancel(SubAgentRunRequest request, int round)
             => $"SubAgent stream ended as cancelled without a stop request (round {round + 1}/{EffectiveMaxRounds(request)}).";
 
@@ -477,6 +552,26 @@ namespace LMLocal.Application.SubAgents
                 ? text + $" (round {round.Value + 1}/{EffectiveMaxRounds(request)})."
                 : text + ".";
             return text + " " + SubAgentRecoveryPolicy.LimitRetryHint;
+        }
+
+        /// <summary>
+        /// Cancellation requested by an outer owner (a parallel pipeline group whose sibling branch failed), not by
+        /// the user and not by the watchdog.
+        /// </summary>
+        private static string DescribeCallerCancel(SubAgentRunRequest request, int? round)
+        {
+            var text = "SubAgent stopped: cancelled by its caller, not by the user";
+            return round.HasValue
+                ? text + $" (round {round.Value + 1}/{EffectiveMaxRounds(request)})."
+                : text + ".";
+        }
+
+        /// <summary>
+        /// True when the owner of the token cancelled the run on purpose, so the reason is not a user stop.
+        /// </summary>
+        private static bool IsStoppedByCaller(SubAgentRunRequest request)
+        {
+            return request != null && request.Cancellation != null && request.Cancellation.StoppedByCaller;
         }
 
         private static int EffectiveTimeoutSeconds(SubAgentRunRequest request)

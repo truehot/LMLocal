@@ -196,6 +196,89 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public async Task Execute_NoSectionWithAllWords_ReturnsPartialWordsWithMatchedTermsAndNote()
+        {
+            var parameters = new Dictionary<string, object> { { "query", "ChatHistory storage guardrails" } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results.Count, Is.EqualTo(1));
+            var result = resp.Results[0];
+            Assert.That(result.FilePath, Is.EqualTo("docs/ChatHistory.md"));
+            Assert.That(result.Kind, Is.EqualTo(KnowledgeMatchKind.PartialWords));
+            Assert.That(result.MatchedTerms, Is.EqualTo(new[] { "ChatHistory", "storage" }));
+            Assert.That(result.Heading, Is.EqualTo("Storage"));
+            Assert.That(result.LineNumber, Is.EqualTo(7));
+            Assert.That(result.Snippet, Does.Contain("Storage"));
+            Assert.That(resp.Note, Does.Contain("'guardrails'"));
+            Assert.That(resp.TotalMatches, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task Execute_FilenameSubstringComesAfterPartialWords()
+        {
+            var parameters = new Dictionary<string, object> { { "query", "ChatHistory storage readme" } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results.Count, Is.EqualTo(2));
+            Assert.That(resp.Results[0].Kind, Is.EqualTo(KnowledgeMatchKind.PartialWords));
+            Assert.That(resp.Results[1].FilePath, Is.EqualTo("README.md"));
+            Assert.That(resp.Results[1].Kind, Is.EqualTo(KnowledgeMatchKind.FilenameSubstring));
+            Assert.That(resp.Results[1].MatchedTerms, Is.Null);
+            Assert.That(resp.TotalMatches, Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task Execute_FilenameSubstringNotShown_IsNotCounted()
+        {
+            var parameters = new Dictionary<string, object> { { "query", "ChatHistory storage readme" }, { "max_results", 1 } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results.Count, Is.EqualTo(1));
+            Assert.That(resp.TotalMatches, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task Execute_AllWordsMatch_HasNoNoteOrMatchedTerms()
+        {
+            var parameters = new Dictionary<string, object> { { "query", "ChatHistory Overview" } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results[0].Kind, Is.EqualTo(KnowledgeMatchKind.HeadingExact));
+            Assert.That(resp.Results[0].MatchedTerms, Is.Null);
+            Assert.That(resp.Note, Is.Null);
+        }
+
+        [Test]
+        public async Task Execute_MaxResultsAboveLimit_IsClampedTo20()
+        {
+            SetupManyDocs(25, "alpha here");
+            var parameters = new Dictionary<string, object> { { "query", "alpha" }, { "max_results", 50 } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results.Count, Is.EqualTo(20));
+            Assert.That(resp.TotalMatches, Is.EqualTo(25));
+        }
+
+        [Test]
+        public async Task Execute_KeepsAtMost15PartialWordsResults()
+        {
+            SetupManyDocs(20, "# A\n\nalpha beta\n");
+            var parameters = new Dictionary<string, object> { { "query", "alpha beta gamma" }, { "max_results", 20 } };
+
+            var resp = (KnowledgeSearchResponse)await _tool.ExecuteAsync(parameters, CancellationToken.None);
+
+            Assert.That(resp.Results.Count, Is.EqualTo(15));
+            Assert.That(resp.Results, Has.All.Matches<KnowledgeMatchResult>(r => r.Kind == KnowledgeMatchKind.PartialWords));
+            Assert.That(resp.TotalMatches, Is.EqualTo(15));
+            Assert.That(resp.Note, Does.Contain("'gamma'"));
+        }
+
+        [Test]
         public async Task Execute_WithNullParameters_ReturnsError()
         {
             var result = await _tool.ExecuteAsync(null, CancellationToken.None);
@@ -328,6 +411,21 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             _fileSystemMock.Verify(f => f.GetFiles(SolutionDir, "*.md"), Times.Exactly(2));
             _fileSystemMock.Verify(f => f.GetFiles(DocsDir, "*.md"), Times.Exactly(2));
+        }
+
+        private void SetupManyDocs(int count, string content)
+        {
+            var paths = new string[count];
+            for (int i = 0; i < count; i++)
+            {
+                string path = $@"{DocsDir}\doc{i:D2}.md";
+                paths[i] = path;
+                _fileSystemMock.Setup(f => f.GetFileInfo(path)).Returns((10L, DocDate.AddDays(i)));
+            }
+
+            _fileSystemMock.Setup(f => f.GetFiles(DocsDir, "*.md")).Returns(paths);
+            _fileSystemMock.Setup(f => f.ReadAllTextAsync(It.Is<string>(p => p.StartsWith(DocsDir + @"\doc")), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(content);
         }
     }
 }

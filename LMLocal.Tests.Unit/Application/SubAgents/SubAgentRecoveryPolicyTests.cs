@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using LMLocal.Application.SubAgents;
-using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
 using NUnit.Framework;
 
@@ -12,7 +11,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         private const int ManyRounds = 20;
 
         private static SubAgentRecoveryPolicy Policy(bool loopRecoveryEnabled = true, int maxRounds = ManyRounds)
-            => new SubAgentRecoveryPolicy(new ToolCallLoopDetector(), loopRecoveryEnabled, maxRounds);
+            => new SubAgentRecoveryPolicy(loopRecoveryEnabled, maxRounds);
 
         private static StreamCompletionResult Calls(string arguments)
         {

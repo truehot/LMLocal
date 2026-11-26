@@ -43,7 +43,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CodeCommandHelper.GetSelectedText (DTE fallback) failed: {ex.Message}");
+                InternalLogger.Warn("CodeCommandHelper.GetSelectedText (DTE fallback) failed", ex);
             }
 
             return null;
@@ -77,7 +77,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CodeCommandHelper.ReadDocumentContent: cannot read FullName: {ex.Message}");
+                InternalLogger.Warn("CodeCommandHelper.ReadDocumentContent: cannot read FullName", ex);
             }
 
             try
@@ -94,7 +94,7 @@ namespace LMLocal.Commands
             catch (Exception ex)
             {
                 InternalLogger.Warn(
-                    $"CodeCommandHelper.ReadDocumentContent: buffer unavailable for '{filePath}': {ex.Message}");
+                    $"CodeCommandHelper.ReadDocumentContent: buffer unavailable for '{filePath}'", ex);
             }
 
             return ReadFromDisk(filePath);
@@ -120,7 +120,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CodeCommandHelper.ReadFromDisk failed for '{filePath}': {ex.Message}");
+                InternalLogger.Warn($"CodeCommandHelper.ReadFromDisk failed for '{filePath}'", ex);
                 return null;
             }
         }
@@ -160,7 +160,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CodeCommandHelper.GetRelativePath failed for '{fullPath}': {ex.Message}");
+                InternalLogger.Warn($"CodeCommandHelper.GetRelativePath failed for '{fullPath}'", ex);
             }
             return fullPath;
         }

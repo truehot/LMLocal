@@ -1,7 +1,7 @@
 namespace LMLocal.Tests.Architecture
 {
     /// <summary>
-    /// Known layering violations (ratchet baseline, 2026-11-19).
+    /// Known layering violations.
     /// </summary>
     internal static class LayeringAllowlist
     {
@@ -9,14 +9,9 @@ namespace LMLocal.Tests.Architecture
         public static readonly string[] ApplicationToInfrastructure =
         {
             "LMLocal.Application.Autocompletions.AutocompletionsService",
-            "LMLocal.Application.Chat.ChatHistoryManager",
-            "LMLocal.Application.Chat.ConversationSegmenter",
-            "LMLocal.Application.Chat.EnvelopeEstimator",
             "LMLocal.Application.Chat.HistoryCompactor",
-            "LMLocal.Application.Chat.SummaryInputFormatter",
-            "LMLocal.Application.Chat.ToolHistoryPruner",
             "LMLocal.Application.ChatSession.ChatSessionOrchestrator",
-            "LMLocal.Application.ChatSession.ChatSessionOrchestratorFactory",
+            "LMLocal.Application.ChatSession.ChatToolRoundRunner",
             "LMLocal.Application.ChatSession.IChatSessionOrchestrator",
             "LMLocal.Application.ChatSession.ISessionManager",
             "LMLocal.Application.ChatSession.SessionManager",

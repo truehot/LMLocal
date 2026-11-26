@@ -77,13 +77,13 @@ namespace LMLocal.Tests.Unit
         {
             return new ChatMessage("assistant", text)
             {
-                ToolCalls = new List<ToolCall>
+                ToolCalls = new List<ChatToolCall>
                 {
-                    new ToolCall
+                    new ChatToolCall
                     {
                         Id = id,
-                        Type = "function",
-                        Function = new FunctionCallDetails { Name = name, Arguments = arguments }
+                        Name = name,
+                        Arguments = arguments
                     }
                 }
             };

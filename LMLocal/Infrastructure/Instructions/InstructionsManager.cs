@@ -69,7 +69,7 @@ namespace LMLocal.Infrastructure.Instructions
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn("Error parsing instructions: " + ex.Message);
+                    InternalLogger.Warn("Error parsing instructions", ex);
                     return "{}";
                 }
 
@@ -79,7 +79,7 @@ namespace LMLocal.Infrastructure.Instructions
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Error reading instructions: " + ex.Message);
+                InternalLogger.Warn("Error reading instructions", ex);
                 return "{}";
             }
             finally
@@ -148,7 +148,7 @@ namespace LMLocal.Infrastructure.Instructions
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn("Error parsing instructions for selected tab update: " + ex.Message);
+                    InternalLogger.Warn("Error parsing instructions for selected tab update", ex);
                     return;
                 }
 
@@ -204,7 +204,7 @@ namespace LMLocal.Infrastructure.Instructions
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Error searching instructions by displayName: " + ex.Message);
+                InternalLogger.Warn("Error searching instructions by displayName", ex);
                 return null;
             }
         }
@@ -218,7 +218,7 @@ namespace LMLocal.Infrastructure.Instructions
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Error reading instruction defaults: " + ex.Message);
+                InternalLogger.Warn("Error reading instruction defaults", ex);
                 return new List<InstructionDefaultTab>();
             }
         }

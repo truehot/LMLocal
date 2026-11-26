@@ -76,7 +76,7 @@ namespace LMLocal.Infrastructure.RecentModels
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("Error reading recent models: " + ex.Message, ex);
+                InternalLogger.Error("Error reading recent models", ex);
                 return new List<RecentModelEntry>();
             }
             finally
@@ -132,7 +132,7 @@ namespace LMLocal.Infrastructure.RecentModels
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("Error recording recent model usage: " + ex.Message, ex);
+                InternalLogger.Error("Error recording recent model usage", ex);
             }
             finally
             {
@@ -159,7 +159,7 @@ namespace LMLocal.Infrastructure.RecentModels
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("Error parsing recent models file: " + ex.Message, ex);
+                InternalLogger.Error("Error parsing recent models file", ex);
                 return new RecentModelsFile();
             }
         }

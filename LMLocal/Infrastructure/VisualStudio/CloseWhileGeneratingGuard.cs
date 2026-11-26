@@ -164,7 +164,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CloseWhileGeneratingGuard: Failed to detach from the main window: {ex.Message}");
+                InternalLogger.Warn("CloseWhileGeneratingGuard: Failed to detach from the main window", ex);
             }
             finally
             {
@@ -236,7 +236,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CloseWhileGeneratingGuard: Failed to restore the main window procedure: {ex.Message}");
+                InternalLogger.Warn("CloseWhileGeneratingGuard: Failed to restore the main window procedure", ex);
                 return;
             }
 
@@ -565,7 +565,7 @@ namespace LMLocal.Infrastructure.VisualStudio
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"CloseWhileGeneratingGuard: Cleanup failed: {ex.Message}");
+                InternalLogger.Warn("CloseWhileGeneratingGuard: Cleanup failed", ex);
             }
             finally
             {

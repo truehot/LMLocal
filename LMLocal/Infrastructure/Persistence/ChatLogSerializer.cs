@@ -6,6 +6,7 @@ using System.Linq;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi.Requests;
+using LMLocal.Infrastructure.LlmApi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -50,7 +51,7 @@ namespace LMLocal.Infrastructure.Persistence
                 { "role", message.Role },
                 { "content", content },
                 { "tool_call_id", message.ToolCallId },
-                { "tool_calls", message.ToolCalls },
+                { "tool_calls", ToolCallProjection.ToWire(message.ToolCalls) },
                 { "model_id", message.ModelId }
             };
 
@@ -95,7 +96,7 @@ namespace LMLocal.Infrastructure.Persistence
 
                 return new ChatMessage(role ?? "unknown", content, toolCallId)
                 {
-                    ToolCalls = toolCalls,
+                    ToolCalls = ToolCallProjection.FromWire(toolCalls),
                     ModelId = obj.Value<string>("model_id"),
                     Timestamp = created == DateTime.MinValue ? (DateTime?)null : created
                 };

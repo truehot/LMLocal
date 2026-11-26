@@ -120,7 +120,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
 
             if (!string.IsNullOrEmpty(fileNamePattern))
             {
-                if (!MatchesPattern(fname, fileNamePattern))
+                if (!MatchesNamePattern(normalizedFilePath, fileNamePattern))
                     return false;
             }
 
@@ -223,6 +223,49 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 previousWasSeparator = isSeparator;
             }
             return sb.ToString();
+        }
+
+        /// <summary>Matches a file against a file_name pattern; folders before the last '/' or '\' must be the folders right above the file.</summary>
+        internal static bool MatchesNamePattern(string normalizedFilePath, string pattern)
+        {
+            string fileName = Path.GetFileName(normalizedFilePath);
+            if (!TrySplitFolderPattern(pattern, out string[] folders, out string namePart))
+                return MatchesPattern(fileName, pattern);
+
+            if (!MatchesPattern(fileName, namePart))
+                return false;
+
+            string[] directories = (Path.GetDirectoryName(normalizedFilePath) ?? string.Empty)
+                .Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (folders.Length > directories.Length)
+                return false;
+
+            int offset = directories.Length - folders.Length;
+            for (int i = 0; i < folders.Length; i++)
+            {
+                if (!string.Equals(directories[offset + i], folders[i], StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Splits a file_name pattern into its folders and the name part after the last '/' or '\'; false when it has no separator.</summary>
+        internal static bool TrySplitFolderPattern(string pattern, out string[] folders, out string namePart)
+        {
+            folders = new string[0];
+            namePart = pattern;
+            if (string.IsNullOrEmpty(pattern) || (pattern.IndexOf('/') < 0 && pattern.IndexOf('\\') < 0))
+                return false;
+
+            string normalized = NormalizeSeparators(pattern.Trim());
+            int last = normalized.LastIndexOf('\\');
+            namePart = normalized.Substring(last + 1);
+            folders = normalized.Substring(0, last)
+                .Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(segment => segment != ".")
+                .ToArray();
+            return true;
         }
 
         /// <summary>

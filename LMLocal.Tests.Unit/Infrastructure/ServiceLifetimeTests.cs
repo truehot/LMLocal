@@ -4,6 +4,7 @@ using LMLocal.Application.Chat;
 using LMLocal.Infrastructure.DependencyInjection;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Security;
 using LMLocal.Application.Abstractions.Ports;
@@ -55,7 +56,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             // Act - Create the complete service chain
             var persistence = new ChatPersistenceService(settingsManager, fileSystem);
-            var history = new ChatHistoryManager(settingsManager, persistence);
+            var history = new ChatHistoryManager(settingsManager, persistence, new ProviderPolicy());
             var lmClient = new OpenApiAdapter(httpClientWrapper, settingsManager, new ApiRequestBuilder(settingsManager, toolQueueProvider), new Mock<ITemporaryHttpClientFactory>().Object);
 
             // Assert - Verify all services were created successfully

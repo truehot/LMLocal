@@ -75,13 +75,13 @@ namespace LMLocal.Infrastructure.VisualStudio
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"TaskbarAttentionNotifier: Failed to flash the taskbar button: {ex.Message}");
+                        InternalLogger.Warn("TaskbarAttentionNotifier: Failed to flash the taskbar button", ex);
                     }
                 });
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"TaskbarAttentionNotifier: Failed to request attention: {ex.Message}");
+                InternalLogger.Warn("TaskbarAttentionNotifier: Failed to request attention", ex);
             }
         }
 

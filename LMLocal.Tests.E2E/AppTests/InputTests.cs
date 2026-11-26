@@ -223,7 +223,8 @@ public partial class InputTests : AppTestBase
             // The textarea should now contain the file wrapped in a markdown code fence
             var value = await userInput.InputValueAsync();
             Assert.That(value, Does.Contain("```csharp"));
-            Assert.That(value, Does.Contain("// lm-local-e2e-sample.cs"));
+            // Same "file: <name>" comment as MarkdownCodeBlockFormatter (C#) writes, so search_chat_history recognises the file.
+            Assert.That(value, Does.Contain("\n// file: lm-local-e2e-sample.cs\n"));
             Assert.That(value, Does.Contain("public class Sample { }"));
 
             // Focus must be restored to the textarea after inserting the file content

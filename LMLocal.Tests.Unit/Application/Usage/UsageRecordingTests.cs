@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,9 +22,7 @@ using NUnit.Framework;
 namespace LMLocal.Tests.Unit.Application.Usage
 {
     /// <summary>
-    /// Covers who writes the usage of a chat request and what the record says. The orchestrator is built through the
-    /// factory on purpose: a recorder or a model context left out of the factory writes nothing (or no context_max) while
-    /// every test that builds the orchestrator by hand still passes.
+    /// Covers who writes the usage of a chat request and what the record says.
     /// </summary>
     [TestFixture]
     public class UsageRecordingTests
@@ -36,7 +34,6 @@ namespace LMLocal.Tests.Unit.Application.Usage
         private Mock<IToolExecutionManager> _toolManager;
         private Mock<IHistoryCompactor> _compactor;
         private Mock<ISnapshotManager> _snapshotManager;
-        private Mock<IToolCallLoopDetector> _loopDetector;
         private Mock<ISubAgentsParallelPolicy> _parallelPolicy;
         private Mock<ISubAgentsParallelRunner> _parallelRunner;
         private Mock<IActiveModelContext> _activeModel;
@@ -52,7 +49,6 @@ namespace LMLocal.Tests.Unit.Application.Usage
             _toolManager = new Mock<IToolExecutionManager>();
             _compactor = new Mock<IHistoryCompactor>();
             _snapshotManager = new Mock<ISnapshotManager>();
-            _loopDetector = new Mock<IToolCallLoopDetector>();
             _parallelPolicy = new Mock<ISubAgentsParallelPolicy>();
             _parallelRunner = new Mock<ISubAgentsParallelRunner>();
             _activeModel = new Mock<IActiveModelContext>();
@@ -76,24 +72,28 @@ namespace LMLocal.Tests.Unit.Application.Usage
                 .Returns(Task.CompletedTask);
         }
 
-        /// <summary>Runs a session with the orchestrator the factory builds, i.e. the one production uses.</summary>
-        private async Task RunSessionThroughFactoryAsync(string replaceLast = null)
+        /// <summary>Builds the orchestrator with all its dependencies, the way the DI container builds it.</summary>
+        private ChatSessionOrchestrator CreateOrchestrator()
         {
-            var factory = new ChatSessionOrchestratorFactory(
-                _chatService.Object,
-                _toolManager.Object,
-                _compactor.Object,
-                _history.Object,
-                _snapshotManager.Object,
-                _loopDetector.Object,
-                _parallelPolicy.Object,
-                _parallelRunner.Object,
-                _activeModel.Object,
-                _settings.Object,
-                _recorder.Object);
+            return new OrchestratorTestBuilder
+            {
+                ChatService = _chatService,
+                ToolManager = _toolManager,
+                Compactor = _compactor,
+                History = _history,
+                SnapshotManager = _snapshotManager,
+                ParallelPolicy = _parallelPolicy,
+                ParallelRunner = _parallelRunner.Object,
+                ActiveModelContext = _activeModel,
+                SettingsManager = _settings,
+                UsageRecorder = _recorder
+            }.Build();
+        }
 
-            await factory
-                .CreateOrchestrator()
+        /// <summary>Runs one request of the main chat.</summary>
+        private async Task RunSessionAsync(string replaceLast = null)
+        {
+            await CreateOrchestrator()
                 .RunSessionAsync(
                     new GenerateStreamContext
                     {
@@ -145,14 +145,14 @@ namespace LMLocal.Tests.Unit.Application.Usage
         }
 
         [Test]
-        public async Task Factory_WritesOneMainRecord_ForTheRequest()
+        public async Task Orchestrator_WritesOneMainRecord_ForTheRequest()
         {
             StreamAnswers(CompletedRound(1000, 100));
 
-            await RunSessionThroughFactoryAsync();
+            await RunSessionAsync();
 
             Assert.That(_records, Has.Count.EqualTo(1),
-                "The orchestrator built by the factory must write the usage of its request.");
+                "The orchestrator must write the usage of its request.");
 
             UsageRecord record = _records[0];
             Assert.That(record.Source, Is.EqualTo(UsageSource.Main));
@@ -166,7 +166,7 @@ namespace LMLocal.Tests.Unit.Application.Usage
             Assert.That(record.Prompt, Is.EqualTo(1000));
             Assert.That(record.Completion, Is.EqualTo(100));
             Assert.That(record.ContextMax, Is.EqualTo(32768),
-                "The factory must pass the active model context, otherwise peak ctx cannot be computed.");
+                "The active model context must reach the orchestrator, otherwise peak ctx cannot be computed.");
         }
 
         [Test]
@@ -175,7 +175,7 @@ namespace LMLocal.Tests.Unit.Application.Usage
             // A compaction inside the request starts a new log session; the record must stay with the old one.
             StreamAnswers(CompletedRound(1000, 100), () => _history.Setup(h => h.CurrentSessionId).Returns(SessionB));
 
-            await RunSessionThroughFactoryAsync();
+            await RunSessionAsync();
 
             Assert.That(_records, Has.Count.EqualTo(1));
             Assert.That(_records[0].SessionId, Is.EqualTo(SessionA.ToString("D")),
@@ -193,7 +193,7 @@ namespace LMLocal.Tests.Unit.Application.Usage
                 .ReturnsAsync(TruncateLastExchangeOutcome.Replaced);
             StreamAnswers(CompletedRound(1000, 100));
 
-            await RunSessionThroughFactoryAsync(ReplaceLastModes.Answer);
+            await RunSessionAsync(ReplaceLastModes.Answer);
 
             _history.Verify(h => h.TruncateLastExchangeAsync(It.IsAny<bool>(), It.IsAny<string>()), Times.Once);
             Assert.That(_records, Has.Count.EqualTo(1));
@@ -210,7 +210,7 @@ namespace LMLocal.Tests.Unit.Application.Usage
                 ErrorMessage = "Provider stream error: boom"
             });
 
-            await RunSessionThroughFactoryAsync();
+            await RunSessionAsync();
 
             Assert.That(_records, Has.Count.EqualTo(1), "A failed request spent tokens too.");
             Assert.That(_records[0].Outcome, Is.EqualTo(UsageOutcome.Error));

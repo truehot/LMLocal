@@ -88,13 +88,13 @@ namespace LMLocal.Tests.Unit
         {
             return new ChatMessage("assistant", null)
             {
-                ToolCalls = new List<ToolCall>
+                ToolCalls = new List<ChatToolCall>
                 {
-                    new ToolCall
+                    new ChatToolCall
                     {
                         Id = callId,
-                        Type = "function",
-                        Function = new FunctionCallDetails { Name = "read_file_lines", Arguments = arguments }
+                        Name = "read_file_lines",
+                        Arguments = arguments
                     }
                 }
             };

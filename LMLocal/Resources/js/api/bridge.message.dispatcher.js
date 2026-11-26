@@ -82,6 +82,9 @@ class BridgeMessageDispatcher {
             case 'StreamToolStep':
                 this._handler.handleStreamToolStep(data);
                 break;
+            case 'StreamToolTokens':
+                this._handler.handleStreamToolTokens(data);
+                break;
             case 'StreamToolEnd':
                 this._handler.handleStreamToolEnd(data);
                 break;

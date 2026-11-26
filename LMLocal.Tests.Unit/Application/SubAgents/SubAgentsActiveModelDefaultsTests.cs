@@ -174,7 +174,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 .Setup(m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
                     It.IsAny<CancellationToken>(),
-                    It.IsAny<SubAgentDefaults>()))
+                    It.IsAny<SubAgentDefaults>(),
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>()))
                 .ReturnsAsync(new List<string>());
 
             _controller = new SubAgentsController(_configManagerMock.Object);
@@ -205,7 +206,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                         d.ProviderType == "lmstudio"
                         && d.CustomBaseUrl == "http://localhost:1234"
                         && d.CustomApiKey == null
-                        && d.Model == "google/gemma-4-e2b")),
+                        && d.Model == "google/gemma-4-e2b"),
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>()),
                 Times.Once);
         }
 
@@ -222,7 +224,8 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
                     It.IsAny<CancellationToken>(),
-                    It.Is<SubAgentDefaults>(d => d != null && d.CustomApiKey == "")),
+                    It.Is<SubAgentDefaults>(d => d != null && d.CustomApiKey == ""),
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>()),
                 Times.Once);
         }
 
@@ -240,13 +243,15 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                     It.Is<IReadOnlyList<SubAgentEnabledFlag>>(flags =>
                         flags.Count == 1 && flags[0].Id == "coder" && !flags[0].Enabled),
                     It.IsAny<CancellationToken>(),
-                    It.IsAny<SubAgentDefaults>()),
+                    It.IsAny<SubAgentDefaults>(),
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>()),
                 Times.Once);
             _configManagerMock.Verify(
                 m => m.UpdateEnabledFlagsAsync(
                     It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>(),
                     It.IsAny<CancellationToken>(),
-                    It.Is<SubAgentDefaults>(d => d != null)),
+                    It.Is<SubAgentDefaults>(d => d != null),
+                    It.IsAny<IReadOnlyList<SubAgentEnabledFlag>>()),
                 Times.Never);
         }
     }

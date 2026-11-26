@@ -4,8 +4,7 @@ namespace LMLocal.Application.ChatSessionStream
 {
     /// <summary>
     /// Gemma chat-template control tokens as they leak into tool-call arguments when LM Studio fails to parse a Gemma tool call
-    /// (an unclosed string value). The arguments are JSON text, so the string delimiter shows up escaped.
-    /// Every token ends with '>', so a token can only complete in a fragment that contains '>'.
+    /// (an unclosed string value).
     /// </summary>
     internal static class GemmaControlTokens
     {

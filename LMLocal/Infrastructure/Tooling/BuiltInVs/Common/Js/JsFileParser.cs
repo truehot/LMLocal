@@ -91,7 +91,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Js
                 }
                 catch (ParseErrorException ex)
                 {
-                    InternalLogger.Warn($"JsFileParser: cannot parse '{filePath}': {ex.Message}");
+                    InternalLogger.Warn($"JsFileParser: cannot parse '{filePath}'", ex);
                     return null;
                 }
             }

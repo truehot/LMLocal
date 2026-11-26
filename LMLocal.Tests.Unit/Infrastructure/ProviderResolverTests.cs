@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using NUnit.Framework;
 
@@ -35,6 +34,50 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var p = ProviderResolver.ResolveProvider(providerName);
             Enum.TryParse<ModelProvider>(expectedName, out var expected);
             Assert.That(p, Is.EqualTo(expected));
+        }
+
+        [TestCase("LlamaCpp", "LlamaCpp")]
+        [TestCase("LLAMACPP", "LlamaCpp")]
+        [TestCase("Ollama", "Ollama")]
+        [TestCase("OpenAI", "OpenAi")]
+        public void ResolveProvider_IgnoresCase(string providerName, string expectedName)
+        {
+            var p = ProviderResolver.ResolveProvider(providerName);
+            Enum.TryParse<ModelProvider>(expectedName, out var expected);
+            Assert.That(p, Is.EqualTo(expected));
+        }
+
+        [TestCase("", "LmStudio")]
+        [TestCase("unknown-provider", "LmStudio")]
+        public void ResolveProvider_EmptyOrUnknown_FallsBackToLmStudio(string providerName, string expectedName)
+        {
+            var p = ProviderResolver.ResolveProvider(providerName);
+            Enum.TryParse<ModelProvider>(expectedName, out var expected);
+            Assert.That(p, Is.EqualTo(expected));
+        }
+
+        // Literal paths on purpose: the wire endpoints must not move when the mapping goes behind a port.
+        [TestCase("LmStudio", "/api/v1/models")]
+        [TestCase("Ollama", "/api/ps")]
+        [TestCase("Jan", "/v1/models")]
+        [TestCase("LlamaCpp", "/v1/models")]
+        [TestCase("Unsloth", "/v1/models")]
+        [TestCase("OpenAi", "/v1/models")]
+        [TestCase("DeepSeek", "/models")]
+        [TestCase("Gemini", "/v1beta/openai/models")]
+        [TestCase("GithubModelsAzure", "/models")]
+        [TestCase("TogetherAi", "/v1/models")]
+        public void GetListModelsEndpoint_ReturnsExpected_ForEveryProvider(string mpName, string expected)
+        {
+            Assert.That(Enum.TryParse<ModelProvider>(mpName, out var mp), Is.True, mpName);
+            Assert.That(ProviderResolver.GetListModelsEndpoint(mp), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void GetListModelsEndpoint_CasesCoverEveryProvider()
+        {
+            Assert.That(Enum.GetValues(typeof(ModelProvider)).Length, Is.EqualTo(10),
+                "a new provider needs its own GetListModelsEndpoint_ReturnsExpected_ForEveryProvider case");
         }
 
         [Test]

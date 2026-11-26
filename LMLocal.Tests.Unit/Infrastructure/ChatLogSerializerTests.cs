@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -41,13 +40,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildMessageLine_WithToolCalls_SerializesToolCallsArray()
         {
-            var toolCalls = new List<ToolCall>
+            var toolCalls = new List<ChatToolCall>
             {
-                new ToolCall
+                new ChatToolCall
                 {
                     Id = "call_1",
-                    Type = "function",
-                    Function = new FunctionCallDetails { Name = "search", Arguments = "{\"q\":\"x\"}" }
+                    Name = "search",
+                    Arguments = "{\"q\":\"x\"}"
                 }
             };
             var message = new ChatMessage("assistant", "using tools") { ToolCalls = toolCalls };
@@ -57,7 +56,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
 
             Assert.That(obj["tool_calls"].Type, Is.EqualTo(JTokenType.Array));
             Assert.That(obj["tool_calls"][0].Value<string>("id"), Is.EqualTo("call_1"));
+            Assert.That(obj["tool_calls"][0].Value<string>("type"), Is.EqualTo("function"));
             Assert.That(obj["tool_calls"][0]["function"].Value<string>("name"), Is.EqualTo("search"));
+            Assert.That(obj["tool_calls"][0]["function"].Value<string>("arguments"), Is.EqualTo("{\"q\":\"x\"}"));
         }
 
         [Test]
@@ -114,14 +115,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var result = ChatLogSerializer.ParseChatMessage(obj);
 
             Assert.That(result, Is.Not.Null);
-            Assert.That(result.ToolCalls, Is.InstanceOf<List<ToolCall>>());
+            Assert.That(result.ToolCalls, Is.InstanceOf<List<ChatToolCall>>());
 
-            var toolCalls = (List<ToolCall>)result.ToolCalls;
+            var toolCalls = result.ToolCalls;
             Assert.That(toolCalls.Count, Is.EqualTo(1));
             Assert.That(toolCalls[0].Id, Is.EqualTo("call_1"));
-            Assert.That(toolCalls[0].Type, Is.EqualTo("function"));
-            Assert.That(toolCalls[0].Function.Name, Is.EqualTo("search"));
-            Assert.That(toolCalls[0].Function.Arguments, Is.EqualTo("{}"));
+            Assert.That(toolCalls[0].Name, Is.EqualTo("search"));
+            Assert.That(toolCalls[0].Arguments, Is.EqualTo("{}"));
         }
 
         [Test]
@@ -180,14 +180,14 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildMessageLine_WithExtraContent_WritesRawObjectNotEscapedString()
         {
-            var toolCalls = new List<ToolCall>
+            var toolCalls = new List<ChatToolCall>
             {
-                new ToolCall
+                new ChatToolCall
                 {
                     Id = "call_1",
-                    Type = "function",
-                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{\"flight\":\"AA100\"}" },
-                    ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")
+                    Name = "check_flight",
+                    Arguments = "{\"flight\":\"AA100\"}",
+                    ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}"
                 }
             };
             var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
@@ -204,13 +204,13 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public void BuildMessageLine_NoExtraContent_OmitsField()
         {
-            var toolCalls = new List<ToolCall>
+            var toolCalls = new List<ChatToolCall>
             {
-                new ToolCall
+                new ChatToolCall
                 {
                     Id = "call_1",
-                    Type = "function",
-                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{}" }
+                    Name = "check_flight",
+                    Arguments = "{}"
                 }
             };
             var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
@@ -222,6 +222,50 @@ namespace LMLocal.Tests.Unit.Infrastructure
         }
 
         [Test]
+        public void BuildMessageLine_UnparsableExtraContent_OmitsField()
+        {
+            var toolCalls = new List<ChatToolCall>
+            {
+                new ChatToolCall
+                {
+                    Id = "call_1",
+                    Name = "check_flight",
+                    Arguments = "{}",
+                    ExtraContentJson = "{not valid json"
+                }
+            };
+            var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj["tool_calls"][0]["extra_content"], Is.Null);
+        }
+
+        [Test]
+        public void BuildMessageLine_EmptyToolCalls_WritesEmptyArray()
+        {
+            var message = new ChatMessage("assistant", null) { ToolCalls = new List<ChatToolCall>() };
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj["tool_calls"].Type, Is.EqualTo(JTokenType.Array));
+            Assert.That(((JArray)obj["tool_calls"]).Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void BuildMessageLine_NoToolCalls_WritesNull()
+        {
+            var message = new ChatMessage("assistant", "answer");
+
+            var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
+            var obj = JObject.Parse(line.Trim());
+
+            Assert.That(obj["tool_calls"].Type, Is.EqualTo(JTokenType.Null));
+        }
+
+        [Test]
         public void ParseChatMessage_WithExtraContent_RestoresJToken()
         {
             var obj = JObject.Parse(
@@ -230,9 +274,9 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var result = ChatLogSerializer.ParseChatMessage(obj);
 
             Assert.That(result, Is.Not.Null);
-            var toolCalls = (List<ToolCall>)result.ToolCalls;
-            Assert.That(toolCalls[0].ExtraContent, Is.Not.Null);
-            Assert.That(toolCalls[0].ExtraContent["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
+            var toolCalls = result.ToolCalls;
+            Assert.That(toolCalls[0].ExtraContentJson, Is.Not.Null);
+            Assert.That(JToken.Parse(toolCalls[0].ExtraContentJson)["google"].Value<string>("thought_signature"), Is.EqualTo("sigA"));
         }
 
         [Test]
@@ -244,21 +288,21 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var result = ChatLogSerializer.ParseChatMessage(obj);
 
             Assert.That(result, Is.Not.Null);
-            var toolCalls = (List<ToolCall>)result.ToolCalls;
-            Assert.That(toolCalls[0].ExtraContent, Is.Null);
+            var toolCalls = result.ToolCalls;
+            Assert.That(toolCalls[0].ExtraContentJson, Is.Null);
         }
 
         [Test]
         public void SerializeThenParse_RoundTripsExtraContent()
         {
-            var toolCalls = new List<ToolCall>
+            var toolCalls = new List<ChatToolCall>
             {
-                new ToolCall
+                new ChatToolCall
                 {
                     Id = "call_1",
-                    Type = "function",
-                    Function = new FunctionCallDetails { Name = "check_flight", Arguments = "{\"flight\":\"AA100\"}" },
-                    ExtraContent = JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")
+                    Name = "check_flight",
+                    Arguments = "{\"flight\":\"AA100\"}",
+                    ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}"
                 }
             };
             var message = new ChatMessage("assistant", null) { ToolCalls = toolCalls };
@@ -266,9 +310,56 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var line = ChatLogSerializer.BuildMessageLine(message, "session-1", UtcNow);
             var restored = ChatLogSerializer.ParseChatMessage(JObject.Parse(line.Trim()));
 
-            var restoredCalls = (List<ToolCall>)restored.ToolCalls;
-            Assert.That(restoredCalls[0].ExtraContent, Is.Not.Null);
-            Assert.That(JToken.DeepEquals(restoredCalls[0].ExtraContent, JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")), Is.True);
+            var restoredCalls = restored.ToolCalls;
+            Assert.That(restoredCalls[0].ExtraContentJson, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(JToken.Parse(restoredCalls[0].ExtraContentJson), JToken.Parse("{\"google\":{\"thought_signature\":\"sigA\"}}")), Is.True);
+        }
+
+        [Test]
+        public void ParseThenBuild_ToolCallWithoutFunction_WritesFunctionWithNullFields()
+        {
+            var restored = ChatLogSerializer.ParseChatMessage(ChatLogSerializer.ParseLine(
+                "{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\"}]}"));
+
+            Assert.That(restored, Is.Not.Null);
+            Assert.That(restored.ToolCalls[0].Id, Is.EqualTo("call_1"));
+            Assert.That(restored.ToolCalls[0].Name, Is.Null);
+            Assert.That(restored.ToolCalls[0].Arguments, Is.Null);
+
+            var obj = JObject.Parse(ChatLogSerializer.BuildMessageLine(restored, "session-1", UtcNow).Trim());
+
+            Assert.That(JToken.DeepEquals(obj["tool_calls"],
+                JToken.Parse("[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":null,\"arguments\":null}}]")), Is.True,
+                obj["tool_calls"].ToString());
+        }
+
+        [Test]
+        public void ParseThenBuild_NullToolCallEntry_StaysNull()
+        {
+            var restored = ChatLogSerializer.ParseChatMessage(ChatLogSerializer.ParseLine(
+                "{\"role\":\"assistant\",\"tool_calls\":[null,{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"{}\"}}]}"));
+
+            Assert.That(restored.ToolCalls.Count, Is.EqualTo(2));
+            Assert.That(restored.ToolCalls[0], Is.Null);
+
+            var obj = JObject.Parse(ChatLogSerializer.BuildMessageLine(restored, "session-1", UtcNow).Trim());
+
+            Assert.That(obj["tool_calls"][0].Type, Is.EqualTo(JTokenType.Null));
+            Assert.That(obj["tool_calls"][1].Value<string>("id"), Is.EqualTo("call_1"));
+        }
+
+        [Test]
+        public void ParseThenBuild_DateLikeExtraContent_StaysVerbatim()
+        {
+            const string extra = "{\"google\":{\"thought_signature\":\"2025-02-01T15:00:01+05:00\"}}";
+            var restored = ChatLogSerializer.ParseChatMessage(ChatLogSerializer.ParseLine(
+                "{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"search\",\"arguments\":\"{}\"},\"extra_content\":" + extra + "}]}"));
+
+            Assert.That(restored.ToolCalls[0].ExtraContentJson, Is.EqualTo(extra));
+
+            var line = ChatLogSerializer.BuildMessageLine(restored, "session-1", UtcNow);
+
+            Assert.That(line, Does.Contain("\"extra_content\":" + extra));
         }
 
         [Test]

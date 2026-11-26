@@ -19,6 +19,7 @@ class SettingsStoreClass extends BaseStoreClass {
             EnableAiWriteTools: false,
             EnableSubAgents: false,
             CollapseToolCalls: false,
+            ToolCallsDisplay: "flat",
             EnableCodeCollapse: false,
             OpenToolFilesInEditor: false,
             PreventCloseWhileGenerating: true,

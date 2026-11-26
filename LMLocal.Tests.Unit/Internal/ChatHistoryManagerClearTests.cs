@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Tooling;
@@ -37,7 +38,7 @@ namespace LMLocal.Tests.Unit
             var mockPersistence = new Mock<IChatPersistenceService>();
             SetupCompletedPersistence(mockPersistence);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             manager.AddUserMessage("first");
             manager.AddAssistantMessage("first response");
@@ -72,7 +73,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(f => f.FormatToolResults(It.IsAny<IEnumerable<(string FunctionName, string JsonContent)>>()))
                 .Returns("FORMATTED_TOOL_RESULTS");
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, mockFormatter.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy(), mockFormatter.Object);
 
             manager.AddUserMessage("read file");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -109,7 +110,7 @@ namespace LMLocal.Tests.Unit
                 .Callback<IReadOnlyList<ChatMessage>, CancellationToken>((messages, _) => written = messages)
                 .Returns(gate.Task);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
             manager.AddUserMessage("last");
             manager.AddAssistantMessage("response");
 
@@ -144,7 +145,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
                 .Returns(gate.Task);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
             manager.AddUserMessage("last");
             manager.AddAssistantMessage("response");
 
@@ -170,7 +171,7 @@ namespace LMLocal.Tests.Unit
             var mockPersistence = new Mock<IChatPersistenceService>();
             SetupCompletedPersistence(mockPersistence);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             var messages = new List<ChatMessage>
             {
@@ -211,7 +212,7 @@ namespace LMLocal.Tests.Unit
             var mockPersistence = new Mock<IChatPersistenceService>();
             SetupCompletedPersistence(mockPersistence);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
             manager.AddUserMessage("stale");
             manager.AddAssistantMessage("stale response");
 
@@ -238,7 +239,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
                 .Returns(gate.Task);
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             var task = manager.ClearAndSaveMessagesAsync(new List<ChatMessage>
             {

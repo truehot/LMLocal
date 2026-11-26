@@ -11,6 +11,7 @@ namespace LMLocal.Tests.Unit
     {
         private IInternalLogger _original;
         private FieldInfo _instanceField;
+        private readonly Exception _warnException = new InvalidOperationException("warn-with-exception");
 
         [SetUp]
         public void SetUp()
@@ -51,6 +52,7 @@ namespace LMLocal.Tests.Unit
                 InternalLogger.Info("i");
                 InternalLogger.Debug("d");
                 InternalLogger.Warn("w");
+                InternalLogger.Warn("w", new Exception("ex"));
                 InternalLogger.Error("e", new Exception("ex"));
             });
         }
@@ -67,11 +69,13 @@ namespace LMLocal.Tests.Unit
 
             InternalLogger.Info("info-msg");
             InternalLogger.Warn("warn-msg");
+            InternalLogger.Warn("warn-msg", _warnException);
             InternalLogger.Error("err-msg", null);
             InternalLogger.Debug("dbg-msg");
 
             mock.Verify(m => m.Info("info-msg"), Times.Once);
             mock.Verify(m => m.Warn("warn-msg"), Times.Once);
+            mock.Verify(m => m.Warn("warn-msg", _warnException), Times.Once);
             mock.Verify(m => m.Error("err-msg", null), Times.Once);
             mock.Verify(m => m.Debug("dbg-msg"), Times.Once);
         }
@@ -82,6 +86,7 @@ namespace LMLocal.Tests.Unit
             public void Debug(string message) => throw new Exception("boom");
             public void Info(string message) => throw new Exception("boom");
             public void Warn(string message) => throw new Exception("boom");
+            public void Warn(string message, Exception ex) => throw new Exception("boom");
             public void Error(string message, Exception ex = null) => throw new Exception("boom");
         }
     }

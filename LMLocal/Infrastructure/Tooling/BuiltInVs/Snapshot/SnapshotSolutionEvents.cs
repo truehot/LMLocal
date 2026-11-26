@@ -64,7 +64,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Snapshot load failed: {ex}");
+                    InternalLogger.Error("Snapshot load failed", ex);
                 }
             });
         }
@@ -82,7 +82,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Snapshot
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Error during solution close cleanup: {ex}");
+                    InternalLogger.Error("Error during solution close cleanup", ex);
                 }
             });
         }

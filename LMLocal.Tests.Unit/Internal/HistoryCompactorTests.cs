@@ -4,6 +4,7 @@ using System.Threading;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Application.Abstractions.Ports;
@@ -22,7 +23,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompaction = true });
 
-            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
             for (int i = 0; i < 100; i++)
             {
                 history.AddUserMessage(new string('a', 100));
@@ -85,7 +86,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompaction = true });
 
-            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
             history.AddUserMessage("short");
             var mockClient = new Mock<IOpenApiAdapter>();
             var mockActiveModelContext = new Mock<IActiveModelContext>();
@@ -203,7 +204,7 @@ namespace LMLocal.Tests.Unit
             var history = new List<ChatMessage>
             {
                 new ChatMessage("user", "hello"),
-                new ChatMessage("assistant", null) { ToolCalls = new List<ToolCall>() },
+                new ChatMessage("assistant", null) { ToolCalls = new List<ChatToolCall>() },
                 new ChatMessage("tool", "{}", "c1"),
                 new ChatMessage("assistant", "answer"),
             };

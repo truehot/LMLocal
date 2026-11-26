@@ -23,7 +23,6 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IToolExecutionManager> _toolManagerMock;
         private Mock<IHistoryCompactor> _compactorMock;
         private Mock<ISnapshotManager> _snapshotManagerMock;
-        private Mock<IToolCallLoopDetector> _loopDetectorMock;
         private Mock<ISubAgentsParallelPolicy> _parallelPolicyMock;
         private Mock<ISubAgentsParallelRunner> _parallelRunnerMock;
 
@@ -34,22 +33,21 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock = new Mock<IToolExecutionManager>();
             _compactorMock = new Mock<IHistoryCompactor>();
             _snapshotManagerMock = new Mock<ISnapshotManager>();
-            _loopDetectorMock = new Mock<IToolCallLoopDetector>();
             _parallelPolicyMock = new Mock<ISubAgentsParallelPolicy>();
             _parallelRunnerMock = new Mock<ISubAgentsParallelRunner>();
         }
 
         private ChatSessionOrchestrator CreateOrchestrator()
         {
-            return new ChatSessionOrchestrator(
-                _chatServiceMock.Object,
-                _toolManagerMock.Object,
-                _compactorMock.Object,
-                new Mock<IChatHistoryManager>().Object,
-                _snapshotManagerMock.Object,
-                _loopDetectorMock.Object,
-                _parallelPolicyMock.Object,
-                _parallelRunnerMock.Object);
+            return new OrchestratorTestBuilder
+            {
+                ChatService = _chatServiceMock,
+                ToolManager = _toolManagerMock,
+                Compactor = _compactorMock,
+                SnapshotManager = _snapshotManagerMock,
+                ParallelPolicy = _parallelPolicyMock,
+                ParallelRunner = _parallelRunnerMock.Object
+            }.Build();
         }
 
         [Test]
@@ -203,6 +201,9 @@ namespace LMLocal.Tests.Unit.Internal
             Assert.That(endMsg, Is.Not.Null, $"StreamToolEnd should exist. Messages: {messages.Count}, types: {string.Join(", ", messages.Take(10).Select(m => m.Type))}");
             Assert.That(endMsg.IsError, Is.True);
             Assert.That(endMsg.Message, Is.EqualTo("failed"));
+            Assert.That(endMsg.UiData, Is.Null, "a tool without UI data leaves the property empty");
+            Assert.That(Newtonsoft.Json.JsonConvert.SerializeObject(endMsg), Does.Not.Contain("UiData"),
+                "the property is omitted, so the other tools' messages do not change");
         }
 
         // ================================================================
@@ -257,12 +258,6 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
-
-            // All tool call comparisons are "same" — simulate identical calls
-            _loopDetectorMock.Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns(true);
 
             var orchestrator = CreateOrchestrator();
 
@@ -355,12 +350,6 @@ namespace LMLocal.Tests.Unit.Internal
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
 
-            // All comparisons return false — tools are "different" each round
-            _loopDetectorMock.Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns(false);
-
             var orchestrator = CreateOrchestrator();
 
             Task OnMessage(WebView2ScriptMessage msg)
@@ -450,16 +439,6 @@ namespace LMLocal.Tests.Unit.Internal
                     It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
                 .ReturnsAsync(new ToolExecutionResult { Result = "ok", CompletionMessage = "done" });
             _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
-
-            // Mirror the real detector: two calls are "same" only when tool name AND arguments match.
-            _loopDetectorMock.Setup(d => d.AreSameToolCalls(
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>(),
-                    It.IsAny<IReadOnlyList<ToolCallRecord>>()))
-                .Returns((IReadOnlyList<ToolCallRecord> current, IReadOnlyList<ToolCallRecord> previous) =>
-                    current != null && previous != null &&
-                    current.Count == previous.Count && current.Count > 0 &&
-                    string.Equals(current[0].FunctionName, previous[0].FunctionName, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(current[0].ArgumentsJson, previous[0].ArgumentsJson, StringComparison.Ordinal));
 
             var orchestrator = CreateOrchestrator();
 
@@ -567,6 +546,74 @@ namespace LMLocal.Tests.Unit.Internal
 
             Assert.That(messages.Any(m => m.Type == WebView2MessageType.ChatSessionCancelled), Is.True,
                 "the session should end in the Cancelled state");
+        }
+
+        /// <summary>
+        /// StreamToolEnd carries the tool's UI data (the todo_write list) to the WebView.
+        /// </summary>
+        [Test]
+        public async Task StreamToolEnd_CarriesUiData_FromTheToolResponse()
+        {
+            var messages = new List<WebView2ScriptMessage>();
+
+            int callCount = 0;
+            _chatServiceMock.Setup(s => s.GenerateStreamAsync(
+                It.IsAny<GenerateStreamContext>(),
+                It.IsAny<List<ToolResultMessage>>(),
+                It.IsAny<Func<TextStreamChunk, TokenGenerationStats, Task>>(),
+                It.IsAny<Func<StreamCompletionResult, Task>>(),
+                It.IsAny<Func<RateLimitWaitInfo, Task>>(),
+                It.IsAny<CancellationToken>()))
+                .Returns<GenerateStreamContext, List<ToolResultMessage>, Func<TextStreamChunk, TokenGenerationStats, Task>, Func<StreamCompletionResult, Task>, Func<RateLimitWaitInfo, Task>, CancellationToken>(
+                    async (gctx, toolResults, onChunk, onComplete, onRateLimitWait, ct) =>
+                    {
+                        callCount++;
+
+                        var result = callCount == 1
+                            ? new StreamCompletionResult
+                            {
+                                StopReason = StreamStopReason.Completed,
+                                ErrorMessage = null,
+                                FinishReason = "tool_calls",
+                                ToolCalls = new[] { new ToolCallRecord { CallId = "call_todo", FunctionName = "todo_write", ArgumentsJson = "{}" } }
+                            }
+                            : new StreamCompletionResult
+                            {
+                                StopReason = StreamStopReason.Completed,
+                                ErrorMessage = null,
+                                FinishReason = "stop",
+                                ToolCalls = new ToolCallRecord[0]
+                            };
+
+                        if (onComplete != null)
+                            await onComplete(result).ConfigureAwait(false);
+                    });
+
+            var uiData = new[] { new { text = "Read the file", status = "done" } };
+
+            _toolManagerMock.Setup(t => t.GetProcessingMessage(It.IsAny<ToolCallRecord>())).Returns("Updating task list...");
+            _toolManagerMock.Setup(t => t.ExecuteToolAsync(It.IsAny<ToolCallRecord>(), It.IsAny<CancellationToken>(), It.IsAny<IProgress<ToolActivityEvent>>(), It.IsAny<ToolExecutionBudget>(), It.IsAny<LMLocal.Application.Usage.UsageCallContext>()))
+                .ReturnsAsync(new ToolExecutionResult { Result = "stored", CompletionMessage = "Tasks updated: 1/1 done.", UiData = uiData });
+
+            _compactorMock.Setup(c => c.NeedsCompaction()).Returns(false);
+
+            var orchestrator = CreateOrchestrator();
+
+            Task OnMessage(WebView2ScriptMessage msg)
+            {
+                messages.Add(msg);
+                return Task.CompletedTask;
+            }
+
+            var context = new GenerateStreamContext { Prompt = "prompt", ModelId = "m" };
+
+            await orchestrator.RunSessionAsync(context, OnMessage, CancellationToken.None).ConfigureAwait(false);
+
+            var endMsg = messages.FirstOrDefault(m => m.Type == WebView2MessageType.StreamToolEnd) as WebView2ToolCallMessage;
+
+            Assert.That(endMsg, Is.Not.Null, "StreamToolEnd must be sent");
+            Assert.That(endMsg.UiData, Is.SameAs(uiData));
+            Assert.That(Newtonsoft.Json.JsonConvert.SerializeObject(endMsg), Does.Contain("UiData"));
         }
     }
 }

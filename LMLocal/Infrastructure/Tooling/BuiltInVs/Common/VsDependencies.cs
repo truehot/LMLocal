@@ -112,7 +112,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"VsDependencies: Failed to initialize solution information: {ex}");
+                InternalLogger.Error("VsDependencies: Failed to initialize solution information", ex);
                 throw new InvalidOperationException("Failed to initialize solution information.", ex);
             }
 
@@ -131,7 +131,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"VsDependencies: Failed to unadvise solution events: {ex}");
+                    InternalLogger.Warn("VsDependencies: Failed to unadvise solution events", ex);
                 }
                 _solutionEventsCookie = 0;
             }

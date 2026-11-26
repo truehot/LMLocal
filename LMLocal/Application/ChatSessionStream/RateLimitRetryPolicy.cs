@@ -28,8 +28,7 @@ namespace LMLocal.Application.ChatSessionStream
         internal const int MaxMaxDelaySeconds = 3600;
 
         /// <summary>
-        /// Fraction of the reported hint that may be added as jitter. Limited by the headroom left under the ceiling,
-        /// so jitter can never push the wait past the maximum acceptable delay.
+        /// Fraction of the reported hint that may be added as jitter.
         /// </summary>
         private const double JitterRatio = 0.2;
 
@@ -52,17 +51,32 @@ namespace LMLocal.Application.ChatSessionStream
                 return false;
 
             var info = ex.ErrorInfo;
+            return IsRateLimit(ex.HttpStatusCode ?? info?.Code, info?.RawCode, info?.Type);
+        }
 
+        /// <summary>
+        /// Same classification for a finished round result: the fields BuildErrorResult copied from the API error.
+        /// </summary>
+        public static bool IsRateLimit(StreamCompletionResult result)
+        {
+            if (result == null)
+                return false;
+
+            return IsRateLimit(result.HttpStatusCode, result.ErrorCode, result.ErrorType);
+        }
+
+        private static bool IsRateLimit(int? status, string code, string type)
+        {
             // 1. Persistent quota (billing or a daily cap): waiting cannot help, and this overrides even 429.
-            if (HasMarker(info, PersistentMarkers))
+            if (HasMarker(code, type, PersistentMarkers))
                 return false;
 
             // 2. Plain throttle.
-            if (ex.HttpStatusCode == 429 || (info != null && info.Code == 429))
+            if (status == 429)
                 return true;
 
             // 3. Reverse proxies and providers that report throttling as 503.
-            if (ex.HttpStatusCode == 503 && HasMarker(info, TransientMarkers))
+            if (status == 503 && HasMarker(code, type, TransientMarkers))
                 return true;
 
             // 4. Everything else, including a 400 carrying a transient marker and a 503 carrying only Retry-After.
@@ -119,17 +133,14 @@ namespace LMLocal.Application.ChatSessionStream
             return value > max ? max : value;
         }
 
-        private static bool HasMarker(ApiErrorInfo info, string[] markers)
+        private static bool HasMarker(string code, string type, string[] markers)
         {
-            if (info == null)
-                return false;
-
             foreach (var marker in markers)
             {
-                if (string.Equals(info.RawCode, marker, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(code, marker, StringComparison.OrdinalIgnoreCase))
                     return true;
 
-                if (string.Equals(info.Type, marker, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(type, marker, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
 

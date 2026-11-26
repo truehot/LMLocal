@@ -43,7 +43,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertToUnified failed for provider {provider}: {ex.Message}");
+                InternalLogger.Warn($"ConvertToUnified failed for provider {provider}", ex);
                 return new UnifiedListModelsResponse { Models = new List<UnifiedModelInfo>() };
             }
         }
@@ -89,7 +89,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertLmStudioResponseToUnified: failed to parse LM Studio response: {ex.Message}");
+                InternalLogger.Warn("ConvertLmStudioResponseToUnified: failed to parse LM Studio response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse LM Studio response" };
             }
         }
@@ -132,7 +132,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertOllamaResponseToUnified: failed to parse Ollama response: {ex.Message}");
+                InternalLogger.Warn("ConvertOllamaResponseToUnified: failed to parse Ollama response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse Ollama response" };
             }
         }
@@ -187,7 +187,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertOpenAiResponseToUnified: failed to parse OpenAI response: {ex.Message}");
+                InternalLogger.Warn("ConvertOpenAiResponseToUnified: failed to parse OpenAI response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse OpenAI-compatible response" };
             }
         }
@@ -346,7 +346,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertJanModels: failed to parse Jan response: {ex.Message}");
+                InternalLogger.Warn("ConvertJanModels: failed to parse Jan response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse Jan response" };
             }
         }
@@ -395,7 +395,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertAzureResponseToUnified: failed to parse Azure response: {ex.Message}");
+                InternalLogger.Warn("ConvertAzureResponseToUnified: failed to parse Azure response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse Azure response" };
             }
         }
@@ -454,7 +454,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertLlamaCppResponseToUnified: failed to parse llama.cpp response: {ex.Message}");
+                InternalLogger.Warn("ConvertLlamaCppResponseToUnified: failed to parse llama.cpp response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse llama.cpp response" };
             }
         }
@@ -497,7 +497,7 @@ namespace LMLocal.Infrastructure.LlmApi.Converter
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ConvertTogetherAiResponseToUnified: failed to parse Together AI response: {ex.Message}");
+                InternalLogger.Warn("ConvertTogetherAiResponseToUnified: failed to parse Together AI response", ex);
                 return new UnifiedListModelsResponse { Error = "Failed to parse Together AI response" };
             }
         }

@@ -140,7 +140,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("OnCompletionTriggered: " + ex.Message);
+                InternalLogger.Warn("OnCompletionTriggered", ex);
             }
         }
 
@@ -162,7 +162,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("OnVsProposalDisplayed: " + ex.Message);
+                InternalLogger.Warn("OnVsProposalDisplayed", ex);
             }
         }
 
@@ -189,7 +189,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("DismissVsProposalAsync: " + ex.Message);
+                InternalLogger.Warn("DismissVsProposalAsync", ex);
             }
         }
 
@@ -238,7 +238,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("FetchDebounceDelayAsync failed: " + ex.Message);
+                InternalLogger.Warn("FetchDebounceDelayAsync failed", ex);
                 _debounceDelayMs = DefaultDebounceDelayMs;
             }
         }
@@ -477,7 +477,7 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("OnDebounceElapsed: " + ex.Message);
+                InternalLogger.Warn("SuggestionTagger: OnDebounceElapsed failed", ex);
             }
         }
 
@@ -578,11 +578,11 @@ namespace LMLocal.Infrastructure.Autocompletions.InlineCompletion
             }
             catch (OperationCanceledException)
             {
-                InternalLogger.Info("OperationCanceledException");
+                InternalLogger.Info("SuggestionTagger: suggestion generation cancelled");
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("SuggestionTagger: GenerateSuggestionAsync failed: " + ex.Message);
+                InternalLogger.Warn("SuggestionTagger: GenerateSuggestionAsync failed", ex);
             }
         }
 

@@ -304,15 +304,15 @@ namespace LMLocal.Application.Chat
                     total += EstimateText(message.Role);
                     total += EstimateText(ContentTextExtractor.ExtractTextContent(message.Content));
 
-                    if (message.ToolCalls is List<LMLocal.Infrastructure.LlmApi.Requests.ToolCall> calls)
+                    if (message.ToolCalls != null)
                     {
-                        foreach (var call in calls)
+                        foreach (var call in message.ToolCalls)
                         {
-                            if (call?.Function == null)
+                            if (call == null)
                                 continue;
 
-                            total += EstimateText(call.Function.Name);
-                            total += EstimateText(call.Function.Arguments);
+                            total += EstimateText(call.Name);
+                            total += EstimateText(call.Arguments);
                         }
                     }
                 }

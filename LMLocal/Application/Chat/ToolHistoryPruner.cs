@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using LMLocal.Application.Tool;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -173,10 +172,11 @@ namespace LMLocal.Application.Chat
             if (message == null || message.Role != "assistant")
                 return false;
 
-            if (!(message.ToolCalls is List<ToolCall> calls) || calls.Count == 0)
+            var calls = message.ToolCalls;
+            if (calls == null || calls.Count == 0)
                 return false;
 
-            List<ToolCall> prunedCalls = null;
+            List<ChatToolCall> prunedCalls = null;
 
             for (int i = 0; i < calls.Count; i++)
             {
@@ -185,7 +185,7 @@ namespace LMLocal.Application.Chat
                     continue;
 
                 if (prunedCalls == null)
-                    prunedCalls = new List<ToolCall>(calls);
+                    prunedCalls = new List<ChatToolCall>(calls);
 
                 prunedCalls[i] = pruned;
             }
@@ -197,7 +197,8 @@ namespace LMLocal.Application.Chat
             {
                 ToolCalls = prunedCalls,
                 ModelId = message.ModelId,
-                Timestamp = message.Timestamp
+                Timestamp = message.Timestamp,
+                ReasoningContent = message.ReasoningContent
             };
             return true;
         }
@@ -205,15 +206,15 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Removes the content arguments of one write-tool call. Everything else (file path, line numbers) is kept so the model still knows what it already did.
         /// </summary>
-        private static ToolCall TryPruneSingleCall(ToolCall call)
+        private static ChatToolCall TryPruneSingleCall(ChatToolCall call)
         {
-            if (call?.Function == null || !WriteTools.IsWriteTool(call.Function.Name))
+            if (call == null || string.IsNullOrEmpty(call.Name) || !WriteTools.IsWriteTool(call.Name))
                 return null;
 
             JObject arguments;
             try
             {
-                arguments = JObject.Parse(string.IsNullOrWhiteSpace(call.Function.Arguments) ? "{}" : call.Function.Arguments);
+                arguments = JObject.Parse(string.IsNullOrWhiteSpace(call.Arguments) ? "{}" : call.Arguments);
             }
             catch (JsonException)
             {
@@ -226,7 +227,7 @@ namespace LMLocal.Application.Chat
             int removedLines = 0;
             bool removed = false;
 
-            foreach (var field in WriteTools.GetContentArguments(call.Function.Name))
+            foreach (var field in WriteTools.GetContentArguments(call.Name))
             {
                 var property = arguments.Property(field);
                 if (property == null)
@@ -240,7 +241,7 @@ namespace LMLocal.Application.Chat
                 removed = true;
             }
 
-            foreach (var nested in WriteTools.GetNestedContentArguments(call.Function.Name))
+            foreach (var nested in WriteTools.GetNestedContentArguments(call.Name))
             {
                 var property = arguments.Property(nested.Key);
                 if (property == null)
@@ -293,16 +294,12 @@ namespace LMLocal.Application.Chat
             arguments[PrunedKey] = true;
             arguments[LinesKey] = removedLines;
 
-            return new ToolCall
+            return new ChatToolCall
             {
                 Id = call.Id,
-                Type = call.Type,
-                Function = new FunctionCallDetails
-                {
-                    Name = call.Function.Name,
-                    Arguments = arguments.ToString(Formatting.None)
-                },
-                ExtraContent = call.ExtraContent
+                Name = call.Name,
+                Arguments = arguments.ToString(Formatting.None),
+                ExtraContentJson = call.ExtraContentJson
             };
         }
 
@@ -346,9 +343,9 @@ namespace LMLocal.Application.Chat
         /// <summary>
         /// Stage B: the whole body becomes one trace line that says which tool ran, on what, and with what verdict.
         /// </summary>
-        private static string BuildStageB(string body, ToolCall call)
+        private static string BuildStageB(string body, ChatToolCall call)
         {
-            return DescribeTrace(call?.Function?.Name, call?.Function?.Arguments, body);
+            return DescribeTrace(call?.Name, call?.Arguments, body);
         }
 
         /// <summary>
@@ -463,7 +460,8 @@ namespace LMLocal.Application.Chat
             {
                 ToolCalls = message.ToolCalls,
                 ModelId = message.ModelId,
-                Timestamp = message.Timestamp
+                Timestamp = message.Timestamp,
+                ReasoningContent = message.ReasoningContent
             };
         }
 

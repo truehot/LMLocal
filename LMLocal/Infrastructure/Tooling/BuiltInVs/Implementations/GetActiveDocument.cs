@@ -155,7 +155,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error retrieving active document content: {ex.Message}");
+                InternalLogger.Error("Error retrieving active document content", ex);
                 return (filePath, null);
             }
         }

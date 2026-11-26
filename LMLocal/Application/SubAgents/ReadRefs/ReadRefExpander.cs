@@ -84,7 +84,7 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"ReadRefExpander: failed to expand ref '{content.Substring(marker.StartIndex, marker.Length)}': {ex.Message}");
+                    InternalLogger.Warn($"ReadRefExpander: failed to expand ref '{content.Substring(marker.StartIndex, marker.Length)}'", ex);
                     rendered = null;
                 }
 
@@ -114,11 +114,16 @@ namespace LMLocal.Application.SubAgents.ReadRefs
         {
             string absolutePath = null;
             string headerPath = null;
+            var ranges = new List<LineRange>(marker.Ranges.Count);
             for (int i = 0; i < marker.Ranges.Count; i++)
             {
-                if (!_ledger.TryResolve(marker.Path, marker.Ranges[i], out var record) || string.IsNullOrEmpty(record.AbsolutePath))
+                if (!_ledger.TryResolve(marker.Path, marker.Ranges[i], out var record, out var resolved, out var rule) || string.IsNullOrEmpty(record.AbsolutePath))
                     return null;
 
+                if (rule != ReadResolveRule.Covered)
+                    InternalLogger.Info($"ReadRefExpander: {rule} '{marker.Path}:{marker.Ranges[i]}' -> {resolved}");
+
+                ranges.Add(resolved);
                 if (absolutePath == null)
                     absolutePath = record.AbsolutePath;
                 if (headerPath == null)
@@ -129,9 +134,9 @@ namespace LMLocal.Application.SubAgents.ReadRefs
                 return null;
 
             var sb = new StringBuilder();
-            for (int i = 0; i < marker.Ranges.Count; i++)
+            for (int i = 0; i < ranges.Count; i++)
             {
-                var range = marker.Ranges[i];
+                var range = ranges[i];
                 var rawLines = await _fileSystem
                     .ReadLinesRangeAsync(absolutePath, range.Start, range.End, cancellationToken)
                     .ConfigureAwait(false);

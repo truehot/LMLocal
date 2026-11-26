@@ -5,7 +5,6 @@ using System.Text;
 using System.Threading.Tasks;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Providers;
 using LMLocal.Application.Abstractions.Ports;

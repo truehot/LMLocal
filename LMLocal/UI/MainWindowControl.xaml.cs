@@ -119,7 +119,7 @@ namespace LMLocal
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("WebView2 initialization failed.", ex);
+                InternalLogger.Warn("InjectTextIntoInputAsync skipped: WebView2 is not available (initialization failed)", ex);
                 return;
             }
 
@@ -150,7 +150,7 @@ namespace LMLocal
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("WebView2 initialization failed.", ex);
+                InternalLogger.Warn("InjectTextAndSendAsync skipped: WebView2 is not available (initialization failed)", ex);
                 return;
             }
 
@@ -193,7 +193,7 @@ namespace LMLocal
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("WebView2 initialization failed.", ex);
+                InternalLogger.Warn("PushDebugStopAsync skipped: WebView2 is not available (initialization failed)", ex);
                 return;
             }
 
@@ -218,7 +218,7 @@ namespace LMLocal
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"Cannot push the debugger stop to the page: {ex.Message}");
+                InternalLogger.Warn("Cannot push the debugger stop to the page", ex);
             }
         }
 

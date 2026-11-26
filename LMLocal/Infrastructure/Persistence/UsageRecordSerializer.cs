@@ -27,6 +27,12 @@ namespace LMLocal.Infrastructure.Persistence
         private const string TitleField = "title";
         private const string AgentField = "agent";
         private const string RunSessionIdField = "run_session_id";
+        private const string PipelineField = "pipeline";
+        private const string PipelineRunIdField = "pipeline_run_id";
+        private const string PipelineStepField = "pipeline_step";
+        private const string PipelineStepIdField = "pipeline_step_id";
+        private const string PipelineAttemptField = "pipeline_attempt";
+        private const string PipelineBranchField = "pipeline_branch";
         private const string ProviderField = "provider";
         private const string BaseUrlField = "base_url";
         private const string ModelField = "model";
@@ -36,6 +42,7 @@ namespace LMLocal.Infrastructure.Persistence
         private const string CompletionField = "completion";
         private const string CachedField = "cached";
         private const string ReasoningField = "reasoning";
+        private const string ReasoningEchoField = "reasoning_echo";
         private const string EstimatedField = "estimated";
         private const string RoundsField = "rounds";
         private const string ToolCallsField = "tool_calls";
@@ -95,6 +102,23 @@ namespace LMLocal.Infrastructure.Persistence
                 { ErrorField, record.Error }
             };
 
+            // A pipeline step writes its position; a plain agent run writes none of these fields at all.
+            if (!string.IsNullOrEmpty(record.Pipeline))
+                entry[PipelineField] = record.Pipeline;
+            if (!string.IsNullOrEmpty(record.PipelineRunId))
+                entry[PipelineRunIdField] = record.PipelineRunId;
+            if (record.PipelineStep.HasValue)
+                entry[PipelineStepField] = record.PipelineStep.Value;
+            if (!string.IsNullOrEmpty(record.PipelineStepId))
+                entry[PipelineStepIdField] = record.PipelineStepId;
+            if (record.PipelineAttempt.HasValue)
+                entry[PipelineAttemptField] = record.PipelineAttempt.Value;
+            if (record.PipelineBranch.HasValue)
+                entry[PipelineBranchField] = record.PipelineBranch.Value;
+
+            if (record.ReasoningEcho > 0)
+                entry[ReasoningEchoField] = record.ReasoningEcho;
+
             return JsonConvert.SerializeObject(entry) + Environment.NewLine;
         }
 
@@ -128,6 +152,12 @@ namespace LMLocal.Infrastructure.Persistence
                     Title = entry.Value<string>(TitleField),
                     Agent = entry.Value<string>(AgentField),
                     RunSessionId = entry.Value<string>(RunSessionIdField),
+                    Pipeline = entry.Value<string>(PipelineField),
+                    PipelineRunId = entry.Value<string>(PipelineRunIdField),
+                    PipelineStep = ReadInt(entry, PipelineStepField),
+                    PipelineStepId = entry.Value<string>(PipelineStepIdField),
+                    PipelineAttempt = ReadInt(entry, PipelineAttemptField),
+                    PipelineBranch = ReadInt(entry, PipelineBranchField),
                     Provider = entry.Value<string>(ProviderField),
                     BaseUrl = entry.Value<string>(BaseUrlField),
                     Model = entry.Value<string>(ModelField),
@@ -137,6 +167,7 @@ namespace LMLocal.Infrastructure.Persistence
                     Completion = ReadInt(entry, CompletionField),
                     Cached = ReadInt(entry, CachedField),
                     Reasoning = ReadInt(entry, ReasoningField),
+                    ReasoningEcho = ReadLong(entry, ReasoningEchoField),
                     Estimated = entry.Value<bool?>(EstimatedField) ?? false,
                     Rounds = ReadInt(entry, RoundsField) ?? 0,
                     ToolCalls = ReadInt(entry, ToolCallsField) ?? 0,
@@ -151,7 +182,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                LMLocal.Core.Common.InternalLogger.Warn($"UsageRecordSerializer: skipped a broken usage line: {ex.Message}");
+                LMLocal.Core.Common.InternalLogger.Warn("UsageRecordSerializer: skipped a broken usage line", ex);
                 return null;
             }
         }

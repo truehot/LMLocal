@@ -135,7 +135,7 @@ namespace LMLocal.Tests.E2E.VSIX
                         if (obj["success"]?.Value<bool>() == true && !string.IsNullOrWhiteSpace((string)obj["solution_name"]))
                             return;
                     }
-                    catch (Exception)
+                    catch (Newtonsoft.Json.JsonReaderException)
                     {
                         // Not loaded yet.
                     }

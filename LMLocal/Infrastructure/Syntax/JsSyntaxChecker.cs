@@ -90,7 +90,7 @@ namespace LMLocal.Infrastructure.Syntax
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn("Acornima could not validate JS syntax: " + ex.Message);
+                InternalLogger.Warn("Acornima could not validate JS syntax", ex);
                 errors.Clear();
                 return true;
             }

@@ -46,9 +46,20 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing
             if (maxOutputSize <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maxOutputSize), "maxOutputSize must be greater than zero.");
 
+            string dotnetPath = ExecutablePath.FindInPath("dotnet.exe");
+            if (dotnetPath == null)
+            {
+                return new DotnetProcessResult
+                {
+                    ExitCode = -1,
+                    StdErr = "Failed to start 'dotnet': dotnet.exe was not found in PATH.",
+                    StdOut = string.Empty
+                };
+            }
+
             var startInfo = new ProcessStartInfo
             {
-                FileName = "dotnet",
+                FileName = dotnetPath,
                 Arguments = arguments,
                 WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
@@ -105,14 +116,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing
                         cancelled = cancellationToken.IsCancellationRequested;
                         timedOut = !cancelled;
 
-                        TryKill(process);
+                        ProcessTreeKiller.TryKill(process);
                     }
                 }
 
                 if (process.HasExited)
                 {
                     try { process.WaitForExit(); }
-                    catch (Exception ex) { InternalLogger.Warn($"DotnetProcessRunner: WaitForExit flush failed: {ex.Message}"); }
+                    catch (Exception ex) { InternalLogger.Warn("DotnetProcessRunner: WaitForExit flush failed", ex); }
                 }
 
                 string stdout = FinalizeOutput(stdoutBuffer, stdoutTruncated, maxOutputSize);
@@ -128,37 +139,6 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Testing
                     TimedOut = timedOut
                 };
             }
-        }
-
-        private static void TryKill(Process process)
-        {
-            if (process.HasExited) return;
-
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "taskkill",
-                    Arguments = $"/PID {process.Id} /T /F",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using (var killer = Process.Start(startInfo))
-                {
-                    if (killer != null && !killer.WaitForExit(3000))
-                        killer.Kill();
-                }
-            }
-            catch (Exception ex)
-            {
-                InternalLogger.Warn($"DotnetProcessRunner: taskkill failed, falling back to Process.Kill: {ex.Message}");
-                try { if (!process.HasExited) process.Kill(); }
-                catch (Exception ex2) { InternalLogger.Warn($"DotnetProcessRunner: Process.Kill failed: {ex2.Message}"); }
-            }
-
-            try { process.WaitForExit(3000); }
-            catch (Exception ex) { InternalLogger.Warn($"DotnetProcessRunner: WaitForExit after kill failed: {ex.Message}"); }
         }
 
         private static void AppendCapped(StringBuilder buffer, string data, int maxOutputSize, ref bool truncated)

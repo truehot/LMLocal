@@ -62,17 +62,13 @@ namespace LMLocal.Tests.Unit
             {
                 new ChatMessage("assistant", null)
                 {
-                    ToolCalls = new List<ToolCall>
+                    ToolCalls = new List<ChatToolCall>
                     {
-                        new ToolCall
+                        new ChatToolCall
                         {
                             Id = "c" + number,
-                            Type = "function",
-                            Function = new FunctionCallDetails
-                            {
-                                Name = "read_file_lines",
-                                Arguments = "{\"file_path\":\"src/A" + number + ".cs\"}"
-                            }
+                            Name = "read_file_lines",
+                            Arguments = "{\"file_path\":\"src/A" + number + ".cs\"}"
                         }
                     }
                 },
@@ -139,8 +135,8 @@ namespace LMLocal.Tests.Unit
             Assert.That((string)messages[0].Content, Is.EqualTo("do the work"));
 
             var callIds = messages
-                .Where(m => m.ToolCalls is List<ToolCall>)
-                .SelectMany(m => (List<ToolCall>)m.ToolCalls)
+                .Where(m => m.ToolCalls != null)
+                .SelectMany(m => m.ToolCalls)
                 .Select(c => c.Id)
                 .ToList();
             Assert.That(callIds, Is.EqualTo(new[] { "c1" }), "the tool call keeps its id so the tool result still pairs with it");

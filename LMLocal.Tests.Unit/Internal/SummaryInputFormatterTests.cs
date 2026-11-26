@@ -1,11 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using NUnit.Framework;
-using ToolCall = LMLocal.Infrastructure.LlmApi.Requests.ToolCall;
 
 namespace LMLocal.Tests.Unit
 {
@@ -19,13 +17,13 @@ namespace LMLocal.Tests.Unit
         {
             return new ChatMessage("assistant", null)
             {
-                ToolCalls = new List<ToolCall>
+                ToolCalls = new List<ChatToolCall>
                 {
-                    new ToolCall
+                    new ChatToolCall
                     {
                         Id = id,
-                        Type = "function",
-                        Function = new FunctionCallDetails { Name = toolName, Arguments = arguments }
+                        Name = toolName,
+                        Arguments = arguments
                     }
                 }
             };

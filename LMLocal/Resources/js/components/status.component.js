@@ -2,8 +2,11 @@ import { UIText } from '@app/constants/app.globals.js';
 import { AppStatus } from '@app/store/app.status.js';
 import { appSelectors } from '@app/store/app.selectors.js';
 import { createCallback } from '@app/lib/callback.js';
-import { formatSpeed } from '@app/lib/formatting.js';
+import { formatDuration, formatSpeed } from '@app/lib/formatting.js';
 import { toolbarComponent } from '@app/components/toolbar.component.js';
+
+/** Interval of the elapsed time of a request; the value is computed from the start time, not incremented per tick. */
+const ELAPSED_TICK_MS = 1000;
 
 /**
  * UI component that displays application connection and token usage status. The component wires DOM elements, updates visual state from the application store, and exposes an `onRetry` callback for retrying connections.
@@ -13,6 +16,8 @@ class StatusComponent {
         this.elements = {};
         this.retryTimeout = null;
         this.connectTimeout = null;
+        this._elapsedTimer = null;
+        this._elapsedStartedAt = 0;
         this.onRetry = createCallback();
         this.onConnect = createCallback();
         this.onClearChat = createCallback();
@@ -33,6 +38,7 @@ class StatusComponent {
             statusBar: document.getElementById('status-bar'),
             rateLimitStatus: document.getElementById('rate-limit-status'),
             liveTokenCount: document.getElementById('live-token-count'),
+            elapsedTime: document.getElementById('elapsed-time'),
             tokenCountText: document.getElementById('token-number'),
             tokensSpeed: document.getElementById('tokens-speed'),
             clearChatBtn: document.getElementById('clear-chat-btn'),
@@ -103,27 +109,99 @@ class StatusComponent {
         }
     }
 
+    /** Live counter: elapsed time, then SubAgent or main model numbers; visible for the whole request, so it never blinks. */
     _updateTokenCounter(appState, prevAppState) {
-        if (prevAppState &&
-            appState.roundTokens === prevAppState.roundTokens &&
-            appState.tokenSpeed === prevAppState.tokenSpeed) return;
+        const statusChanged = !prevAppState || appState.status !== prevAppState.status;
+        const tokensChanged = !prevAppState ||
+            appState.roundTokens !== prevAppState.roundTokens ||
+            appState.tokenSpeed !== prevAppState.tokenSpeed;
+        const subAgentsChanged = !prevAppState || appState.subAgentTokens !== prevAppState.subAgentTokens;
+
+        if (!statusChanged && !tokensChanged && !subAgentsChanged) return;
+
+        const busy = this._isRequestStatus(appState.status);
+        this._syncElapsedTimer(busy);
 
         if (this.elements.liveTokenCount) {
-            const isWorking = appSelectors.isBusy(appState.status);
-            this.elements.liveTokenCount.style.display = isWorking ? "inline" : "none";
+            this.elements.liveTokenCount.style.display = busy ? "inline-flex" : "none";
         }
 
-        if (this.elements.tokenCountText && appState.roundTokens !== prevAppState?.roundTokens) {
-            this.elements.tokenCountText.textContent = appState.roundTokens > 0
-                ? `${appState.roundTokens} ${UIText.TEXT_TOKENS}`
-                : "";
+        if (busy) this._renderTokenCounter(appState);
+    }
+
+    /** Status of a running request; CONNECTING, INITIALIZING and CLEARING are busy but no request. */
+    _isRequestStatus(status) {
+        return appSelectors.isGenerating(status) ||
+            status === AppStatus.COMPACTING ||
+            status === AppStatus.STOPPING;
+    }
+
+    /** Runs the 1 s timer of the elapsed time only while a request runs. */
+    _syncElapsedTimer(busy) {
+        if (busy) {
+            if (this._elapsedTimer) return;
+            this._elapsedStartedAt = Date.now();
+            this._elapsedTimer = setInterval(() => this._renderTokenCounter(this._currentAppState), ELAPSED_TICK_MS);
+            return;
         }
 
-        if (this.elements.tokensSpeed && appState.tokenSpeed !== prevAppState?.tokenSpeed) {
-            this.elements.tokensSpeed.textContent = appState.tokenSpeed > 0
-                ? `(${formatSpeed(appState.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND})`
-                : "";
+        if (this._elapsedTimer) {
+            clearInterval(this._elapsedTimer);
+            this._elapsedTimer = null;
         }
+        this._elapsedStartedAt = 0;
+    }
+
+    /** Writes the elapsed time, then the numbers: the running SubAgents' own, else the main model's while it streams. */
+    _renderTokenCounter(appState) {
+        if (!appState) return;
+
+        // Starts at 1s: a running request never shows 0s.
+        const elapsed = this._elapsedStartedAt > 0
+            ? formatDuration(Math.max(1000, Date.now() - this._elapsedStartedAt), true)
+            : "";
+
+        const subAgent = this._subAgentTokenText(appState.subAgentTokens);
+
+        const generating = appState.status === AppStatus.THINKING ||
+            appState.status === AppStatus.STREAMING ||
+            appState.status === AppStatus.FINISHING;
+
+        let number = "";
+        let speed = "";
+
+        if (subAgent) {
+            number = subAgent.number;
+            speed = subAgent.speed;
+        } else if (generating) {
+            number = appState.roundTokens > 0 ? `${appState.roundTokens} ${UIText.TEXT_TOKENS}` : "";
+            speed = appState.tokenSpeed > 0 ? `(${formatSpeed(appState.tokenSpeed)} ${UIText.TEXT_TOKENS_PER_SECOND})` : "";
+        }
+
+        this._setText(this.elements.elapsedTime, elapsed);
+        this._setText(this.elements.tokenCountText, number);
+        this._setText(this.elements.tokensSpeed, speed);
+    }
+
+    /** Summed numbers of the running SubAgents, or null when none runs; the names are not repeated, the header shows them. */
+    _subAgentTokenText(subAgentTokens) {
+        const entries = Object.values(subAgentTokens || {}).filter(Boolean);
+        if (entries.length === 0) return null;
+
+        const tokens = entries.reduce((sum, entry) => sum + (Number(entry.tokens) || 0), 0);
+        const speed = entries.reduce((sum, entry) => sum + (Number(entry.speed) || 0), 0);
+
+        return {
+            number: tokens > 0 ? `${tokens} ${UIText.TEXT_TOKENS}` : "",
+            speed: speed > 0 ? `(${formatSpeed(speed)} ${UIText.TEXT_TOKENS_PER_SECOND})` : ""
+        };
+    }
+
+    /** Writes text only when it actually differs, so a repeated event does not touch the DOM. */
+    _setText(element, text) {
+        if (!element) return;
+        if (element.textContent === text) return;
+        element.textContent = text;
     }
 
     _updateStatusText(appState, prevAppState) {
@@ -280,6 +358,11 @@ class StatusComponent {
             clearTimeout(this.connectTimeout);
             this.connectTimeout = null;
         }
+        if (this._elapsedTimer) {
+            clearInterval(this._elapsedTimer);
+            this._elapsedTimer = null;
+        }
+        this._elapsedStartedAt = 0;
         this.elements = {};
         this._providerName = null;
         this._currentAppState = null;

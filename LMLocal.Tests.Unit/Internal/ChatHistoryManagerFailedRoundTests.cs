@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
 using Moq;
 using NUnit.Framework;
@@ -32,7 +33,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(p => p.SaveMessagesAsync(It.IsAny<IEnumerable<ChatMessage>>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
 
-            return new ChatHistoryManager(settings.Object, persistence.Object);
+            return new ChatHistoryManager(settings.Object, persistence.Object, new ProviderPolicy());
         }
 
         [Test]

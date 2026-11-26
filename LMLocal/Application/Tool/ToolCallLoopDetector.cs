@@ -7,17 +7,12 @@ namespace LMLocal.Application.Tool
     /// <summary>
     /// Compares two rounds of tool calls for complete equality.
     /// </summary>
-    internal interface IToolCallLoopDetector
+    internal static class ToolCallLoopDetector
     {
         /// <summary>
         /// Returns true if the two lists of tool calls are the same, false otherwise.
         /// </summary>
-        bool AreSameToolCalls(IReadOnlyList<ToolCallRecord> current, IReadOnlyList<ToolCallRecord> previous);
-    }
-
-    internal sealed class ToolCallLoopDetector : IToolCallLoopDetector
-    {
-        public bool AreSameToolCalls(IReadOnlyList<ToolCallRecord> current, IReadOnlyList<ToolCallRecord> previous)
+        public static bool AreSameToolCalls(IReadOnlyList<ToolCallRecord> current, IReadOnlyList<ToolCallRecord> previous)
         {
             if (current == null || previous == null)
                 return false;

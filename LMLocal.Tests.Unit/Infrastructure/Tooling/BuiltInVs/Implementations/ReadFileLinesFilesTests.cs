@@ -90,16 +90,62 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
-        public async Task Files_WrongFolderOfExistingFile_NamesTheRealPath()
+        public async Task Files_WrongFolderOfTheOnlyFile_ReadsItAndNamesTheRealPath()
         {
             Directory.CreateDirectory(Path.Combine(_tempDir, "sub"));
+            File.WriteAllText(Path.Combine(_tempDir, "sub", "c.txt"), "c1\nc2\n");
+
+            var response = await ReadFilesAsync(new JArray(Range(@"other\c.txt", 2, 2), Range("a.txt", 1, 1)));
+
+            Assert.That(response.Files[0].Success, Is.True);
+            Assert.That(response.Files[0].FilePath, Is.EqualTo(@"sub\c.txt"));
+            Assert.That(response.Files[0].Content.Select(l => l.Text), Is.EqualTo(new[] { "c2" }));
+            Assert.That(response.Files[0].Note, Is.EqualTo(
+                @"Path 'other\c.txt' does not exist; used 'sub\c.txt', the only file with that name in the solution. Cite this path."));
+            Assert.That(response.Files[1].Note, Is.Null, "a path that exists has no note");
+        }
+
+        [Test]
+        public async Task SingleCall_WrongFolderOfTheOnlyFile_ReadsItWithTheSameLineRange()
+        {
+            Directory.CreateDirectory(Path.Combine(_tempDir, "sub"));
+            File.WriteAllText(Path.Combine(_tempDir, "sub", "c.txt"), "c1\nc2\nc3\n");
+
+            var result = await _reader.ExecuteAsync(new Dictionary<string, object>
+            {
+                ["file_path"] = "c.txt", ["start_line"] = 2, ["end_line"] = 3
+            });
+
+            var block = (ReadFileLines.FileLinesResponse)result;
+            Assert.That(block.Success, Is.True);
+            Assert.That(block.FilePath, Is.EqualTo(@"sub\c.txt"));
+            Assert.That(block.Content.Select(l => l.LineNumber), Is.EqualTo(new[] { 2, 3 }));
+            Assert.That(block.Note, Does.Contain("used 'sub\\c.txt'"));
+            Assert.That(JsonConvert.SerializeObject(block), Does.Contain("\"note\":"));
+        }
+
+        [Test]
+        public async Task Files_WrongFolderOfSeveralFiles_StaysAnErrorThatListsThem()
+        {
+            Directory.CreateDirectory(Path.Combine(_tempDir, "sub"));
+            Directory.CreateDirectory(Path.Combine(_tempDir, "lib"));
             File.WriteAllText(Path.Combine(_tempDir, "sub", "c.txt"), "c1\n");
+            File.WriteAllText(Path.Combine(_tempDir, "lib", "c.txt"), "c1\n");
 
             var response = await ReadFilesAsync(new JArray(Range(@"other\c.txt", 1, 1)));
 
             Assert.That(response.Files[0].Success, Is.False);
             Assert.That(response.Files[0].ErrorMessage, Does.StartWith("File not found: "));
-            Assert.That(response.Files[0].ErrorMessage, Does.Contain(@"The file 'c.txt' exists at 'sub\c.txt': call again with that path."));
+            Assert.That(response.Files[0].ErrorMessage, Does.Contain("Files named 'c.txt' exist at"));
+        }
+
+        [Test]
+        public async Task Files_ExistingPath_HasNoNoteInJson()
+        {
+            var response = await ReadFilesAsync(new JArray(Range("a.txt", 1, 1)));
+
+            Assert.That(response.Files[0].Note, Is.Null);
+            Assert.That(JsonConvert.SerializeObject(response), Does.Not.Contain("\"note\""));
         }
 
         [Test]
@@ -139,6 +185,46 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             });
 
             Assert.That(response.Files.Select(f => f.FilePath), Is.EqualTo(new[] { "b.txt", "a.txt" }));
+        }
+
+        [Test]
+        public async Task Files_EmptyTopLevelFilePath_IsIgnored()
+        {
+            var response = await ReadFilesAsync(new JArray(Range("a.txt", 1, 1)), new Dictionary<string, object>
+            {
+                ["file_path"] = "",
+                ["start_line"] = 1,
+                ["end_line"] = 1
+            });
+
+            Assert.That(response.Files.Select(f => f.FilePath), Is.EqualTo(new[] { "a.txt" }));
+            Assert.That(response.Files.All(f => f.Success), Is.True);
+        }
+
+        [Test]
+        public async Task Files_TopLevelRangeRepeatedInFiles_IsReadOnce()
+        {
+            var response = await ReadFilesAsync(new JArray(Range("a.txt", 1, 1), Range("b.txt", 1, 1)), new Dictionary<string, object>
+            {
+                ["file_path"] = "A.txt",
+                ["start_line"] = 1,
+                ["end_line"] = 1
+            });
+
+            Assert.That(response.Files.Select(f => f.FilePath), Is.EqualTo(new[] { "a.txt", "b.txt" }));
+        }
+
+        [Test]
+        public async Task Files_TopLevelSameFileOtherRange_IsStillRead()
+        {
+            var response = await ReadFilesAsync(new JArray(Range("a.txt", 1, 1)), new Dictionary<string, object>
+            {
+                ["file_path"] = "a.txt",
+                ["start_line"] = 2,
+                ["end_line"] = 2
+            });
+
+            Assert.That(response.Files, Has.Count.EqualTo(2));
         }
 
         [Test]

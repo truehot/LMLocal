@@ -41,7 +41,7 @@ namespace LMLocal.Application.Usage
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"UsageStatsService: failed to read the usage of session '{sessionId}': {ex.Message}");
+                InternalLogger.Error($"UsageStatsService: failed to read the usage of session '{sessionId}'", ex);
                 return new UsageStats();
             }
 
@@ -74,7 +74,7 @@ namespace LMLocal.Application.Usage
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"UsageStatsService: failed to read the usage of period '{UsagePeriods.ToWireName(period)}': {ex.Message}");
+                InternalLogger.Error($"UsageStatsService: failed to read the usage of period '{UsagePeriods.ToWireName(period)}'", ex);
                 return new UsageStats();
             }
 

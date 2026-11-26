@@ -318,5 +318,51 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
 
             Assert.That(_tool.GetCompletionMessage(result), Is.EqualTo("Tasks updated: 1/2 done; in progress: Build."));
         }
+
+        [Test]
+        public async Task UiData_AcceptedList_IsTheNormalizedItems()
+        {
+            var result = await Run(Items(
+                Item("  Read the file  ", "done"),
+                Item("Fix the parser", "in_progress"),
+                Item("Build", "pending"))).ConfigureAwait(false);
+
+            var uiData = Response(result).UiData as IReadOnlyList<TodoItem>;
+
+            Assert.That(uiData, Is.Not.Null, "an accepted list is handed to the UI");
+            Assert.That(uiData.Count, Is.EqualTo(3));
+            Assert.That(uiData[0].Text, Is.EqualTo("Read the file"));
+            Assert.That(uiData[1].Text, Is.EqualTo("Fix the parser"));
+            Assert.That(uiData[1].Status, Is.EqualTo(TodoWrite.StatusInProgress));
+            Assert.That(uiData[2].Status, Is.EqualTo(TodoWrite.StatusPending));
+        }
+
+        [Test]
+        public async Task UiData_RejectedCall_IsNull()
+        {
+            var result = await Run(Items(
+                Item("Fix the parser", "in_progress"),
+                Item("Fix the parser", "pending"))).ConfigureAwait(false);
+
+            var response = Response(result);
+
+            Assert.That(response.Success, Is.False);
+            Assert.That(response.UiData, Is.Null, "a rejected call must not change the widget");
+        }
+
+        [Test]
+        public void UiData_IsNotInTheModelFacingJson()
+        {
+            var response = new TodoWriteResponse
+            {
+                Success = true,
+                Items = new[] { new TodoItem { Text = "Read the file", Status = TodoWrite.StatusDone } }
+            };
+
+            var json = JsonConvert.SerializeObject(response);
+
+            Assert.That(json, Does.Not.Contain("UiData"));
+            Assert.That(json, Does.Not.Contain("ui_data"));
+        }
     }
 }

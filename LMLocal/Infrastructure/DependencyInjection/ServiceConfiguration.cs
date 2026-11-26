@@ -14,6 +14,7 @@ using LMLocal.Infrastructure.Autocompletions;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.Instructions;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.ModelsConfig;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Providers;
@@ -133,6 +134,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddTransient<IBuiltInTool, FormatDocument>();
             services.AddTransient<IBuiltInTool, GetActiveDocument>();
             services.AddTransient<IBuiltInTool, GetChangesDiff>();
+            services.AddTransient<IBuiltInTool, GitRead>();
             services.AddTransient<IBuiltInTool, GetSolutionOverview>();
             services.AddTransient<IBuiltInTool, InsertFileLines>();
             services.AddTransient<IBuiltInTool, ListDirectory>();
@@ -168,6 +170,7 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IHttpClientWrapper, HttpClientWrapper>();
             services.AddSingleton<IChatPersistenceService, ChatPersistenceService>();
             services.AddSingleton<IChatPersistenceFactory, ChatPersistenceServiceFactory>();
+            services.AddSingleton<IProviderPolicy, ProviderPolicy>();
             services.AddSingleton<IChatHistoryManager, ChatHistoryManager>();
             services.AddSingleton<IChatHistoryService, ChatHistoryService>();
             services.AddSingleton<ITimeProvider, SystemTimeProvider>();
@@ -203,10 +206,12 @@ namespace LMLocal.Infrastructure.DependencyInjection
                 sp.GetRequiredService<IStreamingRoundService>(),
                 () => sp.GetRequiredService<IToolExecutionManager>(),
                 sp.GetRequiredService<IToolQueueProvider>(),
-                sp.GetRequiredService<IToolCallLoopDetector>(),
                 sp.GetRequiredService<IChatPersistenceFactory>(),
+                sp.GetRequiredService<IProviderPolicy>(),
                 SubAgentsService.DefaultLoopRecoveryEnabled,
-                sp.GetRequiredService<IUsageRecorder>()));
+                sp.GetRequiredService<IUsageRecorder>(),
+                sp.GetRequiredService<ITimeProvider>()));
+            services.AddSingleton<ISubAgentPipelineRunner, SubAgentPipelineRunner>();
             services.AddSingleton<ITestConnectionService, TestConnectionService>();
             services.AddSingleton<IAutocompletionsService, AutocompletionsService>();
             services.AddSingleton<IModelsListService, ModelsListService>();
@@ -218,15 +223,15 @@ namespace LMLocal.Infrastructure.DependencyInjection
             services.AddSingleton<IWebViewNavigator, WebViewNavigator>();
             services.AddSingleton<IExternalUriLauncher, ShellExternalUriLauncher>();
             services.AddSingleton<IWebViewInitializer, WebViewInitializer>();
-            services.AddSingleton<IChatSessionOrchestratorFactory, ChatSessionOrchestratorFactory>();
             services.AddSingleton<IActiveModelContext, ActiveModelContext>();
             services.AddSingleton<IContextCalibration, ContextCalibration>();
             services.AddSingleton<IHistoryCompactor, HistoryCompactor>();
 
-            services.AddSingleton<IToolCallLoopDetector, ToolCallLoopDetector>();
             services.AddSingleton<ISubAgentsParallelPolicy, SubAgentsParallelPolicy>();
             services.AddSingleton<ISubAgentsParallelRunner, SubAgentsParallelRunner>();
 
+            services.AddSingleton<ChatUsageWriter>();
+            services.AddSingleton<ChatToolRoundRunner>();
             services.AddSingleton<IChatSessionOrchestrator, ChatSessionOrchestrator>();
             services.AddSingleton<IStreamingRoundService, StreamingRoundService>();
             services.AddSingleton<IChatStreamService, ChatStreamService>();

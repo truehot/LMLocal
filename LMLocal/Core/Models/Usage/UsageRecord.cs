@@ -34,6 +34,24 @@ namespace LMLocal.Core.Models.Usage
         /// <summary>Log session of the subagent itself, so its log can be found (subagent records only).</summary>
         public string RunSessionId { get; set; }
 
+        /// <summary>Pipeline id (records of a pipeline step only; null for a plain SubAgent run).</summary>
+        public string Pipeline { get; set; }
+
+        /// <summary>One id per pipeline run: the steps of the same run share it (pipeline step records only).</summary>
+        public string PipelineRunId { get; set; }
+
+        /// <summary>1-based number of the step inside the pipeline (pipeline step records only).</summary>
+        public int? PipelineStep { get; set; }
+
+        /// <summary>Step id from the config, when the step declares one (pipeline step records only).</summary>
+        public string PipelineStepId { get; set; }
+
+        /// <summary>1-based attempt of the step; written from the second attempt only (pipeline step records only).</summary>
+        public int? PipelineAttempt { get; set; }
+
+        /// <summary>1-based number of the branch inside a parallel step; null for a sequential step (pipeline step records only).</summary>
+        public int? PipelineBranch { get; set; }
+
         /// <summary>Provider id, e.g. "lmstudio".</summary>
         public string Provider { get; set; }
 
@@ -63,6 +81,9 @@ namespace LMLocal.Core.Models.Usage
 
         /// <summary>Reasoning tokens over all rounds.</summary>
         public int? Reasoning { get; set; }
+
+        /// <summary>Characters of reasoning_content echoed back in the requests of this record; 0 when none was echoed.</summary>
+        public long ReasoningEcho { get; set; }
 
         /// <summary>True when the numbers of a successful round were estimated instead of reported.</summary>
         public bool Estimated { get; set; }

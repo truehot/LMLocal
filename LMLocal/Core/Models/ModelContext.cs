@@ -18,6 +18,11 @@ namespace LMLocal.Core.Models
         public int? ContextLength { get; }
         public string Reasoning { get; }
 
+        /// <summary>
+        /// When true, the reasoning of earlier assistant messages is sent back with the request (only when it carries tools).
+        /// </summary>
+        public bool EchoReasoning { get; }
+
         public ModelContext(
             string modelId,
             double? temperature = null,
@@ -29,7 +34,8 @@ namespace LMLocal.Core.Models
             double? frequencyPenalty = null,
             int? maxOutputTokens = null,
             int? contextLength = null,
-            string reasoning = null)
+            string reasoning = null,
+            bool echoReasoning = false)
         {
             ModelId = modelId;
             Temperature = temperature;
@@ -42,6 +48,7 @@ namespace LMLocal.Core.Models
             MaxOutputTokens = maxOutputTokens;
             ContextLength = contextLength;
             Reasoning = reasoning;
+            EchoReasoning = echoReasoning;
         }
     }
 

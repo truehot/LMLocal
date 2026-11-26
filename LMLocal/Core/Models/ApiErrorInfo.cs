@@ -61,11 +61,6 @@ namespace LMLocal.Core.Models
         public int? ContextLength { get; set; }
 
         /// <summary>
-        /// True if this is a rate-limit error (HTTP 429 or has Retry-After).
-        /// </summary>
-        public bool IsRateLimit => Code == 429 || RetryAfterSeconds.HasValue;
-
-        /// <summary>
         /// User-friendly summary for logging.
         /// </summary>
         public override string ToString()

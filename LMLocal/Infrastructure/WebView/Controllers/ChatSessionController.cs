@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.WebView.Models;
 
 namespace LMLocal.Infrastructure.WebView.Controllers
@@ -126,7 +127,7 @@ namespace LMLocal.Infrastructure.WebView.Controllers
                     Role = m.Role,
                     Content = m.Content,
                     ToolCallId = m.ToolCallId,
-                    ToolCalls = m.ToolCalls,
+                    ToolCalls = ToolCallProjection.ToWire(m.ToolCalls),
                     ModelId = m.ModelId,
                     Timestamp = m.Timestamp
                 }).ToList()

@@ -14,6 +14,7 @@ using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Responses;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Infrastructure.Settings;
@@ -234,7 +235,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             hist.AddUserMessage("**bold** _italic_");
             var copy = hist.GetHistoryCopy();
@@ -249,7 +250,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var hist = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             hist.AddUserMessage("ask", activeDocumentContent: "code snippet");
             var messages = hist.BuildUserMessagesWithHistory();
@@ -265,7 +266,7 @@ namespace LMLocal.Tests.Unit.Infrastructure
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { EnableHistoryCompaction = true });
-            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var history = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             for (int i = 0; i < 3; i++) history.AddUserMessage("m" + i);
             var fakeClient = new DummyClient("unused");

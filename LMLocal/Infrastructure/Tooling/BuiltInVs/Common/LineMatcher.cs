@@ -101,6 +101,58 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
             return result;
         }
+
+        /// <summary>
+        /// Picks the position whose block matches the most leading lines of oldLines (ties: nearest to startLine, then the lower one)
+        /// and describes where it first differs. Lines are compared canonically, so characters that matching already normalizes are never reported.
+        /// </summary>
+        public static (int bestPosition, string description) DescribeClosestMismatch(
+            List<string> lines, string[] oldLines, List<int> positions, int startLine)
+        {
+            int best = positions[0], bestPrefix = -1;
+            foreach (int p in positions)
+            {
+                int prefix = 0;
+                while (prefix < oldLines.Length && p - 1 + prefix < lines.Count
+                       && LinesEqualCanonical(lines[p - 1 + prefix], oldLines[prefix]))
+                    prefix++;
+                if (prefix > bestPrefix || (prefix == bestPrefix && Math.Abs(p - startLine) < Math.Abs(best - startLine)))
+                {
+                    best = p;
+                    bestPrefix = prefix;
+                }
+            }
+
+            if (bestPrefix >= oldLines.Length)
+                return (best, null);
+
+            int lineInBlock = bestPrefix + 1;
+            int fileLine = best + bestPrefix;
+            string head = $"Closest match starts at line {best}: line {lineInBlock} of old_lines (file line {fileLine})";
+            if (fileLine > lines.Count)
+                return (best, $"{head} is past the end of the file ({lines.Count} lines).");
+
+            string fileText = CharacterMap.Canonicalize(lines[fileLine - 1]).TrimEnd();
+            string oldText = CharacterMap.Canonicalize(oldLines[bestPrefix]).TrimEnd();
+            int column = 0;
+            while (column < fileText.Length && column < oldText.Length && fileText[column] == oldText[column])
+                column++;
+
+            return (best, $"{head} differs at column {column + 1}: the file has {DescribeChar(fileText, column)}, old_lines has {DescribeChar(oldText, column)}.");
+        }
+
+        /// <summary>
+        /// Printable ASCII as a literal with its code, anything else (spaces, controls, non-ASCII) as a code only.
+        /// </summary>
+        private static string DescribeChar(string text, int index)
+        {
+            if (index >= text.Length)
+                return "end of line";
+            int code = char.IsHighSurrogate(text[index]) && index + 1 < text.Length && char.IsLowSurrogate(text[index + 1])
+                ? char.ConvertToUtf32(text[index], text[index + 1])
+                : text[index];
+            return code >= 0x21 && code <= 0x7E ? $"'{(char)code}' (U+{code:X4})" : $"U+{code:X4}";
+        }
     }
 
     /// <summary>

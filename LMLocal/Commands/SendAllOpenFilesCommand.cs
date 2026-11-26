@@ -95,7 +95,7 @@ namespace LMLocal.Commands
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"SendAllOpenFiles: cannot read document path: {ex.Message}");
+                        InternalLogger.Warn("SendAllOpenFiles: cannot read document path", ex);
                         continue;
                     }
 
@@ -113,7 +113,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendAllOpenFiles: failed to enumerate open documents: {ex.Message}");
+                InternalLogger.Warn("SendAllOpenFiles: failed to enumerate open documents", ex);
             }
 
             return items;
@@ -143,7 +143,7 @@ namespace LMLocal.Commands
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"SendAllOpenFiles: injection failed: {ex.Message}");
+                    InternalLogger.Error("SendAllOpenFiles: injection failed", ex);
                 }
             });
         }

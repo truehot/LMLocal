@@ -584,6 +584,44 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
                 "1 line inserted (auto-corrected from position 3 to 2, matched after character normalization)."));
         }
 
+        [Test]
+        public async Task Insert_ExpectedLineMatchesCanonicallyAtPosition_IsNotAutoCorrected()
+        {
+            SetupFileContent("a\nlabel x\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 2, newLines: "inserted", expectedLine: "label x"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Null);
+            Assert.That(resp.OriginalPosition, Is.Null);
+            Assert.That(resp.AppliedPosition, Is.Null);
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "a\nlabel x\ninserted\nc",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
+        [Test]
+        public async Task Insert_ExpectedLineMatchesSeveralCanonically_PositionOnOne_TakesIt()
+        {
+            SetupFileContent("label\u00A0x\nb\nlabel\u00A0x\nc");
+
+            var result = await _tool.ExecuteAsync(CreateParams(
+                position: 3, newLines: "inserted", expectedLine: "label x"));
+
+            var resp = result as InsertLinesResponse;
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(resp.MatchedWithNormalization, Is.True);
+            Assert.That(resp.AutoCorrected, Is.Null);
+            Assert.That(resp.Note, Is.EqualTo(
+                "expected_line also matches line(s) 1 (after character normalization); position 3 was used."));
+            _fileSystemMock.Verify(f => f.WriteAllBytesWithEncodingAsync(
+                AbsolutePath, "label\u00A0x\nb\nlabel\u00A0x\ninserted\nc",
+                Encoding.UTF8, false, It.IsAny<CancellationToken>()));
+        }
+
         // ── One line model for file and text (P2-0 / P2-4 / P2-5, checks 9, 10, 40, 45, 45б, 47) ──
 
         [Test]

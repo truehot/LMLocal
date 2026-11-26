@@ -39,7 +39,10 @@ namespace LMLocal.Tests.Unit.Infrastructure
         [Test]
         public async Task GetLastChatSessionAsync_WhenMessagesExist_ReturnsJsonWithHasSessionTrue()
         {
-            var toolCalls = new object[] { new { id = "call_1", type = "function" } };
+            var toolCalls = new List<ChatToolCall>
+            {
+                new ChatToolCall { Id = "call_1", Name = "read_file", Arguments = "{}" }
+            };
             _chatHistoryManagerMock
                 .Setup(h => h.LoadLastSessionAsync())
                 .ReturnsAsync(new List<ChatMessage>
@@ -262,6 +265,171 @@ namespace LMLocal.Tests.Unit.Infrastructure
             Assert.That(result["sessions"][0]["models"].ToObject<List<string>>(), Is.EqualTo(new[] { "alpha", "beta" }));
             Assert.That(result["sessions"][1]["models"].ToObject<List<string>>(), Is.Empty,
                 "sessions without model information must still serialize an empty list");
+        }
+
+        // ================ Golden UI payload: toolCalls wire shape (expected JSON must not change) ================
+
+        private async Task<string> GetLastSessionJsonAsync(List<ChatMessage> messages)
+        {
+            _chatHistoryManagerMock
+                .Setup(h => h.LoadLastSessionAsync())
+                .ReturnsAsync(messages);
+
+            return await _controller.GetLastChatSessionAsync();
+        }
+
+        private static void AssertPayload(string expectedJson, string actualJson)
+        {
+            var expected = JToken.Parse(expectedJson);
+            var actual = JToken.Parse(actualJson);
+
+            Assert.That(JToken.DeepEquals(expected, actual), Is.True,
+                "session payload changed" + Environment.NewLine +
+                "expected: " + expected.ToString() + Environment.NewLine +
+                "actual:   " + actual.ToString());
+        }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_GoldenPayload_MessageWithoutToolCalls()
+        {
+            var json = await GetLastSessionJsonAsync(new List<ChatMessage>
+            {
+                new ChatMessage("user", "hello")
+            });
+
+            AssertPayload(@"{
+                ""hasSession"": true,
+                ""messages"": [
+                    { ""role"": ""user"", ""content"": ""hello"", ""toolCallId"": null, ""toolCalls"": null }
+                ]
+            }", json);
+        }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_GoldenPayload_ToolCallWithoutExtraContent()
+        {
+            var json = await GetLastSessionJsonAsync(new List<ChatMessage>
+            {
+                new ChatMessage("assistant", null)
+                {
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        new ChatToolCall
+                        {
+                            Id = "call_1",
+                            Name = "read_file",
+                            Arguments = "{\"path\":\"a.cs\"}"
+                        }
+                    }
+                }
+            });
+
+            AssertPayload(@"{
+                ""hasSession"": true,
+                ""messages"": [
+                    {
+                        ""role"": ""assistant"",
+                        ""content"": null,
+                        ""toolCallId"": null,
+                        ""toolCalls"": [
+                            {
+                                ""id"": ""call_1"",
+                                ""type"": ""function"",
+                                ""function"": { ""name"": ""read_file"", ""arguments"": ""{\""path\"":\""a.cs\""}"" }
+                            }
+                        ]
+                    }
+                ]
+            }", json);
+        }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_GoldenPayload_ToolCallWithExtraContent()
+        {
+            var json = await GetLastSessionJsonAsync(new List<ChatMessage>
+            {
+                new ChatMessage("assistant", null)
+                {
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        new ChatToolCall
+                        {
+                            Id = "call_1",
+                            Name = "check_flight",
+                            Arguments = "{\"flight\":\"AA100\"}",
+                            ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}"
+                        }
+                    }
+                }
+            });
+
+            AssertPayload(@"{
+                ""hasSession"": true,
+                ""messages"": [
+                    {
+                        ""role"": ""assistant"",
+                        ""content"": null,
+                        ""toolCallId"": null,
+                        ""toolCalls"": [
+                            {
+                                ""id"": ""call_1"",
+                                ""type"": ""function"",
+                                ""function"": { ""name"": ""check_flight"", ""arguments"": ""{\""flight\"":\""AA100\""}"" },
+                                ""extra_content"": { ""google"": { ""thought_signature"": ""sigA"" } }
+                            }
+                        ]
+                    }
+                ]
+            }", json);
+        }
+
+        [Test]
+        public async Task GetLastChatSessionAsync_GoldenPayload_TwoToolCallsKeepOrder()
+        {
+            var json = await GetLastSessionJsonAsync(new List<ChatMessage>
+            {
+                new ChatMessage("assistant", null)
+                {
+                    ToolCalls = new List<ChatToolCall>
+                    {
+                        new ChatToolCall
+                        {
+                            Id = "call_1",
+                            Name = "read_file",
+                            Arguments = "{\"path\":\"a.cs\"}"
+                        },
+                        new ChatToolCall
+                        {
+                            Id = "call_2",
+                            Name = "list_dir",
+                            Arguments = "{\"path\":\"src\"}"
+                        }
+                    }
+                }
+            });
+
+            AssertPayload(@"{
+                ""hasSession"": true,
+                ""messages"": [
+                    {
+                        ""role"": ""assistant"",
+                        ""content"": null,
+                        ""toolCallId"": null,
+                        ""toolCalls"": [
+                            {
+                                ""id"": ""call_1"",
+                                ""type"": ""function"",
+                                ""function"": { ""name"": ""read_file"", ""arguments"": ""{\""path\"":\""a.cs\""}"" }
+                            },
+                            {
+                                ""id"": ""call_2"",
+                                ""type"": ""function"",
+                                ""function"": { ""name"": ""list_dir"", ""arguments"": ""{\""path\"":\""src\""}"" }
+                            }
+                        ]
+                    }
+                ]
+            }", json);
         }
     }
 }

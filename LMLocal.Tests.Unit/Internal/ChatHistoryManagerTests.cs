@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using System.Linq;
 using LMLocal.Application.Chat;
 using LMLocal.Core.Models;
+using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.Persistence;
 using LMLocal.Application.Abstractions.Ports;
-using LMLocal.Infrastructure.LlmApi.Requests;
 using LMLocal.Infrastructure.Tooling;
 using Newtonsoft.Json.Linq;
 using Moq;
@@ -24,7 +24,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var mockPersistence = new Mock<IChatPersistenceService>();
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             manager.AddUserMessage("first");
             mockPersistence.Invocations.Clear();
@@ -54,7 +54,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.ReplaceHistoryInMemory(new List<ChatMessage>
             {
@@ -70,7 +70,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             var history = manager.GetHistoryCopy();
@@ -85,7 +85,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             var images = new List<string>
             {
@@ -111,7 +111,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("", null, new List<string> { "data:image/png;base64,AAAA" });
             var history = manager.GetHistoryCopy();
@@ -127,7 +127,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello", null, null);
             var history = manager.GetHistoryCopy();
@@ -155,7 +155,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("a");
 
@@ -171,7 +171,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("");
             var history = manager.GetHistoryCopy();
@@ -185,7 +185,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var mockPersistence = new Mock<IChatPersistenceService>();
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
@@ -199,7 +199,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("**bold**");
             var history = manager.GetHistoryCopy();
@@ -213,7 +213,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("**bold**");
             var history = manager.GetHistoryCopy();
@@ -226,7 +226,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
             manager.AddUserMessage("a");
             manager.AddAssistantMessage("b");
 
@@ -242,7 +242,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var mockPersistence = new Mock<IChatPersistenceService>();
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             manager.Clear();
 
@@ -257,7 +257,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("Test system prompt");
 
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             Assert.That(manager, Is.Not.Null);
             Assert.That(manager, Is.InstanceOf<ChatHistoryManager>());
@@ -270,7 +270,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var mockPersistence = new Mock<IChatPersistenceService>();
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             var toolCalls = new System.Collections.Generic.List<ToolCallRecord>
             {
@@ -286,13 +286,13 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[0].Role, Is.EqualTo("assistant"));
             Assert.That(history[0].Content, Is.EqualTo("Here is the result"));
 
-            var toolCallsObj = history[0].ToolCalls as List<ToolCall>;
+            var toolCallsObj = history[0].ToolCalls;
             Assert.That(toolCallsObj, Is.Not.Null);
             Assert.That(toolCallsObj.Count, Is.EqualTo(2));
             Assert.That(toolCallsObj[0].Id, Is.EqualTo("c1"));
-            Assert.That(toolCallsObj[0].Function.Name, Is.EqualTo("search"));
+            Assert.That(toolCallsObj[0].Name, Is.EqualTo("search"));
             Assert.That(toolCallsObj[1].Id, Is.EqualTo("c2"));
-            Assert.That(toolCallsObj[1].Function.Arguments, Is.EqualTo("{\"path\":\"/x\"}"));
+            Assert.That(toolCallsObj[1].Arguments, Is.EqualTo("{\"path\":\"/x\"}"));
 
             mockPersistence.Verify(
                 p => p.SaveLastMessageAsync(It.IsAny<ChatMessage>(), It.IsAny<System.Threading.CancellationToken>()),
@@ -305,7 +305,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("Explain this code", "public class Foo { }");
 
@@ -334,7 +334,7 @@ namespace LMLocal.Tests.Unit
                     new ChatMessage("assistant", "a1")
                 });
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             var messages = await manager.LoadSessionByIdAsync("sid");
 
@@ -375,7 +375,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(p => p.LoadSessionByIdAsync("empty", It.IsAny<System.Threading.CancellationToken>()))
                 .ReturnsAsync(new List<ChatMessage>());
 
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
             manager.AddUserMessage("existing");
 
             var messages = await manager.LoadSessionByIdAsync("empty");
@@ -397,7 +397,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("base");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("tell a joke", "some reference code");
             manager.AddAssistantMessage("Why did the chicken...", new List<ToolCallRecord>());
@@ -416,7 +416,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "openai" });
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("world");
@@ -440,7 +440,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.EnsureHistoryNormalized();
             manager.AddUserMessage("first prompt");
@@ -459,7 +459,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("search for files");
             manager.AddAssistantMessage("ok searching", new List<ToolCallRecord>
@@ -494,7 +494,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("first");
             manager.AddUserMessage("second");
@@ -517,7 +517,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("find files");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -546,7 +546,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("world");
@@ -570,7 +570,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             // Populate cache
             manager.AddUserMessage("u1");
@@ -602,7 +602,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("search files");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -639,7 +639,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("search files");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -676,7 +676,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("search files");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -718,7 +718,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("lone message");
             manager.EnsureHistoryNormalized();
@@ -742,7 +742,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("complex task");
             manager.AddAssistantMessage("step 1", new List<ToolCallRecord>
@@ -771,9 +771,9 @@ namespace LMLocal.Tests.Unit
             Assert.That(roles, Is.EqualTo(new List<string>
                 { "system", "user", "assistant", "tool", "assistant", "tool", "assistant", "user" }));
             Assert.That(messages[2].ToolCalls, Is.Not.Null);
-            Assert.That(((IReadOnlyList<ToolCall>)messages[2].ToolCalls).Count, Is.EqualTo(1));
+            Assert.That(messages[2].ToolCalls.Count, Is.EqualTo(1));
             Assert.That(messages[4].ToolCalls, Is.Not.Null);
-            Assert.That(((IReadOnlyList<ToolCall>)messages[4].ToolCalls).Count, Is.EqualTo(1));
+            Assert.That(messages[4].ToolCalls.Count, Is.EqualTo(1));
             Assert.That(messages[6].Content, Is.EqualTo("all done"));
             Assert.That(messages[6].ToolCalls, Is.Null);
             Assert.That(messages[7].Content, Is.EqualTo("thanks"));
@@ -788,7 +788,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("find files");
             manager.AddAssistantMessage("using tool", new List<ToolCallRecord>
@@ -818,7 +818,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "openai" });
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddUserMessage("world"); // consecutive users — would be removed by LlamaCpp normalization
@@ -835,6 +835,76 @@ namespace LMLocal.Tests.Unit
             Assert.That(messages[3].Content, Is.EqualTo("again"));
         }
 
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase("unknown-provider")]
+        public void EnsureHistoryNormalized_EmptyOrUnknownProvider_NoOp(string provider)
+        {
+            var manager = CreateManagerWithConsecutiveUsers(new AppSettings { Provider = provider });
+
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("again");
+            var roles = manager.BuildUserMessagesWithHistory().Select(m => m.Role).ToList();
+
+            Assert.That(roles, Is.EqualTo(new List<string> { "system", "user", "user", "user" }));
+        }
+
+        [Test]
+        public void EnsureHistoryNormalized_NoSettings_NoOp()
+        {
+            var manager = CreateManagerWithConsecutiveUsers(null);
+
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("again");
+            var roles = manager.BuildUserMessagesWithHistory().Select(m => m.Role).ToList();
+
+            Assert.That(roles, Is.EqualTo(new List<string> { "system", "user", "user", "user" }));
+        }
+
+        [TestCase("LlamaCpp")]
+        [TestCase("LLAMACPP")]
+        public void EnsureHistoryNormalized_LlamaCppInAnyCase_Normalizes(string provider)
+        {
+            var manager = CreateManagerWithConsecutiveUsers(new AppSettings { Provider = provider });
+
+            manager.EnsureHistoryNormalized();
+            manager.AddUserMessage("again");
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            Assert.That(messages.Select(m => m.Role).ToList(), Is.EqualTo(new List<string> { "system", "user" }));
+            Assert.That(messages[1].Content, Is.EqualTo("again"));
+        }
+
+        [Test]
+        public void BuildMessages_AfterSwitchFromLlamaCpp_KeepsNormalizedCache()
+        {
+            // Compose does not look at the provider: the cache built under LlamaCpp outlives a provider switch.
+            var settings = new AppSettings { Provider = "llamacpp" };
+            var manager = CreateManagerWithConsecutiveUsers(settings);
+
+            manager.EnsureHistoryNormalized();
+            settings.Provider = "openai";
+            manager.AddUserMessage("again");
+            manager.EnsureHistoryNormalized();
+            var messages = manager.BuildUserMessagesWithHistory();
+
+            Assert.That(messages.Select(m => m.Role).ToList(), Is.EqualTo(new List<string> { "system", "user" }));
+            Assert.That(messages[1].Content, Is.EqualTo("again"));
+        }
+
+        private static ChatHistoryManager CreateManagerWithConsecutiveUsers(AppSettings settings)
+        {
+            var mockSettings = new Mock<ISettingsManager>();
+            mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
+            mockSettings.Setup(s => s.Current).Returns(settings);
+            mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
+
+            manager.AddUserMessage("hello");
+            manager.AddUserMessage("world");
+            return manager;
+        }
+
         // ---------- SetPendingAssistant ----------
 
         [Test]
@@ -842,7 +912,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("find files");
             manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
@@ -876,7 +946,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
             {
@@ -900,7 +970,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.SetPendingAssistant("response", new List<ToolCallRecord>());
@@ -918,7 +988,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             await manager.MoveLastExchangeToNewSessionAsync();
 
@@ -931,7 +1001,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("response");
             manager.AddAssistantMessage("response2");
@@ -947,7 +1017,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
 
@@ -962,7 +1032,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
@@ -982,7 +1052,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             // First exchange
             manager.AddUserMessage("q1");
@@ -1004,7 +1074,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("do something");
             manager.AddAssistantMessage(null, new List<ToolCallRecord>
@@ -1034,7 +1104,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             // Fill with messages so expectedSize matches
             manager.AddUserMessage("u1");
@@ -1072,7 +1142,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("a");
             manager.AddAssistantMessage("b");
@@ -1097,7 +1167,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("a");
             manager.AddAssistantMessage("b");
@@ -1123,7 +1193,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             await manager.ConsolidateLastExchangeAsync();
 
@@ -1136,7 +1206,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("response");
 
@@ -1151,7 +1221,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
 
@@ -1166,7 +1236,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("hello");
             manager.AddAssistantMessage("response");
@@ -1186,7 +1256,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy(), new ToolResultMarkdownFormatter());
 
             // Simulate: user → tool call → tool result → final assistant
             manager.AddUserMessage("read file Program.cs");
@@ -1224,7 +1294,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             // First exchange
             manager.AddUserMessage("q1");
@@ -1246,7 +1316,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy(), new ToolResultMarkdownFormatter());
 
             // Simulate multiple tool results (e.g., read_file + get_solution_overview)
             manager.AddUserMessage("analyze the project");
@@ -1287,7 +1357,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy(), new ToolResultMarkdownFormatter());
 
             manager.AddUserMessage("run custom tool");
             manager.AddAssistantMessage(null, new List<ToolCallRecord>
@@ -1320,7 +1390,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy(), new ToolResultMarkdownFormatter());
 
             // Simulate: user → assistant with tool call → tool result (get_active_document) → final assistant
             manager.AddUserMessage("what is in the active file?");
@@ -1358,7 +1428,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ToolResultMarkdownFormatter());
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy(), new ToolResultMarkdownFormatter());
 
             // Simulate: user → assistant with tool call → tool result (search_file_content) → final assistant
             manager.AddUserMessage("find references");
@@ -1394,7 +1464,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            return new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            return new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
         }
 
         private static JToken Sig(string name) => JToken.Parse("{\"google\":{\"thought_signature\":\"" + name + "\"}}");
@@ -1412,12 +1482,52 @@ namespace LMLocal.Tests.Unit
             manager.AddAssistantMessage("using tool", toolCalls);
 
             var history = manager.GetHistoryCopy();
-            var stored = (List<ToolCall>)history[0].ToolCalls;
+            var stored = history[0].ToolCalls;
 
             Assert.That(stored, Is.Not.Null);
             Assert.That(stored.Count, Is.EqualTo(1));
-            Assert.That(stored[0].ExtraContent, Is.Not.Null);
-            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+            Assert.That(stored[0].ExtraContentJson, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(JToken.Parse(stored[0].ExtraContentJson), Sig("sigA")), Is.True);
+        }
+
+        [Test]
+        public void NextAssistantReasoning_GoesToTheNextCommittedMessageOnly()
+        {
+            var manager = CreateManager();
+
+            manager.SetNextAssistantReasoning("think A");
+            manager.AddAssistantMessage("answer A", null);
+            manager.AddAssistantMessage("answer B", null);
+
+            var history = manager.GetHistoryCopy();
+            Assert.That(history[0].ReasoningContent, Is.EqualTo("think A"));
+            Assert.That(history[1].ReasoningContent, Is.Null);
+        }
+
+        [Test]
+        public void NextAssistantReasoning_ReachesPendingToolCallMessageOnFlush()
+        {
+            var manager = CreateManager();
+            var toolCalls = new List<ToolCallRecord> { new ToolCallRecord { CallId = "c1", FunctionName = "f", ArgumentsJson = "{}" } };
+
+            manager.SetNextAssistantReasoning("think tools");
+            manager.SetPendingAssistant(null, toolCalls);
+            manager.AddToolExecutionResultMessages(new[] { new ChatMessage("tool", "result", "c1") });
+
+            var assistant = manager.GetHistoryCopy().Single(m => m.Role == "assistant");
+            Assert.That(assistant.ReasoningContent, Is.EqualTo("think tools"));
+        }
+
+        [Test]
+        public void NextAssistantReasoning_DiscardPendingDropsIt()
+        {
+            var manager = CreateManager();
+
+            manager.SetNextAssistantReasoning("stale");
+            manager.DiscardPendingAssistant();
+            manager.AddAssistantMessage("answer", null);
+
+            Assert.That(manager.GetHistoryCopy()[0].ReasoningContent, Is.Null);
         }
 
         [Test]
@@ -1432,8 +1542,8 @@ namespace LMLocal.Tests.Unit
 
             manager.AddAssistantMessage("using tool", toolCalls);
 
-            var stored = (List<ToolCall>)manager.GetHistoryCopy()[0].ToolCalls;
-            Assert.That(stored[0].ExtraContent, Is.Null);
+            var stored = manager.GetHistoryCopy()[0].ToolCalls;
+            Assert.That(stored[0].ExtraContentJson, Is.Null);
         }
 
         [Test]
@@ -1448,8 +1558,9 @@ namespace LMLocal.Tests.Unit
 
             Assert.DoesNotThrow(() => manager.AddAssistantMessage("using tool", toolCalls));
 
-            var stored = (List<ToolCall>)manager.GetHistoryCopy()[0].ToolCalls;
-            Assert.That(stored[0].ExtraContent, Is.Null);
+            // Kept verbatim; dropped only at the wire boundary.
+            var stored = manager.GetHistoryCopy()[0].ToolCalls;
+            Assert.That(stored[0].ExtraContentJson, Is.EqualTo("{not valid json"));
         }
 
         [Test]
@@ -1472,9 +1583,9 @@ namespace LMLocal.Tests.Unit
             Assert.That(history.Count, Is.EqualTo(2));
             Assert.That(history[0].Role, Is.EqualTo("assistant"));
 
-            var stored = (List<ToolCall>)history[0].ToolCalls;
-            Assert.That(stored[0].ExtraContent, Is.Not.Null);
-            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+            var stored = history[0].ToolCalls;
+            Assert.That(stored[0].ExtraContentJson, Is.Not.Null);
+            Assert.That(JToken.DeepEquals(JToken.Parse(stored[0].ExtraContentJson), Sig("sigA")), Is.True);
         }
 
         [Test]
@@ -1487,17 +1598,17 @@ namespace LMLocal.Tests.Unit
                 new ToolCallRecord { CallId = "c1", FunctionName = "check_flight", ArgumentsJson = "{\"flight\":\"AA100\"}", ExtraContentJson = "{\"google\":{\"thought_signature\":\"sigA\"}}" }
             });
 
-            var before = (List<ToolCall>)manager.GetHistoryCopy()[1].ToolCalls;
+            var before = manager.GetHistoryCopy()[1].ToolCalls;
 
             await manager.MoveLastExchangeToNewSessionAsync();
 
             var after = manager.GetHistoryCopy();
             Assert.That(after.Count, Is.EqualTo(2));
-            var stored = (List<ToolCall>)after[1].ToolCalls;
+            var stored = after[1].ToolCalls;
 
-            // Same message object moved by reference => same ToolCall instance with its JToken.
+            // Same message object moved by reference => same ChatToolCall instance with its raw payload.
             Assert.That(stored[0], Is.SameAs(before[0]));
-            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigA")), Is.True);
+            Assert.That(JToken.DeepEquals(JToken.Parse(stored[0].ExtraContentJson), Sig("sigA")), Is.True);
         }
 
         [Test]
@@ -1534,9 +1645,9 @@ namespace LMLocal.Tests.Unit
 
             var history = manager.GetHistoryCopy();
             Assert.That(history.Count, Is.EqualTo(2));
-            var stored = (List<ToolCall>)history[1].ToolCalls;
+            var stored = history[1].ToolCalls;
             Assert.That(stored, Is.Not.Null);
-            Assert.That(JToken.DeepEquals(stored[0].ExtraContent, Sig("sigB")), Is.True);
+            Assert.That(JToken.DeepEquals(JToken.Parse(stored[0].ExtraContentJson), Sig("sigB")), Is.True);
         }
 
         // ================ Last completed step selection (assistant with text) ================
@@ -1555,7 +1666,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings());
-            return new ChatHistoryManager(mockSettings.Object, persistence.Object, formatter);
+            return new ChatHistoryManager(mockSettings.Object, persistence.Object, new ProviderPolicy(), formatter);
         }
 
         private static List<ToolCallRecord> ToolCalls(params (string CallId, string Name)[] calls)
@@ -1573,7 +1684,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("q1");
             manager.SetPendingAssistant(null, ToolCalls(("c1", "read_file_lines")));
@@ -1593,7 +1704,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("q1");
             manager.AddAssistantMessage("a1");
@@ -1617,7 +1728,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("q1");
 
@@ -1637,7 +1748,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("q1");
             manager.AddAssistantMessage(null, ToolCalls(("c1", "read_file_lines")));
@@ -1668,7 +1779,7 @@ namespace LMLocal.Tests.Unit
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             mockSettings.Setup(s => s.Current).Returns(new AppSettings { Provider = "llamacpp" });
             mockSettings.Setup(s => s.AssistantPlaceholder).Returns("INTERRUPTED");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("q1");
             manager.AddAssistantMessage(null, ToolCalls(("c1", "read_file_lines")));
@@ -1838,7 +1949,7 @@ namespace LMLocal.Tests.Unit
         }
 
         [Test]
-        public async Task ConsolidateLastExchange_CodeExplorerSubagent_ContentCarried()
+        public async Task ConsolidateLastExchange_CodeExplorerSubagent_NotCarried()
         {
             var persistence = CreatePersistenceMock();
             var manager = CreateManager(persistence, new ToolResultMarkdownFormatter());
@@ -1861,20 +1972,9 @@ namespace LMLocal.Tests.Unit
             Assert.That(history[1].Role, Is.EqualTo("assistant"));
             Assert.That(history[1].Content, Is.EqualTo("The file starts with using System."));
 
-            var userContent = history[0].Content as string;
-            var expectedUserContent = "read the file"
-                + "\n\n---\n\n"
-                + "## Tool Results\n\n"
-                + "**code_explorer_subagent**\n\n"
-                + SubagentMarkdown;
-
-            // The formatter builds its lines with StringBuilder.AppendLine (Environment.NewLine), so normalize before comparing.
-            var normalizedUserContent = userContent?.Replace("\r\n", "\n");
-
-            Assert.That(normalizedUserContent, Is.EqualTo(expectedUserContent),
-                "The code explorer subagent output must be carried verbatim under its own header.");
-            Assert.That(userContent, Does.Contain("**code_explorer_subagent**"));
-            Assert.That(userContent, Does.Contain("using System;"));
+            // Explorer output is a summary with code excerpts; the subagent runs locally and can be asked again.
+            Assert.That(history[0].Content, Is.EqualTo("read the file"),
+                "The code explorer subagent output must not be carried into the consolidated prompt.");
         }
 
         [Test]
@@ -1991,7 +2091,7 @@ namespace LMLocal.Tests.Unit
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
             var mockPersistence = new Mock<IChatPersistenceService>();
-            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("answer", null, "qwen-7b");
 
@@ -2007,7 +2107,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddAssistantMessage("answer", new List<ToolCallRecord>());
 
@@ -2019,7 +2119,7 @@ namespace LMLocal.Tests.Unit
         {
             var mockSettings = new Mock<ISettingsManager>();
             mockSettings.Setup(s => s.SystemPrompt).Returns("sys");
-            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object);
+            var manager = new ChatHistoryManager(mockSettings.Object, new Mock<IChatPersistenceService>().Object, new ProviderPolicy());
 
             manager.AddUserMessage("find files");
             manager.SetPendingAssistant("using tool", new List<ToolCallRecord>
@@ -2045,7 +2145,7 @@ namespace LMLocal.Tests.Unit
                 .Setup(p => p.StartSessionWithMessagesAsync(It.IsAny<IReadOnlyList<ChatMessage>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
 
-            return (new ChatHistoryManager(mockSettings.Object, mockPersistence.Object), mockPersistence);
+            return (new ChatHistoryManager(mockSettings.Object, mockPersistence.Object, new ProviderPolicy()), mockPersistence);
         }
 
         private static void SeedExchangeWithToolRound(ChatHistoryManager manager)

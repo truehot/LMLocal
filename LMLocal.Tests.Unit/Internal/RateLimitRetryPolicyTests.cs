@@ -62,10 +62,8 @@ namespace LMLocal.Tests.Unit.Internal
         [Test]
         public void IsRateLimit_Http503WithRetryAfterOnly_IsFalse()
         {
-            // Guards against ApiErrorInfo.IsRateLimit, which is broad enough to accept this.
             var ex = Create(503, hint: 30);
 
-            Assert.That(ex.ErrorInfo.IsRateLimit, Is.True, "precondition: the broad flag accepts it");
             Assert.That(RateLimitRetryPolicy.IsRateLimit(ex), Is.False);
         }
 
@@ -87,7 +85,29 @@ namespace LMLocal.Tests.Unit.Internal
         [Test]
         public void IsRateLimit_NullException_IsFalse()
         {
-            Assert.That(RateLimitRetryPolicy.IsRateLimit(null), Is.False);
+            Assert.That(RateLimitRetryPolicy.IsRateLimit((ApiException)null), Is.False);
+            Assert.That(RateLimitRetryPolicy.IsRateLimit((StreamCompletionResult)null), Is.False);
+        }
+
+        [TestCase(429, null, null, true)]
+        [TestCase(429, "insufficient_quota", null, false)]
+        [TestCase(429, null, "quota_exceeded", false)]
+        [TestCase(503, "rate_limit_exceeded", null, true)]
+        [TestCase(503, null, "rate_limit_error", true)]
+        [TestCase(503, null, null, false)]
+        [TestCase(400, null, "rate_limit", false)]
+        public void IsRateLimit_StreamResult_MatchesApiException(int status, string rawCode, string type, bool expected)
+        {
+            var ex = Create(status, rawCode: rawCode, type: type);
+            var result = new StreamCompletionResult
+            {
+                HttpStatusCode = ex.HttpStatusCode,
+                ErrorCode = rawCode ?? status.ToString(),
+                ErrorType = type
+            };
+
+            Assert.That(RateLimitRetryPolicy.IsRateLimit(ex), Is.EqualTo(expected));
+            Assert.That(RateLimitRetryPolicy.IsRateLimit(result), Is.EqualTo(expected));
         }
 
         // --- delay ---

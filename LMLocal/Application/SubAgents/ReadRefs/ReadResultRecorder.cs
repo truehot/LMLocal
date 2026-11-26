@@ -30,7 +30,10 @@ namespace LMLocal.Application.SubAgents.ReadRefs
             if (!TryExtract(result, out string relativePath, out string absolutePath, out int startLine, out int endLine))
                 return false;
 
-            ledger.Add(new ReadRecord(relativePath, startLine, endLine, absolutePath));
+            var response = (ReadFileLines.FileLinesResponse)result;
+            int? totalLines = response.TotalLines;
+            bool reachedEnd = !response.HasMoreResults || (totalLines.HasValue && endLine >= totalLines.Value);
+            ledger.Add(new ReadRecord(relativePath, startLine, endLine, absolutePath, totalLines, reachedEnd));
             return true;
         }
 

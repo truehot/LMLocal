@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Application.SubAgents;
+using LMLocal.Core.Common;
 using LMLocal.Core.Models;
 using LMLocal.Infrastructure.SubAgents;
 using LMLocal.Infrastructure.Tooling.BuiltInVs;
@@ -30,6 +31,7 @@ namespace LMLocal.Infrastructure.Tooling
 
         private const string TaskParam = "task";
         private const string TaskDescription = "The task to delegate to the agent. Provide all relevant context, such as file paths or symbol names, since the agent has no access to the conversation history.";
+        private const string PipelineTaskDescription = "The task the pipeline must complete. Provide all relevant context, such as file paths or symbol names, since the pipeline has no access to the conversation history.";
         public ToolQueueProvider(
             ISettingsManager settingsManager,
             IBuiltInVsToolProvider builtInTools,
@@ -79,7 +81,7 @@ namespace LMLocal.Infrastructure.Tooling
             }
 
             var definitions = new List<ToolDefinition>();
-            if (enableSubAgents && config != null && config.Agents != null)
+            if (enableSubAgents && config?.Agents != null)
             {
                 definitions.AddRange(FilterOwnedBuiltIn(config, builtIn));
                 definitions.AddRange(GetAgentTools(config, builtIn));
@@ -88,6 +90,9 @@ namespace LMLocal.Infrastructure.Tooling
             {
                 definitions.AddRange(builtIn);
             }
+
+            if (enableSubAgents && config != null)
+                definitions.AddRange(GetPipelineTools(config, builtIn));
             definitions.AddRange(mcp);
 
             var queue = ToolQueue.Main(definitions);
@@ -219,7 +224,7 @@ namespace LMLocal.Infrastructure.Tooling
             var agents = new List<ToolDefinition>();
             foreach (var agent in config.Agents)
             {
-                if (agent == null || !agent.Enabled || string.IsNullOrWhiteSpace(agent.Id))
+                if (agent == null || !agent.Enabled || !agent.IsExposed || string.IsNullOrWhiteSpace(agent.Id))
                     continue;
 
                 if (IsAgentVisible(agent, available))
@@ -286,6 +291,87 @@ namespace LMLocal.Infrastructure.Tooling
                     Properties = new Dictionary<string, ToolDetails>
                     {
                         { TaskParam, new ToolDetails { Type = "string", Description = TaskDescription } }
+                    },
+                    Required = new List<string> { TaskParam }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Tool definitions of the pipelines available now: enabled, structurally correct, and every step agent
+        /// existing, enabled and usable in the current mode.
+        /// </summary>
+        private IReadOnlyList<ToolDefinition> GetPipelineTools(
+            SubAgentsConfig config,
+            IReadOnlyList<ToolDefinition> builtIn)
+        {
+            if (config.Pipelines == null || config.Pipelines.Count == 0)
+                return Array.Empty<ToolDefinition>();
+
+            var available = BuildAvailableNames(builtIn);
+            var builtInNames = GetBuiltInToolNames();
+
+            var pipelines = new List<ToolDefinition>();
+            foreach (var pipeline in config.Pipelines)
+            {
+                if (pipeline == null || !pipeline.IsEnabled || string.IsNullOrWhiteSpace(pipeline.Id))
+                    continue;
+
+                var reason = SubAgentPipelineAvailability.GetUnavailableReason(
+                    pipeline,
+                    config,
+                    builtInNames,
+                    agent => IsAgentVisible(agent, available),
+                    agent => SubAgentToolAccess.HasOnlyReadOnlyTools(agent, _builtInTools));
+
+                if (reason != null)
+                {
+                    InternalLogger.Info($"ToolQueueProvider: pipeline '{pipeline.Id.Trim()}' is unavailable: {reason}");
+                    continue;
+                }
+
+                pipelines.Add(GetToolDefinition(pipeline));
+            }
+
+            return pipelines;
+        }
+
+        /// <summary>
+        /// Every built-in tool name, whatever the current mode: pipeline ids share their namespace.
+        /// </summary>
+        private IReadOnlyCollection<string> GetBuiltInToolNames()
+        {
+            var all = _builtInTools.GetAllToolDefinitionsUnfiltered();
+            if (all == null)
+                return Array.Empty<string>();
+
+            var names = new List<string>();
+            foreach (var def in all)
+            {
+                if (def != null && !string.IsNullOrWhiteSpace(def.Name))
+                    names.Add(def.Name.Trim());
+            }
+
+            return names;
+        }
+
+        private ToolDefinition GetToolDefinition(SubAgentPipelineDefinition pipeline)
+        {
+            var description = pipeline.Description?.Trim() ?? string.Empty;
+
+            if (_parallelPolicy.IsParallelEnabled(pipeline.Id))
+                description = string.IsNullOrEmpty(description) ? ParallelHint : description + " " + ParallelHint;
+
+            return new ToolDefinition
+            {
+                Name = pipeline.Id.Trim(),
+                Description = description,
+                Parameters = new ToolParameters
+                {
+                    Type = "object",
+                    Properties = new Dictionary<string, ToolDetails>
+                    {
+                        { TaskParam, new ToolDetails { Type = "string", Description = PipelineTaskDescription } }
                     },
                     Required = new List<string> { TaskParam }
                 }

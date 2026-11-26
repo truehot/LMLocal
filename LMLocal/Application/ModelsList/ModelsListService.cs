@@ -1,11 +1,11 @@
 using System;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using LMLocal.Application.Abstractions.Ports;
 using LMLocal.Core.Common;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.LlmApi;
 using LMLocal.Infrastructure.LlmApi.Converter;
 using LMLocal.Infrastructure.LlmApi.Provider;
@@ -41,9 +41,9 @@ namespace LMLocal.Application.ModelsList
 
         public async Task<UnifiedListModelsResponse> ListModelsAsync(string currentActiveModelId, CancellationToken cancellationToken)
         {
+            string baseUrl = GetBaseUrl();
             try
             {
-                string baseUrl = GetBaseUrl();
                 string providerName = _settingsManager.Current?.Provider ?? "lmstudio";
                 ModelProvider provider = ProviderResolver.ResolveProvider(providerName);
                 string endpoint = ProviderResolver.GetListModelsEndpoint(provider);
@@ -69,7 +69,7 @@ namespace LMLocal.Application.ModelsList
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("ListModelsAsync failed", ex);
+                LogListFailure("ListModelsAsync", baseUrl, ex);
                 var errorResponse = new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };
                 await ApplyModelOverridesAsync(
                     errorResponse,
@@ -104,6 +104,15 @@ namespace LMLocal.Application.ModelsList
                 return url.TrimEnd('/');
             return "http://localhost:1234";
         }
+
+        /// <summary>An unreachable server (HttpRequestException) is one Warn line; any other failure is an Error with its stack.</summary>
+        private static void LogListFailure(string operation, string baseUrl, Exception ex)
+        {
+            if (ex is HttpRequestException)
+                InternalLogger.Warn($"{operation}: cannot reach {baseUrl}: {ExceptionFormatter.Format(ex)}");
+            else
+                InternalLogger.Error(operation + " failed", ex);
+        }
         /// <summary>
         /// Applies user-defined model profiles (json) on top of the models reported by the provider: overrides context length and display name, and appends custom models  that the provider does not serve.
         /// </summary>
@@ -123,7 +132,7 @@ namespace LMLocal.Application.ModelsList
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("ApplyModelOverridesAsync failed to load models config: " + ex.Message, ex);
+                InternalLogger.Error("ApplyModelOverridesAsync failed to load models config", ex);
                 return;
             }
 
@@ -131,8 +140,7 @@ namespace LMLocal.Application.ModelsList
                 return;
 
             var profiles = config.Models
-                .Where(m => m != null
-                            && m.Enabled
+                .Where(m => m?.Enabled == true
                             && !string.IsNullOrWhiteSpace(m.ModelId)
                             && string.Equals(m.ProviderType, providerType, StringComparison.OrdinalIgnoreCase)
                             && Nullable.Equals(m.ProviderId, providerId))
@@ -225,7 +233,7 @@ namespace LMLocal.Application.ModelsList
             }
             catch (Exception ex)
             {
-                InternalLogger.Error("ListModelsForProviderAsync failed", ex);
+                LogListFailure("ListModelsForProviderAsync", baseUrl, ex);
                 return new UnifiedListModelsResponse { Error = ExceptionFormatter.Format(ex) };
             }
         }

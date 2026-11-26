@@ -24,7 +24,6 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IHistoryCompactor> _compactorMock;
         private Mock<IChatHistoryManager> _historyMock;
         private Mock<ISnapshotManager> _snapshotManagerMock;
-        private Mock<IToolCallLoopDetector> _loopDetectorMock;
         private Mock<ISubAgentsParallelPolicy> _parallelPolicyMock;
         private Mock<ISubAgentsParallelRunner> _parallelRunnerMock;
         private List<WebView2ScriptMessage> _messages;
@@ -39,7 +38,6 @@ namespace LMLocal.Tests.Unit.Internal
             _compactorMock = new Mock<IHistoryCompactor>();
             _historyMock = new Mock<IChatHistoryManager>();
             _snapshotManagerMock = new Mock<ISnapshotManager>();
-            _loopDetectorMock = new Mock<IToolCallLoopDetector>();
             _parallelPolicyMock = new Mock<ISubAgentsParallelPolicy>();
             _parallelRunnerMock = new Mock<ISubAgentsParallelRunner>();
 
@@ -58,15 +56,16 @@ namespace LMLocal.Tests.Unit.Internal
 
         private ChatSessionOrchestrator CreateOrchestrator()
         {
-            return new ChatSessionOrchestrator(
-                _chatServiceMock.Object,
-                _toolManagerMock.Object,
-                _compactorMock.Object,
-                _historyMock.Object,
-                _snapshotManagerMock.Object,
-                _loopDetectorMock.Object,
-                _parallelPolicyMock.Object,
-                _parallelRunnerMock.Object);
+            return new OrchestratorTestBuilder
+            {
+                ChatService = _chatServiceMock,
+                ToolManager = _toolManagerMock,
+                Compactor = _compactorMock,
+                History = _historyMock,
+                SnapshotManager = _snapshotManagerMock,
+                ParallelPolicy = _parallelPolicyMock,
+                ParallelRunner = _parallelRunnerMock.Object
+            }.Build();
         }
 
         private static StreamCompletionResult Overflow()

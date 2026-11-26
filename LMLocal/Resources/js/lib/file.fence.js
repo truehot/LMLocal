@@ -153,6 +153,7 @@ const EXTENSION_LANG_MAP = {
 
 /**
  * Wraps file content in a markdown code fence with the appropriate language tag and adds a comment line with the filename using the correct comment syntax.
+ * The comment reads "file: <name>", the same format MarkdownCodeBlockFormatter (C#) writes and parses back.
  */
 export function wrapAsCodeFence(filename, content) {
     const ext = (filename.split('.').pop() || '').toLowerCase();
@@ -183,11 +184,11 @@ export function wrapAsCodeFence(filename, content) {
 
     let comment;
     if (['css', 'scss', 'less', 'sass', 'stylus'].includes(lang)) {
-        comment = `${commentChar} ${filename} */`;
+        comment = `${commentChar} file: ${filename} */`;
     } else if (['html', 'xml', 'svg', 'xhtml'].includes(lang)) {
-        comment = `${commentChar} ${filename} -->`;
+        comment = `${commentChar} file: ${filename} -->`;
     } else {
-        comment = `${commentChar} ${filename}`;
+        comment = `${commentChar} file: ${filename}`;
     }
 
     return `\n\`\`\`\`${lang}\n${comment}\n${content}\n\`\`\`\`\n`;

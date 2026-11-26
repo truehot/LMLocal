@@ -265,7 +265,7 @@ namespace LMLocal.Core.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainDebugStop: cannot relativize '{fullPath}': {ex.Message}");
+                InternalLogger.Warn($"ExplainDebugStop: cannot relativize '{fullPath}'", ex);
                 return fullPath;
             }
         }

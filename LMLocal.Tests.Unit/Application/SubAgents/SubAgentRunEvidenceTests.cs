@@ -17,7 +17,7 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         private const string AbsolutePath = @"C:\sol\src\Program.cs";
         private const string SearchPath = @"LMLocal\Application\Chat\HistoryCompactor.cs";
 
-        private static ReadFileLines.FileLinesResponse ReadResponse(int startLine, int lineCount)
+        private static ReadFileLines.FileLinesResponse ReadResponse(int startLine, int lineCount, bool hasMore = false, int? totalLines = null)
         {
             var content = new List<ReadFileLines.FileLineEntry>(lineCount);
             for (int i = 0; i < lineCount; i++)
@@ -28,7 +28,9 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
                 Success = true,
                 FilePath = RelativePath,
                 AbsolutePath = AbsolutePath,
-                Content = content
+                Content = content,
+                HasMoreResults = hasMore,
+                TotalLines = totalLines
             };
         }
 
@@ -241,14 +243,27 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
         public async Task ExpandAsync_UnreadRange_StaysUnresolved()
         {
             var evidence = new SubAgentRunEvidence();
-            evidence.Record("read_file_lines", ReadResponse(1, 10));
+            evidence.Record("read_file_lines", ReadResponse(1, 10, hasMore: true, totalLines: 40));
 
-            var result = await evidence.ExpandAsync("@src\\Program.cs:5-40", FileWithLines(40), CancellationToken.None);
+            var result = await evidence.ExpandAsync("@src\\Program.cs:20-40", FileWithLines(40), CancellationToken.None);
 
             Assert.That(result.ExpandedRefCount, Is.EqualTo(0));
             Assert.That(result.UnresolvedRefCount, Is.EqualTo(1));
-            Assert.That(result.UnresolvedRefs, Is.EqualTo(new[] { "@src\\Program.cs:5-40" }));
-            Assert.That(result.Content, Does.Contain("@src\\Program.cs:5-40"));
+            Assert.That(result.UnresolvedRefs, Is.EqualTo(new[] { "@src\\Program.cs:20-40" }));
+            Assert.That(result.Content, Does.Contain("@src\\Program.cs:20-40"));
+        }
+
+        [Test]
+        public async Task ExpandAsync_RangeBeyondReadWithinFile_IsExpanded()
+        {
+            var evidence = new SubAgentRunEvidence();
+            evidence.Record("read_file_lines", ReadResponse(1, 10, hasMore: true, totalLines: 40));
+
+            var result = await evidence.ExpandAsync("@src\\Program.cs:5-40", FileWithLines(40), CancellationToken.None);
+
+            Assert.That(result.ExpandedRefCount, Is.EqualTo(1));
+            Assert.That(result.UnresolvedRefCount, Is.EqualTo(0));
+            Assert.That(result.Content, Does.Contain("File: src\\Program.cs, lines 5-40"));
         }
     }
 }

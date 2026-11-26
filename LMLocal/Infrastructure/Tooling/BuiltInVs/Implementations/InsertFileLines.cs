@@ -123,6 +123,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 int originalPosition = position;
                 bool autoCorrected = false;
                 bool matchedWithNormalization = false;
+                string note = null;
 
                 if (!string.IsNullOrEmpty(expectedLine) && position > 0)
                 {
@@ -144,7 +145,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         if (matches.Count == 1)
                         {
                             position = matches[0];
-                            autoCorrected = true;
+                            autoCorrected = position != originalPosition;
                         }
                         else if (matches.Count > 1)
                         {
@@ -160,8 +161,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                             if (canonicalMatches.Count == 1)
                             {
                                 position = canonicalMatches[0];
-                                autoCorrected = true;
+                                autoCorrected = position != originalPosition;
                                 matchedWithNormalization = true;
+                            }
+                            else if (canonicalMatches.Contains(position))
+                            {
+                                matchedWithNormalization = true;
+                                note = $"expected_line also matches line(s) {string.Join(", ", canonicalMatches.Where(m => m != position))} " +
+                                       $"(after character normalization); position {position} was used.";
                             }
                             else if (canonicalMatches.Count > 1)
                             {
@@ -241,6 +248,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (matchedWithNormalization)
                     response.MatchedWithNormalization = true;
 
+                response.Note = note;
+
                 return response;
             }
             catch (OperationCanceledException)
@@ -249,7 +258,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return Error($"Error: {ex.Message}");
             }
         }
@@ -312,7 +321,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     notes.Add("matched after character normalization");
                 if (notes.Count > 0)
                     msg += " (" + string.Join(", ", notes) + ")";
-                if (response.SyntaxErrors != null && response.SyntaxErrors.Length > 0)
+                if (response.SyntaxErrors?.Length > 0)
                     msg += $" with {response.SyntaxErrors.Length} syntax {Pluralizer.Pluralize(response.SyntaxErrors.Length, "error", "errors")}";
 
                 msg += ".";
@@ -381,6 +390,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("matched_with_normalization", NullValueHandling = NullValueHandling.Ignore)]
         public bool? MatchedWithNormalization { get; set; }
+
+        /// <summary>Set when expected_line matched several lines and the one at position was used: lists the others.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
 
         [JsonProperty("candidates", NullValueHandling = NullValueHandling.Ignore)]
         public List<LineCandidate> Candidates { get; set; }

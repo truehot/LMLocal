@@ -108,6 +108,9 @@ namespace LMLocal.Infrastructure.WebView
         /// The backend is waiting out a provider rate limit before retrying (Phase "Begin"), or the wait is over
         /// (Phase "End"). Carries a WaitId so an End can only clear the banner it owns.
         /// </summary>
-        RateLimitWait
+        RateLimitWait,
+
+        /// <summary>Live token usage of a running SubAgent, between StreamToolCall and StreamToolEnd of its call.</summary>
+        StreamToolTokens
     }
 }

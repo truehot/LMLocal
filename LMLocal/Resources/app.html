@@ -152,19 +152,19 @@
         <div class="chat-empty-logo">
             <svg class="chat-empty-logo-svg" viewBox="0 0 80 80" fill="none">
                 <rect class="chat-empty-diamond" x="40" y="6" width="48" height="48" rx="3"
-                      transform="rotate(45 40 6)" stroke-width="1.5"/>
+                      transform="rotate(45 40 6)" stroke-width="1.5" />
                 <g class="chat-empty-antenna">
-                    <line x1="40" y1="16" x2="40" y2="25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
-                    <circle class="chat-empty-antenna-tip" cx="40" cy="14" r="3.5"/>
+                    <line x1="40" y1="16" x2="40" y2="25" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+                    <circle class="chat-empty-antenna-tip" cx="40" cy="14" r="3.5" />
                 </g>
-                <rect x="19" y="34" width="4" height="9" rx="1.5" fill="currentColor"/>
-                <rect x="57" y="34" width="4" height="9" rx="1.5" fill="currentColor"/>
-                <rect x="23" y="26" width="34" height="25" rx="6" stroke="currentColor" stroke-width="3"/>
-                <rect x="28" y="32" width="24" height="12" rx="3" fill="currentColor"/>
-                <path d="M33 44 L31 48 L37 44 Z" fill="currentColor"/>
-                <circle class="chat-empty-dot chat-empty-dot-1" cx="34.5" cy="38" r="1.6" fill="var(--bg-color)"/>
-                <circle class="chat-empty-dot chat-empty-dot-2" cx="40" cy="38" r="1.6" fill="var(--bg-color)"/>
-                <circle class="chat-empty-dot chat-empty-dot-3" cx="45.5" cy="38" r="1.6" fill="var(--bg-color)"/>
+                <rect x="19" y="34" width="4" height="9" rx="1.5" fill="currentColor" />
+                <rect x="57" y="34" width="4" height="9" rx="1.5" fill="currentColor" />
+                <rect x="23" y="26" width="34" height="25" rx="6" stroke="currentColor" stroke-width="3" />
+                <rect x="28" y="32" width="24" height="12" rx="3" fill="currentColor" />
+                <path d="M33 44 L31 48 L37 44 Z" fill="currentColor" />
+                <circle class="chat-empty-dot chat-empty-dot-1" cx="34.5" cy="38" r="1.6" fill="var(--bg-color)" />
+                <circle class="chat-empty-dot chat-empty-dot-2" cx="40" cy="38" r="1.6" fill="var(--bg-color)" />
+                <circle class="chat-empty-dot chat-empty-dot-3" cx="45.5" cy="38" r="1.6" fill="var(--bg-color)" />
             </svg>
         </div>
         <div class="chat-empty-title">LM Local</div>
@@ -203,7 +203,15 @@
         <button type="button" id="debug-stop-dismiss" class="debug-stop-dismiss" title="Hide until the next stop" aria-label="Hide until the next stop">&#10005;</button>
     </div>
 
-    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="rate-limit-status" aria-live="polite"></span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
+    <div id="global-todo-panel" class="todo-panel-component hidden">
+        <div class="todo-header" id="todo-header-trigger" title="Show or hide the task list">
+            <span class="todo-arrow" aria-hidden="true">&#9656;</span>
+            <span class="todo-summary" id="todo-summary"></span>
+        </div>
+        <div class="todo-body" id="todo-body"></div>
+    </div>
+
+    <div id="status-bar"><span id="status-icon"></span><span id="status-text" aria-live="polite">Ready</span><span id="live-token-count" style="margin-left: 10px; display: none;"><span id="elapsed-time"></span><span id="token-number">0 tokens</span><span id="tokens-speed" style="margin-left: 5px; opacity: 0.6; font-size: 0.9em;"></span></span><span id="rate-limit-status" aria-live="polite"></span><span id="tools-mode-status" style="margin-left: auto;"></span></div>
 
     <div class="input-container">
         <div class="input-wrapper">
@@ -287,7 +295,7 @@
                     <input type="radio" name="clear-action" id="confirm-action-last-exchange">
                     <span>
                         <span class="settings-label">Consolidate last completed exchange</span>
-                        <span class="settings-description">Attaches read-only tool results directly to your prompt and keeps only the final response, stripping intermediate tool calls.</span>
+                        <span class="settings-description">Attaches the files read in the last step (one copy per file, without files changed afterwards) to your prompt and keeps only the final response.</span>
                     </span>
                 </label>
 
@@ -445,16 +453,16 @@
                         </span>
                     </label>
                 </div>
-                <div class="settings-group checkbox-group">
-                    <label class="checkbox-container">
-                        <input type="checkbox" data-setting="CollapseToolCalls">
-                        <span class="checkbox-content-wrapper">
-                            <span class="checkbox-title">Collapse tool calls</span>
-                            <span class="checkbox-description">
-                                Groups sequential tool executions into a single compact block and collapses it when finished to reduce chat clutter.
-                            </span>
-                        </span>
-                    </label>
+                <div class="settings-group">
+                    <label for="settings-tool-calls-display" class="settings-label">Tool calls</label>
+                    <span class="settings-description">
+                        How the intermediate steps of an answer are shown: thoughts, the assistant's messages between tool calls, and the tool calls themselves. A grouped block can always be opened by hand.
+                    </span>
+                    <select id="settings-tool-calls-display" name="ToolCallsDisplay" data-setting="ToolCallsDisplay" class="settings-select">
+                        <option value="flat">List</option>
+                        <option value="expanded">Group, open</option>
+                        <option value="collapsed">Group, closed</option>
+                    </select>
                 </div>
                 <div class="settings-group checkbox-group">
                     <label class="checkbox-container">
@@ -914,6 +922,16 @@
                         </select>
                     </div>
 
+                    <div class="settings-group checkbox-group">
+                        <label class="checkbox-container">
+                            <input type="checkbox" id="modelsConfigDisableReasoningEcho" data-setting="disableReasoningEcho" name="disableReasoningEcho">
+                            <span class="checkbox-content-wrapper">
+                                <span class="checkbox-title">Don't send reasoning back</span>
+                                <span class="checkbox-description">Turn on if the model or its server rejects reasoning_content in requests with tools.</span>
+                            </span>
+                        </label>
+                    </div>
+
                     <div class="settings-group">
                         <label for="modelsConfigInstruction" class="settings-label">Auto-apply instruction</label>
                         <span class="settings-description">
@@ -999,6 +1017,7 @@
             <div class="modal-container">
                 <div id="subagents-list-container" class="subagents-list">
                 </div>
+                <div id="subagents-pipelines-container" class="subagents-list"></div>
             </div>
         </div>
 

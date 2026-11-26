@@ -101,7 +101,7 @@ namespace LMLocal.Commands
                     }
                     catch (Exception ex)
                     {
-                        InternalLogger.Warn($"{LogPrefix}: cannot read document path: {ex.Message}");
+                        InternalLogger.Warn($"{LogPrefix}: cannot read document path", ex);
                         continue;
                     }
 
@@ -122,7 +122,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"{LogPrefix}: failed to enumerate visible documents: {ex.Message}");
+                InternalLogger.Warn($"{LogPrefix}: failed to enumerate visible documents", ex);
             }
 
             return items;
@@ -153,7 +153,7 @@ namespace LMLocal.Commands
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"{LogPrefix}: injection failed: {ex.Message}");
+                    InternalLogger.Error($"{LogPrefix}: injection failed", ex);
                 }
             });
         }

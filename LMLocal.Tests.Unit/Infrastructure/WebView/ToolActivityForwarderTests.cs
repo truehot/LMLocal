@@ -25,6 +25,21 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             return sent;
         }
 
+        private static List<WebView2ScriptMessage> ForwardAll(params ToolActivityEvent[] events)
+        {
+            var sent = new List<WebView2ScriptMessage>();
+            var forwarder = new ToolActivityForwarder("call-1", m =>
+            {
+                sent.Add(m);
+                return Task.CompletedTask;
+            });
+
+            foreach (var e in events)
+                forwarder.Report(e);
+
+            return sent;
+        }
+
         [Test]
         public void Report_ToolNameOnly_FallsBackMessageToToolName()
         {
@@ -64,6 +79,33 @@ namespace LMLocal.Tests.Unit.Infrastructure.WebView
             var sent = Forward(new ToolActivityEvent());
 
             Assert.That(sent, Is.Empty);
+        }
+
+        [Test]
+        public void Report_TokenEvent_SendsStreamToolTokensInsteadOfAStep()
+        {
+            var sent = ForwardAll(new ToolActivityEvent { Tokens = 1520, TokensPerSecond = 95.3, AgentName = "Plan critic" });
+
+            Assert.That(sent.Count, Is.EqualTo(1));
+
+            var tokens = sent[0] as WebView2ToolTokensMessage;
+            Assert.That(tokens, Is.Not.Null, "A token event must not become a StreamToolStep, which would rewrite the step line");
+            Assert.That(tokens.Type, Is.EqualTo(WebView2MessageType.StreamToolTokens));
+            Assert.That(tokens.CallId, Is.EqualTo("call-1"));
+            Assert.That(tokens.AgentName, Is.EqualTo("Plan critic"));
+            Assert.That(tokens.Tokens, Is.EqualTo(1520));
+            Assert.That(tokens.TokensPerSecond, Is.EqualTo(95.3));
+        }
+
+        [Test]
+        public void Report_TokenEventWithoutSpeed_SendsZeroSpeed()
+        {
+            var sent = ForwardAll(new ToolActivityEvent { Tokens = 40 });
+
+            var tokens = sent[0] as WebView2ToolTokensMessage;
+            Assert.That(tokens, Is.Not.Null);
+            Assert.That(tokens.Tokens, Is.EqualTo(40));
+            Assert.That(tokens.TokensPerSecond, Is.EqualTo(0));
         }
     }
 }

@@ -9,7 +9,6 @@ using LMLocal.Application.Autocompletions;
 using LMLocal.Core.Common;
 using LMLocal.Core.Exceptions;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.Api;
 using LMLocal.Infrastructure.HttpWrapper;
 using LMLocal.Infrastructure.LlmApi.Provider;
 using LMLocal.Infrastructure.LlmApi.Requests;
@@ -158,7 +157,7 @@ namespace LMLocal.Infrastructure.LlmApi
             }
             catch (Exception ex) when (!(ex is ApiException) && !(ex is OperationCanceledException))
             {
-                InternalLogger.Warn($"ListModelsRawAsync failed: {ex.Message}");
+                InternalLogger.Warn("ListModelsRawAsync failed", ex);
                 throw;
             }
         }
@@ -233,6 +232,8 @@ namespace LMLocal.Infrastructure.LlmApi
 
                 var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
                 var streamingResponse = new StreamingResponse(stream, response, request, content);
+
+                streamingResponse.ReasoningEchoChars = openAiRequest.ReasoningEchoChars;
 
                 success = true;
                 return streamingResponse;

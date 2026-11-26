@@ -138,7 +138,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: cannot read the Error List selection: {ex.Message}");
+                InternalLogger.Warn("ExplainError: cannot read the Error List selection", ex);
             }
 
             return result;
@@ -158,7 +158,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: cannot read '{keyName}': {ex.Message}");
+                InternalLogger.Warn($"ExplainError: cannot read '{keyName}'", ex);
                 return null;
             }
         }
@@ -177,7 +177,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: cannot read '{keyName}': {ex.Message}");
+                InternalLogger.Warn($"ExplainError: cannot read '{keyName}'", ex);
                 return 0;
             }
         }
@@ -195,7 +195,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: cannot read the severity: {ex.Message}");
+                InternalLogger.Warn("ExplainError: cannot read the severity", ex);
                 return null;
             }
 
@@ -221,7 +221,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ExplainError: unexpected severity value '{content}': {ex.Message}");
+                InternalLogger.Warn($"ExplainError: unexpected severity value '{content}'", ex);
                 return null;
             }
         }

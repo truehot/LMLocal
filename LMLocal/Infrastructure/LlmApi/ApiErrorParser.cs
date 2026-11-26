@@ -143,7 +143,7 @@ namespace LMLocal.Infrastructure.LlmApi
             }
             catch (JsonException ex)
             {
-                InternalLogger.Warn($"ApiErrorParser: Invalid JSON. {ex.Message}");
+                InternalLogger.Warn("ApiErrorParser: Invalid JSON", ex);
                 var fallback = rawResponse?.Trim();
                 if (string.IsNullOrEmpty(fallback))
                     return new ApiErrorInfo { Message = UnknownErrorMessage };

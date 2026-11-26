@@ -149,7 +149,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading file '{path}': {ex.Message}");
+                InternalLogger.Error($"Error reading file '{path}'", ex);
                 return string.Empty;
             }
         }
@@ -180,7 +180,7 @@ namespace LMLocal.Infrastructure.Persistence
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading file '{path}': {ex.Message}");
+                InternalLogger.Error($"Error reading file '{path}'", ex);
                 return (string.Empty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), false);
             }
         }

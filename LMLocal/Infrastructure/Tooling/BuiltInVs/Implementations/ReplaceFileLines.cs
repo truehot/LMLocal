@@ -202,9 +202,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     InternalLogger.Debug(
                         $"replace_file_lines: no-op on {absolutePath}, lines {startLine}-{startLine + realCount - 1} already hold the requested text; nothing written.");
 
-                    return NoOp(
+                    var noOp = NoOp(
                         relativePath, absolutePath, autoCorrected, originalStartLine, startLine,
                         matchedIgnoringIndent, matchedWithNormalization);
+                    noOp.Note = OtherMatchesNote(edit, Enumerable.Empty<PreparedEdit>());
+                    return noOp;
                 }
 
                 linesList.RemoveRange(removeStart, oldLinesCount);
@@ -253,6 +255,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     response.MatchedWithNormalization = true;
 
                 response.InvisibleCharacters = edit.InvisibleCharacters;
+                response.Note = OtherMatchesNote(edit, Enumerable.Empty<PreparedEdit>());
 
                 return response;
             }
@@ -262,7 +265,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return Error($"Error: {ex.Message}");
             }
         }
@@ -283,6 +286,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             public string[] InvisibleCharacters;
             public bool IsNoOp;
 
+            /// <summary>Other blocks matching old_lines when start_line was taken among several; null otherwise.</summary>
+            public List<int> OtherMatches;
+
             public bool AutoCorrected => AppliedStartLine != RequestedStartLine;
             public int RemoveStart => AppliedStartLine - 1;
         }
@@ -299,7 +305,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             error = null;
             string[] oldLinesArray = LineSplitter.Split(oldLinesText);
 
-            var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse) = ResolveStartLine(linesList, oldLinesArray, startLine, reportedPath);
+            var (resolvedStartLine, matchedIgnoringIndent, matchedWithNormalization, canonicalCache, errorResponse, otherMatches) = ResolveStartLine(linesList, oldLinesArray, startLine, reportedPath);
             if (errorResponse != null)
             {
                 error = DiagnoseJsonEscapedOldLines(errorResponse, fileLines, oldLinesText, startLine, reportedPath, absolutePath) ?? errorResponse;
@@ -352,7 +358,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     : null,
                 IsNoOp = hasNewLines
                     && newLinesArray.Length == realCount
-                    && RangeEquals(fileLines, removeStart, newLinesArray)
+                    && RangeEquals(fileLines, removeStart, newLinesArray),
+                OtherMatches = otherMatches
             };
         }
 
@@ -413,15 +420,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         /// <summary>
         /// Reads an 'edits' call: file_path plus 'edits' (an array of {start_line, old_lines, new_lines}, or such an array
-        /// serialized into a string).
+        /// serialized into a string). Top-level fields with empty old_lines and new_lines are placeholders and are ignored;
+        /// exact duplicate edits are kept once. <c>Note</c> says what was dropped.
         /// </summary>
-        internal static (string FilePath, List<EditRequest> Edits, string Error) ExtractEdits(Dictionary<string, object> parameters, object editsObj)
+        internal static (string FilePath, List<EditRequest> Edits, string Note, string Error) ExtractEdits(Dictionary<string, object> parameters, object editsObj)
         {
             if (parameters == null)
-                return (null, null, "Parameters cannot be null.");
+                return (null, null, null, "Parameters cannot be null.");
 
             if (!parameters.TryGetValue("file_path", out object filePathObj) || !(filePathObj is string filePath) || string.IsNullOrWhiteSpace(filePath))
-                return (null, null, "file_path parameter is required and must be a string.");
+                return (null, null, null, "file_path parameter is required and must be a string.");
 
             string shapeError = $"Parameter '{EditsParameter}' must be an array of objects {{start_line, old_lines, new_lines}}.";
 
@@ -436,17 +444,24 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 }
                 catch (JsonException)
                 {
-                    return (null, null, shapeError);
+                    return (null, null, null, shapeError);
                 }
             }
 
             if (!(editsObj is IEnumerable items) || editsObj is string || editsObj is JObject)
-                return (null, null, shapeError);
+                return (null, null, null, shapeError);
 
             var entries = new List<(string Label, Dictionary<string, object> Values)>();
+            var notes = new List<string>();
 
             bool hasTopLevel = new[] { "start_line", "old_lines", "new_lines" }
                 .Any(k => parameters.TryGetValue(k, out object v) && !LiteralListParameter.IsMissing(v));
+            if (hasTopLevel && IsEmptyText(parameters, "old_lines") && IsEmptyText(parameters, "new_lines"))
+            {
+                notes.Add($"Top-level start_line/old_lines/new_lines were ignored: old_lines and new_lines are empty there; only '{EditsParameter}' was applied.");
+                hasTopLevel = false;
+            }
+
             if (hasTopLevel)
             {
                 entries.Add((TopLevelEditLabel, new Dictionary<string, object>
@@ -466,35 +481,52 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 else if (item is Dictionary<string, object> dict)
                     values = dict;
                 else
-                    return (null, null, $"Each item of '{EditsParameter}' must be an object {{start_line, old_lines, new_lines}}.");
+                    return (null, null, null, $"Each item of '{EditsParameter}' must be an object {{start_line, old_lines, new_lines}}.");
 
                 entries.Add(($"{EditsParameter}[{index++}]", values));
             }
 
             if (entries.Count == 0)
-                return (null, null, $"Parameter '{EditsParameter}' has no edits.");
+                return (null, null, null, $"Parameter '{EditsParameter}' has no edits.");
             if (entries.Count > MaxEdits)
-                return (null, null, $"At most {MaxEdits} edits per call (got {entries.Count}). Split them into several calls.");
+                return (null, null, null, $"At most {MaxEdits} edits per call (got {entries.Count}). Split them into several calls.");
 
             var edits = new List<EditRequest>(entries.Count);
             foreach (var (label, values) in entries)
             {
                 if (!values.TryGetValue("start_line", out object startObj) || !TryParseInt(startObj, out int startLine) || startLine < 1)
-                    return (null, null, $"{label}: start_line is required and must be an integer >= 1.");
+                    return (null, null, null, $"{label}: start_line is required and must be an integer >= 1.");
 
                 if (!values.TryGetValue("old_lines", out object oldObj) || !(UnwrapString(oldObj) is string oldLines) || oldLines.Length == 0)
-                    return (null, null, $"{label}: old_lines is required and must be a non-empty string.");
+                {
+                    if (values.TryGetValue("new_lines", out object insertObj) && UnwrapString(insertObj) is string insertText && insertText.Length > 0)
+                        return (null, null, null, $"{label}: old_lines is empty but new_lines is set. To insert lines, put the line before (or after) the insertion point in old_lines and repeat it in new_lines.");
+                    return (null, null, null, $"{label}: old_lines is required and must be a non-empty string.");
+                }
 
                 if (!values.TryGetValue("new_lines", out object newObj) || !(UnwrapString(newObj) is string newLines))
-                    return (null, null, $"{label}: new_lines is required and must be a string (empty to delete the lines).");
+                    return (null, null, null, $"{label}: new_lines is required and must be a string (empty to delete the lines).");
+
+                var duplicateOf = edits.FirstOrDefault(e => e.StartLine == startLine
+                    && string.Equals(e.OldLines, oldLines, StringComparison.Ordinal)
+                    && string.Equals(e.NewLines, newLines, StringComparison.Ordinal));
+                if (duplicateOf != null)
+                {
+                    notes.Add($"{label} repeats {duplicateOf.Label} (same start_line, old_lines and new_lines) and was applied once.");
+                    continue;
+                }
 
                 edits.Add(new EditRequest { Label = label, StartLine = startLine, OldLines = oldLines, NewLines = newLines });
             }
 
-            return (filePath, edits, null);
+            return (filePath, edits, notes.Count == 0 ? null : string.Join(" ", notes), null);
         }
 
         private static object UnwrapString(object value) => value is JValue jv ? jv.Value : value;
+
+        /// <summary>Absent, null or an empty string.</summary>
+        private static bool IsEmptyText(Dictionary<string, object> parameters, string key) =>
+            !parameters.TryGetValue(key, out object value) || UnwrapString(value) == null || (UnwrapString(value) is string text && text.Length == 0);
 
         /// <summary>
         /// Applies all edits of one file from the same read: every edit is resolved first, then they are written bottom-up
@@ -504,7 +536,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         {
             try
             {
-                var (filePath, requests, error) = ExtractEdits(parameters, editsObj);
+                var (filePath, requests, requestNote, error) = ExtractEdits(parameters, editsObj);
                 if (error != null)
                     return BatchError(error);
 
@@ -562,7 +594,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 if (prepared.All(p => p.IsNoOp))
                 {
                     InternalLogger.Debug($"replace_file_lines: no-op on {absolutePath}, every edit already holds the requested text; nothing written.");
-                    return new ReplaceLinesBatchResponse { Success = true, FilePath = reportedPath, Edits = results, IsNoOp = true };
+                    return new ReplaceLinesBatchResponse { Success = true, FilePath = reportedPath, Edits = results, Note = requestNote, IsNoOp = true };
                 }
 
                 foreach (var edit in prepared.Where(p => !p.IsNoOp).OrderByDescending(p => p.RemoveStart))
@@ -595,6 +627,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     Success = true,
                     FilePath = reportedPath,
                     Edits = results,
+                    Note = requestNote,
                     SyntaxErrors = syntaxErrors
                 };
             }
@@ -604,7 +637,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return BatchError($"Error: {ex.Message}");
             }
         }
@@ -638,6 +671,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 MatchedIgnoringFirstLineIndent = p.MatchedIgnoringIndent ? (bool?)true : null,
                 MatchedWithNormalization = p.MatchedWithNormalization ? (bool?)true : null,
                 InvisibleCharacters = p.IsNoOp ? null : p.InvisibleCharacters,
+                Note = OtherMatchesNote(p, prepared.Where(o => o != p)),
                 NoOp = p.IsNoOp ? (bool?)true : null,
                 LinesReplaced = p.IsNoOp ? null : p.NewLines != null ? (int?)p.NewLines.Length : null,
                 LinesRemoved = p.IsNoOp || p.NewLines != null ? null : (int?)p.RealCount
@@ -676,9 +710,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         /// <summary>
-        /// Resolves where the block really starts.
+        /// Resolves where the block really starts. When a relaxed or canonical pass finds several blocks and one of them starts
+        /// at start_line, that one is taken and the others are returned in <c>otherMatches</c>; otherwise <c>otherMatches</c> is null.
         /// </summary>
-        private (int resolvedStartLine, bool matchedIgnoringIndent, bool matchedWithNormalization, CanonicalWindowCache canonicalCache, ReplaceLinesResponse errorResponse)
+        private (int resolvedStartLine, bool matchedIgnoringIndent, bool matchedWithNormalization, CanonicalWindowCache canonicalCache, ReplaceLinesResponse errorResponse, List<int> otherMatches)
             ResolveStartLine(List<string> linesList, string[] oldLinesArray, int startLine, string filePath)
         {
             int oldLinesCount = oldLinesArray.Length;
@@ -695,32 +730,36 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
 
             if (exactMatch)
-                return (startLine, false, false, null, null);
+                return (startLine, false, false, null, null, null);
 
             var blockMatches = FindBlock(linesList, oldLinesArray, startLine);
 
             if (blockMatches.Count == 1)
-                return (blockMatches[0], false, false, null, null);
+                return (blockMatches[0], false, false, null, null, null);
 
             if (blockMatches.Count > 1)
             {
                 return (0, false, false, null, MatchFailure(
                     filePath,
                     $"old_lines matches {blockMatches.Count} locations. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    ToCandidates(linesList, blockMatches, oldLinesCount)));
+                    ToCandidates(linesList, blockMatches, oldLinesCount)), null);
             }
 
             var relaxedMatches = FindBlock(linesList, oldLinesArray, startLine, LineComparison.StrictIgnoreLeadingIndent);
 
             if (relaxedMatches.Count == 1)
-                return (relaxedMatches[0], true, false, null, null);
+                return (relaxedMatches[0], true, false, null, null, null);
 
             if (relaxedMatches.Count > 1)
             {
+                var others = OthersIfOneIsAtStartLine(relaxedMatches, startLine);
+                if (others != null)
+                    return (startLine, true, false, null, null, others);
+
                 return (0, false, false, null, MatchFailure(
                     filePath,
                     $"old_lines matches {relaxedMatches.Count} locations when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    ToCandidates(linesList, relaxedMatches, oldLinesCount)));
+                    ToCandidates(linesList, relaxedMatches, oldLinesCount)), null);
             }
 
             var cache = new CanonicalWindowCache(linesList, startLine, oldLinesCount);
@@ -730,47 +769,67 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                 linesList, oldLinesArray, startLine, LineComparison.Canonical, cache, canonicalOldTrimmed);
 
             if (canonicalMatches.Count == 1)
-                return (canonicalMatches[0], false, true, cache, null);
+                return (canonicalMatches[0], false, true, cache, null, null);
 
             if (canonicalMatches.Count > 1)
             {
+                var others = OthersIfOneIsAtStartLine(canonicalMatches, startLine);
+                if (others != null)
+                    return (startLine, false, true, cache, null, others);
+
                 return (0, false, false, null, MatchFailure(
                     filePath,
                     $"old_lines matches {canonicalMatches.Count} locations after character normalization. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    ToCandidates(linesList, canonicalMatches, oldLinesCount)));
+                    ToCandidates(linesList, canonicalMatches, oldLinesCount)), null);
             }
 
             var canonicalRelaxed = FindBlock(
                 linesList, oldLinesArray, startLine, LineComparison.CanonicalIgnoreLeadingIndent, cache, canonicalOldTrimmed);
 
             if (canonicalRelaxed.Count == 1)
-                return (canonicalRelaxed[0], true, true, cache, null);
+                return (canonicalRelaxed[0], true, true, cache, null, null);
 
             if (canonicalRelaxed.Count > 1)
             {
+                var others = OthersIfOneIsAtStartLine(canonicalRelaxed, startLine);
+                if (others != null)
+                    return (startLine, true, true, cache, null, others);
+
                 return (0, false, false, null, MatchFailure(
                     filePath,
                     $"old_lines matches {canonicalRelaxed.Count} locations after character normalization when leading indentation of the first line is ignored. Use a larger old_lines block to disambiguate, or re-read the file.",
-                    ToCandidates(linesList, canonicalRelaxed, oldLinesCount)));
+                    ToCandidates(linesList, canonicalRelaxed, oldLinesCount)), null);
             }
 
             var firstLineMatches = LineMatcher.FindMatches(linesList, oldLinesArray[0], startLine);
+            string normalizationNote = "";
+            if (firstLineMatches.Count == 0)
+            {
+                firstLineMatches = LineMatcher.FindMatchesCanonical(linesList, oldLinesArray[0], startLine);
+                if (firstLineMatches.Count > 0)
+                    normalizationNote = " after character normalization";
+            }
 
             if (firstLineMatches.Count > 0)
             {
+                var (best, mismatch) = LineMatcher.DescribeClosestMismatch(linesList, oldLinesArray, firstLineMatches, startLine);
+                var ordered = new List<int> { best };
+                ordered.AddRange(firstLineMatches.Where(p => p != best));
                 var partial = MatchFailure(
                     filePath,
-                    $"First line of old_lines found at {firstLineMatches.Count} location(s), but the full block didn't match. Re-read the file or retry with the suggested start_line.",
-                    ToCandidates(linesList, firstLineMatches, oldLinesCount));
+                    $"First line of old_lines found at {firstLineMatches.Count} location(s){normalizationNote}, but the full block didn't match. " +
+                    (mismatch != null ? mismatch + " " : "") +
+                    "Re-read the file or retry with the suggested start_line.",
+                    ToCandidates(linesList, ordered, oldLinesCount));
                 partial.IsNotFound = true;
-                return (0, false, false, null, partial);
+                return (0, false, false, null, partial, null);
             }
 
             var notFound = MatchFailure(
                 filePath,
                 "Old content not found in file. Check leading whitespace and indentation, copy old_lines verbatim from read_file_lines, or re-read the file.");
             notFound.IsNotFound = true;
-            return (0, false, false, null, notFound);
+            return (0, false, false, null, notFound, null);
         }
 
         /// <summary>
@@ -793,7 +852,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             while (probeLines.Count < requiredTotalLines)
                 probeLines.Add("");
 
-            var (foundLine, _, _, _, probeError) = ResolveStartLine(probeLines, unescapedLines, startLine, filePath);
+            var (foundLine, _, _, _, probeError, _) = ResolveStartLine(probeLines, unescapedLines, startLine, filePath);
             if (probeError != null)
                 return null;
 
@@ -971,6 +1030,30 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return LineMatcher.BuildCandidates(linesList, positions, blockLength);
         }
 
+        /// <summary>The matches other than start_line when start_line is one of them, otherwise null.</summary>
+        private static List<int> OthersIfOneIsAtStartLine(List<int> matches, int startLine)
+            => matches.Contains(startLine) ? matches.Where(m => m != startLine).ToList() : null;
+
+        /// <summary>
+        /// Note for an edit taken at start_line among several matching blocks: the other matches that no edit in <paramref name="otherEdits"/> covers, or null when none is left.
+        /// </summary>
+        private static string OtherMatchesNote(PreparedEdit edit, IEnumerable<PreparedEdit> otherEdits)
+        {
+            if (edit.OtherMatches == null)
+                return null;
+
+            var left = edit.OtherMatches
+                .Where(m => !otherEdits.Any(o => m >= o.AppliedStartLine && m < o.AppliedStartLine + o.OldCount))
+                .ToList();
+            if (left.Count == 0)
+                return null;
+
+            string how = edit.MatchedIgnoringIndent && edit.MatchedWithNormalization
+                ? "after character normalization, first-line indentation ignored"
+                : edit.MatchedIgnoringIndent ? "first-line indentation ignored" : "after character normalization";
+            return $"old_lines also matches line(s) {string.Join(", ", left)} ({how}); start_line {edit.AppliedStartLine} was used, the others were left unchanged.";
+        }
+
         private (string filePath, int startLine, string oldLines, string newLines, string error)
             ExtractAndValidateParameters(Dictionary<string, object> parameters)
         {
@@ -1082,7 +1165,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             parameters?.TryGetValue(EditsParameter, out editsObj);
             if (!LiteralListParameter.IsMissing(editsObj))
             {
-                var (_, edits, error) = ExtractEdits(parameters, editsObj);
+                var (_, edits, _, error) = ExtractEdits(parameters, editsObj);
                 return error == null
                     ? $"Replacing {edits.Count} {Pluralizer.Pluralize(edits.Count, "range", "ranges")} in '{filePath}'... "
                     : $"Replacing lines in '{filePath}'... ";
@@ -1258,6 +1341,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("old_lines_json_escaped", NullValueHandling = NullValueHandling.Ignore)]
         public bool? OldLinesJsonEscaped { get; set; }
 
+        /// <summary>Set when old_lines matched several blocks and the one at start_line was used: lists the others, left unchanged.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
+
         /// <summary>
         /// Set when the call would have written exactly the text the file already holds.
         /// </summary>
@@ -1306,6 +1393,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
         [JsonProperty("edits", NullValueHandling = NullValueHandling.Ignore)]
         public List<ReplaceEditResult> Edits { get; set; }
 
+        /// <summary>What the call ignored: placeholder top-level fields or repeated edits.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
+
         [JsonProperty("syntax_errors", NullValueHandling = NullValueHandling.Ignore)]
         public string[] SyntaxErrors { get; set; }
 
@@ -1345,6 +1436,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
 
         [JsonProperty("invisible_characters", NullValueHandling = NullValueHandling.Ignore)]
         public string[] InvisibleCharacters { get; set; }
+
+        /// <summary>Set when old_lines matched several blocks and the one at start_line was used: lists the others no edit of this call covers.</summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
 
         [JsonProperty("lines_replaced", NullValueHandling = NullValueHandling.Ignore)]
         public int? LinesReplaced { get; set; }

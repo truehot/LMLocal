@@ -113,7 +113,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"Code command 0x{CommandId:X4}: failed to build the prompt: {ex.Message}");
+                InternalLogger.Warn($"Code command 0x{CommandId:X4}: failed to build the prompt", ex);
                 return;
             }
 
@@ -133,7 +133,7 @@ namespace LMLocal.Commands
                     catch (Exception ex)
                     {
                         InternalLogger.Warn(
-                            $"Failed to resolve instruction '{InstructionDisplayName}': {ex.Message}");
+                            $"Failed to resolve instruction '{InstructionDisplayName}'", ex);
                     }
                 }
                 await _package.JoinableTaskFactory.SwitchToMainThreadAsync();

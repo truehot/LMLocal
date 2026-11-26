@@ -22,10 +22,14 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
     {
         None = 0,
         FilenameSubstring = 1,
-        FilenameExact = 2,
-        SectionAllTokens = 3,
-        BodyExact = 4,
-        HeadingExact = 5
+
+        /// <summary>Fallback: the record (file name + one section) with the most query words, below the all-words tiers.</summary>
+        PartialWords = 2,
+
+        FilenameExact = 3,
+        SectionAllTokens = 4,
+        BodyExact = 5,
+        HeadingExact = 6
     }
 
     /// <summary>
@@ -50,6 +54,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
 
         [JsonProperty("error_message", NullValueHandling = NullValueHandling.Ignore)]
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Set when some results match only part of the query words (they carry matched_terms).
+        /// </summary>
+        [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
+        public string Note { get; set; }
     }
 
     /// <summary>
@@ -68,6 +78,12 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         /// </summary>
         [JsonIgnore]
         internal int SubScore { get; set; }
+
+        /// <summary>
+        /// Second ranking key within the same <see cref="Kind"/> and <see cref="SubScore"/>; 0 for tiers that do not use it.
+        /// </summary>
+        [JsonIgnore]
+        internal int TieBreakScore { get; set; }
 
         /// <summary>
         /// Raw last-write timestamp used only for deterministic ranking tie-breaks.
@@ -92,5 +108,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         /// </summary>
         [JsonProperty("line")]
         public int LineNumber { get; set; }
+
+        /// <summary>
+        /// Query words found in this result; set only for <see cref="KnowledgeMatchKind.PartialWords"/>.
+        /// </summary>
+        [JsonProperty("matched_terms", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> MatchedTerms { get; set; }
     }
 }

@@ -76,13 +76,13 @@ namespace LMLocal.Infrastructure.ModelsConfig
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Error parsing models config: {ex.Message}", ex);
+                    InternalLogger.Error("Error parsing models config", ex);
                     return defaultConfig;
                 }
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading models config file: {ex.Message}", ex);
+                InternalLogger.Error("Error reading models config file", ex);
                 return GetDefaultModels();
             }
             finally

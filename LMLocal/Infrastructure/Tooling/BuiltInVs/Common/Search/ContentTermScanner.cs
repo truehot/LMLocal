@@ -74,7 +74,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"SearchInSolution: error reading '{absolutePath}': {ex.Message}");
+                    InternalLogger.Warn($"SearchInSolution: error reading '{absolutePath}'", ex);
                 }
             }
 

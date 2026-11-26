@@ -73,7 +73,7 @@ namespace LMLocal.Infrastructure.Security
             }
             catch (Exception ex) when (IsExpectedLoadFailure(ex))
             {
-                InternalLogger.Warn($"Certificate metadata could not be read from '{path}': {ex.Message}");
+                InternalLogger.Warn($"Certificate metadata could not be read from '{path}'", ex);
                 return null;
             }
             finally
@@ -117,7 +117,7 @@ namespace LMLocal.Infrastructure.Security
             }
             catch (Exception ex) when (IsExpectedLoadFailure(ex))
             {
-                InternalLogger.Warn($"Certificate file '{path}' could not be loaded: {ex.Message}");
+                InternalLogger.Warn($"Certificate file '{path}' could not be loaded", ex);
                 certificate = null;
                 return false;
             }

@@ -1,4 +1,5 @@
-﻿using LMLocal.Core.Common;
+using System.Collections.Generic;
+using LMLocal.Core.Common;
 using NUnit.Framework;
 
 namespace LMLocal.Tests.Unit
@@ -140,6 +141,126 @@ namespace LMLocal.Tests.Unit
         {
             string result = MarkdownCodeBlockFormatter.BuildTruncatedFileFence("notes.txt");
             Assert.That(result, Is.EqualTo("````text\n# file: notes.txt (content truncated, file too large)\n````"));
+        }
+
+        // ────────────────────── Parse side (fences are read back) ──────────────────────
+
+        [Test]
+        public void ParseFileComment_ReturnsPathForEveryBuiltCommentSyntax()
+        {
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("// file: src/App.cs"), Is.EqualTo("src/App.cs"));
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("# file: Docs/plan.md"), Is.EqualTo("Docs/plan.md"));
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("-- file: q.sql"), Is.EqualTo("q.sql"));
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("/* file: a.css */"), Is.EqualTo("a.css"));
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("<!-- file: a.html -->"), Is.EqualTo("a.html"));
+        }
+
+        [Test]
+        public void ParseFileComment_StripsTheTruncationSuffix()
+        {
+            string fence = MarkdownCodeBlockFormatter.BuildTruncatedFileFence("page.html");
+
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment(fence.Split('\n')[1]), Is.EqualTo("page.html"));
+        }
+
+        [Test]
+        public void ParseFileComment_OrdinaryLine_ReturnsNull()
+        {
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("            var value = 1;"), Is.Null);
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment(null), Is.Null);
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment("# file:"), Is.Null);
+        }
+
+        [Test]
+        public void RoundTrip_FormatFileAsMarkdown_IsParsedBackToTheSamePath()
+        {
+            string fence = MarkdownCodeBlockFormatter.FormatFileAsMarkdown("class A { }", "src/App.cs");
+
+            Assert.That(MarkdownCodeBlockFormatter.ParseFileComment(fence.Split('\n')[1]), Is.EqualTo("src/App.cs"));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_RemovesEveryFence_CollectsOnlyFilePaths()
+        {
+            string text = "look at this\n\n"
+                + MarkdownCodeBlockFormatter.FormatFileAsMarkdown("class A { }", "src/App.cs")
+                + "\n\n```csharp\nvar x = 1;\n```";
+
+            var paths = new List<string>();
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text, paths);
+
+            Assert.That(result, Does.Contain("look at this"));
+            Assert.That(result, Does.Not.Contain("class A { }"));
+            Assert.That(result, Does.Not.Contain("var x = 1;"), "a plain code block is removed too");
+            Assert.That(paths, Is.EqualTo(new[] { "src/App.cs" }));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_BlockAtTheStart_LeavesTheRest()
+        {
+            string text = MarkdownCodeBlockFormatter.FormatFileAsMarkdown("content", "a.md") + "\nafter";
+
+            var paths = new List<string>();
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text, paths);
+
+            Assert.That(result.Trim(), Is.EqualTo("after"));
+            Assert.That(paths, Is.EqualTo(new[] { "a.md" }));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_UnclosedFence_RemovesToTheEnd()
+        {
+            string text = "before\n\n````csharp\n// file: src/App.cs\nclass A { }";
+
+            var paths = new List<string>();
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text, paths);
+
+            Assert.That(result.Trim(), Is.EqualTo("before"));
+            Assert.That(paths, Is.EqualTo(new[] { "src/App.cs" }));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_LongerClosingFence_ClosesTheBlock()
+        {
+            string text = "````text\n# file: a.md\nbody\n`````\nafter";
+
+            var paths = new List<string>();
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text, paths);
+
+            Assert.That(result.Trim(), Is.EqualTo("after"));
+            Assert.That(paths, Is.EqualTo(new[] { "a.md" }));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_IndentedFence_IsRecognised()
+        {
+            string text = "   ````csharp\n   // file: src/App.cs\n   code\n   ````\nafter";
+
+            var paths = new List<string>();
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text, paths);
+
+            Assert.That(result.Trim(), Is.EqualTo("after"));
+            Assert.That(paths, Is.EqualTo(new[] { "src/App.cs" }));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_KeepsProseAndInlineCode()
+        {
+            string text = "done in `SearchChatHistory`\n\n````csharp\npublic void Search() { }\n````\n\nand more";
+
+            string result = MarkdownCodeBlockFormatter.RemoveCodeBlocks(text);
+
+            Assert.That(result, Does.Contain("`SearchChatHistory`"));
+            Assert.That(result, Does.Not.Contain("public void Search()"));
+            Assert.That(result, Does.Contain("and more"));
+        }
+
+        [Test]
+        public void RemoveCodeBlocks_NoBlocks_ReturnsTextUnchanged()
+        {
+            string text = "plain prose with `inline` code";
+
+            Assert.That(MarkdownCodeBlockFormatter.RemoveCodeBlocks(text), Is.EqualTo(text));
         }
     }
 }

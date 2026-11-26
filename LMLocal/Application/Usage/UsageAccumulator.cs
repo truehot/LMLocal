@@ -15,6 +15,7 @@ namespace LMLocal.Application.Usage
         private int? _completion;
         private int? _cached;
         private int? _reasoning;
+        private long _reasoningEcho;
 
         /// <summary>Generation rounds of the request, including the ones that reported no usage.</summary>
         public int Rounds { get; private set; }
@@ -33,6 +34,9 @@ namespace LMLocal.Application.Usage
 
         /// <summary>Reasoning tokens summed over the rounds that reported them.</summary>
         public int? Reasoning { get { return _reasoning; } }
+
+        /// <summary>Characters of reasoning_content echoed back over the rounds of the request.</summary>
+        public long ReasoningEcho { get { return _reasoningEcho; } }
 
         /// <summary>Largest prompt among the rounds; the closest thing to the context the request reached.</summary>
         public int? ContextPeak { get; private set; }
@@ -69,14 +73,15 @@ namespace LMLocal.Application.Usage
 
             Rounds++;
             ToolCalls += result.ToolCalls != null ? result.ToolCalls.Count : 0;
+            _reasoningEcho += result.ReasoningEchoChars;
 
             var usage = result.TokenUsage;
             bool succeeded = !result.WasCancelled && string.IsNullOrEmpty(result.ErrorMessage);
 
-            int? prompt = usage != null ? usage.PromptTokens : null;
-            int? completion = usage != null ? usage.CompletionTokens : null;
-            int? cached = usage != null ? usage.CachedTokens : null;
-            int? reasoning = usage != null ? usage.ReasoningTokens : null;
+            int? prompt = usage?.PromptTokens;
+            int? completion = usage?.CompletionTokens;
+            int? cached = usage?.CachedTokens;
+            int? reasoning = usage?.ReasoningTokens;
 
             if (usage == null && succeeded)
             {
@@ -121,6 +126,7 @@ namespace LMLocal.Application.Usage
             record.Completion = Completion;
             record.Cached = Cached;
             record.Reasoning = Reasoning;
+            record.ReasoningEcho = ReasoningEcho;
             record.Estimated = Estimated;
             record.Rounds = Rounds;
             record.ToolCalls = ToolCalls;

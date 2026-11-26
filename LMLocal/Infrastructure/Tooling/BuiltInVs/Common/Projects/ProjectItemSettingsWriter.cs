@@ -4,6 +4,7 @@ using EnvDTE;
 using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
+using LMLocal.Core.Common;
 
 namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
 {
@@ -36,6 +37,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
                 }
                 catch (Exception ex)
                 {
+                    InternalLogger.Warn($"ProjectItemSettingsWriter: could not set the item type of '{absolutePath}'", ex);
                     failures.Add($"item type {settings.BuildAction}: {ex.Message}");
                 }
             }
@@ -87,6 +89,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Projects
             }
             catch (Exception ex)
             {
+                InternalLogger.Warn($"ProjectItemSettingsWriter: could not write the item attribute {name}={value}", ex);
                 failures.Add($"{name}={value}: {ex.Message}");
             }
         }

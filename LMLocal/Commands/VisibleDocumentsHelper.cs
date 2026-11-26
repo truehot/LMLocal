@@ -49,7 +49,7 @@ namespace LMLocal.Commands
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"VisibleDocuments: enumeration failed: {ex.Message}");
+                InternalLogger.Warn("VisibleDocuments: enumeration failed", ex);
             }
 
             return paths;

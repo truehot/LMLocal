@@ -16,6 +16,9 @@ namespace LMLocal.Infrastructure.LlmApi.Responses
 
         public Stream Stream { get; }
 
+        /// <summary>Characters of reasoning_content the request carried, for the usage log.</summary>
+        public int ReasoningEchoChars { get; set; }
+
         public StreamingResponse(Stream stream, HttpResponseMessage response, HttpRequestMessage request, StringContent content)
         {
             Stream = stream;

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using LMLocal.Core.Models;
-using LMLocal.Infrastructure.LlmApi.Requests;
 
 namespace LMLocal.Application.Chat
 {
@@ -139,15 +138,15 @@ namespace LMLocal.Application.Chat
         /// </summary>
         public static bool HasToolCalls(ChatMessage message)
         {
-            return message?.ToolCalls is List<ToolCall> calls && calls.Count > 0;
+            return message?.ToolCalls != null && message.ToolCalls.Count > 0;
         }
 
         /// <summary>
         /// Maps every tool call id to its call, so a tool result can be traced back to the tool that produced it.
         /// </summary>
-        public static Dictionary<string, ToolCall> MapToolCallsById(IReadOnlyList<ChatMessage> messages)
+        public static Dictionary<string, ChatToolCall> MapToolCallsById(IReadOnlyList<ChatMessage> messages)
         {
-            var map = new Dictionary<string, ToolCall>();
+            var map = new Dictionary<string, ChatToolCall>();
             if (messages == null)
                 return map;
 
@@ -156,7 +155,7 @@ namespace LMLocal.Application.Chat
                 if (!HasToolCalls(message))
                     continue;
 
-                foreach (var call in (List<ToolCall>)message.ToolCalls)
+                foreach (var call in message.ToolCalls)
                 {
                     if (call == null || string.IsNullOrEmpty(call.Id))
                         continue;

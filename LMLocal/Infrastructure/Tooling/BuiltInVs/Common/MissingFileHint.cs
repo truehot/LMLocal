@@ -18,6 +18,34 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
         /// solution-relative paths of the files with the same name (one: "exists at", several: a list, none: "exists nowhere").
         /// </summary>
         Task<string> BuildFileNotFoundErrorAsync(string requestedPath, string shownPath, string solutionDir, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// For a read-only tool whose <c>file_path</c> does not exist: when exactly one file of that name exists in the solution, returns it ,
+        /// so the tool can read it instead of failing and costing the model a round.
+        /// </summary>
+        Task<ResolvedMissingFile> TryResolveUniqueAsync(string requestedPath, string solutionDir, CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// The only file of the requested name in the solution, found for a path that did not exist.
+    /// </summary>
+    internal sealed class ResolvedMissingFile
+    {
+        public ResolvedMissingFile(string absolutePath, string relativePath, string note)
+        {
+            AbsolutePath = absolutePath;
+            RelativePath = relativePath;
+            Note = note;
+        }
+
+        /// <summary>Absolute path of the file, inside the solution directory.</summary>
+        public string AbsolutePath { get; }
+
+        /// <summary>Solution-relative path of the file.</summary>
+        public string RelativePath { get; }
+
+        /// <summary>Text for the tool response: says which path was replaced by which, so the model cites the real one.</summary>
+        public string Note { get; }
     }
 
     /// <summary>
@@ -26,10 +54,40 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
     internal sealed class MissingFileHint : IMissingFileHint
     {
         private readonly SearchScopeResolver _lookup;
+        private readonly IPathResolver _pathResolver;
 
         public MissingFileHint(IPathResolver pathResolver, IFileSystem fileSystem)
         {
+            _pathResolver = pathResolver;
             _lookup = new SearchScopeResolver(pathResolver, fileSystem);
+        }
+
+        public async Task<ResolvedMissingFile> TryResolveUniqueAsync(string requestedPath, string solutionDir, CancellationToken cancellationToken)
+        {
+            IReadOnlyList<string> candidates;
+            try
+            {
+                (_, candidates) = await _lookup.FindFilesByNameAsync(requestedPath, solutionDir, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LMLocal.Core.Common.InternalLogger.Warn($"MissingFileHint: could not search the solution for '{requestedPath}'", ex);
+                return null;
+            }
+
+            if (candidates == null || candidates.Count != 1)
+                return null;
+
+            if (!_pathResolver.TryResolveFilePath(candidates[0], solutionDir, out string absolute)
+                || string.IsNullOrEmpty(absolute)
+                || !_pathResolver.IsPathInsideDirectory(absolute, solutionDir))
+                return null;
+
+            return new ResolvedMissingFile(absolute, candidates[0], SearchScopeResolver.BuildReplacedPathNote(requestedPath, candidates[0]));
         }
 
         public async Task<string> BuildFileNotFoundErrorAsync(string requestedPath, string shownPath, string solutionDir, CancellationToken cancellationToken)
@@ -46,8 +104,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                LMLocal.Core.Common.InternalLogger.Warn($"MissingFileHint: could not search the solution for '{requestedPath}' while building the not-found message", ex);
                 return message;
             }
 

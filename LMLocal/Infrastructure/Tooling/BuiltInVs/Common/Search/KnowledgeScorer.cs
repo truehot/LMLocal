@@ -430,7 +430,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         /// Returns true if <paramref name="trimmed"/> is a markdown heading (1-6 <c>#</c> followed by space or tab).
         /// Complies with CommonMark spec: <c>#foo</c> is NOT a heading.
         /// </summary>
-        private static bool IsHeadingLine(string trimmed)
+        internal static bool IsHeadingLine(string trimmed)
         {
             if (string.IsNullOrEmpty(trimmed) || trimmed[0] != '#')
                 return false;

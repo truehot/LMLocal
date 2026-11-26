@@ -321,7 +321,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error disconnecting from server '{serverName}': {ex.Message}", ex);
+                InternalLogger.Error($"Error disconnecting from server '{serverName}'", ex);
             }
         }
 
@@ -342,7 +342,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Warn($"Error closing MCP client: {ex.Message}");
+                    InternalLogger.Warn("Error closing MCP client", ex);
                 }
             }
         }
@@ -393,7 +393,7 @@ namespace LMLocal.Infrastructure.Tooling.Mcp
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"ConvertInputSchemaToToolParameters: failed to convert input schema: {ex.Message}");
+                InternalLogger.Warn("ConvertInputSchemaToToolParameters: failed to convert input schema", ex);
                 return new ToolParameters { Type = "object" };
             }
         }

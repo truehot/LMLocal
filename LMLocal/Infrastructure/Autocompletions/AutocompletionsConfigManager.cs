@@ -72,13 +72,13 @@ namespace LMLocal.Infrastructure.Autocompletions
                 }
                 catch (Exception ex)
                 {
-                    InternalLogger.Error($"Error parsing autocompletions config: {ex.Message}", ex);
+                    InternalLogger.Error("Error parsing autocompletions config", ex);
                     return DefaultConfig;
                 }
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error reading autocompletions config file: {ex.Message}", ex);
+                InternalLogger.Error("Error reading autocompletions config file", ex);
                 return DefaultConfig;
             }
             finally

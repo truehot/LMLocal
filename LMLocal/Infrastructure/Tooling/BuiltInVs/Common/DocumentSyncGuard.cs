@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using EnvDTE;
+using LMLocal.Core.Common;
 using LMLocal.Infrastructure.Persistence;
 using Microsoft.VisualStudio.Shell;
 
@@ -32,8 +33,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 if (!document.Saved)
                     return "The document has unsaved changes in the editor. Save or discard them before running this tool.";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                InternalLogger.Warn($"DocumentSyncGuard: cannot tell whether '{absolutePath}' has unsaved changes", ex);
                 return "Failed to determine whether the document has unsaved changes.";
             }
 
@@ -46,8 +48,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                 var editPoint = textDocument.StartPoint.CreateEditPoint();
                 bufferText = editPoint.GetText(textDocument.EndPoint);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                InternalLogger.Warn($"DocumentSyncGuard: cannot read the editor buffer of '{absolutePath}'", ex);
                 return "Failed to read the editor buffer to verify synchronization.";
             }
 
@@ -56,8 +59,10 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             {
                 diskText = await fileSystem.ReadAllTextWithSharedReadAsync(absolutePath, cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                if (!(ex is OperationCanceledException))
+                    InternalLogger.Warn($"DocumentSyncGuard: cannot read '{absolutePath}' from disk", ex);
                 return "Failed to read the file from disk to verify synchronization.";
             }
 
@@ -69,8 +74,9 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
                     if (length > 0)
                         return "Failed to read the file from disk to verify synchronization.";
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
+                    InternalLogger.Warn($"DocumentSyncGuard: cannot access '{absolutePath}' on disk", ex);
                     return "Failed to access the file on disk to verify synchronization.";
                 }
             }

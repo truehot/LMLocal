@@ -1,3 +1,5 @@
+using LMLocal.Core.Models;
+
 namespace LMLocal.Application.Tool
 {
     /// <summary>
@@ -40,9 +42,30 @@ namespace LMLocal.Application.Tool
         public string UserMessage { get; set; }
 
         /// <summary>
+        /// Data for the WebView only, e.g. the task list of todo_write.
+        /// Not sent to the model and not persisted.
+        /// </summary>
+        public object UiData { get; set; }
+
+        /// <summary>
         /// True if tool executed successfully.
         /// Computed property based on Error and Result.
         /// </summary>
         public bool IsSuccess => string.IsNullOrEmpty(Error) && Result != null;
+
+        /// <summary>
+        /// Result to send to the model for <paramref name="call"/>: the error text takes the place of the result of a
+        /// failed call, so the model reads what went wrong instead of an empty answer.
+        /// </summary>
+        public ToolResultMessage ToMessage(ToolCallRecord call)
+        {
+            return new ToolResultMessage
+            {
+                ToolCallId = call.CallId,
+                ToolName = call.FunctionName,
+                Result = string.IsNullOrEmpty(Error) ? Result : Error,
+                Error = Error
+            };
+        }
     }
 }

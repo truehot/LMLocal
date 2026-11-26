@@ -115,7 +115,7 @@ namespace LMLocal.Application.Chat
                     if (!string.IsNullOrWhiteSpace(text))
                         builder.Append("assistant: ").Append(text.Trim());
 
-                    foreach (var call in (List<LMLocal.Infrastructure.LlmApi.Requests.ToolCall>)message.ToolCalls)
+                    foreach (var call in message.ToolCalls)
                     {
                         if (call == null)
                             continue;
@@ -134,7 +134,7 @@ namespace LMLocal.Application.Chat
                         if (builder.Length > 0)
                             builder.AppendLine();
 
-                        builder.Append(ToolHistoryPruner.DescribeTrace(call.Function?.Name, call.Function?.Arguments, body));
+                        builder.Append(ToolHistoryPruner.DescribeTrace(call.Name, call.Arguments, body));
                     }
 
                     blocks.Add(builder.ToString());

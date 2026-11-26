@@ -84,7 +84,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"Failed to open file of tool '{toolName}' in the editor: {ex.Message}");
+                InternalLogger.Warn($"Failed to open file of tool '{toolName}' in the editor", ex);
             }
         }
 

@@ -11,6 +11,7 @@ export class SubAgentsDialog {
         this.onLoad = createCallback();
         this.onSave = createCallback();
         this._agents = [];
+        this._pipelines = [];
         this.el = null;
 
         this._filterText = '';
@@ -18,6 +19,7 @@ export class SubAgentsDialog {
         this._loadError = null;
         this._useActiveModelApplied = null;
         this._loadedDefaults = false;
+        this._defaultRoot = null;
     }
 
     _getDialog() {
@@ -34,6 +36,7 @@ export class SubAgentsDialog {
             confirmBtn: dialog.querySelector('#subagents-modal-save'),
             cancelBtn: dialog.querySelector('#subagents-modal-close'),
             listContainer: dialog.querySelector('#subagents-list-container'),
+            pipelinesContainer: dialog.querySelector('#subagents-pipelines-container'),
             filterInput: dialog.querySelector('#subagents-filter-input'),
             enableAllBtn: dialog.querySelector('#subagents-enable-all-btn'),
             disableAllBtn: dialog.querySelector('#subagents-disable-all-btn'),
@@ -49,12 +52,14 @@ export class SubAgentsDialog {
     _onEnableAllClick = (e) => {
         e.preventDefault();
         this._agents.forEach(agent => agent.enabled = true);
+        this._pipelines.forEach(pipeline => pipeline.enabled = true);
         this._renderList();
     };
 
     _onDisableAllClick = (e) => {
         e.preventDefault();
         this._agents.forEach(agent => agent.enabled = false);
+        this._pipelines.forEach(pipeline => pipeline.enabled = false);
         this._renderList();
     };
 
@@ -95,13 +100,15 @@ export class SubAgentsDialog {
         return result;
     }
 
+    // Loads the whole built-in default config: a full replace must keep the root fields (temperature, sharedTools,
+    // pipelines, ...), not just the agents.
     async _loadDefaultSubAgents() {
         const response = await fetch(DEFAULT_SUBAGENTS_URL);
         if (!response.ok) {
             throw new Error(`Failed to load the default SubAgents config (HTTP ${response.status}).`);
         }
         const data = await response.json();
-        return (data && Array.isArray(data.agents)) ? data.agents : [];
+        return (data && typeof data === 'object') ? data : null;
     }
 
     _applyActiveModel(defaults) {
@@ -124,11 +131,14 @@ export class SubAgentsDialog {
 
         try {
             if (this._agents.length === 0) {
-                const defaultAgents = await this._loadDefaultSubAgents();
-                if (!Array.isArray(defaultAgents) || defaultAgents.length === 0) {
+                const defaultConfig = await this._loadDefaultSubAgents();
+                const defaultAgents = (defaultConfig && Array.isArray(defaultConfig.agents)) ? defaultConfig.agents : [];
+                if (defaultAgents.length === 0) {
                     throw new Error('The default SubAgents config is empty.');
                 }
                 this._agents = defaultAgents;
+                this._defaultRoot = defaultConfig;
+                this._pipelines = this._pipelinesFromDefinition(defaultConfig.pipelines);
                 this._loadedDefaults = true;
             }
 
@@ -150,31 +160,32 @@ export class SubAgentsDialog {
         }
     };
 
+    _onPipelineToggle = (index, checked) => {
+        const pipeline = this._pipelines[index];
+        if (pipeline) {
+            pipeline.enabled = checked;
+            this._renderList();
+        }
+    };
+
     _onDialogConfirm = async () => {
         try {
             let result;
             if (this._loadedDefaults) {
+                const root = { ...(this._defaultRoot || {}) };
+                delete root.agents;
+                delete root.pipelines;
+                Object.assign(root, this._nonEmptyRootDefaults());
 
                 const config = {
-                    ...this._nonEmptyRootDefaults(),
+                    ...root,
                     __replace: true,
-                    agents: this._agents.map(agent => ({
-                        id: agent.id,
-                        displayName: agent.displayName,
-                        description: agent.description,
-                        system: agent.system,
-                        providerType: agent.providerType,
-                        customBaseUrl: agent.customBaseUrl,
-                        model: agent.model,
-                        temperature: agent.temperature,
-                        timeoutSeconds: agent.timeoutSeconds,
-                        maxRounds: agent.maxRounds,
-                        maxTokens: agent.maxTokens,
-                        reasoningEffort: agent.reasoningEffort,
-                        enabled: !!agent.enabled,
-                        allowedTools: agent.allowedTools || []
-                    }))
+                    agents: this._agents.map(agent => ({ ...agent, enabled: !!agent.enabled }))
                 };
+
+                const pipelines = this._pipelinesForPayload();
+                if (pipelines.length > 0) config.pipelines = pipelines;
+
                 result = await this.onSave.emitResult(config);
             } else {
                 const config = {
@@ -184,6 +195,14 @@ export class SubAgentsDialog {
                         enabled: !!agent.enabled
                     }))
                 };
+
+                if (this._pipelines.length > 0) {
+                    config.pipelines = this._pipelines.map(pipeline => ({
+                        id: pipeline.id,
+                        enabled: !!pipeline.enabled
+                    }));
+                }
+
                 result = await this.onSave.emitResult(config);
             }
 
@@ -257,14 +276,21 @@ export class SubAgentsDialog {
         this._detachEvents();
 
         this._agents = [];
+        this._pipelines = [];
         this.el = null;
         this._filterText = '';
         this._loadError = null;
         this._useActiveModelApplied = null;
         this._loadedDefaults = false;
+        this._defaultRoot = null;
     }
 
     _renderList() {
+        this._renderAgents();
+        this._renderPipelines();
+    }
+
+    _renderAgents() {
         const { listContainer } = this.el || {};
         if (!listContainer) return;
 
@@ -334,6 +360,14 @@ export class SubAgentsDialog {
         title.textContent = (agent.displayName || agent.id || '').replace(/_/g, ' ') || 'unnamed-agent';
         nameRow.appendChild(title);
 
+        if (agent.exposed === false) {
+            const badge = document.createElement('span');
+            badge.className = 'subagent-badge';
+            badge.textContent = 'pipeline only';
+            badge.title = 'Hidden from the main model: this agent can only be called from a pipeline.';
+            nameRow.appendChild(badge);
+        }
+
         const description = document.createElement('div');
         description.className = 'tool-description';
         description.textContent = agent.description || 'No description available.';
@@ -402,6 +436,147 @@ export class SubAgentsDialog {
         return card;
     }
 
+    // Pipelines of a config object (the built-in default), in the shape the section renders.
+    _pipelinesFromDefinition(definitions) {
+        if (!Array.isArray(definitions)) return [];
+
+        return definitions
+            .filter(pipeline => pipeline && pipeline.id)
+            .map(pipeline => ({
+                id: pipeline.id,
+                displayName: pipeline.displayName || pipeline.id,
+                description: pipeline.description || '',
+                steps: this._pipelineStepChain(pipeline),
+                enabled: pipeline.enabled !== false,
+                unavailableReason: null
+            }));
+    }
+
+    // Step labels in run order; the branches of a parallel step are listed one after another.
+    _pipelineStepChain(pipeline) {
+        const steps = (pipeline && Array.isArray(pipeline.steps)) ? pipeline.steps : [];
+        const labels = [];
+
+        steps.forEach(step => {
+            if (!step) return;
+
+            if (Array.isArray(step.parallel) && step.parallel.length > 0) {
+                step.parallel.forEach(branch => {
+                    if (branch) labels.push(branch.id || branch.agent || 'branch');
+                });
+                return;
+            }
+
+            labels.push(step.id || step.agent || 'step');
+        });
+
+        return labels;
+    }
+
+    // Pipelines for the full-replace payload: the default definition as it is, with the dialog toggle on top.
+    _pipelinesForPayload() {
+        const definitions = (this._defaultRoot && Array.isArray(this._defaultRoot.pipelines))
+            ? this._defaultRoot.pipelines
+            : [];
+
+        return definitions
+            .filter(pipeline => pipeline && pipeline.id)
+            .map(pipeline => {
+                const state = this._pipelines.find(item => item && String(item.id).toLowerCase() === String(pipeline.id).toLowerCase());
+                return { ...pipeline, enabled: state ? !!state.enabled : pipeline.enabled !== false };
+            });
+    }
+
+    _renderPipelines() {
+        const { pipelinesContainer } = this.el || {};
+        if (!pipelinesContainer) return;
+
+        pipelinesContainer.innerHTML = '';
+        if (this._loadError || this._pipelines.length === 0) return;
+
+        const search = this._filterText.trim().toLowerCase();
+        const visible = search === ''
+            ? [...this._pipelines]
+            : this._pipelines.filter(pipeline => {
+                const chain = (pipeline.steps || []).join(' ').toLowerCase();
+                return (pipeline.id || '').toLowerCase().includes(search)
+                    || (pipeline.displayName || '').toLowerCase().includes(search)
+                    || (pipeline.description || '').toLowerCase().includes(search)
+                    || chain.includes(search);
+            });
+
+        if (visible.length === 0) {
+            const emptyMsg = document.createElement('div');
+            emptyMsg.className = 'loading-placeholder';
+            emptyMsg.innerHTML = '<span>No pipelines match your filter.</span>';
+            pipelinesContainer.appendChild(emptyMsg);
+            return;
+        }
+
+        const title = document.createElement('div');
+        title.className = 'subagents-section-title';
+        title.textContent = 'Pipelines';
+        pipelinesContainer.appendChild(title);
+
+        visible.forEach(pipeline => {
+            pipelinesContainer.appendChild(this._createPipelineCard(pipeline));
+        });
+    }
+
+    _createPipelineCard(pipeline) {
+        const card = document.createElement('div');
+        card.className = `tool-item-card${pipeline.enabled ? '' : ' tool-disabled'}`;
+        card.setAttribute('data-pipeline-id', pipeline.id || '');
+
+        const infoBlock = document.createElement('div');
+        infoBlock.className = 'tool-info-block';
+
+        const nameRow = document.createElement('div');
+        nameRow.className = 'tool-name-row';
+
+        const title = document.createElement('span');
+        title.className = 'tool-title';
+        title.textContent = pipeline.displayName || pipeline.id || 'unnamed-pipeline';
+        nameRow.appendChild(title);
+        infoBlock.appendChild(nameRow);
+
+        const description = document.createElement('div');
+        description.className = 'tool-description';
+        description.textContent = pipeline.description || 'No description available.';
+        infoBlock.appendChild(description);
+
+        const chain = document.createElement('div');
+        chain.className = 'subagents-pipeline-steps';
+        const steps = Array.isArray(pipeline.steps) ? pipeline.steps : [];
+        chain.textContent = steps.length > 0 ? steps.join(' → ') : 'no steps';
+        infoBlock.appendChild(chain);
+
+        if (pipeline.unavailableReason) {
+            const note = document.createElement('div');
+            note.className = 'subagents-note subagents-note-warning';
+            note.textContent = `Unavailable: ${pipeline.unavailableReason}`;
+            infoBlock.appendChild(note);
+        }
+
+        const switchLabel = document.createElement('label');
+        switchLabel.className = 'switch-control';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = !!pipeline.enabled;
+        input.onchange = (e) => this._onPipelineToggle(this._pipelines.indexOf(pipeline), e.target.checked);
+
+        const slider = document.createElement('span');
+        slider.className = 'switch-slider';
+
+        switchLabel.appendChild(input);
+        switchLabel.appendChild(slider);
+
+        card.appendChild(infoBlock);
+        card.appendChild(switchLabel);
+        return card;
+    }
+
     _escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -418,15 +593,18 @@ export class SubAgentsDialog {
         this._loadError = null;
         this._useActiveModelApplied = null;
         this._loadedDefaults = false;
+        this._defaultRoot = null;
+        this._pipelines = [];
         try {
             const result = await this.onLoad.emitResult();
+            const payload = (result && result.data && typeof result.data === 'object') ? result.data : result;
+
             if (result && result.success === false && result.error) {
                 this._loadError = result.error.message || 'Failed to load subagents';
                 this._agents = [];
-            } else if (result && Array.isArray(result.agents)) {
-                this._agents = result.agents;
-            } else if (result && result.success && result.data && Array.isArray(result.data.agents)) {
-                this._agents = result.data.agents;
+            } else if (payload && Array.isArray(payload.agents)) {
+                this._agents = payload.agents;
+                this._pipelines = Array.isArray(payload.pipelines) ? payload.pipelines : [];
             } else {
                 this._agents = [];
             }

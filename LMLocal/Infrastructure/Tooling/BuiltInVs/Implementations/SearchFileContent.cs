@@ -141,6 +141,8 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     scope = resolved;
                 }
 
+                string warning = AppendNote(selection.Warning, scope?.Note);
+
                 var pages = new object[terms.Count];
                 var uncached = new List<int>();
                 for (int i = 0; i < terms.Count; i++)
@@ -149,11 +151,11 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                     if (grouping == SearchGrouping.Text)
                     {
                         if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<SearchTextGroupResult> cachedText))
-                            pages[i] = BuildTextPageResponse(cachedText.AllResults, selection.Offset(pageSize, cachedText.AllResults?.Count ?? 0), pageSize, cachedText.Note, _searchCache.GetId(cacheKey), selection.Warning);
+                            pages[i] = BuildTextPageResponse(cachedText.AllResults, selection.Offset(pageSize, cachedText.AllResults?.Count ?? 0), pageSize, cachedText.Note, _searchCache.GetId(cacheKey), warning);
                     }
                     else if (_searchCache.TryGet(cacheKey, solutionDir, out CachedToolResults<SearchResult> cachedFile))
                     {
-                        pages[i] = BuildFilePageResponse(cachedFile.AllResults, selection.Offset(pageSize, CountMatches(cachedFile.AllResults)), pageSize, cachedFile.Note, _searchCache.GetId(cacheKey), selection.Warning);
+                        pages[i] = BuildFilePageResponse(cachedFile.AllResults, selection.Offset(pageSize, CountMatches(cachedFile.AllResults)), pageSize, cachedFile.Note, _searchCache.GetId(cacheKey), warning);
                     }
 
                     if (pages[i] == null)
@@ -231,7 +233,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                 Note = note,
                                 Subject = terms[i]
                             });
-                            pages[i] = BuildTextPageResponse(groups, selection.Offset(pageSize, groups?.Count ?? 0), pageSize, note, _searchCache.GetId(cacheKey), selection.Warning);
+                            pages[i] = BuildTextPageResponse(groups, selection.Offset(pageSize, groups?.Count ?? 0), pageSize, note, _searchCache.GetId(cacheKey), warning);
                         }
                         else
                         {
@@ -242,7 +244,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                                 Note = note,
                                 Subject = terms[i]
                             });
-                            pages[i] = BuildFilePageResponse(term.Results, selection.Offset(pageSize, CountMatches(term.Results)), pageSize, note, _searchCache.GetId(cacheKey), selection.Warning);
+                            pages[i] = BuildFilePageResponse(term.Results, selection.Offset(pageSize, CountMatches(term.Results)), pageSize, note, _searchCache.GetId(cacheKey), warning);
                         }
                     }
                 }

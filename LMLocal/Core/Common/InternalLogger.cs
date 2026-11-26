@@ -11,43 +11,32 @@ namespace LMLocal.Core.Common
         void Debug(string message);
         void Info(string message);
         void Warn(string message);
+        void Warn(string message, Exception ex);
         void Error(string message, Exception ex = null);
     }
 
-    /// <summary>
-    /// Dummy logger that discards all messages. Useful for tests or when logging must be disabled.
-    /// </summary>
-
-    internal class DummyLogger : IInternalLogger
-    {
-        public void Debug(string message) { }
-
-        public void Info(string message) { }
-
-        public void Warn(string message) { }
-
-        public void Error(string message, Exception ex = null) { }
-    }
-
-    /// <summary>
-    /// Writes log messages directly to Debug output (synchronous, no buffering).
-    /// </summary>
+    /// <summary>Writes to Debug output; errors also go to the daily <see cref="ErrorLogFile"/>.</summary>
     internal class DebugLogger : IInternalLogger
     {
         public void Debug(string message) => Write("DEBUG", message);
         public void Info(string message) => Write("INFO", message);
         public void Warn(string message) => Write("WARN", message);
+        public void Warn(string message, Exception ex) => Write("WARN", message, ex);
+
         public void Error(string message, Exception ex = null)
         {
-            string errorMsg = message;
-            if (ex != null)
-                errorMsg += $" | {ex}";
-            Write("ERROR", errorMsg);
+            Write("ERROR", message, ex);
+            ErrorLogFile.Write(message, ex);
         }
 
-        private void Write(string level, string message)
+        private static void Write(string level, string message) => Write(level, message, null);
+
+        private static void Write(string level, string message, Exception ex)
         {
             string safeMessage = message ?? "";
+            if (ex != null)
+                safeMessage += $" | {ex}";
+
             string line = $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss.fff}] [{level}] {safeMessage}";
             System.Diagnostics.Debug.WriteLine(line);
         }
@@ -58,11 +47,7 @@ namespace LMLocal.Core.Common
     /// </summary>
     internal static class InternalLogger
     {
-#if DEBUG
         private static IInternalLogger _instance = new DebugLogger();
-#else
-        private static IInternalLogger _instance = new DummyLogger();
-#endif
         private static readonly object _lock = new object();
 
         public static void SetLogger(IInternalLogger logger)
@@ -81,6 +66,9 @@ namespace LMLocal.Core.Common
         public static void Warn(string message) => SafeLog(l => l.Warn(message));
 
         [Conditional("DEBUG")]
+        public static void Warn(string message, Exception ex) => SafeLog(l => l.Warn(message, ex));
+
+        [Conditional("DEBUG")]
         public static void Error(string message, Exception ex = null) => SafeLog(l => l.Error(message, ex));
 
         private static void SafeLog(Action<IInternalLogger> action)
@@ -91,7 +79,7 @@ namespace LMLocal.Core.Common
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[InternalLogger] {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[InternalLogger] {ex}");
             }
         }
     }

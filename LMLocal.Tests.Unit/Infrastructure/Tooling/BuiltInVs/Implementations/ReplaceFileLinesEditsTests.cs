@@ -194,6 +194,107 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.Edits.Select(e => e.StartLine), Is.EqualTo(new[] { 1, 3 }));
         }
 
+        // Issue #39: a client that fills every schema property sends empty top-level fields next to 'edits'.
+        [Test]
+        public async Task Edits_PlaceholderTopLevelFields_AreIgnored()
+        {
+            SetupFile("a\nb\nc");
+            var parameters = Params(Edit(1, "a", "A"), Edit(3, "c", "C"));
+            parameters["start_line"] = 1;
+            parameters["old_lines"] = "";
+            parameters["new_lines"] = "";
+
+            var resp = await RunAsync(parameters);
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("A\nb\nC"));
+            Assert.That(resp.Edits.Select(e => e.StartLine), Is.EqualTo(new[] { 1, 3 }));
+            Assert.That(resp.Note, Does.Contain("Top-level start_line/old_lines/new_lines were ignored"));
+        }
+
+        [Test]
+        public async Task Edits_TopLevelStartLineOnly_IsIgnored()
+        {
+            SetupFile("a\nb");
+            var parameters = Params(Edit(2, "b", "B"));
+            parameters["start_line"] = 2;
+
+            var resp = await RunAsync(parameters);
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("a\nB"));
+        }
+
+        [Test]
+        public async Task Edits_TopLevelInsertWithoutAnchor_IsRejectedWithHint()
+        {
+            SetupFile("a\nb");
+            var parameters = Params(Edit(2, "b", "B"));
+            parameters["start_line"] = 1;
+            parameters["old_lines"] = "";
+            parameters["new_lines"] = "x";
+
+            var resp = await RunAsync(parameters);
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.StartWith("the top-level edit: old_lines is empty but new_lines is set").And.Contain("repeat it in new_lines"));
+            AssertNothingWritten();
+        }
+
+        [Test]
+        public async Task Edits_ItemInsertWithoutAnchor_IsRejectedWithHint()
+        {
+            SetupFile("a\nb");
+
+            var resp = await RunAsync(Params(Edit(2, "", "x")));
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.StartWith("edits[0]: old_lines is empty but new_lines is set"));
+            AssertNothingWritten();
+        }
+
+        [Test]
+        public async Task Edits_TopLevelEditRepeatedInEdits_IsAppliedOnce()
+        {
+            SetupFile("a\nb\nc");
+            var parameters = Params(Edit(1, "a", "A"), Edit(3, "c", "C"));
+            parameters["start_line"] = 1;
+            parameters["old_lines"] = "a";
+            parameters["new_lines"] = "A";
+
+            var resp = await RunAsync(parameters);
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("A\nb\nC"));
+            Assert.That(resp.Edits.Select(e => e.StartLine), Is.EqualTo(new[] { 1, 3 }));
+            Assert.That(resp.Note, Does.Contain("edits[0] repeats the top-level edit"));
+        }
+
+        [Test]
+        public async Task Edits_RepeatedItem_IsAppliedOnce()
+        {
+            SetupFile("a\nb");
+
+            var resp = await RunAsync(Params(Edit(2, "b", "B"), Edit(2, "b", "B")));
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("a\nB"));
+            Assert.That(resp.Edits, Has.Count.EqualTo(1));
+            Assert.That(resp.Note, Does.Contain("edits[1] repeats edits[0]"));
+        }
+
+        [Test]
+        public async Task Edits_SameRangeDifferentNewLines_StillOverlap()
+        {
+            SetupFile("a\nb");
+
+            var resp = await RunAsync(Params(Edit(2, "b", "B"), Edit(2, "b", "X")));
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.Contain("overlaps"));
+            AssertNothingWritten();
+        }
+
         [Test]
         public async Task Edits_AsJsonString_AreAccepted()
         {
@@ -255,6 +356,20 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
         }
 
         [Test]
+        public async Task Edits_FirstLineFoundBlockMismatch_ErrorNamesTheDifferingLine()
+        {
+            SetupFile("a\nb\nc;");
+
+            var resp = await RunAsync(Params(Edit(1, "a\nb\nc", "X")));
+
+            Assert.That(resp.Success, Is.False);
+            Assert.That(resp.ErrorMessage, Does.StartWith("edits[0] (start_line 1): First line of old_lines found at 1 location(s)"));
+            Assert.That(resp.ErrorMessage, Does.Contain("line 3 of old_lines (file line 3) differs at column 2: the file has ';' (U+003B), old_lines has end of line."));
+            Assert.That(resp.ErrorMessage, Does.EndWith("Nothing was written: fix this edit and resend all edits."));
+            AssertNothingWritten();
+        }
+
+        [Test]
         public async Task Edits_Ambiguous_ReturnsCandidates()
         {
             SetupFile("x\ndup\ny\ndup\nz");
@@ -265,6 +380,34 @@ namespace LMLocal.Tests.Unit.Infrastructure.Tooling.BuiltInVs.Implementations
             Assert.That(resp.FailedEdit, Is.EqualTo("edits[1]"));
             Assert.That(resp.Candidates, Has.Count.EqualTo(2));
             AssertNothingWritten();
+        }
+
+        [Test]
+        public async Task Edits_DuplicateLinesWithoutIndent_EachTakenAtItsStartLine_NoNote()
+        {
+            // 5920dad5: three identical catch lines, old_lines without indentation, each start_line on its own copy.
+            SetupFile("x\n    dup;\ny\n    dup;\nz\n    dup;");
+
+            var resp = await RunAsync(Params(Edit(2, "dup;", "a;"), Edit(4, "dup;", "b;"), Edit(6, "dup;", "c;")));
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("x\n    a;\ny\n    b;\nz\n    c;"));
+            Assert.That(resp.Edits.Select(e => e.Note), Is.All.Null);
+            Assert.That(resp.Edits.Select(e => e.MatchedIgnoringFirstLineIndent), Is.All.True);
+        }
+
+        [Test]
+        public async Task Edits_OneOfTwoDuplicates_NoteNamesTheOtherOnly()
+        {
+            SetupFile("x\n    dup;\ny\n    dup;\nz");
+
+            var resp = await RunAsync(Params(Edit(1, "x", "X"), Edit(4, "dup;", "b;")));
+
+            Assert.That(resp.Success, Is.True, resp.ErrorMessage);
+            Assert.That(_written.Single(), Is.EqualTo("X\n    dup;\ny\n    b;\nz"));
+            Assert.That(resp.Edits[0].Note, Is.Null);
+            Assert.That(resp.Edits[1].Note, Is.EqualTo(
+                "old_lines also matches line(s) 2 (first-line indentation ignored); start_line 4 was used, the others were left unchanged."));
         }
 
         [Test]

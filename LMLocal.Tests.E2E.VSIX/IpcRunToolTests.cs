@@ -719,13 +719,19 @@ namespace LMLocal.Tests.E2E.VSIX
                     {
                         Assert.AreEqual("OK", await SendAsync(client, $"OpenSolution|{GetSolutionPath()}", cts.Token));
 
-                        // Not a path and not an exact project name: substrings and bare file names are rejected.
-                        foreach (var path in new[] { "Tests", "HistoryCompactor.cs", @"Application\Chat", @"LMLocal\NoSuchFolder" })
+                        // Not a path and not an exact project name: substrings are rejected.
+                        foreach (var path in new[] { "Tests", @"Application\Chat", @"LMLocal\NoSuchFolder" })
                         {
                             var obj = await SearchRawAsync(client, TermA, path, cts.Token);
                             Assert.IsFalse((bool)obj["success"], $"path '{path}' should fail: {obj}");
                             Assert.Contains("Path not found", obj["error_message"].Value<string>());
                         }
+
+                        // A bare file name is a wrong path of the only file with that name: that file is searched and the response says so.
+                        var bare = await SearchRawAsync(client, TermA, "HistoryCompactor.cs", cts.Token);
+                        Assert.IsTrue((bool)bare["success"], $"the only file named HistoryCompactor.cs should be searched: {bare}");
+                        string bareWarning = bare["warning"]?.Value<string>() ?? "";
+                        Assert.IsTrue(bareWarning.Contains("used 'LMLocal\\Application\\Chat\\HistoryCompactor.cs'"), $"the response must name the real path: {bare}");
 
                         string outside = Path.GetTempPath();
                         var outsideObj = await SearchRawAsync(client, TermA, outside, cts.Token);
@@ -862,7 +868,7 @@ namespace LMLocal.Tests.E2E.VSIX
         {
             try
             {
-                if (process != null && !process.HasExited)
+                if (process?.HasExited == false)
                     process.Kill();
 
                 process.Dispose();

@@ -117,7 +117,7 @@ namespace LMLocal.Core.Common
             }
             catch (Exception ex)
             {
-                InternalLogger.Warn($"SendAll: failed to read '{item.Path}': {ex.Message}");
+                InternalLogger.Warn($"SendAll: failed to read '{item.Path}'", ex);
                 return null;
             }
         }

@@ -60,6 +60,7 @@ export class ModelsConfigDialog {
             reasoningSelect: dialog.querySelector('[data-setting="reasoningEffort"]'),
             instructionSelect: dialog.querySelector('[data-setting="instructionTabId"]'),
             isCustomCheckbox: dialog.querySelector('[data-setting="isCustom"]'),
+            disableEchoCheckbox: dialog.querySelector('[data-setting="disableReasoningEcho"]'),
             enabledCheckbox: dialog.querySelector('[data-setting="enabled"]'),
             formCancelBtn: dialog.querySelector('#model-form-cancel'),
             listActions: dialog.querySelector('#models-config-list-actions'),
@@ -208,6 +209,7 @@ export class ModelsConfigDialog {
         if (model.contextLength) parts.push(`${formatTokens(model.contextLength)} context`);
         if (model.maxTokens) parts.push(`Max ${formatTokens(model.maxTokens)}`);
         if (model.reasoningEffort) parts.push(`Reasoning: ${model.reasoningEffort}`);
+        if (model.disableReasoningEcho) parts.push('No reasoning echo');
         if (model.isCustom) parts.push('Custom');
         if (model.enabled === false) parts.push('Disabled');
         return parts.join(' · ');
@@ -391,7 +393,7 @@ export class ModelsConfigDialog {
 
     _showForm(model = null) {
         const { listView, listActions, formView, formActions, idInput, modelIdInput, displayNameInput,
-            contextLengthInput, maxTokensInput, isCustomCheckbox, enabledCheckbox } = this.el;
+            contextLengthInput, maxTokensInput, isCustomCheckbox, enabledCheckbox, disableEchoCheckbox } = this.el;
 
         if (!listView || !formView || !idInput) {
             console.error('Required elements not found for form view');
@@ -422,6 +424,7 @@ export class ModelsConfigDialog {
                 : '';
             isCustomCheckbox.checked = !!model.isCustom;
             enabledCheckbox.checked = model.enabled !== false;
+            disableEchoCheckbox.checked = !!model.disableReasoningEcho;
         } else {
             idInput.value = this._getNextId();
             modelIdInput.value = '';
@@ -432,6 +435,7 @@ export class ModelsConfigDialog {
             this.el.instructionSelect.value = '';
             isCustomCheckbox.checked = true;
             enabledCheckbox.checked = true;
+            disableEchoCheckbox.checked = false;
         }
 
         modelIdInput.focus();
@@ -481,7 +485,7 @@ export class ModelsConfigDialog {
     }
 
     _buildModelPayload() {
-        const { idInput, modelIdInput, displayNameInput, contextLengthInput, maxTokensInput, reasoningSelect, isCustomCheckbox, enabledCheckbox } = this.el;
+        const { idInput, modelIdInput, displayNameInput, contextLengthInput, maxTokensInput, reasoningSelect, isCustomCheckbox, enabledCheckbox, disableEchoCheckbox } = this.el;
 
         this._syncSelectedProviderFromSelect();
 
@@ -509,6 +513,8 @@ export class ModelsConfigDialog {
         if (maxTokens !== undefined) payload.maxTokens = maxTokens;
 
         if (reasoningSelect.value) payload.reasoningEffort = reasoningSelect.value;
+
+        if (disableEchoCheckbox && disableEchoCheckbox.checked) payload.disableReasoningEcho = true;
 
         const instructionTabId = this._parseOptionalInt(this.el.instructionSelect?.value);
         if (instructionTabId !== undefined) payload.instructionTabId = instructionTabId;

@@ -36,6 +36,16 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
         /// <summary>Stable identity of the scope, for cache keys.</summary>
         public string Key { get; private set; }
 
+        /// <summary>Set when the scope is not what the caller wrote (a wrong path replaced by the only file of that name); null otherwise.</summary>
+        public string Note { get; private set; }
+
+        /// <summary>Same scope with <paramref name="note"/> attached; the key is unchanged.</summary>
+        public SearchScope WithNote(string note)
+        {
+            Note = note;
+            return this;
+        }
+
         public static SearchScope ForFile(string absolutePath)
         {
             return new SearchScope
@@ -128,17 +138,35 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Common.Search
                     return (SearchScope.ForFolders(inside), null);
             }
 
-            return (null, await BuildNotFoundErrorAsync(path, trimmed, solutionDir, cancellationToken).ConfigureAwait(false));
+            var (fileName, candidates) = await FindFilesByNameAsync(trimmed, solutionDir, cancellationToken).ConfigureAwait(false);
+
+            if (fileName != null && candidates.Count == 1
+                && _pathResolver.TryResolveFilePath(candidates[0], solutionDir, out string unique)
+                && !string.IsNullOrEmpty(unique)
+                && _fileSystem.FileExists(unique)
+                && _pathResolver.IsPathInsideDirectory(unique, solutionDir))
+            {
+                return (SearchScope.ForFile(unique).WithNote(BuildReplacedPathNote(trimmed, candidates[0])), null);
+            }
+
+            return (null, BuildNotFoundError(path, fileName, candidates));
+        }
+
+        /// <summary>
+        /// Tool-response text for a path replaced by the only file of that name in the solution: the model must cite the real path.
+        /// </summary>
+        internal static string BuildReplacedPathNote(string requestedPath, string relativePath)
+        {
+            return $"Path '{requestedPath}' does not exist; used '{relativePath}', the only file with that name in the solution. Cite this path.";
         }
 
         /// <summary>
         /// Error for a path that resolved to nothing.
         /// </summary>
-        private async Task<string> BuildNotFoundErrorAsync(string path, string trimmed, string solutionDir, CancellationToken cancellationToken)
+        private static string BuildNotFoundError(string path, string fileName, IReadOnlyList<string> candidates)
         {
             string generic = $"Path not found: '{path}'. path must be an existing file or folder inside the solution directory, or a project name. A bare file name is not a path: resolve it with find_files first.";
 
-            var (fileName, candidates) = await FindFilesByNameAsync(trimmed, solutionDir, cancellationToken).ConfigureAwait(false);
             if (fileName == null)
                 return generic;
 

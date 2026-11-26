@@ -11,6 +11,12 @@ namespace LMLocal.Application.SubAgents
         public bool Success { get; set; }
         public string Content { get; set; }
         public string Error { get; set; }
+
+        /// <summary>
+        /// Why the run failed; <see cref="SubAgentFailureKind.None"/> on success.
+        /// </summary>
+        public SubAgentFailureKind FailureKind { get; set; }
+
         public string Model { get; set; }
         public string RunId { get; set; }
         public long DurationMs { get; set; }

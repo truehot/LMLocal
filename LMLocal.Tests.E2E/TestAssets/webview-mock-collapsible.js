@@ -38,7 +38,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolCall',
-                    FunctionName: 'SearchFiles',
+                    FunctionName: 'search_file_content',
                     CallId: 'call_search_001',
                     ArgumentsJson: '{"query":"test"}',
                     Message: 'Searching for files matching "test"...'
@@ -50,7 +50,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolEnd',
-                    FunctionName: 'SearchFiles',
+                    FunctionName: 'search_file_content',
                     CallId: 'call_search_001',
                     Message: 'Found 5 files matching "test"',
                     IsError: false
@@ -63,7 +63,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolCall',
-                    FunctionName: 'ReadFile',
+                    FunctionName: 'read_file_lines',
                     CallId: 'call_read_002',
                     ArgumentsJson: '{"path":"src/app.js"}',
                     Message: 'Reading file src/app.js...'
@@ -75,7 +75,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolEnd',
-                    FunctionName: 'ReadFile',
+                    FunctionName: 'read_file_lines',
                     CallId: 'call_read_002',
                     Message: 'File read successfully (120 lines)',
                     IsError: false
@@ -121,7 +121,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolCall',
-                    FunctionName: 'WriteFile',
+                    FunctionName: 'replace_file_content',
                     CallId: 'call_write_003',
                     ArgumentsJson: '{"path":"output.txt"}',
                     Message: 'Writing output file...'
@@ -133,7 +133,7 @@ const __mockBridge = {
             _listeners.forEach(fn => fn({
                 data: {
                     Type: 'StreamToolEnd',
-                    FunctionName: 'WriteFile',
+                    FunctionName: 'replace_file_content',
                     CallId: 'call_write_003',
                     Message: 'File written successfully',
                     IsError: false
@@ -204,8 +204,8 @@ const __mockBridge = {
     },
     GetSettingsAsync: async () => {
         console.log('[mock] GetSettingsAsync called');
-        // CollapseToolCalls: true enables the collapsible message path
-        return JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true });
+        // ToolCallsDisplay: 'expanded' enables the grouped message path
+        return JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true, ToolCallsDisplay: 'expanded' });
     },
     UpdateSettingsAsync: async (json) => {
         console.log('[mock] UpdateSettingsAsync called');
@@ -238,7 +238,7 @@ function __startMock() {
             UpdateToolsAsync: async (json) => true,
         };
         window.__settingsOverride = {
-            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true }),
+            GetSettingsAsync: async () => JSON.stringify({ AutoLoadOnStartup: true, CollapseToolCalls: true, ToolCallsDisplay: 'expanded' }),
             UpdateSettingsAsync: async (json) => true,
             TestConnectionAsync: async (json) => JSON.stringify({ success: true }),
         };

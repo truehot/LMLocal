@@ -110,6 +110,13 @@ namespace LMLocal.Core.Models
         public bool CollapseToolCalls { get; set; } = false;
 
         /// <summary>
+        /// How tool calls are displayed in the chat: "flat" (every step stays visible), "expanded" (the steps of one
+        /// answer are grouped in a block that is open while the model works) or "collapsed" (the same block, kept closed
+        /// until the answer is ready).
+        /// </summary>
+        public string ToolCallsDisplay { get; set; }
+
+        /// <summary>
         /// When true, the number of tokens (total, prompt, completion) is displayed for each message to monitor usage and costs.
         /// </summary>
         public bool ShowTokenStats { get; set; } = false;
@@ -150,6 +157,7 @@ namespace LMLocal.Core.Models
                 && FlashTaskbarOnCompletion == other.FlashTaskbarOnCompletion
                 && EnableDebuggerContext == other.EnableDebuggerContext
                 && CollapseToolCalls == other.CollapseToolCalls
+                && string.Equals(ToolCallsDisplay, other.ToolCallsDisplay, StringComparison.OrdinalIgnoreCase)
                 && ShowTokenStats == other.ShowTokenStats
                 && EnableRateLimitHandling == other.EnableRateLimitHandling
                 && string.Equals(ApiKey, other.ApiKey, StringComparison.Ordinal)
@@ -182,6 +190,7 @@ namespace LMLocal.Core.Models
                 hash = hash * 23 + FlashTaskbarOnCompletion.GetHashCode();
                 hash = hash * 23 + EnableDebuggerContext.GetHashCode();
                 hash = hash * 23 + CollapseToolCalls.GetHashCode();
+                hash = hash * 23 + (ToolCallsDisplay != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(ToolCallsDisplay) : 0);
                 hash = hash * 23 + ShowTokenStats.GetHashCode();
                 hash = hash * 23 + EnableRateLimitHandling.GetHashCode();
                 hash = hash * 23 + (ApiKey != null ? StringComparer.Ordinal.GetHashCode(ApiKey) : 0);

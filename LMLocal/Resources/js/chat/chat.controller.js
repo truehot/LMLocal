@@ -6,6 +6,8 @@ import { createScrollManager } from '@app/lib/scroll.manager.js';
 import { createUserMessage } from '@app/chat/user.message.js';
 import { createAiMessage } from '@app/chat/ai.message.js';
 import { createAiCollapsibleMessage } from '@app/chat/ai.collapsible.message.js';
+import { createAiCollapsedMessage } from '@app/chat/ai.collapsed.message.js';
+import { ToolCallsDisplay, resolveToolCallsDisplay } from '@app/lib/tool.calls.display.js';
 import { buildHistoryCotNote, collectCotModel } from '@app/chat/history.note.js';
 import { createHighlightParser } from '@app/workers/highlight.parser.js';
 import { createMarkDownParser, ParserType } from '@app/workers/markdown.parser.js';
@@ -44,7 +46,7 @@ class ChatController {
         this.onContinue = createCallback();
         this.onRegenerate = createCallback();
         this.onEditLastPrompt = createCallback();
-        this.collapseToolCalls = false;
+        this.toolCallsDisplay = ToolCallsDisplay.FLAT;
         this.showTokenStats = false;
         this._sessionStartedAt = 0;
         this.pipelineBuilder = null;
@@ -224,11 +226,10 @@ class ChatController {
                 }
 
                 if (state.roundNumber > 0) {
-                    // Tool round iteration — no new user message
-                    if (this.collapseToolCalls && this.currentAi?.isCollapsible) {
+                    // Tool round iteration — no new user message.
+                    if (this.currentAi?.isCollapsible) {
                         this.currentAi.nextRound(
-                            state.roundNumber,
-                            state.toolCount
+                            state.roundNumber
                         );
                     } else {
                         this.currentAi?.finalize();
@@ -242,28 +243,10 @@ class ChatController {
                 } else {
                     // New user message. Only create the AI response bubble.
                     this.currentAi?.finalize();
-
-                    if (this.collapseToolCalls) {
-                        this.currentAi = createAiCollapsibleMessage(
-                            this.container,
-                            this.highlightParser,
-                            this.pipelineBuilder.createStreaming(this.markdownParser),
-                            {
-                                roundNum: 0,
-                                toolCount: 0
-                            }
-                        );
-                    } else {
-                        this.currentAi = createAiMessage(
-                            this.container,
-                            this.highlightParser,
-                            this.pipelineBuilder.createStreaming(this.markdownParser),
-                            false
-                        );
-                    }
+                    this.currentAi = this._createAiAnswer();
                 }
 
-                this.scrollManager.scrollToBottom(true);
+                this.scrollManager.scrollToBottom(false);
                 break;
 
             case AppStatus.THINKING:
@@ -289,11 +272,11 @@ class ChatController {
             }
 
             case AppStatus.EXECUTING:
-                this.currentAi.startTooling(state.toolCallId, state.toolMessage);
+                this.currentAi.startTooling(state.toolCallId, state.toolMessage, state.toolName);
                 break;
 
             case AppStatus.STEPPING:
-                this.currentAi?.stepTooling(state.toolCallId, state.toolStep, state.toolMessage);
+                this.currentAi?.stepTooling(state.toolCallId, state.toolStep, state.toolMessage, state.toolName);
                 this.scrollManager.scrollToBottom();
                 break;
 
@@ -355,6 +338,24 @@ class ChatController {
                 break;
 
         }
+    }
+
+    /**
+     * Creates the answer bubble of a new prompt with the display mode chosen when the answer starts.
+     */
+    _createAiAnswer() {
+        const pipeline = this.pipelineBuilder.createStreaming(this.markdownParser);
+        const config = { roundNum: 0 };
+
+        if (this.toolCallsDisplay === ToolCallsDisplay.COLLAPSED) {
+            return createAiCollapsedMessage(this.container, this.highlightParser, pipeline, config);
+        }
+
+        if (this.toolCallsDisplay === ToolCallsDisplay.EXPANDED) {
+            return createAiCollapsibleMessage(this.container, this.highlightParser, pipeline, config);
+        }
+
+        return createAiMessage(this.container, this.highlightParser, pipeline, false);
     }
 
     /**
@@ -465,11 +466,12 @@ class ChatController {
 
     updateSettingsState(state, prev) {
         if (state.status === prev.status &&
+            state.ToolCallsDisplay === prev.ToolCallsDisplay &&
             state.CollapseToolCalls === prev.CollapseToolCalls &&
             state.ShowTokenStats === prev.ShowTokenStats) {
             return;
         }
-        this.collapseToolCalls = state.CollapseToolCalls;
+        this.toolCallsDisplay = resolveToolCallsDisplay(state);
         this.showTokenStats = !!state.ShowTokenStats;
     }
 

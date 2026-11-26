@@ -7,6 +7,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using LMLocal.Core.Common;
 using Microsoft.VisualStudio.Shell;
 
 /**
@@ -65,7 +66,7 @@ internal static class VsIpcServer
                             }
                             catch (Exception ex)
                             {
-                                Debug.WriteLine($"IPC: WaitForConnection error: {ex.Message}");
+                                InternalLogger.Error("VsIpcServer: waiting for a client connection failed", ex);
                                 continue;
                             }
 
@@ -106,7 +107,15 @@ internal static class VsIpcServer
                                     }
                                     catch (Exception ex)
                                     {
-                                        try { await writer.WriteLineAsync("ERROR " + ex.Message.ToString()); } catch { }
+                                        InternalLogger.Warn("VsIpcServer: the IPC command failed", ex);
+                                        try
+                                        {
+                                            await writer.WriteLineAsync("ERROR " + ex.Message);
+                                        }
+                                        catch (Exception reportEx)
+                                        {
+                                            InternalLogger.Warn("VsIpcServer: could not report the command failure to the client", reportEx);
+                                        }
                                     }
                                 }
                             }
@@ -119,7 +128,7 @@ internal static class VsIpcServer
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"IPC Server loop fatal error: {ex.Message}");
+                    InternalLogger.Error("VsIpcServer: the IPC server loop stopped by an error", ex);
                 }
                 finally
                 {
@@ -135,6 +144,7 @@ internal static class VsIpcServer
 
         using (token.Register(() =>
         {
+            // Dispose here races with the reading loop; nothing to do about a failure.
             try { server.Dispose(); } catch { }
         }))
         {
@@ -177,7 +187,7 @@ internal static class VsIpcServer
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"IPC Server stop error: {ex.Message}");
+                InternalLogger.Warn("VsIpcServer: stopping the IPC server failed", ex);
             }
         }
     }

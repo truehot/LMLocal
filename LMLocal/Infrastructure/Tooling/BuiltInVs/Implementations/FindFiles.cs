@@ -51,13 +51,13 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Several names: pass them all in 'file_names' in ONE call, not one call per name. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. Matching is against the full file name including extension, not just the name stem. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. With 'file_names' each name is matched on its own and the response has 'terms', one block per name (file_name, results, total_files, note, next_page_token); to continue one block, call again with that 'file_name' and its 'page_token'. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Independent: several calls can go in one response.",
+                Description = "Use this tool only when the user asks to find or locate a file by file name, path, or file-name pattern. Several names: pass them all in 'file_names' in ONE call, not one call per name. Do not use it for requests to search for text or content inside files. Finds files by name in files that belong to the currently loaded Visual Studio solution. It does not search arbitrary files located in the solution directory or its subdirectories unless those files are included in the solution. The name is matched against the full file name including extension, not just the name stem. A pattern with '/' or '\\' also checks folders: the part after the last separator is matched against the file name as described here, and the parts before it must be the folders right above the file, e.g. 'Core/Models/User.cs' or 'Models/*Config.cs'; to list the files of a folder, use project_filter. Matching is case-insensitive substring matching unless '*' wildcards are used to constrain the match by position: 'Program*' matches names starting with 'Program', '*Service' matches names ending with 'Service', and 'Chat*Service' matches names starting with 'Chat' and ending with 'Service'. Therefore, a pattern without '*' such as 'ChatLogSerializer' can still match 'ChatLogSerializer.cs'. Use this tool to locate files when you know part of the name. It can also be used as a fallback/cross-check when searching for where a type is declared: in this codebase's C# convention, a type is usually declared in a file with a matching name (e.g. class ChatLogSerializer → ChatLogSerializer.cs), so searching '<TypeName>*' here can be a useful fallback or cross-check when a content search was inconclusive. Does not search file contents — use search_file_content for that. With 'file_names' each name is matched on its own and the response has 'terms', one block per name (file_name, results, total_files, note, next_page_token); to continue one block, call again with that 'file_name' and its 'page_token'. Results are paginated: default max_results is 50 (max 500); the response includes 'next_page_token' when more results exist. The search returns at most 1500 matching files in total; when this limit is reached, the response 'note' says the list is incomplete, and you should narrow it with file_name, extension_filter and/or project_filter. Independent: several calls can go in one response.",
                 Parameters = new ToolParameters
                 {
                     Type = "object",
                     Properties = new Dictionary<string, ToolDetails>
                     {
-                        { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). For all files, use '.'. Required unless 'file_names', 'extension_filter' or 'project_filter' is passed; with only filters, all files matching them are listed (same as '.')." } },
+                        { FileNameParameter, new ToolDetails { Type = "string", Description = "File name pattern. Supports '*' anywhere: 'Program*' (prefix), '*Service' (suffix), 'Chat*Service' (middle). May start with the folders right above the file: 'Core/Models/User.cs'. For all files, use '.'. Required unless 'file_names', 'extension_filter' or 'project_filter' is passed; with only filters, all files matching them are listed (same as '.')." } },
                         { "extension_filter", new ToolDetails { Type = "string", Description = "Exact file extension to narrow the search, as a plain dot-prefixed string with NO wildcard characters — e.g. '.cs', '.csproj', '.js'. Do NOT use glob patterns: pass '.cs', never '*.cs'. If omitted, searches all file types." } },
                         { "project_filter", new ToolDetails { Type = "string", Description = "Substring filter applied case-insensitively to project/path components. It is not an exact full project-name match; for example, 'Tests' can match a project such as 'LMLocal.Tests.E2E' when that text occurs in a relevant path component." } },
                         { "page_token", new ToolDetails { Type = "string", Description = "The value of next_page_token from the previous response, copied exactly; never a value that no response returned. The page is taken from that result, so file_name and the filters may be left out. Pass 'last' (together with the same file_name and filters) to get the last page, 'first' for the first." } },
@@ -137,7 +137,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
                         bool limitReached = TrimToLimit(matchingFiles, MaxFilesToScan);
                         string note = limitReached
                             ? $"The search was limited: the limit of {MaxFilesToScan} matching files was reached, so more files match than are listed and the list is incomplete. Narrow the search with file_name, extension_filter and/or project_filter."
-                            : null;
+                            : BuildFolderPatternNote(names[i], matchingFiles.Count);
                         if (limitReached)
                             InternalLogger.Warn($"{ToolName}: limit of {MaxFilesToScan} files reached for '{names[i]}'.");
 
@@ -164,7 +164,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             }
             catch (Exception ex)
             {
-                InternalLogger.Error($"Error in {ToolName}: {ex}");
+                InternalLogger.Error($"Error in {ToolName}", ex);
                 return ErrorResponse(ex.Message);
             }
         }
@@ -199,6 +199,18 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             if (parameters != null && parameters.TryGetValue("max_results", out object maxObj) && maxObj != null && int.TryParse(maxObj.ToString(), out int maxVal))
                 return Math.Min(Math.Max(maxVal, 1), MaxPageSize);
             return DefaultPageSize;
+        }
+
+        /// <summary>Note for a pattern with folders that matched no file: says how the pattern was read and what to pass instead; null otherwise.</summary>
+        internal static string BuildFolderPatternNote(string pattern, int fileCount)
+        {
+            if (fileCount > 0 || !TrySplitFolderPattern(pattern, out string[] folders, out string namePart) || folders.Length == 0)
+                return null;
+
+            string folderPath = string.Join("\\", folders);
+            string what = namePart.Length == 0 ? "No file is" : $"No file matching '{namePart}' is";
+            return $"{what} directly in a folder whose path ends with '{folderPath}'. The part after the last '/' or '\\' is matched against file names only. "
+                + "To list the files of a folder, pass the folder in project_filter; to find the name in any folder, pass it without folders.";
         }
 
         internal static string BuildCacheKey(string fileName, string fileExtension, string projectFilter)
@@ -368,7 +380,7 @@ namespace LMLocal.Infrastructure.Tooling.BuiltInVs.Implementations
             [JsonProperty("results")]
             public List<FileSearchResult> Results { get; set; }
 
-            /// <summary>Set when the file limit was reached and the result list is incomplete.</summary>
+            /// <summary>Set when the file limit was reached, or when a pattern with folders matched no file.</summary>
             [JsonProperty("note", NullValueHandling = NullValueHandling.Ignore)]
             public string Note { get; set; }
 

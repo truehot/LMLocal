@@ -138,5 +138,111 @@ namespace LMLocal.Tests.Unit.Application.SubAgents
 
             Assert.That(ledger.TryResolve("src/A.cs", new LineRange(1, 160), out _), Is.False);
         }
+
+        [Test]
+        public void TryResolve_WindowRead_MarkerToTotalLines_IsExtendedWithinFile()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/P.json", 1, 200, @"C:\sol\src\P.json", totalLines: 254));
+
+            Assert.That(ledger.TryResolve("src/P.json", new LineRange(1, 254), out var record, out var resolved, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.ExtendedWithinFile));
+            Assert.That(resolved, Is.EqualTo(new LineRange(1, 254)));
+            Assert.That(record.AbsolutePath, Is.EqualTo(@"C:\sol\src\P.json"));
+        }
+
+        [Test]
+        public void TryResolve_MarkerWiderThanRequestedEnd_IsExtendedWithinFile()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/mock.js", 110, 150, totalLines: 205));
+
+            Assert.That(ledger.TryResolve("src/mock.js", new LineRange(110, 160), out _, out var resolved, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.ExtendedWithinFile));
+            Assert.That(resolved, Is.EqualTo(new LineRange(110, 160)));
+        }
+
+        [Test]
+        public void TryResolve_UnreadLinesAtLimit_IsResolved_AboveLimit_IsNot()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/Big.cs", 1, 200, totalLines: 1000));
+
+            Assert.That(ledger.TryResolve("src/Big.cs", new LineRange(1, 200 + ReadLedger.MaxUnreadLines), out _), Is.True);
+            Assert.That(ledger.TryResolve("src/Big.cs", new LineRange(1, 201 + ReadLedger.MaxUnreadLines), out _), Is.False);
+        }
+
+        [Test]
+        public void TryResolve_UnreadLinesInGap_CountTowardLimit()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/Big.cs", 1, 100, totalLines: 1000));
+            ledger.Add(new ReadRecord("src/Big.cs", 151, 200, totalLines: 1000));
+
+            Assert.That(ledger.TryResolve("src/Big.cs", new LineRange(1, 200), out _, out _, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.ExtendedWithinFile));
+        }
+
+        [Test]
+        public void TryResolve_ExtendedWithoutTotalLines_IsNotResolved()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/Big.cs", 1, 200));
+
+            Assert.That(ledger.TryResolve("src/Big.cs", new LineRange(1, 210), out _), Is.False);
+        }
+
+        [Test]
+        public void TryResolve_StartOutsideReads_IsNotResolved()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/P.json", 1, 200, totalLines: 254));
+
+            Assert.That(ledger.TryResolve("src/P.json", new LineRange(250, 254), out _), Is.False);
+        }
+
+        [Test]
+        public void TryResolve_ReadReachedEnd_MarkerPastEnd_IsClampedToLastLine()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/Tests.cs", 1, 41, totalLines: 41, reachedEnd: true));
+
+            Assert.That(ledger.TryResolve("src/Tests.cs", new LineRange(1, 60), out var record, out var resolved, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.ClampedAtEndOfFile));
+            Assert.That(resolved, Is.EqualTo(new LineRange(1, 41)));
+            Assert.That(record.EndLine, Is.EqualTo(41));
+        }
+
+        [Test]
+        public void TryResolve_ReadReachedEndWithoutTotalLines_MarkerPastEnd_IsClamped()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/Huge.cs", 25001, 25040, reachedEnd: true));
+
+            Assert.That(ledger.TryResolve("src/Huge.cs", new LineRange(25001, 29999), out _, out var resolved, out _), Is.True);
+            Assert.That(resolved, Is.EqualTo(new LineRange(25001, 25040)));
+        }
+
+        [Test]
+        public void TryResolve_WindowRead_MarkerPastTotalLines_IsClampedAndExtended()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/P.json", 1, 200, totalLines: 254));
+
+            Assert.That(ledger.TryResolve("src/P.json", new LineRange(1, 300), out _, out var resolved, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.ExtendedWithinFile));
+            Assert.That(resolved, Is.EqualTo(new LineRange(1, 254)));
+        }
+
+        [Test]
+        public void TryResolve_CoveredRange_IsCoveredAndUnchanged()
+        {
+            var ledger = new ReadLedger();
+            ledger.Add(new ReadRecord("src/P.json", 1, 200, totalLines: 254));
+
+            Assert.That(ledger.TryResolve("src/P.json", new LineRange(10, 20), out _, out var resolved, out var rule), Is.True);
+            Assert.That(rule, Is.EqualTo(ReadResolveRule.Covered));
+            Assert.That(resolved, Is.EqualTo(new LineRange(10, 20)));
+        }
     }
 }

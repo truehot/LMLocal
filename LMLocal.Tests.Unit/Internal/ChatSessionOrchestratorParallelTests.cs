@@ -30,7 +30,6 @@ namespace LMLocal.Tests.Unit.Internal
         private Mock<IToolExecutionManager> _toolManagerMock;
         private Mock<IHistoryCompactor> _compactorMock;
         private Mock<ISnapshotManager> _snapshotManagerMock;
-        private Mock<IToolCallLoopDetector> _loopDetectorMock;
         private Mock<ISubAgentsParallelPolicy> _parallelPolicyMock;
 
         private List<ToolResultMessage> _secondRoundResults;
@@ -42,7 +41,6 @@ namespace LMLocal.Tests.Unit.Internal
             _toolManagerMock = new Mock<IToolExecutionManager>();
             _compactorMock = new Mock<IHistoryCompactor>();
             _snapshotManagerMock = new Mock<ISnapshotManager>();
-            _loopDetectorMock = new Mock<IToolCallLoopDetector>();
             _parallelPolicyMock = new Mock<ISubAgentsParallelPolicy>();
             _secondRoundResults = null;
 
@@ -52,15 +50,16 @@ namespace LMLocal.Tests.Unit.Internal
 
         private ChatSessionOrchestrator CreateOrchestrator()
         {
-            return new ChatSessionOrchestrator(
-                _chatServiceMock.Object,
-                _toolManagerMock.Object,
-                _compactorMock.Object,
-                new Mock<IChatHistoryManager>().Object,
-                _snapshotManagerMock.Object,
-                _loopDetectorMock.Object,
-                _parallelPolicyMock.Object,
-                new SubAgentsParallelRunner());
+            return new OrchestratorTestBuilder
+            {
+                ChatService = _chatServiceMock,
+                ToolManager = _toolManagerMock,
+                Compactor = _compactorMock,
+                SnapshotManager = _snapshotManagerMock,
+                ParallelPolicy = _parallelPolicyMock,
+                // The fan-out itself is under test here, so the group runs the real runner.
+                ParallelRunner = new SubAgentsParallelRunner()
+            }.Build();
         }
 
         private void TrackMax(ref int max, int value)
